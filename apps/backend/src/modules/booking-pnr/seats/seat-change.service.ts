@@ -3,6 +3,7 @@ import { DbService } from '@backend/db/db.service'
 import { BookingError } from '../common/booking-error'
 import { BOOKING_READ_PORT, type BookingReadPort, type BookingViewer } from '../contracts'
 import { CheckinSeatProvider } from '../providers/checkin-seat.provider'
+import { HeldSeatChangeService } from './held-seat-change.service'
 
 @Injectable()
 export class SeatChangeService {
@@ -10,6 +11,7 @@ export class SeatChangeService {
     private readonly db: DbService,
     private readonly seats: CheckinSeatProvider,
     @Inject(BOOKING_READ_PORT) private readonly bookings: BookingReadPort,
+    private readonly heldSeats: HeldSeatChangeService,
   ) {}
 
   async changeSeatForUser(reference: string, couponId: string, seatCode: string, userId: string, overrideReason?: string) {
@@ -54,9 +56,16 @@ export class SeatChangeService {
     if ((!viewer.customerId && viewer.staff !== true) || (viewer.customerId && viewer.staff))
       throw new BookingError('INVALID_BOOKING_STATE', 'Booking not found', 404)
     const booking = await this.bookings.getBookingDetail(reference, viewer)
-    const coupon = booking?.coupons.find((item) => item.couponId === couponId && item.status === 'confirmed')
-    if (!booking || booking.status !== 'confirmed' || !coupon)
-      throw new BookingError('INVALID_BOOKING_STATE', 'Booking or coupon not found', 404)
+    if (!booking) throw new BookingError('INVALID_BOOKING_STATE', 'Booking or coupon not found', 404)
+    // A booking that is still on hold changes its seat through the hold path: the seat is held until the booking's
+    // hold expires and the seat fee goes into the total the customer pays at checkout.
+    if (booking.status === 'held') {
+      if (viewer.staff === true)
+        throw new BookingError('INVALID_BOOKING_STATE', 'A seat on a held booking can only be changed by the customer.', 409)
+      return this.heldSeats.changeSeat(reference, couponId, seatCode)
+    }
+    const coupon = booking.coupons.find((item) => item.couponId === couponId && item.status === 'confirmed')
+    if (booking.status !== 'confirmed' || !coupon) throw new BookingError('INVALID_BOOKING_STATE', 'Booking or coupon not found', 404)
 
     const checkIn = await this.db.check_in.findFirst({
       where: {

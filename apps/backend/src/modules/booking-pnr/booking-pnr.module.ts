@@ -56,6 +56,7 @@ import { SeatMapService } from './seats/seat-map.service'
 import { SeatHoldExpiryService } from './seats/seat-hold-expiry.service'
 import { SeatChangeController } from './seats/seat-change.controller'
 import { SeatChangeService } from './seats/seat-change.service'
+import { HeldSeatChangeService } from './seats/held-seat-change.service'
 import { CheckinSeatMapAdapter } from './providers/checkin-seat-map.adapter'
 import { CheckinSeatProvider } from './providers/checkin-seat.provider'
 import { FlightImpactService } from './flight-events/flight-impact.service'
@@ -102,6 +103,7 @@ import { FlightEventNotificationsService } from './flight-events/flight-event-no
     FlightEventNotificationsService,
     SeatMapService,
     SeatChangeService,
+    HeldSeatChangeService,
     CheckinSeatMapAdapter,
     CheckinSeatProvider,
     FlightImpactService,

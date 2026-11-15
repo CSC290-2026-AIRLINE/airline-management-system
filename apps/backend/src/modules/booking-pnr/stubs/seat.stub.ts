@@ -14,4 +14,8 @@ export class SeatStub implements SeatPort {
   releaseForBooking(): Promise<void> {
     return Promise.resolve()
   }
+
+  releaseForCoupon(): Promise<void> {
+    return Promise.resolve()
+  }
 }

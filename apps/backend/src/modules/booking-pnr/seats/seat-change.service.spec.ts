@@ -2,6 +2,7 @@ import type { DbService } from '@backend/db/db.service'
 import { NotFoundException } from '@nestjs/common'
 import type { BookingReadPort } from '../contracts'
 import type { CheckinSeatProvider } from '../providers/checkin-seat.provider'
+import { HeldSeatChangeService } from './held-seat-change.service'
 import { SeatChangeService } from './seat-change.service'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class DbService {} }))
@@ -13,10 +14,12 @@ describe('SeatChangeService', () => {
   const staff = { findFirst: jest.fn() }
   const seats = { hold: jest.fn(), confirm: jest.fn(), release: jest.fn() }
   const bookings = { getBookingDetail: jest.fn() }
+  const heldSeats = { changeSeat: jest.fn() }
   const service = new SeatChangeService(
     { check_in: checkIn, customer, staff } as unknown as DbService,
     seats as unknown as CheckinSeatProvider,
     bookings as unknown as BookingReadPort,
+    heldSeats as unknown as HeldSeatChangeService,
   )
   const viewer = { customerId: 'customer' }
 
@@ -32,6 +35,7 @@ describe('SeatChangeService', () => {
     seats.hold.mockResolvedValue({ id: 'lock', fee: 0 })
     seats.confirm.mockResolvedValue({ seatCode: '12A', type: 'standard' })
     seats.release.mockResolvedValue(undefined)
+    heldSeats.changeSeat.mockResolvedValue({ status: 'assigned', seat: { seatCode: '12A', type: 'standard' }, total: 120, currency: 'USD' })
   })
 
   it('assigns a free seat after checking booking ownership and check-in', async () => {
@@ -123,5 +127,31 @@ describe('SeatChangeService', () => {
   it('refuses customer-supplied staff overrides', async () => {
     await expect(service.changeSeatForUser('REF', 'coupon', '12A', 'user', 'Override')).rejects.toMatchObject({ status: 403 })
     expect(seats.hold).not.toHaveBeenCalled()
+  })
+
+  it('changes the seat of a booking that is still on hold through the hold path', async () => {
+    bookings.getBookingDetail.mockResolvedValue({
+      status: 'held',
+      coupons: [{ couponId: 'coupon', status: 'held', flightId: 'flight', bookingPassengerId: 'passenger' }],
+    })
+    await expect(service.changeSeat('REF', 'coupon', '12A', viewer)).resolves.toMatchObject({
+      status: 'assigned',
+      seat: { seatCode: '12A' },
+      total: 120,
+    })
+    expect(heldSeats.changeSeat).toHaveBeenCalledWith('REF', 'coupon', '12A')
+    expect(seats.hold).not.toHaveBeenCalled()
+  })
+
+  it('does not let staff change the seat of a booking that is still on hold', async () => {
+    bookings.getBookingDetail.mockResolvedValue({
+      status: 'held',
+      coupons: [{ couponId: 'coupon', status: 'held', flightId: 'flight', bookingPassengerId: 'passenger' }],
+    })
+    await expect(service.changeSeat('REF', 'coupon', '12A', { staff: true })).rejects.toMatchObject({
+      code: 'INVALID_BOOKING_STATE',
+      status: 409,
+    })
+    expect(heldSeats.changeSeat).not.toHaveBeenCalled()
   })
 })

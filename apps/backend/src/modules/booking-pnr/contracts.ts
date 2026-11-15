@@ -76,12 +76,15 @@ export interface HoldSeatInput {
   bookingCouponId: string
   flightId: string
   seatCode: string
+  // The seat fee that goes on the assignment. Feature 4 prices it per cabin and seat type.
+  fee?: number
 }
 
 export interface SeatPort {
   holdForBooking: (tx: BookingTransaction, bookingId: string, seats: HoldSeatInput[], expiresAt: Date) => Promise<void>
   assignHeldForBooking: (tx: BookingTransaction, bookingId: string, assignedAt: Date) => Promise<void>
   releaseForBooking: (tx: BookingTransaction, bookingId: string, releasedAt: Date) => Promise<void>
+  releaseForCoupon: (tx: BookingTransaction, couponId: string, releasedAt: Date) => Promise<void>
 }
 
 export interface ServiceRequestInput {
