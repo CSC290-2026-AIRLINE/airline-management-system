@@ -24,6 +24,22 @@ const TEST_AIRCRAFT_TYPE = {
 const TEST_TAIL = 'HS-TEST'
 const DEP_HOURS_LOCAL = [8, 11, 14, 17]
 
+const TEST_SHIPPERS = [
+  { name: 'Siam Fresh Exports Co., Ltd.', phone: '+66-2-345-6789' },
+  { name: 'Thai Orchid Trading', phone: '+66-2-987-1234' },
+  { name: 'Bangkok Auto Parts Ltd.', phone: '+66-2-456-0088' },
+  { name: 'Andaman Seafood Supply', phone: null },
+  { name: 'Lanna Craft Workshop', phone: '+66-53-211-456' },
+]
+
+const TEST_CONSIGNEES = [
+  { name: 'Phuket Dive Supplies', address: '88/2 Thalang Rd, Tambon Talat Yai, Phuket 83000', phone: '+66-76-222-333' },
+  { name: 'Chiang Mai Night Market Co-op', address: '14 Chang Khlan Rd, Hai Ya, Chiang Mai 50100', phone: '+66-53-100-200' },
+  { name: 'BKK Central Warehouse', address: '500 Lat Krabang Industrial Estate, Bangkok 10520', phone: null },
+  { name: 'Southern Electronics Ltd.', address: '7/1 Sakdidet Rd, Mueang Phuket 83000', phone: '+66-76-300-400' },
+  { name: 'Northern Agri Distributors', address: '32 Mahidol Rd, Suthep, Chiang Mai 50200', phone: '+66-53-444-555' },
+]
+
 class CreateTestBookingsDto {
   @IsOptional()
   @IsInt()
@@ -138,19 +154,22 @@ export class CargoTestToolsController {
         const pieces = Math.max(1, Math.ceil(weight / maxPieceKg))
         const volume = +(weight / 200).toFixed(3)
 
+        const shipper = TEST_SHIPPERS[i % TEST_SHIPPERS.length]
+        const consignee = TEST_CONSIGNEES[i % TEST_CONSIGNEES.length]
+
         const booking = await this.bookings.createHeldBooking(customer.id, {
           routeId: flight.route_id,
           shipDate: flight.service_date.toISOString().slice(0, 10),
           commodityTypeId: commodityType.id,
-          goodsDescription: `Test shipment ${i + 1} — ${commodityType.name}`,
+          goodsDescription: `Sample shipment ${i + 1} — ${commodityType.name}`,
           pieces,
           declaredWeightKg: weight,
           declaredVolumeM3: volume,
-          shipperName: 'Test Shipper Co.',
-          shipperPhone: '+66-2-000-0000',
-          consigneeName: 'Test Consignee',
-          consigneeAddress: '123 Test Street, Bangkok 10110',
-          consigneePhone: '+66-2-000-0001',
+          shipperName: shipper.name,
+          shipperPhone: shipper.phone ?? undefined,
+          consigneeName: consignee.name,
+          consigneeAddress: consignee.address,
+          consigneePhone: consignee.phone ?? undefined,
         })
 
         const charge = Number(booking.quoted_charge)

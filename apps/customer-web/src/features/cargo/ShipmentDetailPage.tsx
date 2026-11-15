@@ -629,10 +629,12 @@ export default function ShipmentDetailPage() {
                 </Link>
               )}
               {d.awbNumber && (
-                <Button variant="outline" onClick={() => printAwb(d)}>
-                  <Printer className="mr-1.5 h-4 w-4" />
-                  Print Air Waybill
-                </Button>
+                <Link to="/cargo/bookings/$id/waybill" params={{ id: d.id }}>
+                  <Button variant="outline">
+                    <Printer className="mr-1.5 h-4 w-4" />
+                    Print Air Waybill
+                  </Button>
+                </Link>
               )}
               {canCancel && (
                 <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50" onClick={() => setShowCancel(true)}>
@@ -714,64 +716,3 @@ export default function ShipmentDetailPage() {
 }
 
 /* ── Print AWB ──────────────────────────────────────────────────── */
-
-function printAwb(detail: BookingDetail) {
-  const win = window.open('', '_blank')
-  if (!win) return
-  win.document.write(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>AWB ${detail.awbNumber}</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; color: #111; }
-  h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
-  .sub { color: #666; font-size: 0.875rem; margin-bottom: 1.5rem; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
-  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; font-size: 0.875rem; }
-  th { background: #f5f5f5; font-weight: 600; width: 40%; }
-  .section { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: #666; margin: 1.25rem 0 0.5rem; letter-spacing: 0.05em; }
-  @media print { body { padding: 0; } }
-</style></head><body>
-<h1>Air Waybill ${detail.awbNumber}</h1>
-<p class="sub">Booking ${detail.bookingRef}</p>
-
-<p class="section">Shipper</p>
-<table>
-  <tr><th>Name</th><td>${detail.shipper.name}</td></tr>
-  ${detail.shipper.phone ? `<tr><th>Phone</th><td>${detail.shipper.phone}</td></tr>` : ''}
-</table>
-
-<p class="section">Consignee</p>
-<table>
-  <tr><th>Name</th><td>${detail.consignee.name}</td></tr>
-  <tr><th>Address</th><td>${detail.consignee.address}</td></tr>
-  ${detail.consignee.phone ? `<tr><th>Phone</th><td>${detail.consignee.phone}</td></tr>` : ''}
-</table>
-
-<p class="section">Flight</p>
-<table>
-  <tr><th>Flight</th><td>${detail.flight.flightNumber}</td></tr>
-  <tr><th>Route</th><td>${detail.flight.origin} (${detail.flight.originName}) → ${detail.flight.destination} (${detail.flight.destinationName})</td></tr>
-  <tr><th>Departure</th><td>${new Date(detail.flight.depAt).toLocaleString()}</td></tr>
-  <tr><th>Arrival</th><td>${new Date(detail.flight.arrAt).toLocaleString()}</td></tr>
-</table>
-
-<p class="section">Goods</p>
-<table>
-  <tr><th>Commodity</th><td>${detail.goods.commodityTypeName}</td></tr>
-  <tr><th>Pieces</th><td>${detail.goods.pieces}</td></tr>
-  <tr><th>Declared weight</th><td>${detail.goods.declaredWeightKg} kg</td></tr>
-  <tr><th>Declared volume</th><td>${detail.goods.declaredVolumeM3} m³</td></tr>
-  <tr><th>Description</th><td>${detail.goods.goodsDescription}</td></tr>
-</table>
-
-<p class="section">Charges</p>
-<table>
-  <tr><th>Chargeable weight</th><td>${detail.quote.chargeableKg} kg</td></tr>
-  <tr><th>Rate per kg</th><td>${detail.quote.currency} ${detail.quote.ratePerKg.toFixed(2)}</td></tr>
-  <tr><th>Total charge</th><td>${detail.quote.currency} ${detail.quote.charge.toFixed(2)}</td></tr>
-</table>
-</body></html>`)
-  win.document.close()
-  win.focus()
-  win.print()
-}
