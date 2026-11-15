@@ -1,4 +1,5 @@
 import type { FlightSearchFormValue } from './contracts'
+import { todayKey } from '@customer-web/components/ui/date-keys'
 
 /** The field an issue belongs to, so the message can be shown under that field. */
 export type SearchField =
@@ -13,11 +14,6 @@ export interface SearchIssue {
   message: string
   /** The message in the summary under the form. */
   summary: string
-}
-
-function today() {
-  const date = new Date()
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
 /** The key of a field. It is also the id of the element of that field. */
@@ -75,7 +71,7 @@ export function searchIssues(value: FlightSearchFormValue): SearchIssue[] {
         summary: `Choose different airports for leg ${index + 1}.`,
       })
     }
-    if (!leg.date || leg.date < today()) {
+    if (!leg.date || leg.date < todayKey()) {
       issues.push({
         field: { kind: 'leg', legIndex: index, field: 'date' },
         key: fieldKey({ kind: 'leg', legIndex: index, field: 'date' }),

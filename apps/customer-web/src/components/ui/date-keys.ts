@@ -15,6 +15,23 @@ export function fromKey(key: string): Date {
   return new Date(year, month - 1, day)
 }
 
+/**
+ * Whether a string is a real calendar day as a key. The month and the day have to exist, so 31 February is not a date.
+ * Every place that reads a date from the URL, the API or the form uses this one rule.
+ */
+export function isDateKey(key: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return false
+  const date = fromKey(key)
+  if (!Number.isFinite(date.getTime())) return false
+  return toKey(date) === key
+}
+
+/** A date as a screen reader reads it out, so the chosen day is announced with the field it belongs to. */
+export function spokenDate(key: string): string {
+  if (!isDateKey(key)) return ''
+  return new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(fromKey(key))
+}
+
 /** Today as a key. */
 export function todayKey(): string {
   return toKey(new Date())

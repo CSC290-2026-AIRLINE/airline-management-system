@@ -1,6 +1,7 @@
 import type { Cabin, FlightSearchLeg, TripType } from './api/types'
 import type { FlightSearchFormValue } from './components/contracts'
 import { validateSearch } from './components/search-validation'
+import { isDateKey } from '@customer-web/components/ui/date-keys'
 
 /**
  * The flight search page keeps its state in the URL, so a refresh (or a shared link) comes back to the same search.
@@ -52,7 +53,6 @@ export interface FlightSearchParams {
 const LEG_KEYS = ['leg1', 'leg2', 'leg3', 'leg4', 'leg5'] as const
 const PICK_KEYS = ['pick1', 'pick2', 'pick3', 'pick4', 'pick5'] as const
 const AIRPORT = /^[A-Z]{3}$/
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const CABINS: Cabin[] = ['economy', 'premium_economy', 'business', 'first']
 const SORTS: FlightSearchSort[] = ['price', 'departure', 'duration']
 const TRIP_TYPES: TripType[] = ['one_way', 'return', 'multi_city']
@@ -80,9 +80,7 @@ function readCount(value: unknown): number | undefined {
 }
 
 function isCalendarDate(value: string): boolean {
-  if (!ISO_DATE.test(value)) return false
-  const parsed = new Date(`${value}T00:00:00Z`)
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+  return isDateKey(value)
 }
 
 /** `BKK,CNX,2026-11-20` — one leg. Empty parts are allowed: the form holds a half-filled leg while the user types. */
