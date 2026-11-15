@@ -55,10 +55,6 @@ export function AssistanceQueuePage() {
   return (
     <main className="assistance-page">
       <header className="assistance-page__header">
-        <div className="assistance-page__badges" aria-label="Feature 3 staff view">
-          <span>FEATURE 3</span>
-          <span>STAFF VIEW</span>
-        </div>
         <h1>Special Assistance Queue</h1>
         <p>Review requests from bookings. Oldest departure first.</p>
       </header>

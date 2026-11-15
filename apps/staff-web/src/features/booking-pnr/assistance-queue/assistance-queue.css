@@ -34,53 +34,54 @@
   color: #677287;
   font-size: 14px;
 }
-.assistance-page__badges {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-.assistance-page__badges span {
-  padding: 4px 7px;
-  border-radius: 3px;
-  background: #1f408c;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1;
-}
-.assistance-page__badges span + span {
-  border: 1px solid #bd9a56;
-  background: #fef4de;
-  color: #6d5021;
-}
 .assistance-queue {
   font-size: 14px;
 }
 .assistance-queue__filters {
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
+  padding-bottom: 16px;
   border-bottom: 1px solid #e6e8ef;
 }
+/* The status filters are drawn exactly like the trip-type buttons on the book-for-customer route (One-way / Return /
+   Multi-city): outlined white buttons, with the selected one filled light blue and outlined navy. No hover or press
+   styling, and no focus decoration: the browser restores focus to the last used tab on reload, so a focus ring would
+   show up as a stray outline around the filters. Radix still selects a tab when it takes focus, so the choice stays
+   visible while tabbing. */
 .assistance-queue__tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
+  display: inline-flex;
+  max-width: 100%;
+  height: auto;
+  gap: 8px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .assistance-queue__tabs button {
-  padding: 20px 0 14px;
-  border: 0;
-  border-bottom: 3px solid transparent;
-  background: transparent;
-  color: #677287;
-  font-weight: 600;
+  height: auto;
+  padding: 9px 18px;
+  border: 1px solid #d9dfe9;
+  border-radius: 8px;
+  background: #fff;
+  color: #0a1424;
+  font-weight: 500;
   cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
-.assistance-queue__tabs button[aria-pressed='true'] {
+.assistance-queue__tabs button[data-state='active'] {
   border-color: #102544;
+  background: #eaf2ff;
   color: #102544;
+}
+.assistance-queue__tabs:focus-visible,
+.assistance-queue__tabs button:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 .assistance-queue__tabs span {
   font-weight: 400;
@@ -247,18 +248,6 @@
   }
 }
 
-.assistance-queue__tabs button {
-  border-radius: 0;
-  height: auto;
-  transition:
-    color 150ms,
-    background-color 150ms,
-    border-color 150ms;
-}
-.assistance-queue__tabs button:hover:not(:disabled) {
-  color: #102544;
-  background: #eef2f7;
-}
 .assistance-queue__table tbody tr {
   transition: background-color 150ms;
 }
@@ -322,12 +311,16 @@
   }
   .assistance-queue__tabs {
     flex: 1 1 100%;
-    gap: 16px;
+    overflow-x: auto;
   }
   .assistance-queue__tabs button {
     flex: 1;
-    padding: 14px 0;
+    padding: 10px 8px;
     font-size: 13px;
+  }
+  .assistance-queue__tabs button[data-state='active'] {
+    background: #102544;
+    color: #fff;
   }
   .assistance-queue__search {
     flex: 1;

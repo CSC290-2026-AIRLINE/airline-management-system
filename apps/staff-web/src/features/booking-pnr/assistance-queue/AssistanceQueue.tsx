@@ -3,6 +3,7 @@ import { Input } from '@staff-web/components/ui/input'
 import { Search } from 'lucide-react'
 import { Button } from '@staff-web/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
 import type { ServiceRequestQueueItem, ServiceRequestStatus } from '../api/types'
 import './assistance-queue.css'
 
@@ -87,173 +88,170 @@ export function AssistanceQueue({ requests, onUpdate }: AssistanceQueueProps) {
 
   return (
     <section className="assistance-queue" aria-label="Special assistance queue">
-      <div className="assistance-queue__filters">
-        <div className="assistance-queue__tabs" aria-label="Filter by status">
-          {tabs.map((tab) => (
-            <Button
-              variant="ghost"
-              key={tab.value}
-              type="button"
-              disabled={working}
-              aria-pressed={status === tab.value}
-              onClick={() => setStatus(tab.value)}
-            >
-              {tab.label}{' '}
-              <span>({tab.value === 'all' ? requests.length : requests.filter((item) => item.status === tab.value).length})</span>
-            </Button>
-          ))}
+      <Tabs value={status} onValueChange={(next) => setStatus(next as ServiceRequestStatus | 'all')}>
+        <div className="assistance-queue__filters">
+          <TabsList className="assistance-queue__tabs" aria-label="Filter by status">
+            {tabs.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value} disabled={working}>
+                {tab.label}{' '}
+                <span>({tab.value === 'all' ? requests.length : requests.filter((item) => item.status === tab.value).length})</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <label className="assistance-queue__search">
+            Flight number
+            <span className="assistance-queue__search-field">
+              <Search size={16} aria-hidden="true" />
+              <Input disabled={working} value={flight} onChange={(event) => setFlight(event.target.value)} placeholder="Search flights" />
+            </span>
+          </label>
         </div>
-        <label className="assistance-queue__search">
-          Flight number
-          <span className="assistance-queue__search-field">
-            <Search size={16} aria-hidden="true" />
-            <Input disabled={working} value={flight} onChange={(event) => setFlight(event.target.value)} placeholder="Search flights" />
-          </span>
-        </label>
-      </div>
-      {notice && (
-        <p className="assistance-queue__success" role="status">
-          {notice}
-        </p>
-      )}
-      {error && !rejecting && (
-        <p className="assistance-queue__error" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="assistance-queue__table-wrap" aria-busy={working}>
-        <table className="assistance-queue__table">
-          <thead>
-            <tr>
-              <th scope="col">Booking</th>
-              <th scope="col">Passenger</th>
-              <th scope="col">Code</th>
-              <th scope="col">Flight · note</th>
-              <th scope="col">Status</th>
-              <th scope="col">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="assistance-queue__empty">
-                  <strong>No assistance requests found.</strong>
-                  <p>Try a different status or flight number.</p>
-                  {(flight || status !== 'all') && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setFlight('')
-                        setStatus('all')
-                      }}
-                    >
-                      Clear filters
-                    </Button>
-                  )}
-                </td>
-              </tr>
-            ) : (
-              visible.map((item) => (
-                <tr key={item.serviceRequestId}>
-                  <td data-label="Booking">
-                    <Button
-                      variant="link"
-                      className="assistance-queue__reference"
-                      type="button"
-                      disabled={working}
-                      onClick={() => setSelectedId(item.serviceRequestId)}
-                    >
-                      {item.bookingReference}
-                    </Button>
-                  </td>
-                  <td data-label="Passenger">
-                    <strong>{item.passengerName}</strong>
-                    <small>{item.passengerType}</small>
-                  </td>
-                  <td data-label="Code">
-                    <strong>{item.serviceCode}</strong>
-                  </td>
-                  <td data-label="Flight · note">
-                    {item.flightNumber ?? 'All flights'} · {departureDate(item.depAt)}
-                    {item.note && <small>{item.note}</small>}
-                    {item.status === 'rejected' && item.decisionNote && (
-                      <small className="assistance-queue__rejection">Reason: {item.decisionNote}</small>
-                    )}
-                  </td>
-                  <td data-label="Status">
-                    <span className={`assistance-queue__status assistance-queue__status--${item.status}`}>{labels[item.status]}</span>
-                  </td>
-                  <td data-label="Action">
-                    <div className="assistance-queue__actions">
-                      {item.status === 'requested' && (
-                        <>
-                          <Button
-                            size="sm"
-                            className="assistance-queue__primary"
-                            type="button"
-                            disabled={working}
-                            onClick={() => void update(item, 'accepted')}
-                          >
-                            {workingId === item.serviceRequestId ? 'Saving…' : 'Accept'}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="assistance-queue__danger"
-                            type="button"
-                            disabled={working}
-                            onClick={() => openReject(item)}
-                          >
-                            Reject
-                          </Button>
-                        </>
-                      )}
-                      {item.status === 'accepted' && (
+        <TabsContent value={status}>
+          {notice && (
+            <p className="assistance-queue__success" role="status">
+              {notice}
+            </p>
+          )}
+          {error && !rejecting && (
+            <p className="assistance-queue__error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="assistance-queue__table-wrap" aria-busy={working}>
+            <table className="assistance-queue__table">
+              <thead>
+                <tr>
+                  <th scope="col">Booking</th>
+                  <th scope="col">Passenger</th>
+                  <th scope="col">Code</th>
+                  <th scope="col">Flight · note</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="assistance-queue__empty">
+                      <strong>No assistance requests found.</strong>
+                      <p>Try a different status or flight number.</p>
+                      {(flight || status !== 'all') && (
                         <Button
-                          size="sm"
-                          variant="outline"
-                          className="assistance-queue__secondary"
                           type="button"
-                          disabled={working}
-                          onClick={() => void update(item, 'completed')}
+                          variant="outline"
+                          onClick={() => {
+                            setFlight('')
+                            setStatus('all')
+                          }}
                         >
-                          {workingId === item.serviceRequestId ? 'Saving…' : 'Mark done'}
+                          Clear filters
                         </Button>
                       )}
-                      {(item.status === 'rejected' || item.status === 'completed') && <span>—</span>}
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-      <p className="assistance-queue__info">
-        Accepting, rejecting or completing a request tells the customer in their booking. A rejection needs a reason.
-      </p>
-      {selected && !rejecting && (
-        <section className="assistance-queue__details" aria-label="Assistance request details">
-          <h2>Request details</h2>
-          <p>
-            <strong>{selected.passengerName}</strong> · {selected.bookingReference}
+                    </td>
+                  </tr>
+                ) : (
+                  visible.map((item) => (
+                    <tr key={item.serviceRequestId}>
+                      <td data-label="Booking">
+                        <Button
+                          variant="link"
+                          className="assistance-queue__reference"
+                          type="button"
+                          disabled={working}
+                          onClick={() => setSelectedId(item.serviceRequestId)}
+                        >
+                          {item.bookingReference}
+                        </Button>
+                      </td>
+                      <td data-label="Passenger">
+                        <strong>{item.passengerName}</strong>
+                        <small>{item.passengerType}</small>
+                      </td>
+                      <td data-label="Code">
+                        <strong>{item.serviceCode}</strong>
+                      </td>
+                      <td data-label="Flight · note">
+                        {item.flightNumber ?? 'All flights'} · {departureDate(item.depAt)}
+                        {item.note && <small>{item.note}</small>}
+                        {item.status === 'rejected' && item.decisionNote && (
+                          <small className="assistance-queue__rejection">Reason: {item.decisionNote}</small>
+                        )}
+                      </td>
+                      <td data-label="Status">
+                        <span className={`assistance-queue__status assistance-queue__status--${item.status}`}>{labels[item.status]}</span>
+                      </td>
+                      <td data-label="Action">
+                        <div className="assistance-queue__actions">
+                          {item.status === 'requested' && (
+                            <>
+                              <Button
+                                size="sm"
+                                className="assistance-queue__primary"
+                                type="button"
+                                disabled={working}
+                                onClick={() => void update(item, 'accepted')}
+                              >
+                                {workingId === item.serviceRequestId ? 'Saving…' : 'Accept'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="assistance-queue__danger"
+                                type="button"
+                                disabled={working}
+                                onClick={() => openReject(item)}
+                              >
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                          {item.status === 'accepted' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="assistance-queue__secondary"
+                              type="button"
+                              disabled={working}
+                              onClick={() => void update(item, 'completed')}
+                            >
+                              {workingId === item.serviceRequestId ? 'Saving…' : 'Mark done'}
+                            </Button>
+                          )}
+                          {(item.status === 'rejected' || item.status === 'completed') && <span>—</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="assistance-queue__info">
+            Accepting, rejecting or completing a request tells the customer in their booking. A rejection needs a reason.
           </p>
-          <p>
-            {selected.flightNumber ?? 'All flights'} · {selected.serviceCode} · {labels[selected.status]}
-          </p>
-          {selected.note && <p>{selected.note}</p>}
-          <Button
-            variant="outline"
-            className="assistance-queue__secondary"
-            type="button"
-            disabled={working}
-            onClick={() => setSelectedId(null)}
-          >
-            Close
-          </Button>
-        </section>
-      )}
+          {selected && !rejecting && (
+            <section className="assistance-queue__details" aria-label="Assistance request details">
+              <h2>Request details</h2>
+              <p>
+                <strong>{selected.passengerName}</strong> · {selected.bookingReference}
+              </p>
+              <p>
+                {selected.flightNumber ?? 'All flights'} · {selected.serviceCode} · {labels[selected.status]}
+              </p>
+              {selected.note && <p>{selected.note}</p>}
+              <Button
+                variant="outline"
+                className="assistance-queue__secondary"
+                type="button"
+                disabled={working}
+                onClick={() => setSelectedId(null)}
+              >
+                Close
+              </Button>
+            </section>
+          )}
+        </TabsContent>
+      </Tabs>
       <Dialog
         open={rejecting}
         onOpenChange={(next) => {
