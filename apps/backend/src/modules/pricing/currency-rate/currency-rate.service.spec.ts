@@ -2,6 +2,8 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
 import type { DbService } from '@backend/db/db.service'
+import type { PricingAudit } from '../pricing.audit'
+import { mockAudit, runTransactionsOn } from '../pricing.testing'
 import { ParseCurrencyCodePipe } from './currency-code.pipe'
 import { CurrencyRateService } from './currency-rate.service'
 import { CreateCurrencyRateDto } from './dto/create-currency-rate.dto'
@@ -42,6 +44,7 @@ describe('ParseCurrencyCodePipe', () => {
 
 describe('CurrencyRateService', () => {
   let service: CurrencyRateService
+  const audit = mockAudit()
   const db = {
     currency_rate: { findMany: jest.fn(), findUnique: jest.fn(), upsert: jest.fn() },
     staff: { findFirst: jest.fn() },
@@ -49,8 +52,10 @@ describe('CurrencyRateService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
+    audit.write.mockResolvedValue(undefined)
+    runTransactionsOn(db)
     db.staff.findFirst.mockResolvedValue({ id: STAFF_ID })
-    service = new CurrencyRateService(db as unknown as DbService)
+    service = new CurrencyRateService(db as unknown as DbService, audit as unknown as PricingAudit)
   })
 
   it('lists the rate table by code', async () => {
@@ -80,6 +85,11 @@ describe('CurrencyRateService', () => {
           create: { currency_code: 'EUR', rate_per_base: 0.92, updated_by: STAFF_ID },
           update: { rate_per_base: 0.92, updated_by: STAFF_ID, updated_at: expect.any(Date) },
         }),
+      )
+      expect(audit.write).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({ action: 'create', entityType: 'currency_rate', entityId: 'EUR' }),
+        db,
       )
     })
 

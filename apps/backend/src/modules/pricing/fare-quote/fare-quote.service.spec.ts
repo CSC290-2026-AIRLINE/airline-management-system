@@ -7,6 +7,8 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { PricingAudit } from '../pricing.audit'
+import { mockAudit } from '../pricing.testing'
 import type { CurrencyRateService } from '../currency-rate/currency-rate.service'
 import type { FareClassService } from '../fare-class/fare-class.service'
 import { PricingRuleService } from '../pricing-rule/pricing-rule.service'
@@ -88,6 +90,7 @@ describe('FareQuoteService', () => {
     fare_quote: { findFirst: jest.fn(), create: jest.fn() },
     promo_redemption: { createMany: jest.fn() },
   }
+  const audit = mockAudit()
   const db = {
     flight: { findUnique: jest.fn() },
     base_fare: { findFirst: jest.fn() },
@@ -112,6 +115,7 @@ describe('FareQuoteService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
+    audit.write.mockResolvedValue(undefined)
     jest.useFakeTimers({ now: NOW })
     db.flight.findUnique.mockResolvedValue(flight)
     fareClasses.findOne.mockResolvedValue(fareClass)
@@ -132,13 +136,14 @@ describe('FareQuoteService', () => {
     service = new FareQuoteService(
       db as unknown as DbService,
       fareClasses as unknown as FareClassService,
-      new PricingRuleService(db as unknown as DbService),
+      new PricingRuleService(db as unknown as DbService, audit as unknown as PricingAudit),
       promoCodes as unknown as PromoCodeService,
       seatFees as unknown as SeatFeeService,
       taxFees as unknown as TaxFeeService,
       settings as unknown as SettingService,
       seats,
       currencyRates as unknown as CurrencyRateService,
+      audit as unknown as PricingAudit,
     )
   })
 
@@ -210,6 +215,26 @@ describe('FareQuoteService', () => {
       expect(db.$transaction).toHaveBeenCalledTimes(1)
       expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
       expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(tx.fare_quote.create.mock.invocationCallOrder[0])
+    })
+
+    it('audits a newly created quote inside the same transaction, as the caller', async () => {
+      await service.create(dto, 'user-1')
+
+      expect(audit.write).toHaveBeenCalledTimes(1)
+      expect(audit.write).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ action: 'create', entityType: 'fare_quote', entityId: QUOTE_ID }),
+        tx,
+      )
+    })
+
+    it('writes no audit entry when it reuses a quote that another request just saved', async () => {
+      tx.fare_quote.findFirst.mockResolvedValue({ id: QUOTE_ID, fare_quote_line: [] })
+
+      await service.create(dto, 'user-1')
+
+      expect(tx.fare_quote.create).not.toHaveBeenCalled()
+      expect(audit.write).not.toHaveBeenCalled()
     })
 
     it('looks up the seat fee for the cabin of the fare class', async () => {

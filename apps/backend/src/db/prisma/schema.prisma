@@ -3294,3 +3294,22 @@ model visa_requirement {
 
   @@id([nationality, destination_country])
 }
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model interaction_session {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  started_at     DateTime         @db.Timestamptz(6)
+  ended_at       DateTime?        @db.Timestamptz(6)
+  session_detail session_detail[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model session_detail {
+  session_id          String              @db.Uuid
+  seq                 Int
+  question            String
+  answer              String?
+  interaction_session interaction_session @relation(fields: [session_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([session_id, seq])
+}

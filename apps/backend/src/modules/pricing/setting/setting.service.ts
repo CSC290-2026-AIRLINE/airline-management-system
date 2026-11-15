@@ -1,13 +1,17 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { MAX_QUOTE_HOLD_MINUTES, PRICING_SETTING_DEFAULTS, type PricingSettingKey } from '../pricing.constants'
+import { PricingAudit } from '../pricing.audit'
 import { PricingErrorCode, pricingError } from '../pricing.errors'
 
 const SETTING_KEYS = Object.keys(PRICING_SETTING_DEFAULTS) as PricingSettingKey[]
 
 @Injectable()
 export class SettingService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: PricingAudit,
+  ) {}
 
   // Always returns every key; a key the seed has not inserted shows its default with updated_at null.
   async findAll() {
@@ -35,7 +39,23 @@ export class SettingService {
 
     const staffId = await this.staffIdFor(userId)
     const data = { value, updated_by: staffId, updated_at: new Date() }
-    return this.db.pricing_setting.upsert({ where: { key }, create: { key, ...data }, update: data })
+    const before = await this.db.pricing_setting.findUnique({ where: { key } })
+    return this.db.$transaction(async (tx) => {
+      const row = await tx.pricing_setting.upsert({ where: { key }, create: { key, ...data }, update: data })
+      await this.audit.write(
+        userId,
+        {
+          action: before ? 'update' : 'create',
+          entityType: 'pricing_setting',
+          entityId: key,
+          summary: `Set ${key} to ${value}`,
+          before: before ?? undefined,
+          after: row,
+        },
+        tx,
+      )
+      return row
+    })
   }
 
   // For other modules (quotes, Member B's finance). Fall back to the default until the seed inserts the row.

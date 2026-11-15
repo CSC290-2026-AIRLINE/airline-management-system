@@ -1,4 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Put, Post, Query, UsePipes } from '@nestjs/common'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
+import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CreateTaxFeeDto } from './dto/create-tax-fee.dto'
 import { UpdateTaxFeeDto } from './dto/update-tax-fee.dto'
 import { TaxFeeService } from './tax-fee.service'
@@ -20,18 +22,18 @@ export class TaxFeeController {
   }
 
   @Post()
-  create(@Body() dto: CreateTaxFeeDto) {
-    return this.taxFeeService.create(dto)
+  create(@Body() dto: CreateTaxFeeDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.taxFeeService.create(dto, user.id)
   }
 
   @Put(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTaxFeeDto) {
-    return this.taxFeeService.update(id, dto)
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTaxFeeDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.taxFeeService.update(id, dto, user.id)
   }
 
   @Delete(':id')
   @HttpCode(204)
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.taxFeeService.remove(id)
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.taxFeeService.remove(id, user.id)
   }
 }

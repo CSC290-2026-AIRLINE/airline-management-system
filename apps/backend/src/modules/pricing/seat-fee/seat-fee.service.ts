@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { PricingAudit } from '../pricing.audit'
 import { PricingErrorCode, isUniqueViolation, pricingError } from '../pricing.errors'
 import { percentOfCents } from '../pricing-rule/pricing-rule.engine'
 import { SettingService } from '../setting/setting.service'
@@ -11,6 +12,7 @@ import { UpdateSeatFeeDto } from './dto/update-seat-fee.dto'
 export class SeatFeeService {
   constructor(
     private readonly db: DbService,
+    private readonly audit: PricingAudit,
     private readonly taxFees: TaxFeeService,
     private readonly settings: SettingService,
   ) {}
@@ -70,16 +72,30 @@ export class SeatFeeService {
     return seatFee
   }
 
-  async create(dto: CreateSeatFeeDto) {
+  async create(dto: CreateSeatFeeDto, userId: string) {
     await this.assertPairFree(dto.cabin, dto.seat_type)
     try {
-      return await this.db.seat_fee.create({ data: dto })
+      return await this.db.$transaction(async (tx) => {
+        const row = await tx.seat_fee.create({ data: dto })
+        await this.audit.write(
+          userId,
+          {
+            action: 'create',
+            entityType: 'seat_fee',
+            entityId: row.id,
+            summary: `Created seat fee ${row.cabin + '/' + row.seat_type}`,
+            after: row,
+          },
+          tx,
+        )
+        return row
+      })
     } catch (error) {
       throw this.mapUniqueViolation(error, dto.cabin, dto.seat_type)
     }
   }
 
-  async update(id: string, dto: UpdateSeatFeeDto) {
+  async update(id: string, dto: UpdateSeatFeeDto, userId: string) {
     const existing = await this.findOne(id)
     // Check the final pair, since changing only cabin or only seat_type can still collide with another row.
     const cabin = dto.cabin ?? existing.cabin
@@ -88,17 +104,45 @@ export class SeatFeeService {
       await this.assertPairFree(cabin, seatType, id)
     }
     try {
-      return await this.db.seat_fee.update({ where: { id }, data: { ...dto, updated_at: new Date() } })
+      return await this.db.$transaction(async (tx) => {
+        const row = await tx.seat_fee.update({ where: { id }, data: { ...dto, updated_at: new Date() } })
+        await this.audit.write(
+          userId,
+          {
+            action: 'update',
+            entityType: 'seat_fee',
+            entityId: id,
+            summary: `Updated seat fee ${row.cabin + '/' + row.seat_type}`,
+            before: existing,
+            after: row,
+          },
+          tx,
+        )
+        return row
+      })
     } catch (error) {
       throw this.mapUniqueViolation(error, cabin, seatType)
     }
   }
 
   // Soft delete: the same cabin + seat type can be added again afterwards (the unique index only covers live rows).
-  async remove(id: string) {
-    await this.findOne(id)
+  async remove(id: string, userId: string) {
+    const existing = await this.findOne(id)
     const now = new Date()
-    await this.db.seat_fee.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+    await this.db.$transaction(async (tx) => {
+      await tx.seat_fee.update({ where: { id }, data: { deleted_at: now, updated_at: now } })
+      await this.audit.write(
+        userId,
+        {
+          action: 'delete',
+          entityType: 'seat_fee',
+          entityId: id,
+          summary: `Deleted seat fee ${existing.cabin + '/' + existing.seat_type}`,
+          before: existing,
+        },
+        tx,
+      )
+    })
   }
 
   private async assertPairFree(cabin: string, seatType: string, excludeId?: string) {

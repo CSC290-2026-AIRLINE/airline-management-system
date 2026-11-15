@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { PricingAudit } from '../pricing.audit'
+import { mockAudit, runTransactionsOn } from '../pricing.testing'
 import { SettingService } from './setting.service'
 
 // The real DbService loads @nestjs/config (ESM only), which Jest cannot load. The tests never use it: they pass `db` below.
@@ -10,6 +12,7 @@ const STAFF_ID = '22222222-2222-2222-2222-222222222222'
 
 describe('SettingService', () => {
   let service: SettingService
+  const audit = mockAudit()
   const db = {
     pricing_setting: { findMany: jest.fn(), findUnique: jest.fn(), upsert: jest.fn() },
     staff: { findFirst: jest.fn() },
@@ -17,7 +20,9 @@ describe('SettingService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
-    service = new SettingService(db as unknown as DbService)
+    audit.write.mockResolvedValue(undefined)
+    runTransactionsOn(db)
+    service = new SettingService(db as unknown as DbService, audit as unknown as PricingAudit)
   })
 
   it('lists every key, filling in defaults for rows the seed has not inserted', async () => {
@@ -64,6 +69,11 @@ describe('SettingService', () => {
       create: { key: 'quote_hold_minutes', value: '30', updated_by: STAFF_ID, updated_at: expect.any(Date) },
       update: { value: '30', updated_by: STAFF_ID, updated_at: expect.any(Date) },
     })
+    expect(audit.write).toHaveBeenCalledWith(
+      USER_ID,
+      expect.objectContaining({ action: 'create', entityType: 'pricing_setting', entityId: 'quote_hold_minutes' }),
+      db,
+    )
   })
 
   it('refuses a caller with no staff record', async () => {

@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { PricingAudit } from '../pricing.audit'
+import { mockAudit, runTransactionsOn } from '../pricing.testing'
 import { FareClassService } from './fare-class.service'
 
 // The real DbService loads @nestjs/config (ESM only), which Jest cannot load. The tests never use it: they pass `db` below.
@@ -8,8 +10,11 @@ jest.mock('@backend/db/db.service', () => ({ DbService: class DbService {} }))
 const ID = '11111111-1111-1111-1111-111111111111'
 const fareClass = { id: ID, code: 'Y', cabin: 'economy', name: 'Economy', is_active: true, deleted_at: null }
 
+const AUDIT_USER = 'user-1'
+
 describe('FareClassService', () => {
   let service: FareClassService
+  const audit = mockAudit()
   const db = {
     fare_class: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
     base_fare: { count: jest.fn() },
@@ -17,7 +22,9 @@ describe('FareClassService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
-    service = new FareClassService(db as unknown as DbService)
+    audit.write.mockResolvedValue(undefined)
+    runTransactionsOn(db)
+    service = new FareClassService(db as unknown as DbService, audit as unknown as PricingAudit)
   })
 
   it('lists only live, active classes by default', async () => {
@@ -40,7 +47,7 @@ describe('FareClassService', () => {
   it('refuses a code already used by a live class', async () => {
     db.fare_class.findFirst.mockResolvedValue(fareClass)
 
-    await expect(service.create({ code: 'Y', cabin: 'economy', name: 'Economy 2' })).rejects.toBeInstanceOf(ConflictException)
+    await expect(service.create({ code: 'Y', cabin: 'economy', name: 'Economy 2' }, AUDIT_USER)).rejects.toBeInstanceOf(ConflictException)
     expect(db.fare_class.create).not.toHaveBeenCalled()
   })
 
@@ -48,18 +55,25 @@ describe('FareClassService', () => {
     db.fare_class.findFirst.mockResolvedValue(null)
     db.fare_class.create.mockRejectedValue(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }))
 
-    await expect(service.create({ code: 'Y', cabin: 'economy', name: 'Economy' })).rejects.toBeInstanceOf(ConflictException)
+    await expect(service.create({ code: 'Y', cabin: 'economy', name: 'Economy' }, AUDIT_USER)).rejects.toBeInstanceOf(ConflictException)
   })
 
   it('sets updated_at on update', async () => {
+    const updated = { ...fareClass, name: 'Economy Saver' }
     db.fare_class.findFirst.mockResolvedValueOnce(fareClass)
+    db.fare_class.update.mockResolvedValue(updated)
 
-    await service.update(ID, { name: 'Economy Saver' })
+    await service.update(ID, { name: 'Economy Saver' }, AUDIT_USER)
 
     expect(db.fare_class.update).toHaveBeenCalledWith({
       where: { id: ID },
       data: expect.objectContaining({ name: 'Economy Saver', updated_at: expect.any(Date) }),
     })
+    expect(audit.write).toHaveBeenCalledWith(
+      AUDIT_USER,
+      expect.objectContaining({ action: 'update', entityType: 'fare_class', entityId: ID, before: fareClass, after: updated }),
+      db,
+    )
   })
 
   it('returns only the rule columns for a live class', async () => {
@@ -83,7 +97,7 @@ describe('FareClassService', () => {
   it('updates only rule columns and sets updated_at', async () => {
     db.fare_class.findFirst.mockResolvedValue({ ...fareClass, refundable: false })
 
-    await service.updateRule(ID, { refundable: true, cancel_fee_flat: 200 })
+    await service.updateRule(ID, { refundable: true, cancel_fee_flat: 200 }, AUDIT_USER)
 
     expect(db.fare_class.update).toHaveBeenCalledWith({
       where: { id: ID },
@@ -95,7 +109,7 @@ describe('FareClassService', () => {
   it('refuses a cancel fee on a class that stays non-refundable', async () => {
     db.fare_class.findFirst.mockResolvedValue({ ...fareClass, refundable: false, changeable: false })
 
-    const error = await service.updateRule(ID, { cancel_fee_pct: 10 }).catch((e: unknown) => e)
+    const error = await service.updateRule(ID, { cancel_fee_pct: 10 }, AUDIT_USER).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(BadRequestException)
     expect((error as BadRequestException).getResponse()).toMatchObject({
@@ -110,11 +124,11 @@ describe('FareClassService', () => {
   it('refuses turning changeable off while a change fee is still set', async () => {
     db.fare_class.findFirst.mockResolvedValue({ ...fareClass, changeable: true, change_fee_flat: '150.00' })
 
-    await expect(service.update(ID, { changeable: false })).rejects.toBeInstanceOf(BadRequestException)
+    await expect(service.update(ID, { changeable: false }, AUDIT_USER)).rejects.toBeInstanceOf(BadRequestException)
   })
 
   it('refuses creating a non-refundable class with a cancel fee', async () => {
-    await expect(service.create({ code: 'Y', cabin: 'economy', name: 'Economy', cancel_fee_flat: 100 })).rejects.toBeInstanceOf(
+    await expect(service.create({ code: 'Y', cabin: 'economy', name: 'Economy', cancel_fee_flat: 100 }, AUDIT_USER)).rejects.toBeInstanceOf(
       BadRequestException,
     )
     expect(db.fare_class.create).not.toHaveBeenCalled()
@@ -124,7 +138,7 @@ describe('FareClassService', () => {
     db.fare_class.findFirst.mockResolvedValue(fareClass)
     db.base_fare.count.mockResolvedValue(2)
 
-    const error = await service.remove(ID).catch((e: unknown) => e)
+    const error = await service.remove(ID, AUDIT_USER).catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(ConflictException)
     expect((error as ConflictException).getResponse()).toMatchObject({
@@ -137,7 +151,7 @@ describe('FareClassService', () => {
     db.fare_class.findFirst.mockResolvedValue(fareClass)
     db.base_fare.count.mockResolvedValue(0)
 
-    await service.remove(ID)
+    await service.remove(ID, AUDIT_USER)
 
     expect(db.fare_class.update).toHaveBeenCalledWith({
       where: { id: ID },

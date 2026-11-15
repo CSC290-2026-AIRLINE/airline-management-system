@@ -2,6 +2,8 @@ import { ConflictException, ForbiddenException, NotFoundException } from '@nestj
 import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
 import type { DbService } from '@backend/db/db.service'
+import type { PricingAudit } from '../../pricing.audit'
+import { mockAudit, runTransactionsOn } from '../../pricing.testing'
 import { CreateExpenseDto } from './dto/create-expense.dto'
 import { ListExpensesDto } from './dto/list-expenses.dto'
 import { ExpenseService } from './expense.service'
@@ -22,6 +24,8 @@ async function errorsFor<T extends object>(dto: new () => T, body: Record<string
   const errors = await validate(plainToInstance(dto, body), { whitelist: true, forbidNonWhitelisted: true })
   return errors.map((e) => e.property)
 }
+
+const AUDIT_USER = 'user-1'
 
 describe('CreateExpenseDto', () => {
   it('accepts a valid manual expense', async () => {
@@ -52,6 +56,7 @@ describe('ListExpensesDto', () => {
 
 describe('ExpenseService', () => {
   let service: ExpenseService
+  const audit = mockAudit()
   const db = {
     expense: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
     staff: { findFirst: jest.fn() },
@@ -59,8 +64,13 @@ describe('ExpenseService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
+    audit.write.mockResolvedValue(undefined)
+    // The audit entry reads the written row back, so a write must return one.
+    db.expense.create.mockResolvedValue({ id: 'expense-new', description: 'Fuel', category: 'fuel' })
+    db.expense.update.mockResolvedValue({ id: 'expense-new', description: 'Fuel', category: 'fuel' })
+    runTransactionsOn(db)
     db.staff.findFirst.mockResolvedValue({ id: STAFF_ID })
-    service = new ExpenseService(db as unknown as DbService)
+    service = new ExpenseService(db as unknown as DbService, audit as unknown as PricingAudit)
   })
 
   describe('findAll', () => {
@@ -95,6 +105,11 @@ describe('ExpenseService', () => {
       await service.create(supplies, USER_ID)
 
       expect(db.expense.create).toHaveBeenCalledWith({ data: { ...supplies, incurred_on: new Date('2026-11-05'), created_by: STAFF_ID } })
+      expect(audit.write).toHaveBeenCalledWith(
+        USER_ID,
+        expect.objectContaining({ action: 'create', entityType: 'expense', entityId: 'expense-new' }),
+        db,
+      )
     })
 
     it('refuses a user with no staff row', async () => {
@@ -109,15 +124,20 @@ describe('ExpenseService', () => {
     it('changes a manual expense and sets updated_at', async () => {
       db.expense.findFirst.mockResolvedValue(manual)
 
-      await service.update(EXPENSE_ID, { amount: 3500 })
+      await service.update(EXPENSE_ID, { amount: 3500 }, AUDIT_USER)
 
       expect(db.expense.update).toHaveBeenCalledWith({ where: { id: EXPENSE_ID }, data: { amount: 3500, updated_at: expect.any(Date) } })
+      expect(audit.write).toHaveBeenCalledWith(
+        AUDIT_USER,
+        expect.objectContaining({ action: 'update', entityType: 'expense', entityId: EXPENSE_ID, before: manual }),
+        db,
+      )
     })
 
     it('refuses an expense created by paying a schedule with 409', async () => {
       db.expense.findFirst.mockResolvedValue(fromSchedule)
 
-      const error = await service.update(EXPENSE_ID, { amount: 1 }).catch((e: unknown) => e)
+      const error = await service.update(EXPENSE_ID, { amount: 1 }, AUDIT_USER).catch((e: unknown) => e)
 
       expect(error).toBeInstanceOf(ConflictException)
       expect((error as ConflictException).getResponse()).toMatchObject({ error: { code: 'EXPENSE_FROM_SCHEDULE' } })
@@ -129,18 +149,23 @@ describe('ExpenseService', () => {
     it('soft deletes a manual expense', async () => {
       db.expense.findFirst.mockResolvedValue(manual)
 
-      await service.remove(EXPENSE_ID)
+      await service.remove(EXPENSE_ID, AUDIT_USER)
 
       expect(db.expense.update).toHaveBeenCalledWith({
         where: { id: EXPENSE_ID },
         data: { deleted_at: expect.any(Date), updated_at: expect.any(Date) },
       })
+      expect(audit.write).toHaveBeenCalledWith(
+        AUDIT_USER,
+        expect.objectContaining({ action: 'delete', entityType: 'expense', entityId: EXPENSE_ID, before: manual }),
+        db,
+      )
     })
 
     it('refuses an expense created by paying a schedule with 409', async () => {
       db.expense.findFirst.mockResolvedValue(fromSchedule)
 
-      await expect(service.remove(EXPENSE_ID)).rejects.toBeInstanceOf(ConflictException)
+      await expect(service.remove(EXPENSE_ID, AUDIT_USER)).rejects.toBeInstanceOf(ConflictException)
       expect(db.expense.update).not.toHaveBeenCalled()
     })
   })

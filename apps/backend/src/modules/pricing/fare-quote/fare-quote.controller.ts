@@ -1,4 +1,6 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UsePipes } from '@nestjs/common'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
+import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CreateFareQuoteDto } from './dto/create-fare-quote.dto'
 import { DisplayCurrencyQueryDto } from './dto/display-currency-query.dto'
 import { QuoteFeeDto } from './dto/quote-fee.dto'
@@ -12,8 +14,8 @@ export class FareQuoteController {
   constructor(private readonly fareQuoteService: FareQuoteService) {}
 
   @Post()
-  create(@Body() dto: CreateFareQuoteDto) {
-    return this.fareQuoteService.create(dto)
+  create(@Body() dto: CreateFareQuoteDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.fareQuoteService.create(dto, user.id)
   }
 
   @Get(':id')

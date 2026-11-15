@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import type { PricingAudit } from '../pricing.audit'
+import { mockAudit, runTransactionsOn } from '../pricing.testing'
 import { BaggageRateService, chargeableKgFor } from './baggage-rate.service'
 
 // The real DbService loads @nestjs/config (ESM only), which Jest cannot load. The tests never use it: they pass `db` below.
@@ -18,11 +20,16 @@ const economyDefault = {
   max_bag_kg: '32.0',
   is_active: true,
   deleted_at: null,
+  fare_class: { code: 'Y', name: 'Economy', cabin: 'economy' },
+  route: null,
 }
 const bkkNrtOverride = { ...economyDefault, id: 'override', route_id: ROUTE_ID, free_allowance_kg: '23.0', rate_per_kg: '150.00' }
 
+const AUDIT_USER = 'user-1'
+
 describe('BaggageRateService', () => {
   let service: BaggageRateService
+  const audit = mockAudit()
   const db = {
     overweight_baggage_rate: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
     fare_class: { findFirst: jest.fn() },
@@ -31,7 +38,9 @@ describe('BaggageRateService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
-    service = new BaggageRateService(db as unknown as DbService)
+    audit.write.mockResolvedValue(undefined)
+    runTransactionsOn(db)
+    service = new BaggageRateService(db as unknown as DbService, audit as unknown as PricingAudit)
   })
 
   describe('charge for one bag (Economy default: 20 kg free, 100/kg, max 32 kg)', () => {
@@ -125,7 +134,7 @@ describe('BaggageRateService', () => {
     db.overweight_baggage_rate.findFirst.mockResolvedValue({ id: ID })
 
     const error = await service
-      .create({ fare_class_id: FARE_CLASS_ID, free_allowance_kg: 20, rate_per_kg: 100, max_bag_kg: 32 })
+      .create({ fare_class_id: FARE_CLASS_ID, free_allowance_kg: 20, rate_per_kg: 100, max_bag_kg: 32 }, AUDIT_USER)
       .catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(ConflictException)
@@ -142,7 +151,7 @@ describe('BaggageRateService', () => {
     db.overweight_baggage_rate.findFirst.mockResolvedValue({ id: 'override' })
 
     await expect(
-      service.create({ fare_class_id: FARE_CLASS_ID, route_id: ROUTE_ID, free_allowance_kg: 23, rate_per_kg: 150 }),
+      service.create({ fare_class_id: FARE_CLASS_ID, route_id: ROUTE_ID, free_allowance_kg: 23, rate_per_kg: 150 }, AUDIT_USER),
     ).rejects.toBeInstanceOf(ConflictException)
   })
 
@@ -151,15 +160,17 @@ describe('BaggageRateService', () => {
     db.overweight_baggage_rate.findFirst.mockResolvedValue(null)
     db.overweight_baggage_rate.create.mockRejectedValue(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }))
 
-    await expect(service.create({ fare_class_id: FARE_CLASS_ID, free_allowance_kg: 20, rate_per_kg: 100 })).rejects.toBeInstanceOf(
-      ConflictException,
-    )
+    await expect(
+      service.create({ fare_class_id: FARE_CLASS_ID, free_allowance_kg: 20, rate_per_kg: 100 }, AUDIT_USER),
+    ).rejects.toBeInstanceOf(ConflictException)
   })
 
   it('refuses a deleted or missing fare class', async () => {
     db.fare_class.findFirst.mockResolvedValue(null)
 
-    const error = await service.create({ fare_class_id: FARE_CLASS_ID, free_allowance_kg: 20, rate_per_kg: 100 }).catch((e: unknown) => e)
+    const error = await service
+      .create({ fare_class_id: FARE_CLASS_ID, free_allowance_kg: 20, rate_per_kg: 100 }, AUDIT_USER)
+      .catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(NotFoundException)
     expect((error as NotFoundException).getResponse()).toMatchObject({ error: { code: 'FARE_CLASS_NOT_FOUND' } })
@@ -170,7 +181,7 @@ describe('BaggageRateService', () => {
     db.route.findUnique.mockResolvedValue(null)
 
     const error = await service
-      .create({ fare_class_id: FARE_CLASS_ID, route_id: ROUTE_ID, free_allowance_kg: 20, rate_per_kg: 100 })
+      .create({ fare_class_id: FARE_CLASS_ID, route_id: ROUTE_ID, free_allowance_kg: 20, rate_per_kg: 100 }, AUDIT_USER)
       .catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(NotFoundException)
@@ -179,7 +190,7 @@ describe('BaggageRateService', () => {
 
   it('refuses a free allowance not below the max bag weight', async () => {
     const error = await service
-      .create({ fare_class_id: FARE_CLASS_ID, free_allowance_kg: 32, rate_per_kg: 100, max_bag_kg: 32 })
+      .create({ fare_class_id: FARE_CLASS_ID, free_allowance_kg: 32, rate_per_kg: 100, max_bag_kg: 32 }, AUDIT_USER)
       .catch((e: unknown) => e)
 
     expect(error).toBeInstanceOf(BadRequestException)
@@ -189,19 +200,24 @@ describe('BaggageRateService', () => {
   it('checks the final values on PATCH (lowering only max_bag_kg below the stored allowance)', async () => {
     db.overweight_baggage_rate.findFirst.mockResolvedValue(economyDefault)
 
-    await expect(service.update(ID, { max_bag_kg: 15 })).rejects.toBeInstanceOf(BadRequestException)
+    await expect(service.update(ID, { max_bag_kg: 15 }, AUDIT_USER)).rejects.toBeInstanceOf(BadRequestException)
     expect(db.overweight_baggage_rate.update).not.toHaveBeenCalled()
   })
 
   it('soft deletes and never hard deletes', async () => {
     db.overweight_baggage_rate.findFirst.mockResolvedValue(economyDefault)
 
-    await service.remove(ID)
+    await service.remove(ID, AUDIT_USER)
 
     expect(db.overweight_baggage_rate.update).toHaveBeenCalledWith({
       where: { id: ID },
       data: expect.objectContaining({ deleted_at: expect.any(Date) }),
     })
     expect(db.overweight_baggage_rate.delete).not.toHaveBeenCalled()
+    expect(audit.write).toHaveBeenCalledWith(
+      AUDIT_USER,
+      expect.objectContaining({ action: 'delete', entityType: 'overweight_baggage_rate', entityId: ID, before: economyDefault }),
+      db,
+    )
   })
 })

@@ -1,4 +1,6 @@
-import { Module } from '@nestjs/common'
+import { Module, type OnModuleInit } from '@nestjs/common'
+import { AdminConsoleModule } from '../admin-console/admin-console.module'
+import { AdminConsoleService } from '../admin-console/admin-console.service'
 import { BaggageChargeController, BaggageRateController } from './baggage-rate/baggage-rate.controller'
 import { BaggageRateService } from './baggage-rate/baggage-rate.service'
 import { CurrencyRateController } from './currency-rate/currency-rate.controller'
@@ -16,6 +18,8 @@ import { FinanceSummaryController } from './finance/summary/finance-summary.cont
 import { FinanceSummaryService } from './finance/summary/finance-summary.service'
 import { PaymentScheduleController } from './finance/payment-schedule/payment-schedule.controller'
 import { PaymentScheduleService } from './finance/payment-schedule/payment-schedule.service'
+import { PricingAudit } from './pricing.audit'
+import { F04_SCREENS } from './pricing.screens'
 import { PricingRuleController, PricingRuleOrderController, PricingSimulationController } from './pricing-rule/pricing-rule.controller'
 import { PricingRuleService } from './pricing-rule/pricing-rule.service'
 import { PricingSimulatorService } from './pricing-rule/pricing-simulator.service'
@@ -29,6 +33,7 @@ import { TaxFeeController } from './tax-fee/tax-fee.controller'
 import { TaxFeeService } from './tax-fee/tax-fee.service'
 
 @Module({
+  imports: [AdminConsoleModule],
   controllers: [
     FareClassController,
     PublicFareClassController,
@@ -51,6 +56,7 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     FinanceSummaryController,
   ],
   providers: [
+    PricingAudit,
     FareClassService,
     BaseFareService,
     SettingService,
@@ -82,4 +88,11 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     ExpenseService,
   ],
 })
-export class PricingModule {}
+export class PricingModule implements OnModuleInit {
+  constructor(private readonly adminConsole: AdminConsoleService) {}
+
+  async onModuleInit(): Promise<void> {
+    // Idempotent upsert on `code`, so the pricing screens appear in Role access without a manual insert.
+    await this.adminConsole.registerSelfScreens(F04_SCREENS)
+  }
+}
