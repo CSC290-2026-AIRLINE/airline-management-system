@@ -1,118 +1,109 @@
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useEffect, useEffectEvent, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { X } from 'lucide-react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { Card } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
+import { NativeSelect } from '@staff-web/components/ui/native-select'
+import { Separator } from '@staff-web/components/ui/separator'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { cn } from '@staff-web/lib/utils'
 import { errorMessage, useComplaintsApi } from './api'
-import { STATUS_LABEL, TYPE_LABEL, humanize, type CaseStatus, type Complaint, type ComplaintType } from './types'
+import { StatusBadge, TypeBadge } from './ComplaintBadges'
+import { PageFrame } from './components/PageFrame'
+import { StatCard } from './components/StatCard'
+import { STATUS_LABEL, humanize, type CaseStatus, type Complaint, type ComplaintType } from './types'
 
 const REFRESH_MS = 10_000
 
 const STAFF_OWNERS = ['Ploy Wong', 'Mali Rattana', 'Somsak Jaidee', 'Kenji Sato', 'Tong Charoen']
+
+const TYPE_CHIPS = [
+  { key: 'all', label: 'All' },
+  { key: 'employee', label: 'Employee' },
+  { key: 'flight', label: 'Flight' },
+  { key: 'food', label: 'Food' },
+] as const
+
+const STATUS_CHIPS = [
+  { key: 'open', label: 'Open' },
+  { key: 'resolved', label: 'Resolved' },
+  { key: 'closed', label: 'Closed' },
+  { key: 'all', label: 'All' },
+] as const
 
 function shortCaseNo(caseNumber: string): string {
   const parts = caseNumber.split('-')
   return parts[parts.length - 1] || caseNumber
 }
 
-function StatusPill({ status }: { status: CaseStatus }) {
-  if (status === 'with_supervisor') {
-    return (
-      <span
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '6px',
-          backgroundColor: '#FFF5E0',
-          color: '#855705',
-          padding: '3px 9px 3px 8px',
-          borderRadius: '6px',
-          fontSize: '12px',
-          fontWeight: 600,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#D97706' }} />
-        With supervisor
-      </span>
-    )
+/** A row that opens its case on click, Enter or Space, so the queue works from the keyboard too. */
+function openRowProps(onOpen: () => void) {
+  return {
+    tabIndex: 0,
+    onClick: onOpen,
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        onOpen()
+      }
+    },
   }
-  if (status === 'assigned') {
-    return (
-      <span
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '6px',
-          backgroundColor: '#EDF2FF',
-          color: '#1F408C',
-          padding: '3px 9px 3px 8px',
-          borderRadius: '6px',
-          fontSize: '11.5px',
-          fontWeight: 600,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#2563EB' }} />
-        Assigned
-      </span>
-    )
-  }
-  if (status === 'resolved') {
-    return (
-      <span
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '6px',
-          backgroundColor: '#E5F7ED',
-          color: '#0F6B3D',
-          padding: '3px 9px 3px 8px',
-          borderRadius: '6px',
-          fontSize: '11.5px',
-          fontWeight: 600,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#0F6B3D' }} />
-        Resolved
-      </span>
-    )
-  }
+}
+
+function FilterChips<K extends string>({
+  label,
+  chips,
+  value,
+  onChange,
+}: {
+  label: string
+  chips: readonly { key: K; label: string }[]
+  value: K
+  onChange: (next: K) => void
+}) {
   return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '6px',
-        backgroundColor: '#F2F5F7',
-        color: '#545E70',
-        padding: '3px 9px 3px 8px',
-        borderRadius: '6px',
-        fontSize: '11.5px',
-        fontWeight: 600,
-        whiteSpace: 'nowrap',
-      }}
-    >
-      <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#545E70' }} />
-      Closed
-    </span>
+    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={label}>
+      <span className="mr-0.5 text-[11px] font-semibold text-muted-foreground uppercase">{label}</span>
+      {chips.map((chip) => (
+        <Button
+          key={chip.key}
+          type="button"
+          size="xs"
+          variant={value === chip.key ? 'default' : 'outline'}
+          aria-pressed={value === chip.key}
+          className="rounded-full px-2.5"
+          onClick={() => onChange(chip.key)}
+        >
+          {chip.label}
+        </Button>
+      ))}
+    </div>
   )
 }
 
-function TypePill({ type }: { type: ComplaintType }) {
+function UnreadDot() {
+  return <span className="size-2 shrink-0 rounded-full bg-blue-600" aria-label="New" />
+}
+
+function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <span
-      style={{
-        display: 'inline-block',
-        border: '1px solid #D1D9E3',
-        borderRadius: '6px',
-        padding: '2px 8px',
-        fontSize: '11.5px',
-        fontWeight: 500,
-        color: '#454F61',
-        backgroundColor: '#FFFFFF',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {TYPE_LABEL[type]}
-    </span>
+    <div className="flex flex-col gap-0.5">
+      <dt className="text-[11px] font-semibold text-muted-foreground uppercase">{label}</dt>
+      <dd className="m-0 text-sm font-medium text-foreground">{children}</dd>
+    </div>
+  )
+}
+
+function ActionRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
+      <div className="flex w-32 shrink-0 flex-col gap-0.5 sm:pt-2">
+        <span className="text-sm font-semibold text-muted-foreground">{label}</span>
+        {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">{children}</div>
+    </div>
   )
 }
 
@@ -268,237 +259,50 @@ export function ComplaintsDashboard() {
     }
   }
 
+  const supervisor = Boolean(currentStaff?.isSupervisor)
+  const compBlocked = busy || !compReasonDraft.trim() || !supervisor || Boolean(selected?.compensation)
+
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '24px',
-        padding: '48px 56px',
-        maxWidth: '1120px',
-        width: '100%',
-        boxSizing: 'border-box',
-        textAlign: 'left',
-        fontFamily: 'Inter, system-ui, sans-serif',
-      }}
+    <PageFrame
+      title="Complaint queue"
+      description="Every new complaint comes here first. Assign it, add notes, decide compensation and close it."
     >
-      {/* Page Header (Figma 4031:16169) */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', textAlign: 'left' }}>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: '36px',
-            fontWeight: 800,
-            color: '#0A1424',
-            letterSpacing: '-0.02em',
-            lineHeight: 1.15,
-          }}
-        >
-          Complaint queue
-        </h1>
-        <p style={{ margin: 0, fontSize: '16px', fontWeight: 400, color: '#677287' }}>
-          Every new complaint comes here first. Assign it, add notes, decide compensation and close it.
-        </p>
-      </div>
-
-      {/* 3 KPI Cards matching Figma node 4031:16382 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px' }}>
-        <div
-          style={{
-            backgroundColor: '#FFFFFF',
-            border: '1px solid #CBD5E1',
-            borderRadius: '12px',
-            padding: '14px 18px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-            textAlign: 'left',
-          }}
-        >
-          <span style={{ fontSize: '26px', fontWeight: 700, color: '#0A1424', lineHeight: 1.2 }}>{openCasesCount}</span>
-          <span style={{ fontSize: '13px', fontWeight: 400, color: '#677287' }}>Open cases</span>
-        </div>
-
-        <div
-          style={{
-            backgroundColor: '#FFFFFF',
-            border: '1px solid #CBD5E1',
-            borderRadius: '12px',
-            padding: '14px 18px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-            textAlign: 'left',
-          }}
-        >
-          <span style={{ fontSize: '26px', fontWeight: 700, color: '#0A1424', lineHeight: 1.2 }}>{waitingOwnerCount}</span>
-          <span style={{ fontSize: '13px', fontWeight: 400, color: '#677287' }}>Waiting for an owner</span>
-        </div>
-
-        <div
-          style={{
-            backgroundColor: '#FFFFFF',
-            border: '1px solid #CBD5E1',
-            borderRadius: '12px',
-            padding: '14px 18px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-            textAlign: 'left',
-          }}
-        >
-          <span style={{ fontSize: '26px', fontWeight: 700, color: '#0A1424', lineHeight: 1.2 }}>{resolvedOrClosedCount}</span>
-          <span style={{ fontSize: '13px', fontWeight: 400, color: '#677287' }}>Resolved or closed</span>
-        </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard label="Open cases" value={openCasesCount} />
+        <StatCard label="Waiting for an owner" value={waitingOwnerCount} />
+        <StatCard label="Resolved or closed" value={resolvedOrClosedCount} />
       </div>
 
       {loadError && (
-        <div
-          style={{
-            backgroundColor: '#FEF2F2',
-            border: '1px solid #FECACA',
-            borderRadius: '8px',
-            padding: '12px 16px',
-            color: '#991B1B',
-            fontSize: '14px',
-          }}
-        >
-          Could not load complaints: {loadError}
-        </div>
+        <Alert variant="destructive">
+          <AlertDescription className="block">Could not load complaints: {loadError}</AlertDescription>
+        </Alert>
       )}
 
-      {/* Split View: Left Card / Complaints + Right Card / Case detail when selected */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '24px', width: '100%' }}>
-        {/* Left: Card / Complaints */}
-        <div
-          style={{
-            width: selected ? '380px' : '100%',
-            flexShrink: 0,
-            backgroundColor: '#FFFFFF',
-            border: '1px solid #CBD5E1',
-            borderRadius: '12px',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            transition: 'width 0.15s ease',
-          }}
-        >
-          {/* Card Header */}
-          <div style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'left' }}>
-            <div style={{ fontSize: '17px', fontWeight: 700, color: '#0A1424' }}>Complaints</div>
-            <div style={{ fontSize: '12px', color: '#677287', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-              <span>Open first, unassigned on top ·</span>
-              <span style={{ color: '#2563EB', fontSize: '10px' }}>●</span>
-              <span>new since you last looked</span>
-            </div>
+      <div className="flex flex-col items-stretch gap-6 lg:flex-row lg:items-start">
+        <Card className={cn('gap-0 overflow-hidden py-0 shadow-none', selected ? 'lg:w-[380px] lg:shrink-0' : 'w-full')}>
+          <div className="flex flex-col gap-0.5 p-4">
+            <h2 className="text-base font-bold text-foreground">Complaints</h2>
+            <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+              Open first, unassigned on top · <UnreadDot /> new since you last looked
+            </p>
           </div>
 
-          {/* Filters Row (Figma 4031:16397 / 4031:16844) */}
-          <div
-            style={{
-              padding: '0 18px 14px',
-              display: 'flex',
-              flexDirection: selected ? 'column' : 'row',
-              flexWrap: 'wrap',
-              alignItems: selected ? 'flex-start' : 'center',
-              gap: selected ? '8px' : '10px 24px',
-            }}
-          >
-            {/* Filter / TYPE */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#677287', marginRight: '2px' }}>TYPE</span>
-              {(
-                [
-                  { key: 'all', label: 'All' },
-                  { key: 'employee', label: 'Employee' },
-                  { key: 'flight', label: 'Flight' },
-                  { key: 'food', label: 'Food' },
-                ] as const
-              ).map((chip) => {
-                const active = filterType === chip.key
-                return (
-                  <button
-                    key={chip.key}
-                    type="button"
-                    onClick={() => setFilterType(chip.key)}
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: '999px',
-                      border: active ? '1px solid #102544' : '1px solid #CBD5E1',
-                      backgroundColor: active ? '#102544' : '#FFFFFF',
-                      color: active ? '#FFFFFF' : '#0A1424',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {chip.label}
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Filter / STATUS */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#677287', marginRight: '2px' }}>STATUS</span>
-              {(
-                [
-                  { key: 'open', label: 'Open' },
-                  { key: 'resolved', label: 'Resolved' },
-                  { key: 'closed', label: 'Closed' },
-                  { key: 'all', label: 'All' },
-                ] as const
-              ).map((chip) => {
-                const active = filterStatusChip === chip.key
-                return (
-                  <button
-                    key={chip.key}
-                    type="button"
-                    onClick={() => setFilterStatusChip(chip.key)}
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: '999px',
-                      border: active ? '1px solid #102544' : '1px solid #CBD5E1',
-                      backgroundColor: active ? '#102544' : '#FFFFFF',
-                      color: active ? '#FFFFFF' : '#0A1424',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {chip.label}
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Filter / OWNER */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                width: selected ? '100%' : 'auto',
-              }}
-            >
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#677287' }}>OWNER</span>
-              <select
+          <div className={cn('flex flex-wrap gap-x-6 gap-y-2 px-4 pb-3', selected ? 'flex-col' : 'items-center')}>
+            <FilterChips
+              label="Type"
+              chips={TYPE_CHIPS}
+              value={filterType}
+              onChange={(next) => setFilterType(next as ComplaintType | 'all')}
+            />
+            <FilterChips label="Status" chips={STATUS_CHIPS} value={filterStatusChip} onChange={setFilterStatusChip} />
+            <div className={cn('flex items-center gap-2', selected && 'w-full')}>
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase">Owner</span>
+              <NativeSelect
+                aria-label="Owner"
                 value={filterOwner}
                 onChange={(e) => setFilterOwner(e.target.value)}
-                style={{
-                  flex: selected ? 1 : undefined,
-                  width: selected ? undefined : '220px',
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid #CBD5E1',
-                  backgroundColor: '#FFFFFF',
-                  color: '#0A1424',
-                  fontSize: '13px',
-                  outline: 'none',
-                  cursor: 'pointer',
-                }}
+                className={selected ? 'flex-1' : 'w-56'}
               >
                 <option value="Anyone">Anyone</option>
                 <option value="Unassigned">Unassigned</option>
@@ -507,324 +311,118 @@ export function ComplaintsDashboard() {
                     {owner}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           </div>
 
-          {/* Queue Table */}
-          <div style={{ padding: '0 16px', width: '100%', boxSizing: 'border-box' }}>
-            {!selected ? (
-              /* Full 6-column table when NO case is selected (Figma 5009:29755) */
-              <>
-                <div
-                  style={{
-                    backgroundColor: '#F7FAFC',
-                    padding: '10px 12px',
-                    display: 'grid',
-                    gridTemplateColumns: '110px 96px 130px 1fr 145px 64px',
-                    gap: '12px',
-                    alignItems: 'center',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    color: '#677287',
-                    borderRadius: '6px',
-                  }}
-                >
-                  <div>CASE NO.</div>
-                  <div>TYPE</div>
-                  <div>FROM</div>
-                  <div>SUMMARY</div>
-                  <div>STATUS</div>
-                  <div>AGE</div>
-                </div>
-
+          <div className="px-4">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/60 hover:bg-muted/60">
+                  <TableHead className="text-[11px] text-muted-foreground uppercase">Case no.</TableHead>
+                  <TableHead className="text-[11px] text-muted-foreground uppercase">Type</TableHead>
+                  {!selected && <TableHead className="text-[11px] text-muted-foreground uppercase">From</TableHead>}
+                  <TableHead className="text-[11px] text-muted-foreground uppercase">Summary</TableHead>
+                  {!selected && <TableHead className="text-[11px] text-muted-foreground uppercase">Status</TableHead>}
+                  {!selected && <TableHead className="text-[11px] text-muted-foreground uppercase">Age</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filtered.length === 0 ? (
-                  <div style={{ padding: '32px 16px', textAlign: 'center', fontSize: '14px', color: '#677287' }}>
-                    No complaints match the current filters.
-                  </div>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={selected ? 3 : 6} className="py-8 text-center text-muted-foreground">
+                      {complaints === null && !loadError ? 'Loading complaints…' : 'No complaints match the current filters.'}
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   filtered.map((c) => {
                     const isRecent = c.age?.includes('min')
                     return (
-                      <div
+                      <TableRow
                         key={c.id}
-                        onClick={() => setSelectedId(c.id)}
-                        style={{
-                          padding: '12px',
-                          borderBottom: '1px solid #EEF1F5',
-                          display: 'grid',
-                          gridTemplateColumns: '110px 96px 130px 1fr 145px 64px',
-                          gap: '12px',
-                          alignItems: 'start',
-                          cursor: 'pointer',
-                          fontSize: '14px',
-                          color: '#0A1424',
-                        }}
+                        {...openRowProps(() => setSelectedId(c.id))}
+                        data-state={c.id === selected?.id ? 'selected' : undefined}
+                        className="cursor-pointer align-top focus-visible:bg-muted/50 focus-visible:outline-none"
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: c.unread ? 700 : 600 }}>
-                          {c.unread && (
-                            <span
-                              style={{
-                                width: '8px',
-                                height: '8px',
-                                borderRadius: '50%',
-                                backgroundColor: '#2563EB',
-                                display: 'inline-block',
-                                flexShrink: 0,
-                              }}
-                            />
-                          )}
-                          <span>{shortCaseNo(c.caseNumber)}</span>
-                        </div>
-                        <div>
-                          <TypePill type={c.type} />
-                        </div>
-                        <div>{c.fromSource ?? 'Customer'}</div>
-                        <div
-                          style={{
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
+                        <TableCell className={c.unread ? 'font-bold' : 'font-semibold'}>
+                          <span className="flex items-center gap-2">
+                            {c.unread && <UnreadDot />}
+                            {shortCaseNo(c.caseNumber)}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <TypeBadge type={c.type} />
+                        </TableCell>
+                        {!selected && <TableCell>{c.fromSource ?? 'Customer'}</TableCell>}
+                        <TableCell className={selected ? 'whitespace-normal' : 'max-w-0 w-full truncate'}>
                           {c.summary ?? c.description}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
-                          <StatusPill status={c.status} />
-                          <span style={{ fontSize: '12px', color: '#677287' }}>{c.ownerName ?? 'Unassigned'}</span>
-                        </div>
-                        <div
-                          style={{
-                            fontSize: '13px',
-                            fontWeight: isRecent ? 600 : 400,
-                            color: isRecent ? '#2663EB' : '#677287',
-                          }}
-                        >
-                          {c.age ?? '1 d'}
-                        </div>
-                      </div>
+                        </TableCell>
+                        {!selected && (
+                          <TableCell>
+                            <div className="flex flex-col items-start gap-0.5">
+                              <StatusBadge status={c.status} />
+                              <span className="text-xs text-muted-foreground">{c.ownerName ?? 'Unassigned'}</span>
+                            </div>
+                          </TableCell>
+                        )}
+                        {!selected && (
+                          <TableCell className={cn('text-[13px]', isRecent ? 'font-semibold text-blue-600' : 'text-muted-foreground')}>
+                            {c.age ?? '1 d'}
+                          </TableCell>
+                        )}
+                      </TableRow>
                     )
                   })
                 )}
-              </>
-            ) : (
-              /* Compact 3-column table when a case IS selected (Figma 5009:31832) */
-              <>
-                <div
-                  style={{
-                    backgroundColor: '#F7FAFC',
-                    padding: '10px 8px',
-                    display: 'grid',
-                    gridTemplateColumns: '84px 72px 1fr',
-                    gap: '10px',
-                    alignItems: 'center',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    color: '#677287',
-                    borderRadius: '6px',
-                  }}
-                >
-                  <div>CASE NO.</div>
-                  <div>TYPE</div>
-                  <div>SUMMARY</div>
-                </div>
-
-                {filtered.map((c) => {
-                  const isSelected = c.id === selected.id
-                  return (
-                    <div
-                      key={c.id}
-                      onClick={() => setSelectedId(c.id)}
-                      style={{
-                        padding: '12px 8px',
-                        borderBottom: '1px solid #EEF1F5',
-                        backgroundColor: isSelected ? '#E8EEF7' : 'transparent',
-                        display: 'grid',
-                        gridTemplateColumns: '84px 72px 1fr',
-                        gap: '10px',
-                        alignItems: 'start',
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        color: '#0A1424',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: c.unread ? 700 : 600 }}>
-                        {c.unread && (
-                          <span
-                            style={{
-                              width: '8px',
-                              height: '8px',
-                              borderRadius: '50%',
-                              backgroundColor: '#2563EB',
-                              display: 'inline-block',
-                              flexShrink: 0,
-                            }}
-                          />
-                        )}
-                        <span>{shortCaseNo(c.caseNumber)}</span>
-                      </div>
-                      <div>
-                        <TypePill type={c.type} />
-                      </div>
-                      <div style={{ lineHeight: 1.35 }}>{c.summary ?? c.description}</div>
-                    </div>
-                  )
-                })}
-              </>
-            )}
+              </TableBody>
+            </Table>
           </div>
 
-          {/* Card Footer (Figma 4031:16505) */}
-          <div
-            style={{
-              backgroundColor: '#F7F9FC',
-              borderTop: '1px solid #E8EDF3',
-              padding: '11px 18px',
-              fontSize: '12px',
-              color: '#677287',
-              textAlign: 'left',
-            }}
-          >
+          <div className="mt-2 border-t bg-page px-4 py-3 text-xs text-muted-foreground">
             {openCasesCount} open · {resolvedCount} resolved · {closedCount} closed
           </div>
-        </div>
+        </Card>
 
-        {/* Right: Card / Case detail (Figma 4031:16507) */}
         {selected && (
-          <div
-            style={{
-              flex: 1,
-              minWidth: 0,
-              backgroundColor: '#FFFFFF',
-              border: '1px solid #CBD5E1',
-              borderRadius: '12px',
-              padding: '20px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-              textAlign: 'left',
-            }}
-          >
-            {/* Top row */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-              <span style={{ fontSize: '20px', fontWeight: 700, color: '#0A1424' }}>{selected.caseNumber}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
-                <TypePill type={selected.type} />
-                <StatusPill status={selected.status} />
+          <Card className="min-w-0 flex-1 gap-4 p-5 shadow-none">
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-bold text-foreground">{selected.caseNumber}</h2>
+              <div className="ml-auto flex items-center gap-1.5">
+                <TypeBadge type={selected.type} />
+                <StatusBadge status={selected.status} />
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedId(null)}
-                title="Close panel"
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: '0 0 0 8px',
-                  fontSize: '18px',
-                  color: '#667387',
-                  cursor: 'pointer',
-                  lineHeight: 1,
-                }}
-              >
-                ✕
-              </button>
+              <Button type="button" variant="ghost" size="icon-sm" aria-label="Close panel" onClick={() => setSelectedId(null)}>
+                <X />
+              </Button>
             </div>
+            <p className="-mt-2 text-xs text-muted-foreground">{selected.openedLabel ?? 'Opened 12 Oct 20:14 by the customer'}</p>
 
-            {/* Opened subtitle */}
-            <div style={{ fontSize: '12px', color: '#677287', marginTop: '-8px' }}>
-              {selected.openedLabel ?? 'Opened 12 Oct 20:14 by the customer'}
-            </div>
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Fact label="From">
+                {selected.passengerName} · {selected.fromSource ?? 'Customer'}
+              </Fact>
+              <Fact label="Contact">{selected.contactEmail ?? '—'}</Fact>
+              <Fact label="Booking">{selected.bookingRef ?? 'FLY7K2'}</Fact>
+              <Fact label="Flight">{selected.flightRoute ?? `${selected.flightNumber ?? 'FY308'} · Mon 12 Oct`}</Fact>
+              <Fact label={selected.type === 'food' ? 'Meal' : selected.type === 'employee' ? 'Location' : 'Details'}>
+                {selected.mealDetail ?? (selected.location ? humanize(selected.location) : '—')}
+              </Fact>
+              <Fact label="Issue">{humanize(selected.issue ?? 'missing')}</Fact>
+            </dl>
 
-            {/* Facts Grid (3 rows x 2 columns) */}
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', padding: '8px 0' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: '#677287' }}>FROM</span>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>
-                    {selected.passengerName} · {selected.fromSource ?? 'Customer'}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: '#677287' }}>CONTACT</span>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>{selected.contactEmail ?? '—'}</span>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', padding: '8px 0' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: '#677287' }}>BOOKING</span>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>{selected.bookingRef ?? 'FLY7K2'}</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: '#677287' }}>FLIGHT</span>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>
-                    {selected.flightRoute ?? `${selected.flightNumber ?? 'FY308'} · Mon 12 Oct`}
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', padding: '8px 0' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: '#677287' }}>
-                    {selected.type === 'food' ? 'MEAL' : selected.type === 'employee' ? 'LOCATION' : 'DETAILS'}
-                  </span>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>
-                    {selected.mealDetail ?? (selected.location ? humanize(selected.location) : '—')}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: '#677287' }}>ISSUE</span>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>{humanize(selected.issue ?? 'missing')}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Customer quote box */}
-            <div
-              style={{
-                backgroundColor: '#F7F9FC',
-                borderRadius: '8px',
-                padding: '10px 12px',
-                fontSize: '13px',
-                color: '#0A1424',
-                lineHeight: 1.45,
-              }}
-            >
+            <blockquote className="m-0 rounded-lg bg-page px-3 py-2.5 text-sm leading-relaxed text-foreground">
               “{selected.description}”
-            </div>
+            </blockquote>
 
-            {/* Actions Box (Figma 4031:16543) */}
-            <div
-              style={{
-                backgroundColor: '#FFFFFF',
-                border: '1px solid #E8EDF3',
-                borderRadius: '10px',
-                padding: '14px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '16px',
-              }}
-            >
-              {/* 1. Owner */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
-                <div style={{ width: '120px', flexShrink: 0, paddingTop: '10px', fontSize: '13px', fontWeight: 600, color: '#677287' }}>
-                  Owner
-                </div>
-                <div style={{ flex: 1, display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <select
+            <div className="flex flex-col gap-4 rounded-lg border p-4">
+              <ActionRow label="Owner">
+                <div className="flex gap-2">
+                  <NativeSelect
+                    aria-label="Owner"
                     value={ownerDraft}
                     onChange={(e) => setOwnerDraft(e.target.value)}
-                    disabled={!currentStaff?.isSupervisor}
-                    style={{
-                      flex: 1,
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      border: '1px solid #D1D9E3',
-                      backgroundColor: '#FFFFFF',
-                      fontSize: '14px',
-                      color: ownerDraft ? '#0A1424' : '#677287',
-                      outline: 'none',
-                    }}
+                    disabled={!supervisor}
+                    className="h-9 flex-1"
                   >
                     <option value="">Pick who handles this case</option>
                     {staffMembers.map((s) => (
@@ -832,248 +430,120 @@ export function ComplaintsDashboard() {
                         {s.name} ({s.roleCode})
                       </option>
                     ))}
-                  </select>
-                  <button
+                  </NativeSelect>
+                  <Button
                     type="button"
-                    disabled={busy || !ownerDraft || !currentStaff?.isSupervisor}
+                    disabled={busy || !ownerDraft || !supervisor}
+                    title={!supervisor ? 'Supervisor only' : undefined}
                     onClick={() => void handleAssign()}
-                    title={!currentStaff?.isSupervisor ? 'Supervisor only' : undefined}
-                    style={{
-                      backgroundColor: '#0A1424',
-                      color: '#FFFFFF',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '10px 16px',
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      cursor: busy || !ownerDraft || !currentStaff?.isSupervisor ? 'not-allowed' : 'pointer',
-                      opacity: busy || !ownerDraft || !currentStaff?.isSupervisor ? 0.65 : 1,
-                    }}
                   >
                     Assign
-                  </button>
+                  </Button>
                 </div>
-              </div>
+              </ActionRow>
 
-              {/* 2. Resolution */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
-                <div style={{ width: '120px', flexShrink: 0, paddingTop: '10px', fontSize: '13px', fontWeight: 600, color: '#677287' }}>
-                  Resolution
+              <ActionRow label="Resolution">
+                <div className="flex gap-2">
+                  <NativeSelect
+                    aria-label="Resolution"
+                    value={resolutionDraft}
+                    disabled={!selected.ownerName}
+                    onChange={(e) => setResolutionDraft(e.target.value)}
+                    className="h-9 flex-1"
+                  >
+                    <option value="Not a duplicate">Not a duplicate</option>
+                    <option value="Duplicate case">Duplicate case</option>
+                    <option value="Customer withdrew">Customer withdrew</option>
+                  </NativeSelect>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy || !selected.ownerName || selected.status === 'resolved' || selected.status === 'closed'}
+                    onClick={() => void handleResolve()}
+                  >
+                    Resolve
+                  </Button>
                 </div>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <select
-                      value={resolutionDraft}
-                      disabled={!selected.ownerName}
-                      onChange={(e) => setResolutionDraft(e.target.value)}
-                      style={{
-                        flex: 1,
-                        padding: '10px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid #D1D9E3',
-                        backgroundColor: selected.ownerName ? '#FFFFFF' : '#F4F6F9',
-                        fontSize: '14px',
-                        color: selected.ownerName ? '#0A1424' : '#677287',
-                        outline: 'none',
-                      }}
-                    >
-                      <option value="Not a duplicate">Not a duplicate</option>
-                      <option value="Duplicate case">Duplicate case</option>
-                      <option value="Customer withdrew">Customer withdrew</option>
-                    </select>
-                    <button
-                      type="button"
-                      disabled={busy || !selected.ownerName || selected.status === 'resolved' || selected.status === 'closed'}
-                      onClick={() => void handleResolve()}
-                      style={{
-                        backgroundColor: '#FFFFFF',
-                        border: selected.ownerName ? '1px solid #D1D9E3' : '1px solid #E5E8ED',
-                        color: selected.ownerName ? '#0A1424' : '#B2BAC4',
-                        borderRadius: '8px',
-                        padding: '10px 16px',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        cursor: !selected.ownerName ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      Resolve
-                    </button>
-                  </div>
-                  {!selected.ownerName && (
-                    <span style={{ fontSize: '12px', color: '#677287' }}>
-                      Assign an owner first. A case with no owner can’t be resolved.
-                    </span>
-                  )}
-                </div>
-              </div>
+                {!selected.ownerName && (
+                  <span className="text-xs text-muted-foreground">Assign an owner first. A case with no owner can’t be resolved.</span>
+                )}
+              </ActionRow>
 
-              {/* 3. Internal note */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
-                <div style={{ width: '120px', flexShrink: 0, paddingTop: '10px', fontSize: '13px', fontWeight: 600, color: '#677287' }}>
-                  Internal note
-                </div>
-                <div style={{ flex: 1, display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <input
-                    type="text"
+              <ActionRow label="Internal note">
+                <div className="flex gap-2">
+                  <Input
+                    aria-label="Internal note"
                     value={noteDraft}
                     onChange={(e) => setNoteDraft(e.target.value)}
                     placeholder="Staff only. Never shown to the customer."
-                    style={{
-                      flex: 1,
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      border: '1px solid #D1D9E3',
-                      backgroundColor: '#FFFFFF',
-                      fontSize: '14px',
-                      color: '#0A1424',
-                      outline: 'none',
-                    }}
+                    className="h-9 flex-1"
                   />
-                  <button
-                    type="button"
-                    disabled={busy || !noteDraft.trim()}
-                    onClick={() => void handleAddNote()}
-                    style={{
-                      backgroundColor: '#FFFFFF',
-                      border: '1px solid #D1D9E3',
-                      color: '#0A1424',
-                      borderRadius: '8px',
-                      padding: '10px 16px',
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      cursor: busy || !noteDraft.trim() ? 'not-allowed' : 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
+                  <Button type="button" variant="outline" disabled={busy || !noteDraft.trim()} onClick={() => void handleAddNote()}>
                     Add note
-                  </button>
+                  </Button>
                 </div>
-              </div>
+              </ActionRow>
 
-              {/* 4. Compensation · Supervisor only */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
-                <div style={{ width: '120px', flexShrink: 0, paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#677287' }}>Compensation</span>
-                  <span style={{ fontSize: '11px', color: '#677287' }}>Supervisor only</span>
-                </div>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <select
-                      value={compTypeDraft}
-                      onChange={(e) => setCompTypeDraft(e.target.value)}
-                      style={{
-                        flex: 1,
-                        padding: '10px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid #D1D9E3',
-                        backgroundColor: '#FFFFFF',
-                        fontSize: '14px',
-                        color: '#0A1424',
-                        outline: 'none',
-                      }}
-                    >
-                      <option value="Travel voucher">Travel voucher</option>
-                      <option value="Cash refund">Cash refund</option>
-                      <option value="Bonus miles">Bonus miles</option>
-                    </select>
-                    <input
-                      type="text"
-                      value={compAmountDraft}
-                      onChange={(e) => setCompAmountDraft(e.target.value)}
-                      style={{
-                        width: '130px',
-                        boxSizing: 'border-box',
-                        padding: '10px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid #D1D9E3',
-                        backgroundColor: '#FFFFFF',
-                        fontSize: '14px',
-                        color: '#0A1424',
-                        outline: 'none',
-                      }}
-                    />
-                  </div>
-                  <input
-                    type="text"
-                    value={compReasonDraft}
-                    onChange={(e) => setCompReasonDraft(e.target.value)}
-                    placeholder="Reason (required, the customer sees it)"
-                    style={{
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      border: '1px solid #D1D9E3',
-                      backgroundColor: '#FFFFFF',
-                      fontSize: '14px',
-                      color: '#0A1424',
-                      outline: 'none',
-                    }}
+              <ActionRow label="Compensation" hint="Supervisor only">
+                <div className="flex gap-2">
+                  <NativeSelect
+                    aria-label="Compensation type"
+                    value={compTypeDraft}
+                    onChange={(e) => setCompTypeDraft(e.target.value)}
+                    className="h-9 flex-1"
+                  >
+                    <option value="Travel voucher">Travel voucher</option>
+                    <option value="Cash refund">Cash refund</option>
+                    <option value="Bonus miles">Bonus miles</option>
+                  </NativeSelect>
+                  <Input
+                    aria-label="Compensation amount"
+                    value={compAmountDraft}
+                    onChange={(e) => setCompAmountDraft(e.target.value)}
+                    className="h-9 w-32"
                   />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '2px' }}>
-                    <button
-                      type="button"
-                      disabled={busy || !compReasonDraft.trim() || !currentStaff?.isSupervisor || Boolean(selected.compensation)}
-                      onClick={() => void handleSendComp()}
-                      title={
-                        !currentStaff?.isSupervisor ? 'Supervisor only' : selected.compensation ? 'Compensation already decided' : undefined
-                      }
-                      style={{
-                        backgroundColor: '#FFFFFF',
-                        border: '1px solid #D1D9E3',
-                        color: '#0A1424',
-                        borderRadius: '8px',
-                        padding: '10px 16px',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        cursor:
-                          busy || !compReasonDraft.trim() || !currentStaff?.isSupervisor || Boolean(selected.compensation)
-                            ? 'not-allowed'
-                            : 'pointer',
-                        opacity:
-                          busy || !compReasonDraft.trim() || !currentStaff?.isSupervisor || Boolean(selected.compensation) ? 0.65 : 1,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Send to Feature 5B
-                    </button>
-                    <span style={{ fontSize: '12px', color: '#677287' }}>One live decision per case. Audit entry in Feature 15 first.</span>
-                  </div>
                 </div>
-              </div>
+                <Input
+                  aria-label="Compensation reason"
+                  value={compReasonDraft}
+                  onChange={(e) => setCompReasonDraft(e.target.value)}
+                  placeholder="Reason (required, the customer sees it)"
+                  className="h-9"
+                />
+                <div className="mt-0.5 flex flex-wrap items-center gap-2.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={compBlocked}
+                    title={!supervisor ? 'Supervisor only' : selected.compensation ? 'Compensation already decided' : undefined}
+                    onClick={() => void handleSendComp()}
+                  >
+                    Send to Feature 5B
+                  </Button>
+                  <span className="text-xs text-muted-foreground">One live decision per case. Audit entry in Feature 15 first.</span>
+                </div>
+              </ActionRow>
 
-              <div style={{ height: '1px', backgroundColor: '#E8EDF2', width: '100%' }} />
+              <Separator />
 
-              {/* 5. Close case row */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                <span style={{ fontSize: '12px', color: '#677287', flex: 1 }}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="flex-1 text-xs text-muted-foreground">
                   Close only after Resolved. Every change goes to the history and the Feature 15 audit log.
                 </span>
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  className="border-danger/40 text-danger hover:bg-danger-soft hover:text-danger"
                   disabled={busy || selected.status === 'closed'}
                   onClick={() => void handleCloseCase()}
-                  style={{
-                    backgroundColor: '#FFFFFF',
-                    border: '1px solid #EDA8A8',
-                    color: '#B8171F',
-                    borderRadius: '8px',
-                    padding: '10px 16px',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    cursor: busy || selected.status === 'closed' ? 'not-allowed' : 'pointer',
-                    whiteSpace: 'nowrap',
-                  }}
                 >
                   Close case
-                </button>
+                </Button>
               </div>
             </div>
 
-            {/* History and internal notes (Figma 5552:35770) */}
-            <div style={{ fontSize: '16px', fontWeight: 700, color: '#0A1424' }}>History and internal notes</div>
-
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <h3 className="text-base font-bold text-foreground">History and internal notes</h3>
+            <ol className="m-0 flex list-none flex-col p-0">
               {(selected.events ?? []).map((ev, idx, arr) => {
                 const isLast = idx === arr.length - 1
                 const headerText = ev.timeLabel
@@ -1089,52 +559,24 @@ export function ComplaintsDashboard() {
                       : humanize(ev.type))
 
                 return (
-                  <div key={ev.id} style={{ display: 'flex', alignItems: 'stretch', gap: '14px' }}>
-                    {/* Rail */}
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        paddingTop: '4px',
-                        width: '12px',
-                        flexShrink: 0,
-                      }}
-                    >
+                  <li key={ev.id} className="flex items-stretch gap-3.5">
+                    <div className="flex w-3 shrink-0 flex-col items-center pt-1" aria-hidden="true">
                       <span
-                        style={{
-                          width: '10px',
-                          height: '10px',
-                          borderRadius: '50%',
-                          backgroundColor: isLast ? '#2563EB' : '#94A3B8',
-                          border: isLast ? '2px solid #DBEAFE' : 'none',
-                          flexShrink: 0,
-                        }}
+                        className={cn('size-2.5 shrink-0 rounded-full', isLast ? 'bg-blue-600 ring-2 ring-blue-100' : 'bg-slate-400')}
                       />
-                      {!isLast && (
-                        <div
-                          style={{
-                            width: '2px',
-                            flex: 1,
-                            backgroundColor: '#E1E6ED',
-                            marginTop: '4px',
-                          }}
-                        />
-                      )}
+                      {!isLast && <span className="mt-1 w-0.5 flex-1 bg-line" />}
                     </div>
-
-                    {/* Text */}
-                    <div style={{ paddingBottom: '12px', display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
-                      <span style={{ fontSize: '12px', color: '#677287' }}>{headerText}</span>
-                      <span style={{ fontSize: '14px', color: '#0A1424' }}>{bodyText}</span>
+                    <div className="flex flex-1 flex-col gap-0.5 pb-3">
+                      <span className="text-xs text-muted-foreground">{headerText}</span>
+                      <span className="text-sm text-foreground">{bodyText}</span>
                     </div>
-                  </div>
+                  </li>
                 )
               })}
-            </div>
-          </div>
+            </ol>
+          </Card>
         )}
       </div>
-    </div>
+    </PageFrame>
   )
 }
