@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Button } from '@staff-web/components/ui/button'
 import { Card } from '@staff-web/components/ui/card'
 import { Input } from '@staff-web/components/ui/input'
@@ -11,7 +11,7 @@ import { CameraScan } from './CameraScan.tsx'
 import { ErrorBanner } from './ErrorBanner.tsx'
 import { Message, Pill, StatusPill, type MessageTone } from './pills.tsx'
 import { messageOf, numberOrNull } from './errors.ts'
-import { formatTime } from '../domain/format.ts'
+import { formatDate, formatTime } from '../domain/format.ts'
 import { INPUT_LABEL, MUTED, PANEL, PANEL_TITLE, PRIMARY_BUTTON, SECONDARY_BUTTON, TEXT_INPUT } from './styles.ts'
 
 const GROUP_LABELS: Record<'1' | '2' | '3' | '4', string> = {
@@ -58,6 +58,10 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
   const [mismatchCount, setMismatchCount] = useState<number | null>(null)
   /** The gate the flight is moved to, picked in the "Flight gate" card. */
   const [moveTo, setMoveTo] = useState('')
+  /** The flight that gets its first gate, picked in the empty state of a gate without a flight. */
+  const [assignTo, setAssignTo] = useState('')
+  /** Why the flight could not be put at the gate. */
+  const [assignError, setAssignError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -73,6 +77,15 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
   const flight = flights.find((item) => item.id === flightId) ?? null
   /** The gates of this airport that have a flight now. */
   const gatesWithFlight = gates.filter((item) => item.flight)
+
+  // shortcut: lists every flight of the airport that has no gate, filter by departure day when the schedule grows
+  const freeFlights = flights
+    .filter((item) => item.origin.code === airportCode && !item.gate && (item.status === 'scheduled' || item.status === 'delayed'))
+    .sort((a, b) => a.depAt.localeCompare(b.depAt))
+
+  /** The flight in the option list: its number, when it leaves and where it goes. */
+  const flightOption = (item: FlightSummary): string =>
+    `${item.flightNumber} · ${formatDate(item.depAt)} ${formatTime(item.depAt)} · ${item.destination.city}`
 
   /** The flight of a gate: the one that is at it now, or the one already on screen when it is the same gate. */
   const flightOfGate = (id: string): string | null => {
@@ -138,6 +151,8 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
     setConfirmClose(false)
     setManualCount('')
     setMoveTo('')
+    setAssignTo('')
+    setAssignError(null)
     setList(null)
     setHeadcount(null)
   }
@@ -160,6 +175,13 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
       setError(messageOf(err))
     }
   }, [api, airportCode, gateId, flightId])
+
+  /** The gates and the flights again: a gate or a flight may have changed somewhere else. */
+  const reloadGates = async () => {
+    const [gateList, flightList] = await Promise.all([api.gates(airportCode), api.flights()])
+    setGates(gateList)
+    setFlights(flightList)
+  }
 
   /** The gate the agent picks: the flight on screen is the one that is at that gate now. */
   const chooseGate = (id: string) => {
@@ -228,6 +250,37 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
       setFlights(flightList)
     } catch (err) {
       setError(messageOf(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** The first gate of a flight: the flight has none yet, so it is put at the gate on screen. */
+  const assignFlight = async () => {
+    if (!gate) return
+    setAssignError(null)
+    const assigned = freeFlights.find((item) => item.id === assignTo)
+    if (!assigned) {
+      setAssignError('Pick a flight first.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await api.setGate(assigned.id, { gateId: gate.id })
+      // The flight is at this gate now, so the screen shows it and starts from scratch.
+      resetGateState()
+      setGateMessage({
+        tone: 'success',
+        text: `Gate set: ${assigned.flightNumber} is at ${gate.code}. Passengers told (Feature 13), change audited.`,
+      })
+      setPicked({ gateId: gate.id, flightId: assigned.id })
+      // The gates and the flights again: the flight has a gate now.
+      await reloadGates()
+    } catch (err) {
+      setError(messageOf(err))
+      // Another agent may have taken the gate or the flight: the lists are read again.
+      await reloadGates().catch(() => undefined)
     } finally {
       setBusy(false)
     }
@@ -339,10 +392,11 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
     </TableRow>
   )
 
-  const empty = (title: string, text: string) => (
+  const empty = (title: string, text: string, children?: ReactNode) => (
     <Card className={`${PANEL} items-center text-center`}>
       <h2 className={PANEL_TITLE}>{title}</h2>
       <p className={`m-0 ${MUTED}`}>{text}</p>
+      {children}
     </Card>
   )
 
@@ -406,6 +460,46 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
               gatesWithFlight.length > 0
                 ? 'Pick a gate with a flight above, or move a flight here from its own gate screen.'
                 : 'No flight at this airport has a gate yet.',
+              gate ? (
+                <>
+                  {freeFlights.length === 0 ? (
+                    <p className={`m-0 ${MUTED}`}>Every flight from this airport already has a gate.</p>
+                  ) : (
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="gate-assign" className={INPUT_LABEL}>
+                          Put a flight at this gate
+                        </Label>
+                        <NativeSelect
+                          id="gate-assign"
+                          className="w-[260px]"
+                          value={assignTo}
+                          disabled={busy}
+                          onChange={(event) => {
+                            setAssignTo(event.target.value)
+                            setAssignError(null)
+                          }}
+                        >
+                          <option value="">Pick a flight</option>
+                          {freeFlights.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {flightOption(item)}
+                            </option>
+                          ))}
+                        </NativeSelect>
+                      </div>
+                      <Button type="button" className={PRIMARY_BUTTON} disabled={busy} onClick={() => void assignFlight()}>
+                        Assign gate
+                      </Button>
+                    </div>
+                  )}
+                  {assignError ? (
+                    <p className="m-0 text-sm text-destructive" role="alert">
+                      {assignError}
+                    </p>
+                  ) : null}
+                </>
+              ) : null,
             )
           ) : (
             <>
