@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Button } from '@staff-web/components/ui/button'
 import { Card } from '@staff-web/components/ui/card'
@@ -149,25 +149,6 @@ export function GateBoarding({ api, airportCode, gateSlot }: GateBoardingProps) 
     setList(null)
     setHeadcount(null)
   }
-
-  /** The gates, the flights and the state of the gate on screen. */
-  const load = useCallback(async () => {
-    try {
-      const [gateList, flightList] = await Promise.all([api.gates(airportCode), api.flights()])
-      setGates(gateList)
-      setFlights(flightList)
-      if (!gateId || !flightId) {
-        setList(null)
-        setHeadcount(null)
-        return
-      }
-      const [passengers, counts] = await Promise.all([api.passengerList(gateId, flightId), api.headcount(flightId)])
-      setList(passengers)
-      setHeadcount(counts)
-    } catch (err) {
-      setError(messageOf(err))
-    }
-  }, [api, airportCode, gateId, flightId])
 
   /** The gates and the flights again: a gate or a flight may have changed somewhere else. */
   const reloadGates = async () => {
@@ -323,10 +304,21 @@ export function GateBoarding({ api, airportCode, gateSlot }: GateBoardingProps) 
       // Only the count that produced the mismatch can be confirmed.
       const confirm = confirmClose && mismatchCount !== null && savedCount === mismatchCount
       await api.closeGate(flight.id, { confirmMismatch: confirm })
-      setConfirmClose(false)
-      setMismatch(null)
-      setMismatchCount(null)
-      await load()
+      // Nothing more can be done for a closed flight and the gate is free again, so the screen goes straight to the
+      // free gate, where the next flight can be put; the result of the close stays as the message.
+      const closed = await api.passengerList(gateId, flight.id)
+      const closedNoShows = [...closed.police, ...Object.values(closed.groups).flat()].filter((entry) => entry.status === 'no_show')
+      resetGateState()
+      setPicked({ gateId, flightId: null })
+      setGateMessage({
+        tone: 'success',
+        text: `Gate ${gate?.code ?? ''} closed for ${flight.flightNumber}. Boarded count frozen at ${closed.boardedCount}. ${
+          closedNoShows.length > 0
+            ? `No-shows marked and their bags offloaded: ${closedNoShows.map((entry) => `${entry.passengerName} (${entry.seat})`).join(', ')}.`
+            : 'No no-shows.'
+        } The gate is free for the next flight.`,
+      })
+      await reloadGates()
     } catch (err) {
       if (err instanceof ApiRequestError && err.code === 'HEADCOUNT_MISMATCH') {
         setMismatch(mismatchMessage(counted, manual))
@@ -358,7 +350,6 @@ export function GateBoarding({ api, airportCode, gateSlot }: GateBoardingProps) 
   const entries: GateListEntry[] = list
     ? [...list.police, ...list.groups['1'], ...list.groups['2'], ...list.groups['3'], ...list.groups['4']]
     : []
-  const noShows = entries.filter((entry) => entry.status === 'no_show')
   const scannedEntry = lastReference ? entries.find((entry) => entry.reference === lastReference) : undefined
 
   const passengerRow = (entry: GateListEntry, group: '1' | '2' | '3' | '4' | null) => (
@@ -451,52 +442,55 @@ export function GateBoarding({ api, airportCode, gateSlot }: GateBoardingProps) 
           {gates.length === 0 ? (
             empty('This airport has no gates yet', 'Add gates on the Manage gates tab first.')
           ) : !flight ? (
-            empty(
-              `No flight at gate ${gate?.code ?? ''}`,
-              gatesWithFlight.length > 0
-                ? 'Pick a gate with a flight above, or move a flight here from its own gate screen.'
-                : 'No flight at this airport has a gate yet.',
-              gate ? (
-                <>
-                  {freeFlights.length === 0 ? (
-                    <p className={`m-0 ${MUTED}`}>Every flight from this airport already has a gate.</p>
-                  ) : (
-                    <div className="flex flex-wrap items-end gap-3">
-                      <div className="flex flex-col gap-2">
-                        <Label htmlFor="gate-assign" className={INPUT_LABEL}>
-                          Put a flight at this gate
-                        </Label>
-                        <NativeSelect
-                          id="gate-assign"
-                          className="w-[260px]"
-                          value={assignTo}
-                          disabled={busy}
-                          onChange={(event) => {
-                            setAssignTo(event.target.value)
-                            setAssignError(null)
-                          }}
-                        >
-                          <option value="">Pick a flight</option>
-                          {freeFlights.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {flightOption(item)}
-                            </option>
-                          ))}
-                        </NativeSelect>
+            <>
+              {gateMessage ? <Message tone={gateMessage.tone}>{gateMessage.text}</Message> : null}
+              {empty(
+                `No flight at gate ${gate?.code ?? ''}`,
+                gatesWithFlight.length > 0
+                  ? 'Pick a gate with a flight above, or move a flight here from its own gate screen.'
+                  : 'No flight at this airport has a gate yet.',
+                gate ? (
+                  <>
+                    {freeFlights.length === 0 ? (
+                      <p className={`m-0 ${MUTED}`}>Every flight from this airport already has a gate.</p>
+                    ) : (
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="gate-assign" className={INPUT_LABEL}>
+                            Put a flight at this gate
+                          </Label>
+                          <NativeSelect
+                            id="gate-assign"
+                            className="w-[260px]"
+                            value={assignTo}
+                            disabled={busy}
+                            onChange={(event) => {
+                              setAssignTo(event.target.value)
+                              setAssignError(null)
+                            }}
+                          >
+                            <option value="">Pick a flight</option>
+                            {freeFlights.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {flightOption(item)}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                        </div>
+                        <Button type="button" className={PRIMARY_BUTTON} disabled={busy} onClick={() => void assignFlight()}>
+                          Assign gate
+                        </Button>
                       </div>
-                      <Button type="button" className={PRIMARY_BUTTON} disabled={busy} onClick={() => void assignFlight()}>
-                        Assign gate
-                      </Button>
-                    </div>
-                  )}
-                  {assignError ? (
-                    <p className="m-0 text-sm text-destructive" role="alert">
-                      {assignError}
-                    </p>
-                  ) : null}
-                </>
-              ) : null,
-            )
+                    )}
+                    {assignError ? (
+                      <p className="m-0 text-sm text-destructive" role="alert">
+                        {assignError}
+                      </p>
+                    ) : null}
+                  </>
+                ) : null,
+              )}
+            </>
           ) : (
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -702,16 +696,6 @@ export function GateBoarding({ api, airportCode, gateSlot }: GateBoardingProps) 
                   />
                 </div>
                 {mismatch ? <Message tone="error">{mismatch}</Message> : null}
-                {list?.closedAt ? (
-                  <>
-                    <Message tone="success">
-                      Gate closed. Boarded count frozen at {list.boardedCount}. No-shows marked and their bags offloaded.
-                    </Message>
-                    {noShows.length > 0 ? (
-                      <p className={MUTED}>No-shows: {noShows.map((entry) => `${entry.passengerName} (${entry.seat})`).join(', ')}</p>
-                    ) : null}
-                  </>
-                ) : null}
                 <div className="flex justify-end">
                   <Button
                     type="button"
