@@ -83,7 +83,7 @@ export function AirportsPage() {
         setGateCounts(Object.fromEntries(rows.map((row) => [row.airportCode, row.gates] as const)))
       })
       .catch(() => {
-        // No access to the gates: the column shows a dash.
+        // The request failed: the column shows a dash.
       })
     return () => {
       stale = true
