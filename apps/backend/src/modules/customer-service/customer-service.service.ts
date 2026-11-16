@@ -370,12 +370,25 @@ export class CustomerServiceService {
 
   async listForStaff(userId: string): Promise<ComplaintView[]> {
     await this.staffIdFor(userId)
-    const rows = await this.db.complaint_case.findMany({
-      include: CASE_INCLUDE,
-      orderBy: { opened_at: 'desc' },
-      take: STAFF_LIST_LIMIT,
-    })
-    return rows.map(toComplaintView)
+    // Queued separately so old open cases are never pushed out of the limit by newer finished ones.
+    const [open, finished] = await Promise.all([
+      this.db.complaint_case.findMany({
+        where: { status: { in: ['with_supervisor', 'assigned'] } },
+        include: CASE_INCLUDE,
+        orderBy: { opened_at: 'desc' },
+        take: STAFF_LIST_LIMIT,
+      }),
+      this.db.complaint_case.findMany({
+        where: { status: { in: ['resolved', 'closed'] } },
+        include: CASE_INCLUDE,
+        orderBy: { opened_at: 'desc' },
+        take: STAFF_LIST_LIMIT,
+      }),
+    ])
+    // Open cases first, unassigned (with_supervisor) ahead of assigned; newest first within each group.
+    const unassigned = open.filter((c) => c.status === 'with_supervisor')
+    const assigned = open.filter((c) => c.status !== 'with_supervisor')
+    return [...unassigned, ...assigned, ...finished].map(toComplaintView)
   }
 
   async getForStaff(userId: string, id: string): Promise<ComplaintView> {
@@ -586,53 +599,59 @@ export class CustomerServiceService {
     if (!current) throw new NotFoundException(`Case ${id} not found`)
 
     const now = this.clock.now()
-    await this.db.$transaction(async (tx) => {
-      const existingComp = await tx.case_compensation.findFirst({
-        where: { case_id: id, status: { not: 'failed' } },
-      })
-      if (existingComp) {
-        throw new ConflictException('COMPENSATION_EXISTS')
-      }
+    await this.db
+      .$transaction(async (tx) => {
+        const existingComp = await tx.case_compensation.findFirst({
+          where: { case_id: id, status: { not: 'failed' } },
+        })
+        if (existingComp) {
+          throw new ConflictException('COMPENSATION_EXISTS')
+        }
 
-      const comp = await tx.case_compensation.create({
-        data: {
-          case_id: id,
-          decided_by_staff_id: staffId,
-          type: dto.type,
-          amount: dto.amount,
-          reason: dto.reason,
-          status: 'pending',
-          decided_at: now,
-        },
-      })
-
-      await tx.case_event.create({
-        data: {
-          case_id: id,
-          event_type: 'compensation_decided',
-          actor_type: 'staff',
-          actor_staff_id: staffId,
-          to_value: `${dto.type}: ${dto.amount}`,
-          note: dto.reason,
-          occurred_at: now,
-        },
-      })
-
-      if (this.audit) {
-        const actor = await this.audit.resolveActor(userId)
-        await this.audit.write(
-          {
-            actor,
-            sourceFeature: '13',
-            action: 'create',
-            entityType: 'case_compensation',
-            entityId: comp.id,
-            summary: `Decided compensation ${dto.type} ${dto.amount} for case ${current.case_number}`,
+        const comp = await tx.case_compensation.create({
+          data: {
+            case_id: id,
+            decided_by_staff_id: staffId,
+            type: dto.type,
+            amount: dto.amount,
+            reason: dto.reason,
+            status: 'pending',
+            decided_at: now,
           },
-          tx,
-        )
-      }
-    })
+        })
+
+        await tx.case_event.create({
+          data: {
+            case_id: id,
+            event_type: 'compensation_decided',
+            actor_type: 'staff',
+            actor_staff_id: staffId,
+            to_value: `${dto.type}: ${dto.amount}`,
+            note: dto.reason,
+            occurred_at: now,
+          },
+        })
+
+        if (this.audit) {
+          const actor = await this.audit.resolveActor(userId)
+          await this.audit.write(
+            {
+              actor,
+              sourceFeature: '13',
+              action: 'create',
+              entityType: 'case_compensation',
+              entityId: comp.id,
+              summary: `Decided compensation ${dto.type} ${dto.amount} for case ${current.case_number}`,
+            },
+            tx,
+          )
+        }
+      })
+      .catch((e: unknown) => {
+        // Two decisions at once both pass the findFirst check; case_compensation_live_uq stops the second at insert.
+        if ((e as { code?: string } | null)?.code === 'P2002') throw new ConflictException('COMPENSATION_EXISTS')
+        throw e
+      })
 
     return this.staffDetail(id)
   }

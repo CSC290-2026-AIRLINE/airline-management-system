@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@staff-web/components/ui/button'
 import { Card } from '@staff-web/components/ui/card'
@@ -38,10 +38,11 @@ export function ChartsPage() {
   const [showAllFlights, setShowAllFlights] = useState(false)
   const [loadError, setLoadError] = useState<unknown>(null)
 
+  const fetchCharts = useEffectEvent(() => api.getCharts())
+
   useEffect(() => {
     let active = true
-    api
-      .getCharts()
+    fetchCharts()
       .then((data) => {
         if (active && data) {
           setCharts(data)

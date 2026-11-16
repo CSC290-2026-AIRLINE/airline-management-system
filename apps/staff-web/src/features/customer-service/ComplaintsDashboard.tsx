@@ -132,8 +132,7 @@ export function ComplaintsDashboard() {
   const [busy, setBusy] = useState(false)
 
   const fetchList = useEffectEvent(() => api.list())
-
-  useEffect(() => {
+  const loadStaffContext = useEffectEvent(() => {
     void api
       .getStaffMembers()
       .then(setStaffMembers)
@@ -142,6 +141,10 @@ export function ComplaintsDashboard() {
       .getMe()
       .then(setCurrentStaff)
       .catch(() => {})
+  })
+
+  useEffect(() => {
+    loadStaffContext()
   }, [])
 
   useEffect(() => {
@@ -186,16 +189,20 @@ export function ComplaintsDashboard() {
 
   const selected = all.find((c) => c.id === selectedId) ?? null
 
+  // Reset the edit drafts only when another case is selected, not on every poll that refreshes `selected`.
+  const resetDrafts = useEffectEvent(() => {
+    if (!selected) return
+    setOwnerDraft(selected.ownerStaffId ?? '')
+    setResolutionDraft('Not a duplicate')
+    setNoteDraft('')
+    setCompTypeDraft(selected.compensation?.type ?? 'Travel voucher')
+    setCompAmountDraft(selected.compensation?.amount ? String(selected.compensation.amount) : '1,000')
+    setCompReasonDraft(selected.compensation?.reason ?? '')
+  })
+
   useEffect(() => {
-    if (selected) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the edit drafts when another case is selected
-      setOwnerDraft(selected.ownerStaffId ?? '')
-      setResolutionDraft('Not a duplicate')
-      setNoteDraft('')
-      setCompTypeDraft(selected.compensation?.type ?? 'Travel voucher')
-      setCompAmountDraft(selected.compensation?.amount ? String(selected.compensation.amount) : '1,000')
-      setCompReasonDraft(selected.compensation?.reason ?? '')
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the edit drafts when another case is selected
+    resetDrafts()
   }, [selected?.id])
 
   async function handleAssign() {
@@ -260,6 +267,8 @@ export function ComplaintsDashboard() {
   }
 
   const supervisor = Boolean(currentStaff?.isSupervisor)
+  // Mirrors the backend: an agent works only their own cases; the supervisor may act on any case.
+  const canWorkCase = Boolean(selected && currentStaff && (supervisor || selected.ownerStaffId === currentStaff.id))
   const compBlocked = busy || !compReasonDraft.trim() || !supervisor || Boolean(selected?.compensation)
 
   return (
@@ -455,17 +464,25 @@ export function ComplaintsDashboard() {
                     <option value="Duplicate case">Duplicate case</option>
                     <option value="Customer withdrew">Customer withdrew</option>
                   </NativeSelect>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy || !selected.ownerName || selected.status === 'resolved' || selected.status === 'closed'}
-                    onClick={() => void handleResolve()}
-                  >
-                    Resolve
-                  </Button>
+                  {canWorkCase && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busy || selected.status !== 'assigned'}
+                      onClick={() => void handleResolve()}
+                    >
+                      Resolve
+                    </Button>
+                  )}
                 </div>
-                {!selected.ownerName && (
+                {!selected.ownerName ? (
                   <span className="text-xs text-muted-foreground">Assign an owner first. A case with no owner can’t be resolved.</span>
+                ) : (
+                  !canWorkCase && (
+                    <span className="text-xs text-muted-foreground">
+                      Only the case owner or the supervisor can resolve or close this case.
+                    </span>
+                  )
                 )}
               </ActionRow>
 
@@ -530,15 +547,17 @@ export function ComplaintsDashboard() {
                 <span className="flex-1 text-xs text-muted-foreground">
                   Close only after Resolved. Every change goes to the history and the Feature 15 audit log.
                 </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-danger/40 text-danger hover:bg-danger-soft hover:text-danger"
-                  disabled={busy || selected.status === 'closed'}
-                  onClick={() => void handleCloseCase()}
-                >
-                  Close case
-                </Button>
+                {canWorkCase && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-danger/40 text-danger hover:bg-danger-soft hover:text-danger"
+                    disabled={busy || selected.status !== 'resolved'}
+                    onClick={() => void handleCloseCase()}
+                  >
+                    Close case
+                  </Button>
+                )}
               </div>
             </div>
 

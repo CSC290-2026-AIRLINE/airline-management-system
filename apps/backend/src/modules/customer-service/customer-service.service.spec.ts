@@ -95,6 +95,7 @@ describe('CustomerServiceService', () => {
     flight_complaint: { create: jest.fn() },
     food_complaint: { create: jest.fn() },
     case_event: { create: jest.fn() },
+    case_compensation: { findFirst: jest.fn(), create: jest.fn() },
   }
   const db = {
     customer: { findFirst: jest.fn() },
@@ -356,6 +357,45 @@ describe('CustomerServiceService', () => {
         select: { id: true },
       })
       expect(audit.write).toHaveBeenCalledWith(expect.objectContaining({ entityType: 'case_event', entityId: 'event-1' }), tx)
+    })
+  })
+
+  describe('listForStaff', () => {
+    it('lists open cases first, unassigned ahead of assigned, then finished cases', async () => {
+      db.complaint_case.findMany
+        .mockResolvedValueOnce([
+          caseRow({ id: 'a1', status: 'assigned' }),
+          caseRow({ id: 'u1', status: 'with_supervisor' }),
+          caseRow({ id: 'u2', status: 'with_supervisor' }),
+        ])
+        .mockResolvedValueOnce([caseRow({ id: 'c1', status: 'closed' })])
+
+      const rows = await service.listForStaff(USER_ID)
+
+      expect(rows.map((r) => r.id)).toEqual(['u1', 'u2', 'a1', 'c1'])
+      expect(db.complaint_case.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { status: { in: ['with_supervisor', 'assigned'] } } }),
+      )
+    })
+  })
+
+  describe('decideCompensation', () => {
+    const dto = { type: 'voucher' as const, amount: 1000, reason: 'Missing meal' }
+
+    it('turns a concurrent decision hitting case_compensation_live_uq into COMPENSATION_EXISTS', async () => {
+      db.complaint_case.findUnique.mockResolvedValue({ id: CASE_ID, case_number: 'CS-2026-000001' })
+      tx.case_compensation.findFirst.mockResolvedValue(null)
+      tx.case_compensation.create.mockRejectedValue(Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }))
+
+      await expect(service.decideCompensation(USER_ID, CASE_ID, dto)).rejects.toThrow(new ConflictException('COMPENSATION_EXISTS'))
+    })
+
+    it('passes other database errors through unchanged', async () => {
+      db.complaint_case.findUnique.mockResolvedValue({ id: CASE_ID, case_number: 'CS-2026-000001' })
+      tx.case_compensation.findFirst.mockResolvedValue(null)
+      tx.case_compensation.create.mockRejectedValue(new Error('connection lost'))
+
+      await expect(service.decideCompensation(USER_ID, CASE_ID, dto)).rejects.toThrow('connection lost')
     })
   })
 

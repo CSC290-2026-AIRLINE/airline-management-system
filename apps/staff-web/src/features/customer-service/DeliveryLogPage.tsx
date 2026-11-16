@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useEffectEvent, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import { Button } from '@staff-web/components/ui/button'
 import { Card } from '@staff-web/components/ui/card'
@@ -60,10 +60,11 @@ export function DeliveryLogPage() {
   const [page, setPage] = useState(1)
   const [loadError, setLoadError] = useState<unknown>(null)
 
+  const fetchDeliveryLog = useEffectEvent(() => api.getDeliveryLog())
+
   useEffect(() => {
     let active = true
-    api
-      .getDeliveryLog()
+    fetchDeliveryLog()
       .then((res) => {
         if (active && res) {
           setData(res)

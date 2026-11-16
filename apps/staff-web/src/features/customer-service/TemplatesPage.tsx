@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useState, type ReactNode } from 'react'
 import { Search } from 'lucide-react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
@@ -131,10 +131,11 @@ export function TemplatesPage() {
   const [draftBody, setDraftBody] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const fetchTemplates = useEffectEvent(() => api.getTemplates())
+
   useEffect(() => {
     let active = true
-    api
-      .getTemplates()
+    fetchTemplates()
       .then((res) => {
         if (active) setTemplates(res)
       })
