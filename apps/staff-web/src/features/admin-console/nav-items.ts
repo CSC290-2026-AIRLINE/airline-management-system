@@ -8,9 +8,10 @@ import {
   ClipboardCheck,
   CreditCard,
   FileText,
+  Inbox,
   KeyRound,
   Luggage,
-  MessageSquare,
+  MailCheck,
   Monitor,
   Package,
   Percent,
@@ -37,7 +38,7 @@ export interface NavItem {
   label: string
   icon: LucideIcon
   /** Set once the owning team has a route. Items without one stay disabled in the live sidebar. */
-  to?: '/customer-search' | '/security-screening/screening-queue' | '/aircraft' | '/aircraft-types' | '/readiness' | '/complaints'
+  to?: '/customer-search' | '/security-screening/screening-queue' | '/aircraft' | '/aircraft-types' | '/readiness'
   /** Path prefix that keeps the item highlighted on the feature's other pages. */
   activePrefix?: string
 }
@@ -51,7 +52,6 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { label: 'Customer Search', icon: Search, to: '/customer-search', activePrefix: '/customer-search' },
       { label: 'Security Screening', icon: ShieldCheck, to: '/security-screening/screening-queue', activePrefix: '/security-screening' },
-      { label: 'Service & Compensation', icon: MessageSquare, to: '/complaints' },
       { label: 'Loyalty Programme', icon: Star },
     ],
   },
@@ -98,6 +98,14 @@ export const PRICING_ITEMS = [
   { to: '/pricing/taxes-promos', code: 'f04.taxes_promos', label: 'Taxes, Currency & Promos', icon: Percent },
   { to: '/pricing/expenses-payments', code: 'f04.expenses_payments', label: 'Expenses & Payments', icon: Receipt },
   { to: '/pricing/monthly-report', code: 'f04.monthly_report', label: 'Monthly Report', icon: FileText },
+] as const
+
+/** The Feature 13 (customer service) staff pages: the complaint queue plus its reporting and notification screens. */
+export const CUSTOMER_SERVICE_ITEMS = [
+  { to: '/complaints', label: 'Complaint queue', icon: Inbox },
+  { to: '/complaints/charts', label: 'Complaint charts', icon: ChartColumn },
+  { to: '/complaints/delivery-log', label: 'Delivery log', icon: MailCheck },
+  { to: '/complaints/templates', label: 'Templates', icon: FileText },
 ] as const
 
 /** The Feature 2 (flight scheduling and network operations) pages. `ownsPrefixes` keeps an item lit on its sub-pages, such as a flight's detail. */
