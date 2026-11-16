@@ -60,7 +60,7 @@ export function AirportsPage() {
   const { fetchWithAuth } = useAppAuth()
   // ponytail: first 100 airports; page with loadMore when the network grows past that.
   const airports = usePagedList<AirportRow>('/airports?limit=100', fetchWithAuth)
-  // The gates of every airport, from the check-in feature. Null until they load, and when this staff member may not read them.
+  // The gates of every airport, from the check-in feature. Null until they load, and when the request fails.
   const [gateCounts, setGateCounts] = useState<Record<string, number> | null>(null)
 
   const [form, setForm] = useState(EMPTY_FORM)
@@ -70,7 +70,7 @@ export function AirportsPage() {
   const [busy, setBusy] = useState(false)
   const [adding, setAdding] = useState(false)
 
-  // A staff member without access to the gate routes gets an error from this call: the column stays a dash and the page works as before.
+  // Every staff member may read the gate counts today: the call only fails when it breaks, and then the column stays a dash.
   useEffect(() => {
     let stale = false
     fetchWithAuth('/api/staff/gates/counts')

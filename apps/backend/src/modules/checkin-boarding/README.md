@@ -28,31 +28,31 @@ passenger their own seat and hides the other cabins.
 
 `@Controller('staff')` — `@UseGuards(StaffGuard)`, a customer token gets `403 FORBIDDEN`.
 
-| Method | Path                                                | Body / query                                            | Service                                                     |
-| ------ | --------------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------- |
-| GET    | `/staff/check-ins`                                  | `?flightId&pnr&name`                                    | `CounterService.search`                                     |
-| GET    | `/staff/check-ins/:id`                              |                                                         | `CounterService.detail`                                     |
-| POST   | `/staff/check-ins/:id/bags`                         | `{ weightKg, lengthCm, widthCm, heightCm }`             | `CounterService.weighBag`                                   |
-| DELETE | `/staff/bags/:id`                                   |                                                         | `CounterService.removeBag`                                  |
-| POST   | `/staff/check-ins/:id/bags/pay`                     |                                                         | `CounterService.payExcess` (all unpaid excess, one payment) |
-| POST   | `/staff/bags/:id/tag`                               |                                                         | `CounterService.tagBag` (`EXCESS_UNPAID` until paid)        |
-| GET    | `/staff/bags/:tagNumber`                            |                                                         | `CounterService.bagByTag` (for feature 10)                  |
-| GET    | `/staff/flights/:flightId/bags`                     |                                                         | `CounterService.bagsByFlight` (for feature 10)              |
-| PUT    | `/staff/check-ins/:id/carry-on`                     | `{ weightKg, lengthCm, widthCm, heightCm }`             | `CounterService.carryOn`                                    |
-| POST   | `/staff/travel-documents/:id/clear-mismatch`        |                                                         | `CounterService.clearMismatch`                              |
-| POST   | `/staff/travel-documents/:id/check-visa`            |                                                         | `CounterService.checkVisa`                                  |
-| POST   | `/staff/boarding-passes/:id/print`                  |                                                         | `CounterService.printPass`                                  |
-| GET    | `/staff/gates`                                      | `?airport&all`                                          | `GateService.gates`                                         |
-| GET    | `/staff/gates/counts`                               |                                                         | `GateService.gateCounts`                                    |
-| POST   | `/staff/airports/:airportCode/gates`                | `{ codes }`                                             | `GateService.addGates`                                      |
-| PATCH  | `/staff/gates/:gateId`                              | `{ isActive }`                                          | `GateService.setGateActive`                                 |
-| GET    | `/staff/flights`                                    |                                                         | `GateService.flights`                                       |
-| PUT    | `/staff/flights/:flightId/gate`                     | `{ gateId }`                                            | `GateService.setGate`                                       |
-| GET    | `/staff/gates/:gateId/flights/:flightId/passengers` |                                                         | `GateService.passengerList`                                 |
-| POST   | `/staff/gates/:gateId/scans`                        | `{ flightId, reference }`                               | `GateService.scan`                                          |
-| GET    | `/staff/flights/:flightId/headcount`                |                                                         | `GateService.headcount`                                     |
-| PUT    | `/staff/flights/:flightId/headcount`                | `{ source: 'sensor' }` or `{ source: 'manual', count }` | `GateService.setHeadcount`                                  |
-| POST   | `/staff/flights/:flightId/close-gate`               | `{ confirmMismatch? }`                                  | `GateService.closeGate`                                     |
+| Method | Path                                                | Body / query                                            | Service                                                                     |
+| ------ | --------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------- |
+| GET    | `/staff/check-ins`                                  | `?flightId&pnr&name`                                    | `CounterService.search`                                                     |
+| GET    | `/staff/check-ins/:id`                              |                                                         | `CounterService.detail`                                                     |
+| POST   | `/staff/check-ins/:id/bags`                         | `{ weightKg, lengthCm, widthCm, heightCm }`             | `CounterService.weighBag`                                                   |
+| DELETE | `/staff/bags/:id`                                   |                                                         | `CounterService.removeBag`                                                  |
+| POST   | `/staff/check-ins/:id/bags/pay`                     |                                                         | `CounterService.payExcess` (all unpaid excess, one payment)                 |
+| POST   | `/staff/bags/:id/tag`                               |                                                         | `CounterService.tagBag` (`EXCESS_UNPAID` until paid)                        |
+| GET    | `/staff/bags/:tagNumber`                            |                                                         | `CounterService.bagByTag` (for feature 10)                                  |
+| GET    | `/staff/flights/:flightId/bags`                     |                                                         | `CounterService.bagsByFlight` (for feature 10)                              |
+| PUT    | `/staff/check-ins/:id/carry-on`                     | `{ weightKg, lengthCm, widthCm, heightCm }`             | `CounterService.carryOn`                                                    |
+| POST   | `/staff/travel-documents/:id/clear-mismatch`        |                                                         | `CounterService.clearMismatch`                                              |
+| POST   | `/staff/travel-documents/:id/check-visa`            |                                                         | `CounterService.checkVisa`                                                  |
+| POST   | `/staff/boarding-passes/:id/print`                  |                                                         | `CounterService.printPass`                                                  |
+| GET    | `/staff/gates`                                      | `?airport&all`                                          | `GateService.gates`                                                         |
+| GET    | `/staff/gates/counts`                               |                                                         | `GateService.gateCounts`                                                    |
+| POST   | `/staff/airports/:airportCode/gates`                | `{ codes }`                                             | `GateService.addGates`                                                      |
+| PATCH  | `/staff/gates/:gateId`                              | `{ isActive }`                                          | `GateService.setGateActive`                                                 |
+| GET    | `/staff/flights`                                    |                                                         | `GateService.flights`                                                       |
+| PUT    | `/staff/flights/:flightId/gate`                     | `{ gateId }`                                            | `GateService.setGate` (409 `GATE_INACTIVE`, 409 `GATE_TAKEN`, `VALIDATION`) |
+| GET    | `/staff/gates/:gateId/flights/:flightId/passengers` |                                                         | `GateService.passengerList`                                                 |
+| POST   | `/staff/gates/:gateId/scans`                        | `{ flightId, reference }`                               | `GateService.scan`                                                          |
+| GET    | `/staff/flights/:flightId/headcount`                |                                                         | `GateService.headcount`                                                     |
+| PUT    | `/staff/flights/:flightId/headcount`                | `{ source: 'sensor' }` or `{ source: 'manual', count }` | `GateService.setHeadcount`                                                  |
+| POST   | `/staff/flights/:flightId/close-gate`               | `{ confirmMismatch? }`                                  | `GateService.closeGate`                                                     |
 
 Every failure is `{ error: { code, message, details? } }`. The codes are closed: `VALIDATION`, `NOT_FOUND`,
 `FORBIDDEN`, `WINDOW_CLOSED`, `NOT_ELIGIBLE`, `MRZ_INVALID`, `PASSPORT_EXPIRING`, `VISA_REQUIRED`,
@@ -64,11 +64,17 @@ rejects are not HTTP errors: `WRONG_GATE`, `WRONG_FLIGHT`, `ALREADY_BOARDED`, `N
 ### The gates of an airport
 
 Every airport has its own gates: `GET /staff/gates?airport=BKK` lists the turned-on ones (number-aware, A2 before
-A10) with the flight that boards there now, `all=true` adds the turned-off ones. `POST /staff/airports/BKK/gates`
+A10) with the flight that boards there now, `all=true` adds the turned-off ones; the airport is required. `GET
+/staff/gates/counts` answers one row per airport with the number of its turned-on gates, an airport without gates
+counted as zero. `POST /staff/airports/BKK/gates`
 adds up to 30 codes (`^[A-Z0-9]{1,4}$`); the codes that are already there come back as `skipped`, a bad code is
 `INVALID_GATE_CODE` and nothing is added, a request of codes that are all there is `GATE_EXISTS`. `PATCH
 /staff/gates/:gateId` turns a gate on or off; a gate with a flight on it stays on (`GATE_IN_USE`). Gates are never
 deleted.
+
+`PUT /staff/flights/:flightId/gate` moves a flight to a gate: a turned-off gate is refused with 409
+`GATE_INACTIVE`, a gate another open flight uses with 409 `GATE_TAKEN`, and a gate at another airport than the one
+the flight departs from with `VALIDATION`.
 
 The notifications carry feature 13's type codes: `check_in_completed` and `boarding_pass_issued` when the pass is
 issued, `gate_changed` when a flight moves to another gate, `boarding_call` when the gate closes.

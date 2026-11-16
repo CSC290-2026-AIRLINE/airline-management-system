@@ -61,6 +61,8 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
+  /** The first load failed: there is no list to show, so no empty state either. */
+  const [loadFailed, setLoadFailed] = useState(false)
 
   const gateId = picked?.gateId ?? ''
   const flightId = picked?.flightId ?? ''
@@ -98,6 +100,7 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
       .catch((err: unknown) => {
         if (cancelled) return
         setError(messageOf(err))
+        setLoadFailed(true)
         setLoading(false)
       })
     return () => {
@@ -135,6 +138,8 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
     setConfirmClose(false)
     setManualCount('')
     setMoveTo('')
+    setList(null)
+    setHeadcount(null)
   }
 
   /** The gates, the flights and the state of the gate on screen. */
@@ -289,11 +294,13 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
   }
 
   const boardingMinutes = flight ? Math.round((new Date(flight.depAt).getTime() - new Date(flight.boardingAt).getTime()) / 60000) : 0
-  const subtitle = flight
-    ? `Gate ${gate?.code ?? ''} · ${flight.flightNumber} · ${flight.origin.city} to ${flight.destination.city} · departs ${formatTime(
-        flight.depAt,
-      )} · boarding from ${boardingMinutes} min before`
-    : `Gate ${gate?.code ?? ''} · no flight at this gate`
+  const subtitle = !gate
+    ? ''
+    : flight
+      ? `Gate ${gate.code} · ${flight.flightNumber} · ${flight.origin.city} to ${flight.destination.city} · departs ${formatTime(
+          flight.depAt,
+        )} · boarding from ${boardingMinutes} min before`
+      : `Gate ${gate.code} · no flight at this gate`
 
   /** The gate in the select: the flight that is at it now, or "free". */
   const gateLabel = (item: GateInfo): string => {
@@ -308,7 +315,7 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
   const scannedEntry = lastReference ? entries.find((entry) => entry.reference === lastReference) : undefined
 
   const passengerRow = (entry: GateListEntry, group: '1' | '2' | '3' | '4' | null) => (
-    <TableRow key={entry.checkInId} className="border-[#eef1f6] hover:bg-[#f7f9fc]">
+    <TableRow key={entry.checkInId} className="border-border hover:bg-muted">
       <TableCell className="px-3 py-3">
         {group === null ? (
           <Pill tone="warn">Police</Pill>
@@ -325,7 +332,7 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
         </span>
       </TableCell>
       <TableCell className="px-3 py-3 text-sm text-foreground">{entry.seat}</TableCell>
-      <TableCell className="px-3 py-3 font-mono text-[13px] tracking-[0.5px] text-[#3b4256]">{entry.reference}</TableCell>
+      <TableCell className="px-3 py-3 font-mono text-[13px] tracking-[0.5px] text-muted-foreground">{entry.reference}</TableCell>
       <TableCell className="px-3 py-3">
         <StatusPill status={entry.status} />
       </TableCell>
@@ -342,7 +349,7 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <p className={`m-0 ${MUTED}`}>{subtitle}</p>
+        {subtitle ? <p className={`m-0 ${MUTED}`}>{subtitle}</p> : null}
         {gates.length > 0 ? (
           <div className="flex flex-col gap-2">
             <Label htmlFor="gate-select" className={INPUT_LABEL}>
@@ -365,7 +372,7 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
         <p role="status" className={`m-0 ${MUTED}`}>
           Loading the gates of {airportCode}…
         </p>
-      ) : (
+      ) : loadFailed ? null : (
         <>
           <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Gates with a flight">
             {gatesWithFlight.length === 0 ? (

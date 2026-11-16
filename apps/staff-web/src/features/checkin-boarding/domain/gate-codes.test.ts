@@ -36,6 +36,18 @@ test('a range of one gate is one gate', () => {
   assert.deepEqual(codesOf('D1-D1'), ['D1'])
 })
 
+test('a range keeps the leading zeros of its left number', () => {
+  assert.deepEqual(codesOf('D01-D03'), ['D01', 'D02', 'D03'])
+  assert.deepEqual(codesOf('A08-A11'), ['A08', 'A09', 'A10', 'A11'])
+})
+
+test('a range of 30 gates is allowed', () => {
+  const codes = codesOf('A1-A30')
+  assert.equal(codes.length, 30)
+  assert.equal(codes[0], 'A1')
+  assert.equal(codes[29], 'A30')
+})
+
 test('a range with other letters on the right is refused', () => {
   assert.equal(errorOf('D1-E6'), LETTERS_MISMATCH)
 })

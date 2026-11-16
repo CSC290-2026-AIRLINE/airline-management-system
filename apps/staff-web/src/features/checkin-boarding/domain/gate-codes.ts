@@ -24,7 +24,10 @@ export function parseGateCodes(input: string): { codes: string[] } | { error: st
   const to = Number(rightNumber)
   if (to < from) return { error: NOT_UP }
   if (to - from >= 30) return { error: TOO_MANY }
-  const codes = Array.from({ length: to - from + 1 }, (_, index) => `${leftLetters}${from + index}`)
+  const codes = Array.from(
+    { length: to - from + 1 },
+    (_, index) => `${leftLetters}${String(from + index).padStart(leftNumber.length, '0')}`,
+  )
   if (codes.some((code) => code.length > 4)) return { error: TOO_LONG }
   return { codes }
 }

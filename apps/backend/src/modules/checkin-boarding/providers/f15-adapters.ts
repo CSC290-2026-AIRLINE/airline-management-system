@@ -13,6 +13,7 @@ const ACTION_MAP: Record<string, AuditAction> = {
   'checked_bag.weigh': 'create',
   'checked_bag.remove': 'delete',
   'boarding.board': 'status_change',
+  'gate.create': 'create',
   view_sensitive: 'view_sensitive',
 }
 

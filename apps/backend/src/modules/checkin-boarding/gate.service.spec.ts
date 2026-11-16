@@ -336,6 +336,18 @@ describe('GateService.addGates', () => {
     expect(result.added.map((g) => g.code)).toEqual(['D1'])
     expect(result.skipped).toEqual([])
   })
+
+  it('a request that loses the race on the same codes is refused and audits nothing', async () => {
+    const { gate, store, audit } = build()
+    const spy = jest.spyOn(audit, 'record')
+    // Another agent added the same codes a moment earlier.
+    jest.spyOn(store, 'createGates').mockResolvedValue([])
+    await expect(gate.addGates(staff, 'BKK', ['D1'])).rejects.toMatchObject({
+      code: 'GATE_EXISTS',
+      details: { skipped: ['D1'] },
+    })
+    expect(spy).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'gate.create' }))
+  })
 })
 
 describe('GateService.setGateActive', () => {

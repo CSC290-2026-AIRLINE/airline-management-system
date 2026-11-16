@@ -64,6 +64,7 @@ export function ManageGates({ api, airport, onChanged }: ManageGatesProps) {
 
   /** Adds the gates the agent typed: one code or a range. */
   const addGates = async () => {
+    setMessage(null)
     const parsed = parseGateCodes(code)
     if ('error' in parsed) {
       setMessage({ tone: 'error', text: parsed.error })
@@ -96,6 +97,7 @@ export function ManageGates({ api, airport, onChanged }: ManageGatesProps) {
 
   /** Turns a gate on or off; a gate with a flight on it stays on until the flight moves. */
   const toggle = async (gate: GateInfo) => {
+    setMessage(null)
     setBusy(true)
     setError(null)
     try {
@@ -119,7 +121,7 @@ export function ManageGates({ api, airport, onChanged }: ManageGatesProps) {
           Gates at {airport.city} ({airport.airportCode})
         </h2>
         <p className={`m-0 ${MUTED}`}>
-          {gates.length} gates, {on} turned on. Pick another airport at the top.
+          {gates.length} {gates.length === 1 ? 'gate' : 'gates'}, {on} turned on. Pick another airport at the top.
         </p>
       </div>
 

@@ -21,6 +21,7 @@ describe('mapAction', () => {
     expect(mapAction('check_in.start')).toBe('create')
     expect(mapAction('boarding.board')).toBe('status_change')
     expect(mapAction('gate.close')).toBe('update')
+    expect(mapAction('gate.create')).toBe('create')
     expect(mapAction('view_sensitive')).toBe('view_sensitive')
   })
 

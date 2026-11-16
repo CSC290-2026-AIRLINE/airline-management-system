@@ -105,6 +105,8 @@ export class GateService {
     if (fresh.length === 0) throw conflict('GATE_EXISTS', 'These gates are already there', { skipped })
 
     const added = (await this.store.createGates(airport.code, fresh)).sort((a, b) => a.code.localeCompare(b.code, 'en', { numeric: true }))
+    // Another request wrote the same codes first: nothing was added, so nothing is audited.
+    if (added.length === 0) throw conflict('GATE_EXISTS', 'These gates are already there', { skipped: wanted })
     await this.audit.record({
       actorType: 'staff',
       actorId: actor.userId,
