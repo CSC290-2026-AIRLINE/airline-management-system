@@ -6,6 +6,7 @@ import { FLIGHT_ISSUES, FOOD_ISSUES, type CaseStatus } from './customer-service.
 import { CASE_DETAIL_INCLUDE, CASE_INCLUDE, toComplaintDetail, toComplaintView, type ComplaintView } from './complaint.view'
 import type { CreateComplaintDto, CreateGuestComplaintDto } from './dto/create-complaint.dto'
 import type { DecideCompensationDto, UpdateNotificationTemplateDto } from './dto/staff-actions.dto'
+import { placeholdersFor, unknownPlaceholders } from './notification-placeholders'
 
 /**
  * Statuses a staff member may move a case to through PATCH :id/status, from each status.
@@ -25,6 +26,50 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const WEEK_MS = 7 * DAY_MS
 const REOPEN_WINDOW_MS = 7 * DAY_MS
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** notification_type.source_feature ('2', '13', …) as the page shows it. */
+function featureLabel(sourceFeature: string): string {
+  return `Feature ${sourceFeature}`
+}
+
+/** ✓ = template on, – = template switched off, ! = no template for that channel yet. */
+function channelState(template: { is_active: boolean } | undefined): '✓' | '–' | '!' {
+  if (!template) return '!'
+  return template.is_active ? '✓' : '–'
+}
+
+/**
+ * The subject and body a template will hold after an update: the new text where the request sends it, else the saved text.
+ * Throws 400 when email has no subject, any channel has no body, SMS gets a subject, or a placeholder is not allowed for the type.
+ */
+function templateText(
+  typeCode: string,
+  dto: UpdateNotificationTemplateDto,
+  existing: { subject_template: string | null; body_template: string } | null,
+): { subject: string | null; body: string } {
+  const body = dto.bodyTemplate ?? existing?.body_template ?? ''
+  let subject = dto.subjectTemplate ?? existing?.subject_template ?? null
+  if (dto.channel === 'sms') {
+    if (subject) throw new BadRequestException('SMS_HAS_NO_SUBJECT')
+    subject = null
+  }
+  // A push title is optional, so an empty one is stored as no title.
+  if (dto.channel === 'push' && !subject?.trim()) subject = null
+  if (dto.channel === 'email' && !subject?.trim()) throw new BadRequestException('EMAIL_SUBJECT_REQUIRED')
+  if (!body.trim()) throw new BadRequestException('TEMPLATE_BODY_REQUIRED')
+
+  const unknown = unknownPlaceholders(typeCode, `${subject ?? ''}\n${body}`)
+  if (unknown.length > 0) {
+    throw new BadRequestException({
+      statusCode: 400,
+      error: 'Bad Request',
+      message: 'INVALID_PLACEHOLDER',
+      placeholders: unknown,
+      allowed: placeholdersFor(typeCode),
+    })
+  }
+  return { subject, body }
+}
 
 /** "12 Oct", in UTC. */
 function dayMonthLabel(d: Date): string {
@@ -102,6 +147,8 @@ export interface StaffTemplateItemView {
   name: string
   feature: string
   group: 'ALWAYS SENT' | 'OPTIONAL'
+  /** The {{names}} templates of this type may use. */
+  placeholders: readonly string[]
   emailState: '✓' | '–' | '!' | ' '
   smsState: '✓' | '–' | '!' | ' '
   pushState: '✓' | '–' | '!' | ' '
@@ -797,7 +844,7 @@ export class CustomerServiceService {
         occurredAt,
         event: n.notification_type?.name ?? n.type_code,
         typeCode: n.type_code,
-        feature: 'Feature 13',
+        feature: n.notification_type ? featureLabel(n.notification_type.source_feature) : '–',
         recipient: n.recipient,
         channel,
         status,
@@ -835,18 +882,15 @@ export class CustomerServiceService {
       const sms = t.notification_template.find((tmp) => tmp.channel === 'sms')
       const push = t.notification_template.find((tmp) => tmp.channel === 'push')
 
-      const emailState = email ? (email.is_active ? '✓' : '!') : '–'
-      const smsState = sms ? (sms.is_active ? '✓' : '!') : '–'
-      const pushState = push ? (push.is_active ? '✓' : '!') : '–'
-
       return {
         code: t.code,
         name: t.name,
-        feature: 'Feature 13',
+        feature: featureLabel(t.source_feature),
         group: t.is_mandatory ? 'ALWAYS SENT' : 'OPTIONAL',
-        emailState,
-        smsState,
-        pushState,
+        placeholders: placeholdersFor(t.code),
+        emailState: channelState(email),
+        smsState: channelState(sms),
+        pushState: channelState(push),
         emailTitle: email?.subject_template ?? undefined,
         emailBody: email?.body_template ?? undefined,
         smsBody: sms?.body_template ?? undefined,
@@ -857,7 +901,7 @@ export class CustomerServiceService {
   }
 
   async updateTemplateForStaff(userId: string, code: string, dto: UpdateNotificationTemplateDto) {
-    await this.staffIdFor(userId)
+    const staffId = await this.staffIdFor(userId)
     const type = await this.db.notification_type.findUnique({ where: { code } })
     if (!type) throw new NotFoundException(`Notification type ${code} not found`)
 
@@ -866,13 +910,17 @@ export class CustomerServiceService {
         where: { type_code_channel: { type_code: code, channel: dto.channel } },
       })
 
+      const { subject, body } = templateText(code, dto, existing)
+
       const template = existing
         ? await tx.notification_template.update({
             where: { id: existing.id },
             data: {
               is_active: dto.isActive ?? existing.is_active,
-              subject_template: dto.subjectTemplate ?? existing.subject_template,
-              body_template: dto.bodyTemplate ?? existing.body_template,
+              subject_template: subject,
+              body_template: body,
+              updated_at: new Date(),
+              updated_by: staffId,
             },
             select: { id: true },
           })
@@ -881,8 +929,9 @@ export class CustomerServiceService {
               type_code: code,
               channel: dto.channel,
               is_active: dto.isActive ?? true,
-              subject_template: dto.subjectTemplate ?? null,
-              body_template: dto.bodyTemplate ?? '',
+              subject_template: subject,
+              body_template: body,
+              updated_by: staffId,
             },
             select: { id: true },
           })

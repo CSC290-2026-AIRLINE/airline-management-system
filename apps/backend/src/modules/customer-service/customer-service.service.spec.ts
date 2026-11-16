@@ -96,6 +96,7 @@ describe('CustomerServiceService', () => {
     food_complaint: { create: jest.fn() },
     case_event: { create: jest.fn() },
     case_compensation: { findFirst: jest.fn(), create: jest.fn() },
+    notification_template: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
   }
   const db = {
     customer: { findFirst: jest.fn() },
@@ -104,6 +105,7 @@ describe('CustomerServiceService', () => {
     complaint_case: { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     case_event: { create: jest.fn() },
     booking_segment: { findFirst: jest.fn() },
+    notification_type: { findUnique: jest.fn(), findMany: jest.fn() },
     $transaction: jest.fn(),
   }
   const audit = { resolveActor: jest.fn(), write: jest.fn() }
@@ -427,6 +429,89 @@ describe('CustomerServiceService', () => {
         { week: '9 Nov', count: 1, latest: true },
       ])
       expect(charts.topFlights).toEqual([{ flight: 'FY308', date: '3 Nov', route: 'BKK → NRT', type: 'Food', cases: 2 }])
+    })
+  })
+
+  describe('templates', () => {
+    const template = (channel: string, is_active: boolean, subject_template: string | null, body_template: string) => ({
+      id: `tpl-${channel}`,
+      channel,
+      is_active,
+      subject_template,
+      body_template,
+    })
+    const savedSms = template('sms', true, null, 'We received your complaint. Case number: {{case_number}}.')
+
+    beforeEach(() => {
+      db.notification_type.findUnique.mockResolvedValue({ code: 'complaint_received', source_feature: '13' })
+      db.notification_type.findMany.mockResolvedValue([])
+      tx.notification_template.update.mockResolvedValue({ id: 'tpl-sms' })
+      tx.notification_template.create.mockResolvedValue({ id: 'tpl-new' })
+    })
+
+    it('marks ✓ for on, – for switched off and ! for no template, with the real source feature and placeholders', async () => {
+      db.notification_type.findMany.mockResolvedValue([
+        {
+          code: 'flight_delayed',
+          source_feature: '2',
+          name: 'Flight delayed',
+          is_mandatory: true,
+          notification_template: [template('email', true, 'Delayed', 'Body'), template('sms', false, null, 'Body')],
+        },
+      ])
+      const [row] = await service.getTemplatesForStaff(USER_ID)
+      expect(row).toMatchObject({ feature: 'Feature 2', emailState: '✓', smsState: '–', pushState: '!' })
+      expect(row.placeholders).toEqual(['passenger_name', 'flight_number', 'service_date', 'new_departure'])
+      expect(row.pushBody).toBeUndefined()
+    })
+
+    it('records the staff member on an update', async () => {
+      tx.notification_template.findUnique.mockResolvedValue(savedSms)
+      await service.updateTemplateForStaff(USER_ID, 'complaint_received', { channel: 'sms', isActive: false })
+      expect(tx.notification_template.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ is_active: false, updated_by: STAFF_ID }) }),
+      )
+    })
+
+    it('records the staff member when it creates a missing template', async () => {
+      tx.notification_template.findUnique.mockResolvedValue(null)
+      await service.updateTemplateForStaff(USER_ID, 'complaint_received', {
+        channel: 'push',
+        subjectTemplate: '',
+        bodyTemplate: 'Case {{case_number}} received.',
+      })
+      expect(tx.notification_template.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ channel: 'push', subject_template: null, updated_by: STAFF_ID }),
+        }),
+      )
+    })
+
+    it('requires an email subject and a body on every channel', async () => {
+      tx.notification_template.findUnique.mockResolvedValue(null)
+      await expect(
+        service.updateTemplateForStaff(USER_ID, 'complaint_received', { channel: 'email', subjectTemplate: '', bodyTemplate: 'Hi' }),
+      ).rejects.toThrow('EMAIL_SUBJECT_REQUIRED')
+      await expect(service.updateTemplateForStaff(USER_ID, 'complaint_received', { channel: 'push', isActive: true })).rejects.toThrow(
+        'TEMPLATE_BODY_REQUIRED',
+      )
+      tx.notification_template.findUnique.mockResolvedValue(savedSms)
+      await expect(service.updateTemplateForStaff(USER_ID, 'complaint_received', { channel: 'sms', bodyTemplate: '' })).rejects.toThrow(
+        'TEMPLATE_BODY_REQUIRED',
+      )
+      expect(tx.notification_template.create).not.toHaveBeenCalled()
+      expect(tx.notification_template.update).not.toHaveBeenCalled()
+    })
+
+    it('rejects placeholders the message type does not fill', async () => {
+      tx.notification_template.findUnique.mockResolvedValue(savedSms)
+      const update = service.updateTemplateForStaff(USER_ID, 'complaint_received', {
+        channel: 'sms',
+        bodyTemplate: 'Hi {{first_name}}, case {{case_number}} is in.',
+      })
+      await expect(update).rejects.toBeInstanceOf(BadRequestException)
+      await expect(update).rejects.toMatchObject({ response: { message: 'INVALID_PLACEHOLDER', placeholders: ['first_name'] } })
+      expect(tx.notification_template.update).not.toHaveBeenCalled()
     })
   })
 })
