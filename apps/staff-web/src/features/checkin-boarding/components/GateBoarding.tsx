@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Button } from '@staff-web/components/ui/button'
 import { Card } from '@staff-web/components/ui/card'
 import { Input } from '@staff-web/components/ui/input'
@@ -31,13 +32,15 @@ export interface GateBoardingProps {
   api: StaffApi
   /** The airport whose gates are on screen. */
   airportCode: string
+  /** The spot in the page header, next to the airport, where the gate select goes. */
+  gateSlot?: HTMLElement | null
 }
 
 /**
  * The boarding tab: the gates of one airport, the flight that boards at the gate on screen, the scan of the
  * boarding passes, the passenger list and the head-count that closes the gate.
  */
-export function GateBoarding({ api, airportCode }: GateBoardingProps) {
+export function GateBoarding({ api, airportCode, gateSlot }: GateBoardingProps) {
   const [gates, setGates] = useState<GateInfo[]>([])
   const [flights, setFlights] = useState<FlightSummary[]>([])
   /** The gate on screen and the flight that was on it when the gate was picked. */
@@ -383,6 +386,23 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
     </TableRow>
   )
 
+  /** The gate picker: drawn in the page header to the left of the airport when the page gives a slot. */
+  const gateSelect =
+    gates.length > 0 ? (
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="gate-select" className={INPUT_LABEL}>
+          Gate
+        </Label>
+        <NativeSelect id="gate-select" className="w-full sm:w-[240px]" value={gateId} onChange={(event) => chooseGate(event.target.value)}>
+          {gates.map((item) => (
+            <option key={item.id} value={item.id}>
+              {gateLabel(item)}
+            </option>
+          ))}
+        </NativeSelect>
+      </div>
+    ) : null
+
   const empty = (title: string, text: string, children?: ReactNode) => (
     <Card className={`${PANEL} items-center text-center`}>
       <h2 className={PANEL_TITLE}>{title}</h2>
@@ -393,23 +413,8 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        {subtitle ? <p className={`m-0 ${MUTED}`}>{subtitle}</p> : null}
-        {gates.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="gate-select" className={INPUT_LABEL}>
-              Gate
-            </Label>
-            <NativeSelect id="gate-select" className="w-[240px]" value={gateId} onChange={(event) => chooseGate(event.target.value)}>
-              {gates.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {gateLabel(item)}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-        ) : null}
-      </div>
+      {subtitle ? <p className={`m-0 ${MUTED}`}>{subtitle}</p> : null}
+      {gateSelect ? (gateSlot ? createPortal(gateSelect, gateSlot) : gateSelect) : null}
 
       <ErrorBanner message={error} onDismiss={() => setError(null)} />
 

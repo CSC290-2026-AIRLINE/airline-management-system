@@ -28,6 +28,8 @@ export function GatePage({ api, tab, airport, onSearch }: GatePageProps) {
   const [counts, setCounts] = useState<AirportGateCount[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  /** The header spot to the left of the airport where the boarding tab puts its gate select. */
+  const [gateSlot, setGateSlot] = useState<HTMLDivElement | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -64,29 +66,32 @@ export function GatePage({ api, tab, airport, onSearch }: GatePageProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="m-0 font-sans text-[36px] font-extrabold leading-[1.1] tracking-tight text-foreground">Gate</h1>
         </div>
-        {counts.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="gate-airport" className={INPUT_LABEL}>
-              Airport
-            </Label>
-            <NativeSelect
-              id="gate-airport"
-              className="w-[220px]"
-              value={airportEntry?.airportCode ?? ''}
-              onChange={(event) => onSearch({ airport: event.target.value })}
-            >
-              {counts.map((item) => (
-                <option key={item.airportCode} value={item.airportCode}>
-                  {item.airportCode} · {item.city}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
-        ) : null}
+        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start">
+          <div ref={setGateSlot} className="contents" />
+          {counts.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="gate-airport" className={INPUT_LABEL}>
+                Airport
+              </Label>
+              <NativeSelect
+                id="gate-airport"
+                className="w-full sm:w-[220px]"
+                value={airportEntry?.airportCode ?? ''}
+                onChange={(event) => onSearch({ airport: event.target.value })}
+              >
+                {counts.map((item) => (
+                  <option key={item.airportCode} value={item.airportCode}>
+                    {item.airportCode} · {item.city}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <ErrorBanner message={error} onDismiss={() => setError(null)} />
@@ -104,7 +109,7 @@ export function GatePage({ api, tab, airport, onSearch }: GatePageProps) {
         <TabsContent value="boarding">
           {airportEntry ? (
             /* The airport changes the screen from scratch, so the tab is mounted again for every airport. */
-            <GateBoarding key={airportEntry.airportCode} api={api} airportCode={airportEntry.airportCode} />
+            <GateBoarding key={airportEntry.airportCode} api={api} airportCode={airportEntry.airportCode} gateSlot={gateSlot} />
           ) : (
             <p role="status" className={`m-0 ${MUTED}`}>
               {noAirport}
