@@ -18,6 +18,11 @@ export type ErrorCode =
   | 'BAG_REFUSED'
   | 'INVALID_STATE'
   | 'HEADCOUNT_MISMATCH'
+  | 'INVALID_GATE_CODE'
+  | 'GATE_EXISTS'
+  | 'GATE_IN_USE'
+  | 'GATE_TAKEN'
+  | 'GATE_INACTIVE'
 
 export class CheckInError extends HttpException {
   readonly code: ErrorCode
@@ -37,3 +42,6 @@ export class CheckInError extends HttpException {
 export const notFound = (what: string) => new CheckInError(404, 'NOT_FOUND', `${what} not found`)
 export const validation = (message: string, details?: Record<string, unknown>) => new CheckInError(400, 'VALIDATION', message, details)
 export const invalidState = (message: string) => new CheckInError(409, 'INVALID_STATE', message)
+/** The request is fine, but the world says no: the gate is taken, in use or already there. */
+export const conflict = (code: ErrorCode, message: string, details?: Record<string, unknown>) =>
+  new CheckInError(409, code, message, details)

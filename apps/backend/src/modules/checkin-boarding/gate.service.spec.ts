@@ -232,7 +232,8 @@ describe('GateService notifications', () => {
   it('notifies with the F13 type codes', async () => {
     const { gate, notify } = build()
     const spy = jest.spyOn(notify, 'send')
-    await gate.setGate(staff, 'flt-fy204', { gateId: 'gate-a2' })
+    await gate.addGates(staff, 'BKK', ['D1'])
+    await gate.setGate(staff, 'flt-fy204', { gateId: 'gate-bkk-d1' })
     expect(spy).toHaveBeenCalledWith('gate_changed', expect.objectContaining({ flightId: 'flt-fy204' }))
     await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
     await gate.closeGate(staff, 'flt-fy204', {})
@@ -245,11 +246,12 @@ describe('GateService.setGate', () => {
     const { gate, checkins, store, notify, audit } = build()
     const notifySpy = jest.spyOn(notify, 'send')
     const auditSpy = jest.spyOn(audit, 'record')
-    await gate.setGate(staff, 'flt-fy204', { gateId: 'gate-a2' })
-    expect((await gate.passengerList(staff, 'gate-a2', 'flt-fy204')).gate.code).toBe('A2')
+    await gate.addGates(staff, 'BKK', ['D1'])
+    await gate.setGate(staff, 'flt-fy204', { gateId: 'gate-bkk-d1' })
+    expect((await gate.passengerList(staff, 'gate-bkk-d1', 'flt-fy204')).gate.code).toBe('D1')
     expect(notifySpy).toHaveBeenCalledWith('gate_changed', expect.objectContaining({ flightId: 'flt-fy204' }))
     expect(auditSpy).toHaveBeenCalledWith(expect.objectContaining({ action: 'gate.change' }))
-    expect((await checkins.boardingPass(staff, await idOf(store, 'SA224B'))).gate).toBe('A2')
+    expect((await checkins.boardingPass(staff, await idOf(store, 'SA224B'))).gate).toBe('D1')
   })
 
   it('setGate to the same gate is a no-op and an unknown gate is refused', async () => {
@@ -265,6 +267,146 @@ describe('GateService.setGate', () => {
     await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
     await gate.closeGate(staff, 'flt-fy204', {})
     await expect(gate.setGate(staff, 'flt-fy204', { gateId: 'gate-a2' })).rejects.toMatchObject({ code: 'INVALID_STATE' })
+  })
+})
+
+describe('GateService.gates', () => {
+  it('lists the gates of one airport, number-aware, with the open flight', async () => {
+    const { gate } = build()
+    await gate.addGates(staff, 'BKK', ['A10', 'A3'])
+    const gates = await gate.gates('BKK')
+    expect(gates.map((g) => g.code)).toEqual(['A1', 'A2', 'A3', 'A10'])
+    expect(gates.find((g) => g.code === 'A1')?.flight).toMatchObject({ id: 'flt-fy204', flightNumber: 'FY 204' })
+    expect(gates.find((g) => g.code === 'A3')?.flight).toBeNull()
+  })
+
+  it('hides turned-off gates unless all is asked', async () => {
+    const { gate } = build()
+    await gate.addGates(staff, 'BKK', ['D1'])
+    await gate.setGateActive(staff, 'gate-bkk-d1', false)
+    expect((await gate.gates('BKK')).map((g) => g.code)).toEqual(['A1', 'A2'])
+    expect((await gate.gates('BKK', true)).map((g) => g.code)).toEqual(['A1', 'A2', 'D1'])
+  })
+
+  it('counts turned-on gates for every airport, zero included', async () => {
+    const { gate } = build()
+    expect(await gate.gateCounts()).toEqual([
+      { airportCode: 'BKK', city: 'Bangkok', gates: 2 },
+      { airportCode: 'ICN', city: 'Seoul Incheon', gates: 0 },
+      { airportCode: 'NRT', city: 'Tokyo Narita', gates: 0 },
+    ])
+  })
+})
+
+describe('GateService.addGates', () => {
+  it('adds gates, skips the ones already there and audits', async () => {
+    const { gate, audit } = build()
+    const spy = jest.spyOn(audit, 'record')
+    const result = await gate.addGates(staff, 'BKK', ['A2', 'D1'])
+    expect(result.added.map((g) => g.code)).toEqual(['D1'])
+    expect(result.skipped).toEqual(['A2'])
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ action: 'gate.create' }))
+  })
+
+  it('refuses when every code exists', async () => {
+    const { gate } = build()
+    await expect(gate.addGates(staff, 'BKK', ['A1', 'A2'])).rejects.toMatchObject({
+      code: 'GATE_EXISTS',
+      details: { skipped: ['A1', 'A2'] },
+    })
+  })
+
+  it('refuses a bad code and adds nothing', async () => {
+    const { gate, store } = build()
+    await expect(gate.addGates(staff, 'BKK', ['D1', 'd2', 'TOOLONG'])).rejects.toMatchObject({
+      code: 'INVALID_GATE_CODE',
+      details: { codes: ['d2', 'TOOLONG'] },
+    })
+    expect((await store.listGates()).map((g) => g.code)).toEqual(['A1', 'A2'])
+  })
+
+  it('refuses an unknown airport', async () => {
+    const { gate } = build()
+    await expect(gate.addGates(staff, 'XXX', ['D1'])).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+
+  it('the same code twice in one request is added once', async () => {
+    const { gate } = build()
+    const result = await gate.addGates(staff, 'BKK', ['D1', 'D1'])
+    expect(result.added.map((g) => g.code)).toEqual(['D1'])
+    expect(result.skipped).toEqual([])
+  })
+})
+
+describe('GateService.setGateActive', () => {
+  it('a gate with an open flight cannot be turned off', async () => {
+    const { gate } = build()
+    await expect(gate.setGateActive(staff, 'gate-a1', false)).rejects.toMatchObject({
+      code: 'GATE_IN_USE',
+      details: { flightNumber: 'FY 204' },
+    })
+  })
+
+  it('a gate whose flight is closed can be turned off and on again', async () => {
+    const { gate, store } = build()
+    await store.updateFlightBoarding('flt-fy204', { closed_at: new Date() })
+    expect(await gate.setGateActive(staff, 'gate-a1', false)).toMatchObject({ code: 'A1', isActive: false })
+    expect(await gate.setGateActive(staff, 'gate-a1', true)).toMatchObject({ isActive: true })
+  })
+
+  it('a gate whose flight is closed can take another flight', async () => {
+    const { gate, store } = build()
+    await store.updateFlightBoarding('flt-fy204', { closed_at: new Date() })
+    await gate.setGateActive(staff, 'gate-a1', false)
+    await gate.setGateActive(staff, 'gate-a1', true)
+    expect(await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a1' })).toMatchObject({ gate: { code: 'A1' } })
+  })
+
+  it('turns a gate off and audits it', async () => {
+    const { gate, audit } = build()
+    const spy = jest.spyOn(audit, 'record')
+    await gate.addGates(staff, 'BKK', ['D1'])
+    await gate.setGateActive(staff, 'gate-bkk-d1', false)
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ action: 'gate.update' }))
+  })
+
+  it('an unknown gate is a 404', async () => {
+    const { gate } = build()
+    await expect(gate.setGateActive(staff, 'gate-zz', false)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+})
+
+describe('GateService.setGate and the gate rules', () => {
+  it('moving to a gate another open flight uses is refused', async () => {
+    const { gate } = build()
+    await expect(gate.setGate(staff, 'flt-fy204', { gateId: 'gate-a2' })).rejects.toMatchObject({
+      code: 'GATE_TAKEN',
+      details: { flightNumber: 'FY 318' },
+    })
+  })
+
+  it('moving to a turned-off gate is refused', async () => {
+    const { gate } = build()
+    await gate.addGates(staff, 'BKK', ['D1'])
+    await gate.setGateActive(staff, 'gate-bkk-d1', false)
+    await expect(gate.setGate(staff, 'flt-fy204', { gateId: 'gate-bkk-d1' })).rejects.toMatchObject({
+      code: 'GATE_INACTIVE',
+    })
+  })
+
+  it('moving to a gate at another airport is refused', async () => {
+    const { gate } = build()
+    await gate.addGates(staff, 'NRT', ['N1'])
+    await expect(gate.setGate(staff, 'flt-fy204', { gateId: 'gate-nrt-n1' })).rejects.toMatchObject({
+      code: 'VALIDATION',
+    })
+  })
+
+  it('moving a flight to the gate it is already on returns the flight', async () => {
+    const { gate, notify } = build()
+    const spy = jest.spyOn(notify, 'send')
+    expect(await gate.setGate(staff, 'flt-fy204', { gateId: 'gate-a1' })).toMatchObject({ gate: { code: 'A1' } })
+    expect(spy).not.toHaveBeenCalled()
   })
 })
 

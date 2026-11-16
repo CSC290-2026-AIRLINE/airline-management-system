@@ -1,9 +1,19 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { Actor } from './actor'
-import type { FlightSummary, GateInfo, GateList, GateListEntry, Headcount, RejectReason, ScanResult } from './api-types'
+import type {
+  AddGatesResult,
+  AirportGateCount,
+  FlightSummary,
+  GateInfo,
+  GateList,
+  GateListEntry,
+  Headcount,
+  RejectReason,
+  ScanResult,
+} from './api-types'
 import { decideScan } from './domain/boarding'
 import { computeWindow } from './domain/window'
-import { CheckInError, invalidState, notFound, validation } from './errors'
+import { CheckInError, conflict, invalidState, notFound, validation } from './errors'
 import { toFlightSummary, toGateInfo, toGateList, toHeadcount } from './mappers'
 import { AUDIT, BOOKINGS, CLOCK, FLIGHTS, NOTIFY, POLICE, SCREENING, SEATS, SENSOR, SETTINGS } from './providers/providers'
 import type {
@@ -35,6 +45,9 @@ const boardedPassIds = (events: BoardingEventRecord[]) => passIdsWith(events, ['
 /** A pass that boarded or no-showed is final: the unique index allows no second final event. */
 const finalPassIds = (events: BoardingEventRecord[]) => passIdsWith(events, ['boarded', 'no_show'])
 
+/** A gate code is 1 to 4 letters or digits, like A1 or 12. */
+const GATE_CODE = /^[A-Z0-9]{1,4}$/
+
 /**
  * The gate of feature 6: the agent calls the groups, scans the boarding passes, watches the head-count and
  * closes the gate. The boarding rules live in domain/boarding, the other features behind a provider.
@@ -55,9 +68,78 @@ export class GateService {
     @Inject(CHECKIN_REPOSITORY) private readonly store: CheckInRepository,
   ) {}
 
-  /** The gates of the airport. */
-  async gates(): Promise<GateInfo[]> {
-    return (await this.store.listGates()).map(toGateInfo)
+  /** The gates of one airport, number-aware; the turned-off ones only when every gate is asked for. */
+  async gates(airportCode: string, all = false): Promise<GateInfo[]> {
+    const code = airportCode.trim().toUpperCase()
+    const gates = (await this.store.listGates()).filter((gate) => gate.airport_code.toUpperCase() === code && (all || gate.is_active))
+    const flights = await this.openFlightsByGate()
+    return gates
+      .sort((a, b) => a.code.localeCompare(b.code, 'en', { numeric: true }))
+      .map((gate) => toGateInfo(gate, flights.get(gate.id) ?? null))
+  }
+
+  /** The turned-on gates of every airport, the airports without gates included. */
+  async gateCounts(): Promise<AirportGateCount[]> {
+    const gates = await this.store.listGates()
+    const airports = await this.flightProvider.airports()
+    return airports.map((airport) => ({
+      airportCode: airport.code,
+      city: airport.city,
+      gates: gates.filter((gate) => gate.airport_code.toUpperCase() === airport.code.toUpperCase() && gate.is_active).length,
+    }))
+  }
+
+  /** Adds gates to an airport; the codes that are already there are skipped, the bad ones are refused. */
+  async addGates(actor: Actor, airportCode: string, codes: string[]): Promise<AddGatesResult> {
+    this.staffIdOf(actor)
+    const airport = (await this.flightProvider.airports()).find((a) => a.code === airportCode.trim().toUpperCase())
+    if (!airport) throw notFound('Airport')
+    const bad = codes.filter((code) => !GATE_CODE.test(code))
+    if (bad.length > 0) {
+      throw new CheckInError(400, 'INVALID_GATE_CODE', 'A gate code is 1 to 4 letters or digits', { codes: bad })
+    }
+    const there = (await this.store.listGates()).filter((gate) => gate.airport_code === airport.code).map((gate) => gate.code)
+    const wanted = [...new Set(codes)]
+    const skipped = wanted.filter((code) => there.includes(code))
+    const fresh = wanted.filter((code) => !there.includes(code))
+    if (fresh.length === 0) throw conflict('GATE_EXISTS', 'These gates are already there', { skipped })
+
+    const added = (await this.store.createGates(airport.code, fresh)).sort((a, b) => a.code.localeCompare(b.code, 'en', { numeric: true }))
+    await this.audit.record({
+      actorType: 'staff',
+      actorId: actor.userId,
+      action: 'gate.create',
+      entityType: 'airport',
+      entityId: airport.code,
+      summary: `gates ${added.map((gate) => gate.code).join(', ')} added at ${airport.code}`,
+      after: { codes: added.map((gate) => gate.code) },
+    })
+    return { added: added.map((gate) => toGateInfo(gate)), skipped }
+  }
+
+  /** Turns a gate on or off; a gate with a flight on it stays on until the flight moves. */
+  async setGateActive(actor: Actor, gateId: string, isActive: boolean): Promise<GateInfo> {
+    this.staffIdOf(actor)
+    const gate = await this.store.getGate(gateId)
+    if (!gate) throw notFound('Gate')
+    if (!isActive) {
+      const flight = await this.openFlightOf(gate.id)
+      if (flight)
+        throw conflict('GATE_IN_USE', `${flight.flightNumber} is at this gate, move it first`, { flightNumber: flight.flightNumber })
+    }
+    const updated = await this.store.setGateActive(gate.id, isActive)
+    await this.audit.record({
+      actorType: 'staff',
+      actorId: actor.userId,
+      action: 'gate.update',
+      entityType: 'airport',
+      entityId: updated.airport_code,
+      summary: `gate ${updated.code} turned ${isActive ? 'on' : 'off'} at ${updated.airport_code}`,
+      before: { code: gate.code, isActive: gate.is_active },
+      after: { code: updated.code, isActive },
+    })
+    const flights = await this.openFlightsByGate()
+    return toGateInfo(updated, flights.get(updated.id) ?? null)
   }
 
   /** The flights of the day, each with the gate it boards at. */
@@ -74,13 +156,22 @@ export class GateService {
     this.staffIdOf(actor)
     const gate = await this.store.getGate(input.gateId)
     if (!gate) throw notFound('Gate')
-    if (!gate.is_active) throw validation('This gate is not active', { gateId: gate.id })
     const flight = await this.flightOf(flightId)
     const boarding = await this.store.flightBoarding(flightId)
     if (boarding?.closed_at) throw invalidState('The gate of this flight is closed')
+    if (!gate.is_active) throw conflict('GATE_INACTIVE', 'This gate is turned off', { gateId: gate.id })
+    if (gate.airport_code !== flight.origin.code) {
+      throw validation(`This gate is at ${gate.airport_code} and ${flight.flightNumber} departs from ${flight.origin.code}`)
+    }
 
     const from = boarding ? await this.store.getGate(boarding.gate_id) : null
     if (boarding?.gate_id === gate.id) return this.flightSummaryOf(flight)
+    const taken = await this.openFlightOf(gate.id)
+    // shortcut: two agents moving two flights to the same free gate at the same instant can both pass this check;
+    // a partial unique index on the open boardings of a gate would close it (needs the database team).
+    if (taken && taken.id !== flightId) {
+      throw conflict('GATE_TAKEN', `${taken.flightNumber} is at this gate`, { flightNumber: taken.flightNumber })
+    }
 
     await this.store.upsertFlightBoarding(flightId, gate.id)
     await this.notify.send('gate_changed', { flightId, from: from?.code ?? null, to: gate.code })
@@ -432,6 +523,22 @@ export class GateService {
     if (!gateId) return null
     const gate = await this.store.getGate(gateId)
     return gate?.code ?? null
+  }
+
+  /** The open flights of every gate, by gate id: a closed gate is done. */
+  private async openFlightsByGate(): Promise<Map<string, NonNullable<GateInfo['flight']>>> {
+    const flights = new Map<string, NonNullable<GateInfo['flight']>>()
+    for (const boarding of await this.store.openFlightBoardings()) {
+      const flight = await this.flightProvider.byId(boarding.flight_id)
+      if (!flight) continue
+      flights.set(boarding.gate_id, { id: flight.id, flightNumber: flight.flightNumber, depAt: flight.depAt.toISOString() })
+    }
+    return flights
+  }
+
+  /** The flight that boards at the gate now, if any. */
+  private async openFlightOf(gateId: string): Promise<NonNullable<GateInfo['flight']> | null> {
+    return (await this.openFlightsByGate()).get(gateId) ?? null
   }
 
   private async boardedCountOf(flightId: string): Promise<number> {

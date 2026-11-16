@@ -201,12 +201,16 @@ export function toStaffRow(input: {
   return { ...input }
 }
 
-export function toGateInfo(gate: { id: string; code: string; airport_code: string; is_active: boolean }): GateInfo {
+export function toGateInfo(
+  gate: { id: string; code: string; airport_code: string; is_active: boolean },
+  flight: GateInfo['flight'] = null,
+): GateInfo {
   return {
     id: gate.id,
     code: gate.code,
     airportCode: gate.airport_code,
     isActive: gate.is_active,
+    flight,
   }
 }
 

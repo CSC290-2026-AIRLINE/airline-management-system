@@ -204,12 +204,42 @@ describe('staff routes', () => {
     const print = await req.post(`/staff/boarding-passes/${detail.body.boardingPass.id}/print`).set('x-test-user', STAFF).expect(201)
     expect(print.body.printedAt).toBe('2026-11-11T01:00:00.000Z')
 
-    const moved = await req.put('/staff/flights/flt-fy204/gate').set('x-test-user', STAFF).send({ gateId: 'gate-a2' }).expect(200)
-    expect(moved.body.gate.code).toBe('A2')
+    const moved = await req.put('/staff/flights/flt-fy204/gate').set('x-test-user', STAFF).send({ gateId: 'gate-a2' }).expect(409)
+    expect(moved.body.error).toMatchObject({ code: 'GATE_TAKEN' })
 
-    expect((await req.get('/staff/gates').set('x-test-user', STAFF).expect(200)).body).toHaveLength(2)
+    await req
+      .post('/staff/airports/BKK/gates')
+      .set('x-test-user', STAFF)
+      .send({ codes: ['D1'] })
+      .expect(201)
+    const again = await req.put('/staff/flights/flt-fy204/gate').set('x-test-user', STAFF).send({ gateId: 'gate-bkk-d1' }).expect(200)
+    expect(again.body.gate.code).toBe('D1')
+
+    expect((await req.get('/staff/gates?airport=BKK').set('x-test-user', STAFF).expect(200)).body).toHaveLength(3)
     expect((await req.get('/staff/flights').set('x-test-user', STAFF).expect(200)).body).toHaveLength(2)
     expect((await req.get('/staff/flights/flt-fy204/bags').set('x-test-user', STAFF).expect(200)).body).toEqual([])
+  })
+
+  it('staff: the gate setup (list, add, switch and count)', async () => {
+    const missing = await req.get('/staff/gates').set('x-test-user', STAFF).expect(400)
+    expect(missing.body.error).toMatchObject({ code: 'VALIDATION' })
+
+    const gates = await req.get('/staff/gates?airport=BKK').set('x-test-user', STAFF).expect(200)
+    expect(gates.body).toHaveLength(2)
+
+    const added = await req
+      .post('/staff/airports/BKK/gates')
+      .set('x-test-user', STAFF)
+      .send({ codes: ['D1', 'D2'] })
+      .expect(201)
+    expect(added.body.added.map((gate: { code: string }) => gate.code)).toEqual(['D1', 'D2'])
+    expect(added.body.skipped).toEqual([])
+
+    const busy = await req.patch('/staff/gates/gate-a1').set('x-test-user', STAFF).send({ isActive: false }).expect(409)
+    expect(busy.body.error).toMatchObject({ code: 'GATE_IN_USE' })
+
+    const counts = await req.get('/staff/gates/counts').set('x-test-user', STAFF).expect(200)
+    expect(counts.body).toContainEqual({ airportCode: 'BKK', city: 'Bangkok', gates: 4 })
   })
 
   it('a customer may not read the counter of another passenger', async () => {

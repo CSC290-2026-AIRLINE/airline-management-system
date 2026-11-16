@@ -42,7 +42,10 @@ passenger their own seat and hides the other cabins.
 | POST   | `/staff/travel-documents/:id/clear-mismatch`        |                                                         | `CounterService.clearMismatch`                              |
 | POST   | `/staff/travel-documents/:id/check-visa`            |                                                         | `CounterService.checkVisa`                                  |
 | POST   | `/staff/boarding-passes/:id/print`                  |                                                         | `CounterService.printPass`                                  |
-| GET    | `/staff/gates`                                      |                                                         | `GateService.gates`                                         |
+| GET    | `/staff/gates`                                      | `?airport&all`                                          | `GateService.gates`                                         |
+| GET    | `/staff/gates/counts`                               |                                                         | `GateService.gateCounts`                                    |
+| POST   | `/staff/airports/:airportCode/gates`                | `{ codes }`                                             | `GateService.addGates`                                      |
+| PATCH  | `/staff/gates/:gateId`                              | `{ isActive }`                                          | `GateService.setGateActive`                                 |
 | GET    | `/staff/flights`                                    |                                                         | `GateService.flights`                                       |
 | PUT    | `/staff/flights/:flightId/gate`                     | `{ gateId }`                                            | `GateService.setGate`                                       |
 | GET    | `/staff/gates/:gateId/flights/:flightId/passengers` |                                                         | `GateService.passengerList`                                 |
@@ -54,8 +57,18 @@ passenger their own seat and hides the other cabins.
 Every failure is `{ error: { code, message, details? } }`. The codes are closed: `VALIDATION`, `NOT_FOUND`,
 `FORBIDDEN`, `WINDOW_CLOSED`, `NOT_ELIGIBLE`, `MRZ_INVALID`, `PASSPORT_EXPIRING`, `VISA_REQUIRED`,
 `DUPLICATE_DOCUMENT`, `ON_HOLD`, `SEAT_TAKEN`, `LOCK_EXPIRED`, `EXCESS_UNPAID`, `BAG_REFUSED`, `INVALID_STATE`,
-`HEADCOUNT_MISMATCH`. The scan rejects are not HTTP errors: `WRONG_GATE`, `WRONG_FLIGHT`, `ALREADY_BOARDED`,
-`NOT_FOUND`, `GATE_CLOSED`, `ON_HOLD`, `CANCELLED` (the check-in was cancelled, so its pass never boards).
+`HEADCOUNT_MISMATCH`, `INVALID_GATE_CODE`, `GATE_EXISTS`, `GATE_IN_USE`, `GATE_TAKEN`, `GATE_INACTIVE`. The scan
+rejects are not HTTP errors: `WRONG_GATE`, `WRONG_FLIGHT`, `ALREADY_BOARDED`, `NOT_FOUND`, `GATE_CLOSED`, `ON_HOLD`,
+`CANCELLED` (the check-in was cancelled, so its pass never boards).
+
+### The gates of an airport
+
+Every airport has its own gates: `GET /staff/gates?airport=BKK` lists the turned-on ones (number-aware, A2 before
+A10) with the flight that boards there now, `all=true` adds the turned-off ones. `POST /staff/airports/BKK/gates`
+adds up to 30 codes (`^[A-Z0-9]{1,4}$`); the codes that are already there come back as `skipped`, a bad code is
+`INVALID_GATE_CODE` and nothing is added, a request of codes that are all there is `GATE_EXISTS`. `PATCH
+/staff/gates/:gateId` turns a gate on or off; a gate with a flight on it stays on (`GATE_IN_USE`). Gates are never
+deleted.
 
 The notifications carry feature 13's type codes: `check_in_completed` and `boarding_pass_issued` when the pass is
 issued, `gate_changed` when a flight moves to another gate, `boarding_call` when the gate closes.
@@ -260,7 +273,7 @@ hand-written fake `db` objects (`store/prisma-checkin-repository.spec.ts`, `prov
 `providers/db-staff-identity.spec.ts`, `providers/demo-data.spec.ts`); what they do against a real PostgreSQL is
 shown by the demo script.
 
-## Known gaps (as of 2026-11-08)
+## Known gaps (as of 2026-11-16)
 
 - **Staff roles** are not enforced: `DbStaffIdentity` only reads `user.type`. Feature 1's roles decide who may do what.
 - **F3 seat API**: the seat map, the 5-minute hold, confirm and release are ours. `DbSeats` writes the holds into
@@ -283,3 +296,6 @@ shown by the demo script.
   map these to code `UNKNOWN`.
 - **LoggerNotify writes with `logger.log`**, which `main.ts`'s logger levels (`error`, `warn`) hide. The audit is a
   real feature 15 row in `db` mode; only the memory mode still logs it.
+- **Two agents can move two flights to the same free gate at the same instant**: `setGate` reads the open boardings
+  and then writes its own. A partial unique index on the open boardings of a gate would close the gap; the database
+  team decides (see the `shortcut:` comment in `gate.service.ts`).

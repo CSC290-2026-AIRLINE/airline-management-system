@@ -64,3 +64,21 @@ export function optionalBoolean(body: unknown, key: string): boolean {
   if (typeof value !== 'boolean') throw validation(`${key} must be true or false`, { field: key })
   return value
 }
+
+/** A list of texts, for the gate codes a staff member adds at once. */
+export function requireStringArray(body: unknown, key: string, opts: { max: number }): string[] {
+  const value = bodyOf(body)[key]
+  if (!Array.isArray(value)) throw validation(`${key} must be a list of texts`, { field: key })
+  if (value.length === 0) throw validation(`${key} must not be empty`, { field: key })
+  if (value.length > opts.max) throw validation(`${key} must have at most ${opts.max} items`, { field: key })
+  const texts = value.filter((item): item is string => typeof item === 'string')
+  if (texts.length !== value.length) throw validation(`${key} must be a list of texts`, { field: key })
+  return texts.map((item) => item.trim())
+}
+
+/** A required flag, for the gate that is turned on or off. */
+export function requireBoolean(body: unknown, key: string): boolean {
+  const value = bodyOf(body)[key]
+  if (typeof value !== 'boolean') throw validation(`${key} must be true or false`, { field: key })
+  return value
+}

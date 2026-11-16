@@ -1,5 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common'
 import type {
+  AddGatesResult,
+  AirportGateCount,
   BagLookup,
   BoardingPassView,
   CheckedBagView,
@@ -13,7 +15,15 @@ import type {
 } from './api-types'
 import type { Actor } from './actor'
 import { CounterService } from './counter.service'
-import { optionalBoolean, optionalString, requireInt, requireNumber, requireString } from './dto/validate'
+import {
+  optionalBoolean,
+  optionalString,
+  requireBoolean,
+  requireInt,
+  requireNumber,
+  requireString,
+  requireStringArray,
+} from './dto/validate'
 import { validation } from './errors'
 import { GateService } from './gate.service'
 import { CurrentActor, StaffGuard, requireActor } from './guards/staff.guard'
@@ -103,9 +113,29 @@ export class StaffController {
   }
 
   @Get('gates')
-  async gates(@CurrentActor() actor: Actor | null): Promise<GateInfo[]> {
+  async gates(@CurrentActor() actor: Actor | null, @Query() query: Record<string, unknown>): Promise<GateInfo[]> {
     requireActor(actor)
-    return this.gate.gates()
+    return this.gate.gates(requireString(query, 'airport', { max: 8 }), query.all === 'true')
+  }
+
+  @Get('gates/counts')
+  async gateCounts(@CurrentActor() actor: Actor | null): Promise<AirportGateCount[]> {
+    requireActor(actor)
+    return this.gate.gateCounts()
+  }
+
+  @Post('airports/:airportCode/gates')
+  async addGates(
+    @CurrentActor() actor: Actor | null,
+    @Param('airportCode') airportCode: string,
+    @Body() body: unknown,
+  ): Promise<AddGatesResult> {
+    return this.gate.addGates(requireActor(actor), airportCode, requireStringArray(body, 'codes', { max: 30 }))
+  }
+
+  @Patch('gates/:gateId')
+  async setGateActive(@CurrentActor() actor: Actor | null, @Param('gateId') gateId: string, @Body() body: unknown): Promise<GateInfo> {
+    return this.gate.setGateActive(requireActor(actor), gateId, requireBoolean(body, 'isActive'))
   }
 
   @Get('flights')
