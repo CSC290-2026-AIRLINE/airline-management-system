@@ -430,8 +430,44 @@ export class CheckInStore implements CheckInRepository {
     return this.gates.get(id) ?? null
   }
 
+  /**
+   * Adds the gates of an airport. A code that is already there is skipped, the way the database skips it, so the
+   * memory and the database end up with the same gates.
+   */
+  async createGates(airportCode: string, codes: string[]): Promise<GateRecord[]> {
+    const now = this.now()
+    const created: GateRecord[] = []
+    for (const code of codes) {
+      if ([...this.gates.values()].some((g) => g.airport_code === airportCode && g.code === code)) continue
+      const record: GateRecord = {
+        id: `gate-${airportCode.toLowerCase()}-${code.toLowerCase()}`,
+        airport_code: airportCode,
+        code,
+        is_active: true,
+        created_at: now,
+        updated_at: now,
+      }
+      this.gates.set(record.id, record)
+      created.push(record)
+    }
+    return created
+  }
+
+  async setGateActive(id: string, isActive: boolean): Promise<GateRecord> {
+    const record = this.gates.get(id)
+    if (!record) throw new CheckInError(404, 'NOT_FOUND', 'Gate not found')
+    const next = { ...record, is_active: isActive, updated_at: this.now() }
+    this.gates.set(id, next)
+    return next
+  }
+
   async flightBoarding(flightId: string): Promise<FlightBoardingRecord | null> {
     return this.boardingRows.get(flightId) ?? null
+  }
+
+  /** The flights that still board: a closed gate is done. */
+  async openFlightBoardings(): Promise<FlightBoardingRecord[]> {
+    return [...this.boardingRows.values()].filter((b) => b.closed_at === null)
   }
 
   async upsertFlightBoarding(flightId: string, gateId: string): Promise<FlightBoardingRecord> {

@@ -81,6 +81,16 @@ const carryOnRow = {
   created_at: NOW,
 }
 
+const gateRow = (over: Record<string, unknown> = {}) => ({
+  id: 'gate-1',
+  airport_code: 'HKT',
+  code: '1',
+  is_active: true,
+  created_at: NOW,
+  updated_at: NOW,
+  ...over,
+})
+
 const eventRow = {
   id: 'ev-1',
   flight_id: 'flt-fy204',
@@ -111,10 +121,10 @@ const fakeDb = () => ({
   travel_document: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
   checked_bag: { create: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() },
   carry_on_check: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
-  flight_boarding: { findUnique: jest.fn(), upsert: jest.fn(), update: jest.fn() },
+  flight_boarding: { findUnique: jest.fn(), findMany: jest.fn(), upsert: jest.fn(), update: jest.fn() },
   boarding_pass: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
   boarding_event: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
-  gate: { findUnique: jest.fn(), findMany: jest.fn() },
+  gate: { findUnique: jest.fn(), findMany: jest.fn(), createManyAndReturn: jest.fn(), update: jest.fn() },
   $queryRaw: jest.fn(),
 })
 
@@ -278,5 +288,47 @@ describe('PrismaCheckInRepository', () => {
     await repo.upsertCarryOnCheck({ check_in_id: 'ci-1', weight_kg: 6.4, within_size: true, result: 'ok', staff_id: 'staff-1' })
     expect(db.carry_on_check.update).toHaveBeenCalled()
     expect(db.carry_on_check.create).not.toHaveBeenCalled()
+  })
+
+  it('creates the gates of an airport, skipping the ones that are there', async () => {
+    const { db, clock, repo } = build()
+    db.gate.createManyAndReturn.mockResolvedValue([gateRow(), gateRow({ id: 'gate-2', code: '2' })])
+    const gates = await repo.createGates('HKT', ['1', '2'])
+    expect(gates.map((g) => g.code)).toEqual(['1', '2'])
+    expect(db.gate.createManyAndReturn).toHaveBeenCalledWith({
+      data: [
+        { airport_code: 'HKT', code: '1', is_active: true, updated_at: clock.now() },
+        { airport_code: 'HKT', code: '2', is_active: true, updated_at: clock.now() },
+      ],
+      skipDuplicates: true,
+    })
+  })
+
+  it('turns a gate off and answers a missing gate with NOT_FOUND', async () => {
+    const { db, repo } = build()
+    db.gate.update.mockResolvedValue(gateRow({ is_active: false }))
+    await expect(repo.setGateActive('gate-1', false)).resolves.toMatchObject({ is_active: false })
+    db.gate.update.mockRejectedValue(Object.assign(new Error('missing'), { code: 'P2025' }))
+    await expect(repo.setGateActive('gate-1', true)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+
+  it('lists the flight boardings that are still open', async () => {
+    const { db, repo } = build()
+    db.flight_boarding.findMany.mockResolvedValue([
+      {
+        flight_id: 'flt-fy204',
+        gate_id: 'gate-a1',
+        sensor_count: null,
+        manual_count: null,
+        boarded_count: null,
+        closed_at: null,
+        closed_by: null,
+        created_at: NOW,
+        updated_at: NOW,
+      },
+    ])
+    const open = await repo.openFlightBoardings()
+    expect(open.map((b) => b.flight_id)).toEqual(['flt-fy204'])
+    expect(db.flight_boarding.findMany).toHaveBeenCalledWith({ where: { closed_at: null } })
   })
 })

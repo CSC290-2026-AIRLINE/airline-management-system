@@ -170,6 +170,27 @@ describe('CheckInStore', () => {
     expect((await s.passByReference('V3LP9KWE'))!.boarding_group).toBe(1)
   })
 
+  it('creates the gates of an airport', async () => {
+    const s = store()
+    const gates = await s.createGates('HKT', ['1', '2'])
+    expect(gates).toHaveLength(2)
+    expect(gates[0]).toMatchObject({ airport_code: 'HKT', code: '1', is_active: true })
+    expect(await s.listGates()).toHaveLength(4)
+  })
+
+  it('turns a gate off and refuses an unknown gate', async () => {
+    const s = store()
+    expect(await s.setGateActive('gate-a2', false)).toMatchObject({ is_active: false })
+    await expect(s.setGateActive('gate-nope', true)).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+
+  it('lists the flight boardings that are still open', async () => {
+    const s = store()
+    expect((await s.openFlightBoardings()).map((b) => b.flight_id).sort()).toEqual(['flt-fy204', 'flt-fy318'])
+    await s.updateFlightBoarding('flt-fy204', { closed_at: new Date() })
+    expect((await s.openFlightBoardings()).map((b) => b.flight_id)).toEqual(['flt-fy318'])
+  })
+
   it('implements the repository asynchronously', async () => {
     const clock = new FixtureClock()
     const repo: CheckInRepository = new CheckInStore(clock)

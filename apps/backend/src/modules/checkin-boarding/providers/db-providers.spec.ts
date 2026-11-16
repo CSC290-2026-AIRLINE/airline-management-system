@@ -159,6 +159,22 @@ describe('DbFlights', () => {
     const db = { flight: { findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn() } }
     await expect(new DbFlights(db as unknown as DbService).byId('nope')).resolves.toBeNull()
   })
+
+  it('reads every airport, ordered by its code', async () => {
+    const db = {
+      airport: {
+        findMany: jest.fn().mockResolvedValue([
+          { iata_code: 'BKK', city: 'Bangkok', country: 'TH' },
+          { iata_code: 'NRT', city: 'Tokyo Narita', country: 'JP' },
+        ]),
+      },
+    }
+    await expect(new DbFlights(db as unknown as DbService).airports()).resolves.toEqual([
+      { code: 'BKK', city: 'Bangkok', country: 'th' },
+      { code: 'NRT', city: 'Tokyo Narita', country: 'jp' },
+    ])
+    expect(db.airport.findMany).toHaveBeenCalledWith({ orderBy: { iata_code: 'asc' } })
+  })
 })
 
 describe('DbPricing', () => {

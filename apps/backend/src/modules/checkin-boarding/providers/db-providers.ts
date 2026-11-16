@@ -9,6 +9,7 @@ import { fromIsoDate, toIsoDate } from '../store/prisma-mappers'
 import { POLICE_PASSPORTS, SETTINGS } from './fixtures'
 import { CLOCK, SEAT_FEE_TYPE } from './providers'
 import type {
+  AirportRecord,
   BookingPassenger,
   BookingProvider,
   ClockProvider,
@@ -76,6 +77,12 @@ export class DbFlights implements FlightProvider {
   async list(): Promise<FlightRecord[]> {
     const rows = await this.db.flight.findMany({ include: { route: { include: ROUTE_AIRPORTS } }, orderBy: { dep_at: 'asc' } })
     return rows.map(toFlightRecord)
+  }
+
+  /** Every airport of feature 2, sorted by its code. */
+  async airports(): Promise<AirportRecord[]> {
+    const rows = await this.db.airport.findMany({ orderBy: { iata_code: 'asc' } })
+    return rows.map((row) => airportOf(row))
   }
 }
 

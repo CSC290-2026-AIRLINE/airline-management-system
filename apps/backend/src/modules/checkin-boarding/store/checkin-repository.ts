@@ -62,7 +62,13 @@ export interface CheckInRepository {
 
   listGates(): Promise<GateRecord[]>
   getGate(id: string): Promise<GateRecord | null>
+  /** Adds the gates of an airport; the caller passes only the codes that are new. */
+  createGates(airportCode: string, codes: string[]): Promise<GateRecord[]>
+  /** Turns a gate on or off; a gate that is not there is a 404. */
+  setGateActive(id: string, isActive: boolean): Promise<GateRecord>
   flightBoarding(flightId: string): Promise<FlightBoardingRecord | null>
+  /** The flight boardings that are not closed yet: the flights that still board. */
+  openFlightBoardings(): Promise<FlightBoardingRecord[]>
   upsertFlightBoarding(flightId: string, gateId: string): Promise<FlightBoardingRecord>
   updateFlightBoarding(flightId: string, patch: UpdateFlightBoardingPatch): Promise<FlightBoardingRecord>
 

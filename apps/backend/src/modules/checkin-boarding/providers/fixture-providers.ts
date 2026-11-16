@@ -4,6 +4,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common'
 import type { Cabin, CarryOnAllowance, SeatLock, SeatMap, SeatStatus, SeatType } from '../api-types'
 import { CheckInError } from '../errors'
 import {
+  AIRPORTS,
   BLOCKED_SEATS,
   BOOKINGS,
   DEMO_NOW,
@@ -22,6 +23,7 @@ import {
   seatOf,
 } from './fixtures'
 import type {
+  AirportRecord,
   AuditProvider,
   BookingPassenger,
   BookingProvider,
@@ -64,6 +66,11 @@ export class FixtureFlights implements FlightProvider {
 
   async list(): Promise<FlightRecord[]> {
     return FLIGHTS
+  }
+
+  /** The airports of the demo, sorted by code. */
+  async airports(): Promise<AirportRecord[]> {
+    return Object.values(AIRPORTS).sort((a, b) => a.code.localeCompare(b.code))
   }
 }
 

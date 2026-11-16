@@ -4,6 +4,7 @@ import type { PricingProvider } from './providers'
 import {
   FixtureBookings,
   FixtureClock,
+  FixtureFlights,
   FixturePassengers,
   FixturePayments,
   FixturePricing,
@@ -59,6 +60,14 @@ describe('FixtureSeats', () => {
     await seats.hold('flt-fy204', '19D', 'bp-er224f', 300_000)
     await expect(seats.confirm(first.id, null)).rejects.toMatchObject({ code: 'NOT_FOUND' })
     await expect(seats.confirm('lock-2', null)).resolves.toMatchObject({ seatCode: '19D' })
+  })
+})
+
+describe('FixtureFlights', () => {
+  it('lists every airport, sorted by code', async () => {
+    const airports = await new FixtureFlights().airports()
+    expect(airports.map((a) => a.code)).toEqual(['BKK', 'ICN', 'NRT'])
+    expect(airports[0]).toEqual({ code: 'BKK', city: 'Bangkok', country: 'th' })
   })
 })
 

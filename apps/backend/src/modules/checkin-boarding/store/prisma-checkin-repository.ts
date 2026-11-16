@@ -273,9 +273,31 @@ export class PrismaCheckInRepository implements CheckInRepository {
     return row ? toGateRecord(row) : null
   }
 
+  /** Adds the gates of an airport; the database skips the codes that are already there. */
+  async createGates(airportCode: string, codes: string[]): Promise<GateRecord[]> {
+    const now = this.clock.now()
+    const rows = await this.db.gate.createManyAndReturn({
+      data: codes.map((code) => ({ airport_code: airportCode, code, is_active: true, updated_at: now })),
+      skipDuplicates: true,
+    })
+    return rows.map(toGateRecord)
+  }
+
+  async setGateActive(id: string, isActive: boolean): Promise<GateRecord> {
+    const row = await this.write('Gate', () =>
+      this.db.gate.update({ where: { id }, data: { is_active: isActive, updated_at: this.clock.now() } }),
+    )
+    return toGateRecord(row)
+  }
+
   async flightBoarding(flightId: string): Promise<FlightBoardingRecord | null> {
     const row = await this.db.flight_boarding.findUnique({ where: { flight_id: flightId } })
     return row ? toFlightBoardingRecord(row) : null
+  }
+
+  /** The flights that still board: a closed gate is done. */
+  async openFlightBoardings(): Promise<FlightBoardingRecord[]> {
+    return (await this.db.flight_boarding.findMany({ where: { closed_at: null } })).map(toFlightBoardingRecord)
   }
 
   async upsertFlightBoarding(flightId: string, gateId: string): Promise<FlightBoardingRecord> {

@@ -51,6 +51,8 @@ export interface FlightRecord {
 export interface FlightProvider {
   byId(id: string): Promise<FlightRecord | null>
   list(): Promise<FlightRecord[]>
+  /** Every airport of the airline, sorted by code. */
+  airports(): Promise<AirportRecord[]>
 }
 
 /** Feature 3 owns bookings; F6 only needs the passenger behind a PNR. */
