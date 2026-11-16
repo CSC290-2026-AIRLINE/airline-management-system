@@ -11,7 +11,12 @@ import { BuildPairingModule } from './modules/crew-rostering/build-pairing/build
 import { FixPublishModule } from './modules/crew-rostering/fix-publish/fix-publish.module'
 import { SetupCrewModule } from './modules/crew-rostering/setup-crew/setup-crew.module'
 import { SetupRuleModule } from './modules/crew-rostering/setup-rule/setup-rule.module'
+import { ScreeningModule } from './modules/screening/screening.module'
 import { PricingModule } from './modules/pricing/pricing.module'
+import { PassengerProfilesModule } from '@backend/modules/passenger-profiles/passenger-profiles.module'
+import { WatchlistModule } from './modules/watchlist/watchlist.module'
+import { AircraftManagementModule } from '@backend/modules/aircraft-management/aircraft-management.module'
+import { FlightSchedulingModule } from './modules/flight-scheduling/flight-scheduling.module'
 
 @Module({
   imports: [
@@ -25,6 +30,11 @@ import { PricingModule } from './modules/pricing/pricing.module'
     SetupCrewModule,
     SetupRuleModule,
     PricingModule,
+    PassengerProfilesModule,
+    ScreeningModule,
+    WatchlistModule,
+    AircraftManagementModule,
+    FlightSchedulingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

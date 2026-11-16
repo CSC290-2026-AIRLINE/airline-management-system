@@ -1,0 +1,645 @@
+/*
+ * Feature 9 — Aircraft Management.
+ * Tokens and components taken from the Figma file "CS26 UIUX Integrated Project"
+ * (F9 frames: fleet list, aircraft type list, readiness, and their modals).
+ * Every class is prefixed with `f9-` so the styles stay inside this feature.
+ */
+/*
+ * The starter stylesheet limits #root to 1126px and centres its text. The feature pages use the
+ * whole window, so those limits are lifted only while this feature is on screen.
+ */
+#root:has(.f9-root) {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  text-align: left;
+  border-inline: none;
+}
+
+.f9-root {
+  --f9-page: #f7f9fc;
+  --f9-ink: #0a1424;
+  --f9-navy: #102544;
+  --f9-muted: #677287;
+  --f9-faint: #b7c1d1;
+  --f9-border: #cbd5e1;
+  --f9-border-strong: #8ca1bf;
+  --f9-table-head: #e8edf5;
+  --f9-selected: #eaf2ff;
+  --f9-primary: #2563eb;
+  --f9-primary-dark: #1d4ed8;
+  --f9-primary-soft: #d6e4ff;
+  --f9-cream: #fff1c7;
+  --f9-accent: #f2a800;
+  --f9-green-bg: #d9f5e3;
+  --f9-green: #128c4c;
+  --f9-green-hover: #c3edd3;
+  --f9-amber-bg: #fff0c7;
+  --f9-amber: #b86e08;
+  --f9-red-bg: #ffe3e5;
+  --f9-red-bg-hover: #ffcdd1;
+  --f9-red: #db1f29;
+  --f9-disabled-bg: #eef1f7;
+  --f9-tab-line: #455266;
+
+  min-height: 100%;
+  display: flex;
+  background: var(--f9-page);
+  color: var(--f9-ink);
+  color-scheme: light;
+  font: 400 14px / 20px var(--font-sans);
+  letter-spacing: normal;
+  text-align: left;
+}
+
+.f9-root *,
+.f9-root *::before,
+.f9-root *::after {
+  box-sizing: border-box;
+}
+/* -------------------------------------------------------------- main area */
+.f9-main {
+  flex: 1;
+  min-width: 0;
+  padding: 24px 63px 40px;
+}
+
+.f9-content {
+  max-width: 997px;
+}
+
+/* The page header, at the same scale as the pricing, admin and customer pages. */
+.f9-header {
+  margin-bottom: 24px;
+}
+
+.f9-title {
+  margin: 0 0 4px;
+  color: var(--f9-ink);
+  font-family: var(--font-sans);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 32px;
+}
+
+.f9-subtitle {
+  margin: 0;
+  max-width: 700px;
+  color: var(--f9-muted);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+}
+/* ------------------------------------------------------------ page blocks */
+.f9-sectionhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.f9-heading {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--f9-ink);
+}
+
+.f9-lead {
+  margin: 0;
+  max-width: 700px;
+  color: var(--f9-muted);
+  font-size: 14px;
+  line-height: 20px;
+}
+/** The title of one card on the new aircraft type screen. */
+.f9-card__title {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -0.025em;
+  font-weight: 700;
+  color: var(--f9-ink);
+}
+
+.f9-note {
+  margin: 0;
+  color: var(--f9-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.f9-note--small {
+  font-size: 12px;
+}
+/* ---------------------------------------------------------------- buttons */
+.f9-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--f9-navy);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.f9-btn:hover {
+  background: #1f3d6b;
+  filter: none;
+}
+
+.f9-btn:disabled {
+  background: var(--f9-disabled-bg);
+  color: var(--f9-muted);
+  cursor: not-allowed;
+  filter: none;
+}
+
+.f9-btn--outline {
+  height: 39px;
+  border-color: var(--f9-border);
+  background: #fff;
+  color: var(--f9-ink);
+}
+
+.f9-btn--outline:hover {
+  border-color: var(--f9-border-strong);
+  background: #eef1f7;
+  filter: none;
+}
+
+.f9-btn:focus-visible,
+.f9-seat:focus-visible,
+.f9-seatmap__rownum:focus-visible {
+  outline: 2px solid var(--f9-primary);
+  outline-offset: 2px;
+}
+/* -------------------------------------------------------------- fleet page */
+.f9-fleet {
+  display: grid;
+  grid-template-columns: minmax(0, 560px) minmax(0, 417px);
+  gap: 20px;
+  align-items: start;
+  margin-top: 22px;
+}
+
+.f9-typegrid {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: minmax(0, 400px) minmax(0, 577px);
+  gap: 20px;
+  align-items: start;
+}
+
+.f9-formgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.f9-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.f9-metric {
+  padding: 9px 12px;
+  border-radius: 6px;
+  background: var(--f9-page);
+}
+
+.f9-metric__label {
+  color: var(--f9-muted);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+}
+
+.f9-metric__value {
+  margin-top: 0;
+  color: var(--f9-ink);
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 700;
+}
+
+.f9-metric__value--red {
+  color: var(--f9-red);
+}
+
+.f9-metric__value--green {
+  color: var(--f9-green);
+}
+
+.f9-seatmap {
+  margin-top: 0;
+  padding: 18px 20px 19px;
+}
+
+.f9-seatmap .f9-card__title {
+  line-height: 1.2;
+}
+/* The two lines under the legend sit 12px below it and 16px apart, as in the design. */
+.f9-seatmap > .f9-note {
+  margin-top: 12px;
+  line-height: 16px;
+}
+/** The fuselage the seats are drawn in: a capsule with a double outline, as in the design. */
+.f9-seatmap__body {
+  position: relative;
+  width: 290px;
+  max-width: 100%;
+  margin: 22px auto 0;
+  padding: 48px 0 48px;
+  border: 1px solid var(--f9-border);
+  border-radius: 145px 145px 48px 48px;
+  background: #f5f7fa;
+  box-shadow:
+    inset 0 0 0 5px #fff,
+    inset 0 0 0 6px #e0e6ed;
+}
+
+.f9-seatmap__rows {
+  display: flex;
+  flex-direction: column;
+}
+/** The legend of the seat map, as the design draws it: two rows inside a bordered box. */
+.f9-seatmap__legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 14px;
+  border: 1px solid var(--f9-border);
+  border-radius: 8px;
+}
+
+.f9-seatmap__legendrow {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  color: var(--f9-muted);
+  font-size: 12px;
+}
+
+.f9-seatmap__legendlabel {
+  flex: 0 0 66px;
+  color: var(--f9-ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.f9-seatmap__legendentry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.f9-seatmini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--f9-selected);
+  color: var(--f9-primary);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.f9-seatmini--blocked {
+  border-color: var(--f9-red);
+  background: var(--f9-red-bg);
+  color: var(--f9-red);
+}
+
+.f9-seatmini--exit {
+  background: var(--f9-amber-bg);
+  color: var(--f9-amber);
+  font-weight: 700;
+}
+
+.f9-seatmini--legroom {
+  background: var(--f9-green-bg);
+  color: var(--f9-green);
+  font-weight: 700;
+}
+/** The FRONT and REAR labels at the two ends of the fuselage. */
+.f9-seatmap__end {
+  margin: 0 0 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed var(--f9-border);
+  color: var(--f9-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-align: center;
+}
+
+.f9-seatmap__end--rear {
+  margin: 14px 0 0;
+  padding: 0;
+  border: 0;
+}
+/* Cabins are separated by a dashed line; the seats of a 2-2 cabin are wider than those of a 3-3 cabin. */
+.f9-seatmap__cabinblock {
+  --f9-seat-w: 26px;
+  --f9-seat-h: 22px;
+}
+
+.f9-seatmap__cabinblock--wide {
+  --f9-seat-w: 34px;
+  --f9-seat-h: 28px;
+}
+
+.f9-seatmap__cabinblock + .f9-seatmap__cabinblock {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--f9-border);
+}
+
+.f9-seatmap__cabin {
+  margin: 0 0 6px;
+  color: var(--f9-ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-align: center;
+}
+
+.f9-seatmap__row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: calc(var(--f9-seat-h, 22px) + 8px);
+}
+/** The row of column letters above the seats of one cabin. */
+.f9-seatmap__row--head {
+  height: 20px;
+}
+
+.f9-seatmap__colhead {
+  width: var(--f9-seat-w, 26px);
+  color: var(--f9-muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+.f9-seatmap__rownum {
+  width: 30px;
+  flex: 0 0 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--f9-muted);
+  font: inherit;
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.f9-seatmap__rownum:hover {
+  background: #eef1f7;
+  box-shadow: inset 0 0 0 1px var(--f9-border-strong);
+}
+
+.f9-seatmap__rownum--exit:hover {
+  background: var(--f9-amber-bg);
+  box-shadow: inset 0 0 0 1px var(--f9-amber);
+}
+
+.f9-seatmap__rownum--legroom:hover {
+  background: var(--f9-green-bg);
+  box-shadow: inset 0 0 0 1px var(--f9-green);
+}
+
+.f9-seatmap__rownum--exit {
+  background: var(--f9-amber-bg);
+  color: var(--f9-amber);
+  font-weight: 700;
+}
+
+.f9-seatmap__rownum--legroom {
+  background: var(--f9-green-bg);
+  color: var(--f9-green);
+  font-weight: 700;
+}
+/** A seat of the map: available by default, blocked when it is not sellable. */
+.f9-seat {
+  width: var(--f9-seat-w, 26px);
+  height: var(--f9-seat-h, 22px);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--f9-selected);
+  color: var(--f9-primary);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+/** Hovering a seat deepens its colour and gives it a border. */
+.f9-seat:hover {
+  border-color: var(--f9-primary);
+  background: var(--f9-primary-soft);
+}
+
+.f9-seat--blocked {
+  border-color: var(--f9-red);
+  background: var(--f9-red-bg);
+  color: var(--f9-red);
+  font-weight: 700;
+}
+
+.f9-seat--blocked:hover {
+  border-color: var(--f9-red);
+  background: var(--f9-red-bg-hover);
+}
+
+.f9-seatmap__aisle {
+  width: 30px;
+  flex: 0 0 30px;
+}
+/* The back link and the title above the first card of the new aircraft type screen, as in the design. */
+.f9-typehead .f9-heading {
+  margin-top: 15px;
+  line-height: 1.2;
+}
+
+.f9-typehead {
+  margin-top: -1px;
+}
+
+.f9-stack > .f9-typehead + * {
+  margin-top: 17px;
+}
+
+.f9-stack.f9-stack--tight > * + * {
+  margin-top: 16px;
+}
+/* Stacks the cards of one column of the new aircraft type screen. */
+.f9-stack > * + * {
+  margin-top: 20px;
+}
+/* ----------------------------------------------------------- readiness page */
+.f9-readiness {
+  display: grid;
+  grid-template-columns: minmax(0, 380px) minmax(0, 597px);
+  gap: 20px;
+  align-items: start;
+  margin-top: 22px;
+}
+
+.f9-readiness__title {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 18px;
+  letter-spacing: -0.025em;
+  font-weight: 700;
+  color: var(--f9-ink);
+}
+
+.f9-readiness__lead {
+  margin: 0;
+  color: var(--f9-muted);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.f9-readiness__fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.f9-readiness__metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.f9-readiness__tile {
+  padding: 9px 12px;
+  border-radius: 6px;
+  background: var(--f9-page);
+}
+
+.f9-readiness__tile--short {
+  background: var(--f9-red-bg);
+}
+
+.f9-readiness__tile--short .f9-metric__value {
+  color: var(--f9-red);
+}
+
+.f9-readiness__bar {
+  height: 10px;
+  margin-top: 14px;
+  border-radius: 5px;
+  background: var(--f9-page);
+  overflow: hidden;
+}
+
+.f9-readiness__fill {
+  height: 100%;
+  background: var(--f9-green);
+}
+
+.f9-readiness__fill--short {
+  background: var(--f9-red);
+}
+
+.f9-turnaround__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.f9-turnaround__tail {
+  color: var(--f9-ink);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.f9-turnaround__meta {
+  color: var(--f9-muted);
+  font-size: 14px;
+}
+
+.f9-turnaround__tasks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.f9-crash {
+  margin: 24px;
+  padding: 24px;
+  border: 1px solid var(--f9-red-bg);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.f9-crash h3 {
+  margin: 0 0 8px;
+  color: var(--f9-red);
+  font-size: 16px;
+}
+
+.f9-crash p {
+  margin: 0 0 16px;
+  color: var(--f9-muted);
+  font-size: 14px;
+}
+/* ------------------------------------------------------------- breakpoints */
+@media (max-width: 1180px) {
+  .f9-fleet,
+  .f9-readiness,
+  .f9-typegrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .f9-main {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+}
+
+@media (max-width: 860px) {
+  .f9-main {
+    padding: 16px 20px 32px;
+  }
+}
+
+/* A read-only seat map: the seats keep their colours but do not invite a click. */
+.f9-seat:disabled,
+.f9-seatmap__rownum:disabled {
+  cursor: default;
+}
+
+/* Card titles from the shared Card (the shadcn default is semibold at the body size): section headings, as on the admin pages. */
+.f9-root [data-slot='card-title'] {
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
