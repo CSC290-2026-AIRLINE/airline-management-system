@@ -489,6 +489,14 @@ async function seedCustomerService() {
       flightFY308Id = f.id
     }
   }
+  // A booking_segment points at its flight's seat_inventory row (flight_id, cabin), so the economy cabin must exist first.
+  if (flightFY308Id) {
+    await prisma.seat_inventory.upsert({
+      where: { flight_id_cabin: { flight_id: flightFY308Id, cabin: 'economy' } },
+      create: { flight_id: flightFY308Id, cabin: 'economy', capacity: 180 },
+      update: {},
+    })
+  }
 
   // Demo customers and bookings
   const demoCustomers = [
@@ -537,6 +545,11 @@ async function seedCustomerService() {
         await prisma.booking_segment.create({
           data: { booking_id: b.id, flight_id: flightFY308Id, segment_order: 1, cabin: 'economy' },
         })
+        // A confirmed booking holds a sold seat.
+        await prisma.seat_inventory.update({
+          where: { flight_id_cabin: { flight_id: flightFY308Id, cabin: 'economy' } },
+          data: { sold_count: { increment: 1 } },
+        })
       }
     }
   }
@@ -572,6 +585,11 @@ async function seedCustomerService() {
       if (flightFY308Id) {
         await prisma.booking_segment.create({
           data: { booking_id: b.id, flight_id: flightFY308Id, segment_order: 1, cabin: 'economy' },
+        })
+        // A confirmed booking holds a sold seat.
+        await prisma.seat_inventory.update({
+          where: { flight_id_cabin: { flight_id: flightFY308Id, cabin: 'economy' } },
+          data: { sold_count: { increment: 1 } },
         })
       }
     }
