@@ -143,6 +143,8 @@ export interface StaffTemplateItemView {
   name: string
   feature: string
   group: 'ALWAYS SENT' | 'OPTIONAL'
+  /** The {{names}} templates of this type may use; the sender fills the same names. */
+  placeholders: string[]
   emailState: '✓' | '–' | '!' | ' '
   smsState: '✓' | '–' | '!' | ' '
   pushState: '✓' | '–' | '!' | ' '
