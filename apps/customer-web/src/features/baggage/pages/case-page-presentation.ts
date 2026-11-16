@@ -30,6 +30,12 @@ export function caseProgressPresentation(status: string, deliveryStatus: string 
   return { steps: STANDARD_PROGRESS_STEPS, activeStep: 0 }
 }
 
+export function deliveryUnavailableMessage(reportStatus: string): string {
+  if (reportStatus === 'cancelled') return 'Nothing to choose for this case.'
+  if (reportStatus === 'lost') return 'Nothing to choose for this case yet. If staff find the bag, you can choose where we send it here.'
+  return 'Once staff confirm a found bag is yours, you can choose home, hotel, another address, or airport pickup here.'
+}
+
 export function shouldShowNoOpenCase(hasReport: boolean, isLookingUp: boolean, hasError: boolean): boolean {
   return !hasReport && !isLookingUp && !hasError
 }

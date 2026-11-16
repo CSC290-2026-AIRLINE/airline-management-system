@@ -5,6 +5,7 @@ import {
   canReportBagFoundByPassenger,
   caseProgressPresentation,
   caseStatusLabel,
+  deliveryUnavailableMessage,
   shouldShowCancellationUnavailable,
   shouldShowNoOpenCase,
 } from './case-page-presentation.ts'
@@ -77,6 +78,22 @@ test('delivery lifecycle states take precedence if an older lost report later pr
     activeStep: 2,
   })
   assert.equal(caseStatusLabel('lost', 'delivered'), 'Back with you')
+})
+
+test('delivery-unavailable messages are accurate for cancelled cases and unchanged otherwise', () => {
+  assert.equal(deliveryUnavailableMessage('cancelled'), 'Nothing to choose for this case.')
+  assert.equal(
+    deliveryUnavailableMessage('open'),
+    'Once staff confirm a found bag is yours, you can choose home, hotel, another address, or airport pickup here.',
+  )
+  assert.equal(
+    deliveryUnavailableMessage('matched'),
+    'Once staff confirm a found bag is yours, you can choose home, hotel, another address, or airport pickup here.',
+  )
+  assert.equal(
+    deliveryUnavailableMessage('lost'),
+    'Nothing to choose for this case yet. If staff find the bag, you can choose where we send it here.',
+  )
 })
 
 test('the no-case presentation appears only when no case is open and lookup is idle without an error', () => {

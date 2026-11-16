@@ -19,6 +19,7 @@ import {
   canReportBagFoundByPassenger,
   caseProgressPresentation,
   caseStatusLabel,
+  deliveryUnavailableMessage,
   shouldShowCancellationUnavailable,
   shouldShowNoOpenCase,
 } from './case-page-presentation'
@@ -958,11 +959,7 @@ export function PassengerLostBagCasePage() {
             ) : isDeliveryUnavailable ? (
               <section className="passenger-case-info" role="status">
                 <h2>Delivery</h2>
-                <p>
-                  {report.status === 'lost'
-                    ? 'Nothing to choose for this case yet. If staff find the bag, you can choose where we send it here.'
-                    : 'Once staff confirm a found bag is yours, you can choose home, hotel, another address, or airport pickup here.'}
-                </p>
+                <p>{deliveryUnavailableMessage(report.status)}</p>
               </section>
             ) : deliveryError ? (
               <section className="passenger-case-info" role="status">
