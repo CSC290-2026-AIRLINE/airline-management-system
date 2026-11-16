@@ -526,6 +526,8 @@ async function seedCustomerService() {
           idempotency_key: faker.string.uuid(),
           booked_at: new Date('2026-10-01T00:00:00Z'),
           hold_expires_at: new Date('2026-10-01T00:15:00Z'),
+          // booking's CHECK requires confirmed_at exactly when status is confirmed or cancelled
+          confirmed_at: new Date('2026-10-01T00:05:00Z'),
         },
       })
       await prisma.booking_passenger.create({
@@ -562,6 +564,8 @@ async function seedCustomerService() {
           idempotency_key: faker.string.uuid(),
           booked_at: new Date('2026-10-01T00:00:00Z'),
           hold_expires_at: new Date('2026-10-01T00:15:00Z'),
+          // booking's CHECK requires confirmed_at exactly when status is confirmed or cancelled
+          confirmed_at: new Date('2026-10-01T00:05:00Z'),
         },
       })
       await prisma.booking_passenger.create({ data: { booking_id: b.id, passenger_id: p.id, passenger_type: 'adult' } })
