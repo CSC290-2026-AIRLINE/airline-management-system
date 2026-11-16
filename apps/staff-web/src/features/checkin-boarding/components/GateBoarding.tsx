@@ -72,9 +72,13 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
   /** The gates of this airport that have a flight now. */
   const gatesWithFlight = gates.filter((item) => item.flight)
 
-  /** The flight of a gate: the open one, or the closed one that still points at the gate. */
-  const flightOfGate = (id: string): string | null =>
-    gates.find((item) => item.id === id)?.flight?.id ?? flights.find((item) => item.gate?.id === id)?.id ?? null
+  /** The flight of a gate: the one that is at it now, or the one already on screen when it is the same gate. */
+  const flightOfGate = (id: string): string | null => {
+    const open = gates.find((item) => item.id === id)?.flight?.id ?? null
+    if (open) return open
+    // A gate that was closed keeps the flight that is already on screen; every other gate shows the flight it has now.
+    return picked && id === picked.gateId ? picked.flightId : null
+  }
 
   // The gates and the flights of the airport. The gate on screen keeps its flight when it is picked again.
   useEffect(() => {
@@ -213,7 +217,10 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
         text: `Gate changed: ${flight.flightNumber} moved from ${gate?.code ?? 'none'} to ${to?.code ?? ''}. Passengers told (Feature 13), change audited. Passes show the new gate.`,
       })
       setPicked({ gateId: moveTo, flightId: flight.id })
-      setGates(await api.gates(airportCode))
+      // The gates and the flights again: the flight is at the new gate now.
+      const [gateList, flightList] = await Promise.all([api.gates(airportCode), api.flights()])
+      setGates(gateList)
+      setFlights(flightList)
     } catch (err) {
       setError(messageOf(err))
     } finally {
@@ -246,7 +253,7 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
   const mismatchMessage = (counted: Headcount | null, manual: boolean): string => {
     const boarded = counted?.boardedCount ?? headcount?.boardedCount ?? list?.boardedCount ?? 0
     const by = manual ? counted?.manualCount : counted?.sensorCount
-    const source = manual ? 'manual count' : 'sensor counted'
+    const source = manual ? 'manual count' : 'head count was'
     return `Head-count mismatch: ${boarded} marked boarded, ${source}${by == null ? '' : ` ${by}`}. Check the aircraft, then press Close gate again to confirm.`
   }
 
