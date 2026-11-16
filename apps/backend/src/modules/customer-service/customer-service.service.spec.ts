@@ -3,6 +3,7 @@ import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
 import type { DbService } from '@backend/db/db.service'
 import type { SimulationClock } from '../admin-console/simulation-clock'
+import type { AuditService } from '../admin-console/audit/audit.service'
 import { CustomerServiceService } from './customer-service.service'
 import { CreateComplaintDto } from './dto/create-complaint.dto'
 
@@ -14,6 +15,9 @@ const STAFF_ID = '22222222-2222-2222-2222-222222222222'
 const CASE_ID = '33333333-3333-3333-3333-333333333333'
 const CUSTOMER = { id: '44444444-4444-4444-4444-444444444444', passenger_id: '55555555-5555-5555-5555-555555555555' }
 const NOW = new Date('2026-11-12T08:00:00Z')
+const AGENT = { id: STAFF_ID, role: { code: 'cs-agent', is_admin: false } }
+const SUPERVISOR = { id: '66666666-6666-6666-6666-666666666666', role: { code: 'cs-supervisor', is_admin: false } }
+const DAY_MS = 24 * 60 * 60 * 1000
 const DESCRIPTION = 'The gate agent was rude when I asked about boarding.'
 
 function caseRow(overrides: Record<string, unknown> = {}) {
@@ -86,7 +90,7 @@ describe('CreateComplaintDto', () => {
 describe('CustomerServiceService', () => {
   const tx = {
     $queryRaw: jest.fn(),
-    complaint_case: { create: jest.fn(), updateMany: jest.fn() },
+    complaint_case: { create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
     employee_complaint: { create: jest.fn() },
     flight_complaint: { create: jest.fn() },
     food_complaint: { create: jest.fn() },
@@ -98,8 +102,10 @@ describe('CustomerServiceService', () => {
     $queryRaw: jest.fn(),
     complaint_case: { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     case_event: { create: jest.fn() },
+    booking_segment: { findFirst: jest.fn() },
     $transaction: jest.fn(),
   }
+  const audit = { resolveActor: jest.fn(), write: jest.fn() }
   const clock = { now: () => NOW }
   let service: CustomerServiceService
 
@@ -108,8 +114,8 @@ describe('CustomerServiceService', () => {
     // A callback runs on the mock transaction client; an array (batch) just resolves.
     db.$transaction.mockImplementation((work: unknown) => (typeof work === 'function' ? work(tx) : Promise.all(work as unknown[])))
     db.customer.findFirst.mockResolvedValue(CUSTOMER)
-    db.staff.findFirst.mockResolvedValue({ id: STAFF_ID })
-    service = new CustomerServiceService(db as unknown as DbService, clock as unknown as SimulationClock)
+    db.staff.findFirst.mockResolvedValue(AGENT)
+    service = new CustomerServiceService(db as unknown as DbService, clock as unknown as SimulationClock, audit as unknown as AuditService)
   })
 
   describe('create', () => {
@@ -145,6 +151,7 @@ describe('CustomerServiceService', () => {
 
     it('links a flight complaint to the flight found by number and date', async () => {
       db.$queryRaw.mockResolvedValue([{ id: 'flight-1' }])
+      db.booking_segment.findFirst.mockResolvedValue({ id: 'seg-1' })
       await service.create(USER_ID, 'pax@example.com', {
         type: 'flight',
         flight_number: 'FL101',
@@ -157,6 +164,38 @@ describe('CustomerServiceService', () => {
       expect(tx.flight_complaint.create).toHaveBeenCalledWith({
         data: { case_id: CASE_ID, flight_id: 'flight-1', issue: 'delay', details: DESCRIPTION },
       })
+    })
+
+    it('checks the flight is on the customer’s own bookings even without a booking reference', async () => {
+      db.$queryRaw.mockResolvedValue([{ id: 'flight-1' }])
+      db.booking_segment.findFirst.mockResolvedValue(null)
+      const dto = { type: 'food' as const, flight_number: 'FL1', service_date: '2026-11-01', issue: 'quality', description: DESCRIPTION }
+
+      await expect(service.create(USER_ID, 'pax@example.com', dto)).rejects.toThrow('FLIGHT_NOT_ON_BOOKING')
+      expect(db.booking_segment.findFirst).toHaveBeenCalledWith({
+        where: {
+          flight_id: 'flight-1',
+          booking: { OR: [{ customer_id: CUSTOMER.id }, { booking_passenger: { some: { passenger_id: CUSTOMER.passenger_id } } }] },
+        },
+        select: { id: true },
+      })
+      expect(db.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('narrows the check to the named booking when a reference is sent', async () => {
+      db.$queryRaw.mockResolvedValue([{ id: 'flight-1' }])
+      db.booking_segment.findFirst.mockResolvedValue({ id: 'seg-1' })
+      await service.create(USER_ID, 'pax@example.com', {
+        type: 'flight',
+        flight_number: 'FL1',
+        service_date: '2026-11-01',
+        issue: 'delay',
+        booking_reference: ' abc123 ',
+        description: DESCRIPTION,
+      })
+      expect(db.booking_segment.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ booking: expect.objectContaining({ booking_reference: 'ABC123' }) }) }),
+      )
     })
 
     it('says so when the flight does not exist, and writes nothing', async () => {
@@ -216,57 +255,138 @@ describe('CustomerServiceService', () => {
     })
   })
 
-  describe('setStatus', () => {
+  describe('reopenForCustomer', () => {
     beforeEach(() => {
       tx.complaint_case.updateMany.mockResolvedValue({ count: 1 })
-      db.complaint_case.findUnique.mockResolvedValueOnce({ status: 'with_supervisor', owner_staff_id: null }).mockResolvedValue(caseRow())
+      db.complaint_case.findFirst.mockResolvedValue(caseRow())
     })
 
-    it('assigns a new case to the caller and records an assigned event', async () => {
-      await service.setStatus(USER_ID, CASE_ID, 'assigned')
-      expect(tx.complaint_case.updateMany).toHaveBeenCalledWith({
-        where: { id: CASE_ID, status: 'with_supervisor' },
-        data: expect.objectContaining({ status: 'assigned', owner_staff_id: STAFF_ID }),
-      })
-      expect(tx.case_event.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          event_type: 'assigned',
-          actor_staff_id: STAFF_ID,
-          from_value: 'with_supervisor',
-          to_value: 'assigned',
-        }),
-      })
-    })
-
-    it('reopening clears the owner and the resolution', async () => {
-      db.complaint_case.findUnique.mockReset()
-      db.complaint_case.findUnique.mockResolvedValueOnce({ status: 'closed', owner_staff_id: STAFF_ID }).mockResolvedValue(caseRow())
-      await service.setStatus(USER_ID, CASE_ID, 'with_supervisor')
+    it('reopens a closed case within 7 days of closing and sends it back to the supervisor', async () => {
+      db.complaint_case.findFirst.mockResolvedValueOnce({ id: CASE_ID, status: 'closed', closed_at: new Date(NOW.getTime() - 6 * DAY_MS) })
+      await service.reopenForCustomer(USER_ID, 'CS-2026-000001')
       expect(tx.complaint_case.updateMany).toHaveBeenCalledWith({
         where: { id: CASE_ID, status: 'closed' },
         data: expect.objectContaining({ status: 'with_supervisor', owner_staff_id: null, resolved_at: null, closed_at: null }),
       })
-      expect(tx.case_event.create).toHaveBeenCalledWith({ data: expect.objectContaining({ event_type: 'reopened' }) })
+      expect(tx.case_event.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ event_type: 'reopened', actor_type: 'complainant' }),
+      })
     })
 
-    it('rejects skipping a step', async () => {
-      await expect(service.setStatus(USER_ID, CASE_ID, 'closed')).rejects.toThrow(ConflictException)
+    it('refuses a resolved case that is not closed yet', async () => {
+      db.complaint_case.findFirst.mockResolvedValueOnce({ id: CASE_ID, status: 'resolved', closed_at: null })
+      await expect(service.reopenForCustomer(USER_ID, 'CS-2026-000001')).rejects.toThrow('INVALID_STATUS')
+    })
+
+    it('refuses more than 7 days after closing', async () => {
+      db.complaint_case.findFirst.mockResolvedValueOnce({ id: CASE_ID, status: 'closed', closed_at: new Date(NOW.getTime() - 8 * DAY_MS) })
+      await expect(service.reopenForCustomer(USER_ID, 'CS-2026-000001')).rejects.toThrow('CANNOT_REOPEN_AFTER_7_DAYS')
+      expect(db.$transaction).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('setStatus', () => {
+    beforeEach(() => {
+      tx.complaint_case.updateMany.mockResolvedValue({ count: 1 })
+    })
+
+    function givenCase(status: string, owner: string | null) {
+      db.complaint_case.findUnique
+        .mockResolvedValueOnce({ status, owner_staff_id: owner, case_number: 'CS-2026-000001' })
+        .mockResolvedValue(caseRow())
+    }
+
+    it('lets the owning agent resolve their case and records the event', async () => {
+      givenCase('assigned', STAFF_ID)
+      await service.setStatus(USER_ID, CASE_ID, 'resolved', 'Apologised')
+      expect(tx.complaint_case.updateMany).toHaveBeenCalledWith({
+        where: { id: CASE_ID, status: 'assigned', owner_staff_id: STAFF_ID },
+        data: expect.objectContaining({ status: 'resolved', resolved_at: NOW }),
+      })
+      expect(tx.case_event.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ event_type: 'status_changed', from_value: 'assigned', to_value: 'resolved', note: 'Apologised' }),
+      })
+    })
+
+    it('refuses an agent who does not own the case', async () => {
+      givenCase('assigned', SUPERVISOR.id)
+      await expect(service.setStatus(USER_ID, CASE_ID, 'resolved')).rejects.toThrow(ForbiddenException)
+      expect(db.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('lets the supervisor close a case they do not own', async () => {
+      db.staff.findFirst.mockResolvedValue(SUPERVISOR)
+      givenCase('resolved', STAFF_ID)
+      await service.setStatus(USER_ID, CASE_ID, 'closed')
+      expect(tx.complaint_case.updateMany).toHaveBeenCalledWith({
+        where: { id: CASE_ID, status: 'resolved', owner_staff_id: STAFF_ID },
+        data: expect.objectContaining({ status: 'closed', closed_at: NOW }),
+      })
+    })
+
+    it.each([
+      ['with_supervisor', 'assigned'],
+      ['resolved', 'with_supervisor'],
+      ['closed', 'with_supervisor'],
+      ['assigned', 'closed'],
+    ] as const)('refuses %s → %s even for the supervisor (assign and reopen have their own routes)', async (from, to) => {
+      db.staff.findFirst.mockResolvedValue(SUPERVISOR)
+      givenCase(from, STAFF_ID)
+      await expect(service.setStatus(USER_ID, CASE_ID, to)).rejects.toThrow(ConflictException)
       expect(db.$transaction).not.toHaveBeenCalled()
     })
 
     it('reports a conflict when someone else changed the case first', async () => {
+      givenCase('assigned', STAFF_ID)
       tx.complaint_case.updateMany.mockResolvedValue({ count: 0 })
-      await expect(service.setStatus(USER_ID, CASE_ID, 'assigned')).rejects.toThrow(ConflictException)
+      await expect(service.setStatus(USER_ID, CASE_ID, 'resolved')).rejects.toThrow(ConflictException)
     })
   })
 
   describe('addNote', () => {
-    it('stores the note as an internal staff event', async () => {
-      db.complaint_case.findUnique.mockResolvedValueOnce({ id: CASE_ID }).mockResolvedValue(caseRow())
+    it('stores the note as an internal staff event and audits it in the same transaction', async () => {
+      db.complaint_case.findUnique.mockResolvedValueOnce({ id: CASE_ID, case_number: 'CS-2026-000001' }).mockResolvedValue(caseRow())
+      tx.case_event.create.mockResolvedValue({ id: 'event-1' })
+      audit.resolveActor.mockResolvedValue({ kind: 'staff' })
+
       await service.addNote(USER_ID, CASE_ID, 'Called the pax')
-      expect(db.case_event.create).toHaveBeenCalledWith({
+
+      expect(tx.case_event.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ event_type: 'note_added', actor_staff_id: STAFF_ID, note: 'Called the pax', is_internal: true }),
+        select: { id: true },
       })
+      expect(audit.write).toHaveBeenCalledWith(expect.objectContaining({ entityType: 'case_event', entityId: 'event-1' }), tx)
+    })
+  })
+
+  describe('getChartsForStaff', () => {
+    it('reports real values only: no average, flights or weekly counts when there are no cases', async () => {
+      db.complaint_case.findMany.mockResolvedValue([])
+      const charts = await service.getChartsForStaff(USER_ID)
+      expect(charts.avgDaysToClose).toBe('–')
+      expect(charts.topFlights).toEqual([])
+      expect(charts.weeklyData).toHaveLength(8)
+      expect(charts.weeklyData.every((w) => w.count === 0)).toBe(true)
+    })
+
+    it('counts cases into Monday-start weeks by opened_at and labels flights by their own date', async () => {
+      // NOW is Thursday 12 Nov 2026, so this week starts Monday 9 Nov.
+      const flight = {
+        id: 'f1',
+        flight_number: 'FY308',
+        service_date: new Date('2026-11-03'),
+        route: { origin: 'BKK', destination: 'NRT' },
+      }
+      db.complaint_case.findMany.mockResolvedValue([
+        { ...caseRow({ type: 'food', opened_at: new Date('2026-11-09T00:00:00Z') }), case_compensation: [], food_complaint: { flight } },
+        { ...caseRow({ type: 'food', opened_at: new Date('2026-11-08T23:59:00Z') }), case_compensation: [], food_complaint: { flight } },
+      ])
+      const charts = await service.getChartsForStaff(USER_ID)
+      expect(charts.weeklyData.slice(-2)).toEqual([
+        { week: '2 Nov', count: 1, latest: false },
+        { week: '9 Nov', count: 1, latest: true },
+      ])
+      expect(charts.topFlights).toEqual([{ flight: 'FY308', date: '3 Nov', route: 'BKK → NRT', type: 'Food', cases: 2 }])
     })
   })
 })

@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Search } from 'lucide-react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
 import { Card } from '@staff-web/components/ui/card'
 import { Input } from '@staff-web/components/ui/input'
@@ -8,150 +9,12 @@ import { NativeSelect } from '@staff-web/components/ui/native-select'
 import { Switch } from '@staff-web/components/ui/switch'
 import { Textarea } from '@staff-web/components/ui/textarea'
 import { cn } from '@staff-web/lib/utils'
-import { useComplaintsApi } from './api'
+import { errorMessage, useComplaintsApi } from './api'
 import { ToneBadge } from './ComplaintBadges'
 import { PageFrame } from './components/PageFrame'
 import type { StaffTemplateItemView } from './types'
 
-/* 10 / Staff / Templates (Figma 4032:16965). Shown until the database answers, and kept if it fails. */
-const INITIAL_TEMPLATES: StaffTemplateItemView[] = [
-  {
-    code: 'flight_delayed',
-    name: 'Flight delayed',
-    feature: 'Feature 2',
-    group: 'ALWAYS SENT',
-    emailState: '✓',
-    smsState: '✓',
-    pushState: '✓',
-    emailTitle: 'Your flight {{flight_number}} is delayed',
-    emailBody:
-      'Hi {{first_name}}, flight {{flight_number}} from {{origin}} to {{destination}} now leaves at {{new_time}} ({{delay}} late). Reason: {{reason}}.',
-    smsBody: '{{flight_number}} now leaves {{new_time}} ({{delay}} late, {{reason}}). Sorry for the wait. Flython',
-    pushTitle: '{{flight_number}} delayed',
-    pushBody: 'Now leaving at {{new_time}} ({{delay}} late).',
-  },
-  {
-    code: 'flight_rescheduled',
-    name: 'Flight rescheduled',
-    feature: 'Feature 2',
-    group: 'ALWAYS SENT',
-    emailState: '✓',
-    smsState: '✓',
-    pushState: '✓',
-  },
-  {
-    code: 'flight_diverted',
-    name: 'Flight diverted',
-    feature: 'Feature 2',
-    group: 'ALWAYS SENT',
-    emailState: '✓',
-    smsState: '✓',
-    pushState: '!',
-  },
-  {
-    code: 'flight_cancelled',
-    name: 'Flight cancelled',
-    feature: 'Feature 2',
-    group: 'ALWAYS SENT',
-    emailState: '✓',
-    smsState: '✓',
-    pushState: '✓',
-  },
-  {
-    code: 'gate_changed',
-    name: 'Gate changed',
-    feature: 'Feature 6',
-    group: 'ALWAYS SENT',
-    emailState: '✓',
-    smsState: '✓',
-    pushState: '✓',
-  },
-  {
-    code: 'security_alert',
-    name: 'Security alert to the authority',
-    feature: 'Feature 7',
-    group: 'ALWAYS SENT',
-    emailState: '✓',
-    smsState: ' ',
-    pushState: ' ',
-  },
-  {
-    code: 'check_in_completed',
-    name: 'Check-in completed',
-    feature: 'Feature 6',
-    group: 'OPTIONAL',
-    emailState: '✓',
-    smsState: ' ',
-    pushState: '✓',
-  },
-  {
-    code: 'boarding_pass_issued',
-    name: 'Boarding pass issued',
-    feature: 'Feature 6',
-    group: 'OPTIONAL',
-    emailState: '✓',
-    smsState: ' ',
-    pushState: '✓',
-  },
-  { code: 'boarding_call', name: 'Boarding call', feature: 'Feature 6', group: 'OPTIONAL', emailState: ' ', smsState: '✓', pushState: '✓' },
-  {
-    code: 'bag_case_updated',
-    name: 'Lost bag case updated',
-    feature: 'Feature 10',
-    group: 'OPTIONAL',
-    emailState: '✓',
-    smsState: '✓',
-    pushState: '–',
-  },
-  {
-    code: 'bag_delivery_updated',
-    name: 'Bag delivery updated',
-    feature: 'Feature 10',
-    group: 'OPTIONAL',
-    emailState: '✓',
-    smsState: '–',
-    pushState: '✓',
-  },
-  {
-    code: 'miles_expiring',
-    name: 'Miles expiring',
-    feature: 'Feature 11',
-    group: 'OPTIONAL',
-    emailState: '✓',
-    smsState: '✓',
-    pushState: '✓',
-  },
-  { code: 'tier_changed', name: 'Tier changed', feature: 'Feature 11', group: 'OPTIONAL', emailState: '✓', smsState: '✓', pushState: '✓' },
-  {
-    code: 'complaint_received',
-    name: 'Complaint received',
-    feature: 'Feature 13',
-    group: 'OPTIONAL',
-    emailState: '✓',
-    smsState: '–',
-    pushState: '–',
-    emailTitle: 'We received your complaint {{case_number}}',
-    emailBody: 'Hi {{first_name}}, we logged your {{complaint_type}} complaint under {{case_number}}. Our team will update you by email.',
-    smsBody: 'Flython: Complaint {{case_number}} received.',
-    pushTitle: 'Complaint {{case_number}} received',
-    pushBody: 'We will notify you when a staff member updates your case.',
-  },
-  {
-    code: 'complaint_updated',
-    name: 'Complaint updated',
-    feature: 'Feature 13',
-    group: 'OPTIONAL',
-    emailState: '✓',
-    smsState: '–',
-    pushState: '–',
-    emailTitle: 'Update on your complaint {{case_number}}',
-    emailBody: 'Hi {{first_name}}, your case {{case_number}} is now {{status}}.',
-    smsBody: 'Flython: Case {{case_number}} is now {{status}}.',
-    pushTitle: 'Case {{case_number}} updated',
-    pushBody: 'Status changed to {{status}}.',
-  },
-]
-
+/* 10 / Staff / Templates (Figma 4032:16965). Loaded from the database; a failed load shows PageError. */
 type Channel = 'email' | 'sms' | 'push'
 type ChannelState = StaffTemplateItemView['emailState']
 
@@ -257,7 +120,9 @@ function ChannelSection(props: ChannelSectionProps) {
 
 export function TemplatesPage() {
   const api = useComplaintsApi()
-  const [templates, setTemplates] = useState<StaffTemplateItemView[]>(INITIAL_TEMPLATES)
+  const [templates, setTemplates] = useState<StaffTemplateItemView[] | null>(null)
+  const [loadError, setLoadError] = useState<unknown>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [selectedCode, setSelectedCode] = useState('flight_delayed')
   const [sourceFilter, setSourceFilter] = useState('All features')
   const [search, setSearch] = useState('')
@@ -271,41 +136,56 @@ export function TemplatesPage() {
     api
       .getTemplates()
       .then((res) => {
-        if (active && Array.isArray(res) && res.length > 0) {
-          setTemplates(res)
-        }
+        if (active) setTemplates(res)
       })
-      .catch(() => {})
+      .catch((e: unknown) => {
+        if (active) setLoadError(e)
+      })
     return () => {
       active = false
     }
   }, [])
 
-  const filtered = templates.filter((t) => {
+  // Rethrown during render so the route's PageError shows it; "Try again" remounts and refetches.
+  if (loadError) throw loadError
+  if (templates === null || templates.length === 0) {
+    return (
+      <PageFrame title="Templates" description="One template per message type and channel.">
+        <p className="text-sm text-muted-foreground">
+          {templates === null ? 'Loading templates…' : 'No notification types are set up yet.'}
+        </p>
+      </PageFrame>
+    )
+  }
+  // A non-null name the handlers below can close over (TypeScript does not narrow `templates` inside them).
+  const loaded = templates
+
+  const filtered = loaded.filter((t) => {
     const matchSource = sourceFilter === 'All features' || t.feature === sourceFilter
     const matchQ =
       !search.trim() || t.name.toLowerCase().includes(search.trim().toLowerCase()) || t.code.includes(search.trim().toLowerCase())
     return matchSource && matchQ
   })
 
-  const selected = templates.find((t) => t.code === selectedCode) ?? templates[0]
+  const selected = loaded.find((t) => t.code === selectedCode) ?? loaded[0]
 
   async function toggleChannel(code: string, channelKey: 'smsState' | 'pushState') {
-    const target = templates.find((t) => t.code === code)
+    const target = loaded.find((t) => t.code === code)
     if (!target) return
     const nextActive = target[channelKey] !== '✓'
     const nextVal = nextActive ? '✓' : '–'
-    setTemplates((prev) => prev.map((item) => (item.code === code ? { ...item, [channelKey]: nextVal } : item)))
+    const before = loaded
+    setSaveError(null)
+    setTemplates(before.map((item) => (item.code === code ? { ...item, [channelKey]: nextVal } : item)))
     try {
       const updated = await api.updateTemplate(code, {
         channel: channelKey === 'smsState' ? 'sms' : 'push',
         isActive: nextActive,
       })
-      if (Array.isArray(updated) && updated.length > 0) {
-        setTemplates(updated)
-      }
-    } catch {
-      // keep the optimistic toggle; the next load shows the saved state
+      setTemplates(updated)
+    } catch (e) {
+      setTemplates(before)
+      setSaveError(errorMessage(e))
     }
   }
 
@@ -320,8 +200,10 @@ export function TemplatesPage() {
     if (!editingChannel) return
     setSaving(true)
     const ch = editingChannel
-    setTemplates((prev) =>
-      prev.map((item) => {
+    const before = loaded
+    setSaveError(null)
+    setTemplates(
+      before.map((item) => {
         if (item.code !== selected.code) return item
         if (ch === 'email') return { ...item, emailTitle: draftSubject, emailBody: draftBody }
         if (ch === 'sms') return { ...item, smsBody: draftBody }
@@ -334,11 +216,10 @@ export function TemplatesPage() {
         subjectTemplate: ch === 'sms' ? null : draftSubject,
         bodyTemplate: draftBody,
       })
-      if (Array.isArray(updated) && updated.length > 0) {
-        setTemplates(updated)
-      }
-    } catch {
-      // keep the optimistic edit; the next load shows the saved state
+      setTemplates(updated)
+    } catch (e) {
+      setTemplates(before)
+      setSaveError(errorMessage(e))
     } finally {
       setSaving(false)
       setEditingChannel(null)
@@ -382,6 +263,11 @@ export function TemplatesPage() {
         'One template per message type and channel; placeholders like {{flight_number}} are filled when a message is sent. Only the supervisor edits or switches templates.'
       }
     >
+      {saveError && (
+        <Alert variant="destructive">
+          <AlertDescription>Could not save the template: {saveError}</AlertDescription>
+        </Alert>
+      )}
       <Card className="flex-row flex-wrap items-end gap-3.5 px-4 py-3.5 shadow-none">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="tpl-source" className="text-xs font-medium text-muted-foreground">

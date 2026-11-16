@@ -9,40 +9,21 @@ import { PageFrame } from './components/PageFrame'
 import { StatCard } from './components/StatCard'
 import type { StaffChartsResponse } from './types'
 
-/* 08 / Staff / Complaint charts (Figma 4032:16149). Shown until the database answers, and kept if it fails. */
-const DEFAULT_CHARTS: StaffChartsResponse = {
-  totalComplaints: 10,
-  openNow: 8,
-  withSupervisorCount: 6,
-  assignedCount: 2,
-  resolvedCount: 1,
-  closedCount: 1,
-  avgDaysToClose: '2.1',
-  compensationTotalThb: 6000,
-  compensationDecisions: 4,
-  compensationFailed: 1,
-  byType: {
-    employee: 3,
-    flight: 3,
-    food: 4,
-  },
-  topFlights: [
-    { flight: 'FY405', date: '9 Oct', route: 'SIN → BKK', type: 'Flight', cases: 3 },
-    { flight: 'FY308', date: '12 Oct', route: 'BKK → NRT', type: 'Food', cases: 3 },
-    { flight: 'FY402', date: '9 Oct', route: 'BKK → CNX', type: 'Food', cases: 2 },
-    { flight: 'FY401', date: '5 Oct', route: 'LHR → BKK', type: 'Flight', cases: 2 },
-    { flight: 'FY403', date: '7 Oct', route: 'ICN → BKK', type: 'Employee', cases: 1 },
-  ],
-  weeklyData: [
-    { week: '17 Aug', count: 0, latest: false },
-    { week: '24 Aug', count: 0, latest: false },
-    { week: '31 Aug', count: 0, latest: false },
-    { week: '7 Sep', count: 0, latest: false },
-    { week: '14 Sep', count: 0, latest: false },
-    { week: '21 Sep', count: 0, latest: false },
-    { week: '28 Sep', count: 1, latest: false },
-    { week: '5 Oct', count: 9, latest: true },
-  ],
+/* 08 / Staff / Complaint charts (Figma 4032:16149). Empty until the database answers; a failed load shows PageError. */
+const EMPTY_CHARTS: StaffChartsResponse = {
+  totalComplaints: 0,
+  openNow: 0,
+  withSupervisorCount: 0,
+  assignedCount: 0,
+  resolvedCount: 0,
+  closedCount: 0,
+  avgDaysToClose: '–',
+  compensationTotalThb: 0,
+  compensationDecisions: 0,
+  compensationFailed: 0,
+  byType: { employee: 0, flight: 0, food: 0 },
+  topFlights: [],
+  weeklyData: [],
 }
 
 const CURRENT_MONTH = 'October 2026 · to date'
@@ -52,9 +33,10 @@ const TOP_FLIGHTS = 5
 export function ChartsPage() {
   const api = useComplaintsApi()
   const [monthLabel, setMonthLabel] = useState<typeof CURRENT_MONTH | typeof PREVIOUS_MONTH>(CURRENT_MONTH)
-  const [charts, setCharts] = useState<StaffChartsResponse>(DEFAULT_CHARTS)
+  const [charts, setCharts] = useState<StaffChartsResponse>(EMPTY_CHARTS)
   const [loading, setLoading] = useState(true)
   const [showAllFlights, setShowAllFlights] = useState(false)
+  const [loadError, setLoadError] = useState<unknown>(null)
 
   useEffect(() => {
     let active = true
@@ -65,7 +47,9 @@ export function ChartsPage() {
           setCharts(data)
         }
       })
-      .catch(() => {})
+      .catch((e: unknown) => {
+        if (active) setLoadError(e)
+      })
       .finally(() => {
         if (active) setLoading(false)
       })
@@ -73,6 +57,9 @@ export function ChartsPage() {
       active = false
     }
   }, [])
+
+  // Rethrown during render so the route's PageError shows it; "Try again" remounts and refetches.
+  if (loadError) throw loadError
 
   // Y-axis max for "Complaints by type" (multiple of 3, min 12)
   const maxTypeCount = Math.max(charts.byType.employee, charts.byType.flight, charts.byType.food, 1)
@@ -127,7 +114,7 @@ export function ChartsPage() {
         />
         <StatCard
           label="Average time to close"
-          value={`${charts.avgDaysToClose} days`}
+          value={charts.avgDaysToClose === '–' ? '–' : `${charts.avgDaysToClose} days`}
           hint={`${charts.closedCount} closed · ${charts.resolvedCount} resolved`}
         />
         <StatCard

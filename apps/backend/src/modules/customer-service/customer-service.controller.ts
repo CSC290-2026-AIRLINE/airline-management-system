@@ -118,7 +118,7 @@ export class StaffComplaintsController {
     return this.service.getDeliveryLogForStaff(user.id)
   }
 
-  @SupervisorOnly()
+  // Every CS staff member may read templates; only the supervisor edits them.
   @Get('templates')
   getTemplates(@CurrentUser() user: AuthenticatedUser) {
     return this.service.getTemplatesForStaff(user.id)

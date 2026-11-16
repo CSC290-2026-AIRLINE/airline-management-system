@@ -14,12 +14,12 @@ import { StatCard } from './components/StatCard'
 import type { DeliveryLogRowView, StaffDeliveryLogResponse } from './types'
 
 /* 09 / Staff / Delivery log (Figma 4032:16523). Shown until the database answers, and kept if it fails. */
-const DEFAULT_DELIVERY_LOG: StaffDeliveryLogResponse = {
+const EMPTY_DELIVERY_LOG: StaffDeliveryLogResponse = {
   kpis: {
-    eventsReceived: 20,
-    messagesSent: 19,
-    failedRetrying: 1,
-    duplicateIgnored: 1,
+    eventsReceived: 0,
+    messagesSent: 0,
+    failedRetrying: 0,
+    duplicateIgnored: 0,
   },
   rows: [],
 }
@@ -50,7 +50,7 @@ function FilterField({ label, id, children }: { label: string; id: string; child
 
 export function DeliveryLogPage() {
   const api = useComplaintsApi()
-  const [data, setData] = useState<StaffDeliveryLogResponse>(DEFAULT_DELIVERY_LOG)
+  const [data, setData] = useState<StaffDeliveryLogResponse>(EMPTY_DELIVERY_LOG)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [eventFilter, setEventFilter] = useState(ALL_EVENTS)
@@ -58,6 +58,7 @@ export function DeliveryLogPage() {
   const [statusFilter, setStatusFilter] = useState(ALL_STATUSES)
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  const [loadError, setLoadError] = useState<unknown>(null)
 
   useEffect(() => {
     let active = true
@@ -68,7 +69,9 @@ export function DeliveryLogPage() {
           setData(res)
         }
       })
-      .catch(() => {})
+      .catch((e: unknown) => {
+        if (active) setLoadError(e)
+      })
       .finally(() => {
         if (active) setLoading(false)
       })
@@ -76,6 +79,9 @@ export function DeliveryLogPage() {
       active = false
     }
   }, [])
+
+  // Rethrown during render so the route's PageError shows it; "Try again" remounts and refetches.
+  if (loadError) throw loadError
 
   const eventOptions = Array.from(new Set(data.rows.map((r) => r.event)))
 

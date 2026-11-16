@@ -15,15 +15,15 @@ interface Props {
   onChanged: () => void
 }
 
-/** What a staff member can do next from each status. Mirrors TRANSITIONS in the backend service. */
+/**
+ * What a staff member can do next from each status. Mirrors TRANSITIONS in the backend service:
+ * only the supervisor assigns (PATCH :id/assign) and only the complainant reopens.
+ */
 const ACTIONS: Record<CaseStatus, { to: CaseStatus; label: string; variant?: 'outline' }[]> = {
-  with_supervisor: [{ to: 'assigned', label: 'Assign to me' }],
+  with_supervisor: [],
   assigned: [{ to: 'resolved', label: 'Mark resolved' }],
-  resolved: [
-    { to: 'closed', label: 'Close case' },
-    { to: 'with_supervisor', label: 'Reopen', variant: 'outline' },
-  ],
-  closed: [{ to: 'with_supervisor', label: 'Reopen', variant: 'outline' }],
+  resolved: [{ to: 'closed', label: 'Close case' }],
+  closed: [],
 }
 
 function describeEvent(e: CaseEvent): string {

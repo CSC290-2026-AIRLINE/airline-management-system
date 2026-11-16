@@ -7,16 +7,35 @@ import { CASE_DETAIL_INCLUDE, CASE_INCLUDE, toComplaintDetail, toComplaintView, 
 import type { CreateComplaintDto, CreateGuestComplaintDto } from './dto/create-complaint.dto'
 import type { DecideCompensationDto, UpdateNotificationTemplateDto } from './dto/staff-actions.dto'
 
-/** Statuses a staff member may move a case to, from each status. 'with_supervisor' as a target is a reopen. */
+/**
+ * Statuses a staff member may move a case to through PATCH :id/status, from each status.
+ * Owners are set only by the supervisor through PATCH :id/assign, and only the complainant reopens.
+ */
 const TRANSITIONS: Record<CaseStatus, CaseStatus[]> = {
-  with_supervisor: ['assigned'],
-  assigned: ['assigned', 'resolved'],
-  resolved: ['closed', 'with_supervisor'],
-  closed: ['with_supervisor'],
+  with_supervisor: [],
+  assigned: ['resolved'],
+  resolved: ['closed'],
+  closed: [],
 }
 
 const STAFF_LIST_LIMIT = 500
+const DELIVERY_LOG_LIMIT = 200
+const WEEKS_IN_CHART = 8
+const DAY_MS = 24 * 60 * 60 * 1000
+const WEEK_MS = 7 * DAY_MS
+const REOPEN_WINDOW_MS = 7 * DAY_MS
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** "12 Oct", in UTC. */
+function dayMonthLabel(d: Date): string {
+  return `${d.getUTCDate()} ${MONTHS_SHORT[d.getUTCMonth()]}`
+}
+
+/** Midnight UTC on the Monday of d's week. */
+function startOfUtcWeek(d: Date): Date {
+  const daysSinceMonday = (d.getUTCDay() + 6) % 7
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - daysSinceMonday * DAY_MS)
+}
 
 export interface StaffChartsResponse {
   totalComplaints: number
@@ -122,17 +141,20 @@ export class CustomerServiceService {
       if (!flight) throw new NotFoundException(`No flight ${dto.flight_number} on ${dto.service_date}`)
       flightId = flight.id
 
-      if (dto.booking_reference) {
-        const seg = await this.db.booking_segment?.findFirst?.({
-          where: {
-            booking: { booking_reference: dto.booking_reference.trim().toUpperCase() },
-            flight_id: flight.id,
+      // The flight must be on one of this customer's own bookings (and on the given booking, when one is named).
+      // "Own" means they made the booking or travel on it as a passenger.
+      const bookingReference = dto.booking_reference?.trim().toUpperCase()
+      const seg = await this.db.booking_segment.findFirst({
+        where: {
+          flight_id: flight.id,
+          booking: {
+            ...(bookingReference ? { booking_reference: bookingReference } : {}),
+            OR: [{ customer_id: customer.id }, { booking_passenger: { some: { passenger_id: customer.passenger_id } } }],
           },
-        })
-        if (!seg && this.db.booking_segment) {
-          throw new BadRequestException('FLIGHT_NOT_ON_BOOKING')
-        }
-      }
+        },
+        select: { id: true },
+      })
+      if (!seg) throw new BadRequestException('FLIGHT_NOT_ON_BOOKING')
     }
 
     const now = this.clock.now()
@@ -192,17 +214,17 @@ export class CustomerServiceService {
     const normalized = caseNumber.trim().toUpperCase()
     const row = await this.db.complaint_case.findFirst({
       where: { case_number: normalized, customer_id: customer.id },
-      select: { id: true, status: true, closed_at: true, resolved_at: true },
+      select: { id: true, status: true, closed_at: true },
     })
     if (!row) throw new NotFoundException(`Case ${caseNumber} not found`)
 
-    if (row.status !== 'resolved' && row.status !== 'closed') {
+    // Only a closed case reopens, and only within 7 days of closing.
+    if (row.status !== 'closed') {
       throw new ConflictException('INVALID_STATUS')
     }
 
     const now = this.clock.now()
-    const closedOrResolvedAt = row.closed_at ?? row.resolved_at
-    if (closedOrResolvedAt && now.getTime() - closedOrResolvedAt.getTime() > 7 * 24 * 60 * 60 * 1000) {
+    if (!row.closed_at || now.getTime() - row.closed_at.getTime() > REOPEN_WINDOW_MS) {
       throw new ConflictException('CANNOT_REOPEN_AFTER_7_DAYS')
     }
 
@@ -458,40 +480,30 @@ export class CustomerServiceService {
   }
 
   async setStatus(userId: string, id: string, status: CaseStatus, resolutionNote?: string): Promise<ComplaintView> {
-    const staffId = await this.staffIdFor(userId)
+    const staff = await this.staffFor(userId)
+    const staffId = staff.id
     const current = await this.db.complaint_case.findUnique({
       where: { id },
-      select: { status: true, owner_staff_id: true, closed_at: true, case_number: true },
+      select: { status: true, owner_staff_id: true, case_number: true },
     })
     if (!current) throw new NotFoundException(`Case ${id} not found`)
+    // An agent works only the cases assigned to them; the supervisor may act on any case.
+    if (!staff.isSupervisor && current.owner_staff_id !== staffId) {
+      throw new ForbiddenException('NOT_CASE_OWNER')
+    }
     const from = current.status as CaseStatus
-    if (!TRANSITIONS[from]?.includes(status) || (status === 'assigned' && current.owner_staff_id === staffId)) {
+    if (!TRANSITIONS[from]?.includes(status) || (status !== 'resolved' && status !== 'closed')) {
       throw new ConflictException(`A ${from} case cannot be moved to ${status}`)
     }
 
     const now = this.clock.now()
-    if (from === 'closed' && status === 'with_supervisor' && current.closed_at) {
-      if (now.getTime() - current.closed_at.getTime() > 7 * 24 * 60 * 60 * 1000) {
-        throw new ConflictException('CANNOT_REOPEN_AFTER_7_DAYS')
-      }
-    }
-
-    const changes = {
-      assigned: { owner_staff_id: staffId },
-      resolved: { resolved_at: now },
-      closed: { closed_at: now },
-      with_supervisor: { owner_staff_id: null, resolved_at: null, closed_at: null },
-    }[status]
-    const eventType = {
-      assigned: 'assigned',
-      resolved: 'status_changed',
-      closed: 'closed',
-      with_supervisor: 'reopened',
-    }[status]
+    const changes = status === 'resolved' ? { resolved_at: now } : { closed_at: now }
+    const eventType = status === 'resolved' ? 'status_changed' : 'closed'
 
     await this.db.$transaction(async (tx) => {
       const { count } = await tx.complaint_case.updateMany({
-        where: { id, status: from },
+        // owner_staff_id in the filter so a reassignment between the read and this write is a conflict, not a stale-owner write
+        where: { id, status: from, owner_staff_id: current.owner_staff_id },
         data: { status, ...changes, updated_at: new Date() },
       })
       if (count === 0) throw new ConflictException('The case changed while you were editing it. Reload and try again.')
@@ -534,8 +546,8 @@ export class CustomerServiceService {
     if (!current) throw new NotFoundException(`Case ${id} not found`)
     const now = this.clock.now()
 
-    await this.db.$transaction([
-      this.db.case_event.create({
+    await this.db.$transaction(async (tx) => {
+      const event = await tx.case_event.create({
         data: {
           case_id: id,
           event_type: 'note_added',
@@ -545,21 +557,25 @@ export class CustomerServiceService {
           is_internal: true,
           occurred_at: now,
         },
-      }),
-      this.db.complaint_case.update({ where: { id }, data: { updated_at: new Date() } }),
-    ])
-
-    if (this.audit) {
-      const actor = await this.audit.resolveActor(userId)
-      await this.audit.write({
-        actor,
-        sourceFeature: '13',
-        action: 'create',
-        entityType: 'case_event',
-        entityId: id,
-        summary: `Added internal note to case ${current.case_number}`,
+        select: { id: true },
       })
-    }
+      await tx.complaint_case.update({ where: { id }, data: { updated_at: new Date() } })
+
+      if (this.audit) {
+        const actor = await this.audit.resolveActor(userId)
+        await this.audit.write(
+          {
+            actor,
+            sourceFeature: '13',
+            action: 'create',
+            entityType: 'case_event',
+            entityId: event.id,
+            summary: `Added internal note to case ${current.case_number}`,
+          },
+          tx,
+        )
+      }
+    })
 
     return this.staffDetail(id)
   }
@@ -652,7 +668,8 @@ export class CustomerServiceService {
         closedCountForAvg++
       }
     }
-    const avgDaysToClose = closedCountForAvg > 0 ? (totalDays / closedCountForAvg).toFixed(1) + ' days' : '2.1 days'
+    // Just the number (the page adds "days"), or '–' when no case has been resolved or closed yet.
+    const avgDaysToClose = closedCountForAvg > 0 ? (totalDays / closedCountForAvg).toFixed(1) : '–'
 
     let compensationTotalThb = 0
     let compensationDecisions = 0
@@ -671,27 +688,28 @@ export class CustomerServiceService {
       food: cases.filter((c) => c.type === 'food').length,
     }
 
-    const flightStats = new Map<string, { count: number; date: string; route: string; type: 'Employee' | 'Flight' | 'Food' }>()
+    const flightStats = new Map<
+      string,
+      { flight: string; count: number; date: string; route: string; type: 'Employee' | 'Flight' | 'Food' }
+    >()
     for (const c of cases) {
       const fl = c.flight_complaint?.flight || c.food_complaint?.flight
       if (fl) {
-        const key = fl.flight_number
-        const prev = flightStats.get(key)
-        const dateStr = fl.service_date ? `${fl.service_date.getUTCDate()} Oct` : '12 Oct'
-        const routeStr = fl.route ? `${fl.route.origin} → ${fl.route.destination}` : 'BKK → NRT'
-        const typeStr = c.type === 'food' ? 'Food' : 'Flight'
-        flightStats.set(key, {
+        // One row per operated flight (number + date), so FY308 on two days counts separately.
+        const prev = flightStats.get(fl.id)
+        flightStats.set(fl.id, {
+          flight: fl.flight_number,
           count: (prev?.count ?? 0) + 1,
-          date: prev?.date ?? dateStr,
-          route: prev?.route ?? routeStr,
-          type: prev?.type ?? typeStr,
+          date: prev?.date ?? dayMonthLabel(fl.service_date),
+          route: prev?.route ?? `${fl.route.origin} → ${fl.route.destination}`,
+          type: prev?.type ?? (c.type === 'food' ? 'Food' : 'Flight'),
         })
       }
     }
 
-    const topFlights = Array.from(flightStats.entries())
-      .map(([flight, val]) => ({
-        flight,
+    const topFlights = Array.from(flightStats.values())
+      .map((val) => ({
+        flight: val.flight,
         date: val.date,
         route: val.route,
         type: val.type,
@@ -700,10 +718,14 @@ export class CustomerServiceService {
       .sort((a, b) => b.cases - a.cases)
       .slice(0, 5)
 
-    const weeklyData = [
-      { week: '29 Sep – 5 Oct', count: 18, latest: false },
-      { week: '6 – 12 Oct', count: cases.length || 21, latest: true },
-    ]
+    // The last WEEKS_IN_CHART weeks (Monday to Sunday, UTC) up to the current one, counted by opened_at.
+    const thisWeekStart = startOfUtcWeek(this.clock.now())
+    const weeklyData = Array.from({ length: WEEKS_IN_CHART }, (_, i) => {
+      const start = new Date(thisWeekStart.getTime() - (WEEKS_IN_CHART - 1 - i) * WEEK_MS)
+      const end = start.getTime() + WEEK_MS
+      const count = cases.filter((c) => c.opened_at.getTime() >= start.getTime() && c.opened_at.getTime() < end).length
+      return { week: dayMonthLabel(start), count, latest: i === WEEKS_IN_CHART - 1 }
+    })
 
     return {
       totalComplaints,
@@ -726,26 +748,17 @@ export class CustomerServiceService {
     await this.staffIdFor(userId)
     const notifs = await this.db.notification.findMany({
       include: {
-        inbound_event: true,
         notification_type: true,
+        complaint_case: { select: { case_number: true } },
       },
       orderBy: { created_at: 'desc' },
-      take: 200,
+      take: DELIVERY_LOG_LIMIT,
     })
 
-    let eventsReceived = 0
-    let messagesSent = 0
-    let failedRetrying = 0
-    const duplicateIgnored = 0
-
     const rows: DeliveryLogRowView[] = notifs.map((n) => {
-      if (n.status === 'sent') messagesSent++
-      if (n.status === 'failed') failedRetrying++
-      if (n.inbound_event) eventsReceived++
-
       const dateObj = n.sent_at || n.created_at
       const timeStr = `${String(dateObj.getUTCHours()).padStart(2, '0')}:${String(dateObj.getUTCMinutes()).padStart(2, '0')}`
-      const dateLabel = `${dateObj.getUTCDate()} ${MONTHS_SHORT[dateObj.getUTCMonth()]}`
+      const dateLabel = dayMonthLabel(dateObj)
       const occurredAt = `${dateLabel} ${timeStr}`
 
       let channel: 'Email' | 'SMS' | 'Push' = 'Email'
@@ -759,7 +772,7 @@ export class CustomerServiceService {
 
       return {
         id: n.id,
-        eventId: n.inbound_event_id ?? 'evt-manual',
+        eventId: n.inbound_event_id,
         time: timeStr,
         dateLabel,
         occurredAt,
@@ -769,8 +782,8 @@ export class CustomerServiceService {
         recipient: n.recipient,
         channel,
         status,
-        linkedTo: 'CS-2026-000124',
-        linkedIsCase: true,
+        linkedTo: n.complaint_case?.case_number ?? '–',
+        linkedIsCase: n.complaint_case !== null,
         tries: n.attempts ?? 1,
         subject: n.subject,
         body: n.body,
@@ -780,10 +793,12 @@ export class CustomerServiceService {
 
     return {
       kpis: {
-        eventsReceived: Math.max(eventsReceived, rows.length),
-        messagesSent: Math.max(messagesSent, rows.filter((r) => r.status.startsWith('Sent')).length),
-        failedRetrying,
-        duplicateIgnored,
+        // Counted over the rows shown (latest DELIVERY_LOG_LIMIT messages).
+        eventsReceived: new Set(notifs.map((n) => n.inbound_event_id)).size,
+        messagesSent: notifs.filter((n) => n.status === 'sent').length,
+        failedRetrying: notifs.filter((n) => n.status === 'failed').length,
+        // Duplicate inbound events are rejected by inbound_event's unique key and never stored, so there is nothing to count yet.
+        duplicateIgnored: 0,
       },
       rows,
     }
@@ -827,50 +842,47 @@ export class CustomerServiceService {
     const type = await this.db.notification_type.findUnique({ where: { code } })
     if (!type) throw new NotFoundException(`Notification type ${code} not found`)
 
-    const existing = await this.db.notification_template.findUnique({
-      where: {
-        type_code_channel: {
-          type_code: code,
-          channel: dto.channel,
-        },
-      },
+    await this.db.$transaction(async (tx) => {
+      const existing = await tx.notification_template.findUnique({
+        where: { type_code_channel: { type_code: code, channel: dto.channel } },
+      })
+
+      const template = existing
+        ? await tx.notification_template.update({
+            where: { id: existing.id },
+            data: {
+              is_active: dto.isActive ?? existing.is_active,
+              subject_template: dto.subjectTemplate ?? existing.subject_template,
+              body_template: dto.bodyTemplate ?? existing.body_template,
+            },
+            select: { id: true },
+          })
+        : await tx.notification_template.create({
+            data: {
+              type_code: code,
+              channel: dto.channel,
+              is_active: dto.isActive ?? true,
+              subject_template: dto.subjectTemplate ?? null,
+              body_template: dto.bodyTemplate ?? '',
+            },
+            select: { id: true },
+          })
+
+      if (this.audit) {
+        const actor = await this.audit.resolveActor(userId)
+        await this.audit.write(
+          {
+            actor,
+            sourceFeature: '13',
+            action: 'update',
+            entityType: 'notification_template',
+            entityId: template.id,
+            summary: `Updated notification template ${code} for channel ${dto.channel}`,
+          },
+          tx,
+        )
+      }
     })
-
-    let templateId: string
-    if (existing) {
-      const updated = await this.db.notification_template.update({
-        where: { id: existing.id },
-        data: {
-          is_active: dto.isActive ?? existing.is_active,
-          subject_template: dto.subjectTemplate ?? existing.subject_template,
-          body_template: dto.bodyTemplate ?? existing.body_template,
-        },
-      })
-      templateId = updated.id
-    } else {
-      const created = await this.db.notification_template.create({
-        data: {
-          type_code: code,
-          channel: dto.channel,
-          is_active: dto.isActive ?? true,
-          subject_template: dto.subjectTemplate ?? null,
-          body_template: dto.bodyTemplate ?? '',
-        },
-      })
-      templateId = created.id
-    }
-
-    if (this.audit) {
-      const actor = await this.audit.resolveActor(userId)
-      await this.audit.write({
-        actor,
-        sourceFeature: '13',
-        action: 'update',
-        entityType: 'notification_template',
-        entityId: templateId,
-        summary: `Updated notification template ${code} for channel ${dto.channel}`,
-      })
-    }
 
     return this.getTemplatesForStaff(userId)
   }
@@ -890,6 +902,16 @@ export class CustomerServiceService {
     })
     if (!customer) throw new ForbiddenException('Only customer accounts can use this')
     return customer
+  }
+
+  /** Same supervisor rule as CustomerServiceStaffGuard and getCurrentStaff: cs-supervisor or an admin role. */
+  private async staffFor(userId: string): Promise<{ id: string; isSupervisor: boolean }> {
+    const staff = await this.db.staff.findFirst({
+      where: { user_id: userId, deleted_at: null },
+      select: { id: true, role: { select: { code: true, is_admin: true } } },
+    })
+    if (!staff) throw new ForbiddenException('Only staff members can use this')
+    return { id: staff.id, isSupervisor: staff.role.code === 'cs-supervisor' || staff.role.is_admin === true }
   }
 
   private async staffIdFor(userId: string): Promise<string> {
