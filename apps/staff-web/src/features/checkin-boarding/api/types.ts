@@ -197,4 +197,17 @@ export interface GateInfo {
   code: string
   airportCode: string
   isActive: boolean
+  /** The flight that boards at this gate now; null when the gate is free. */
+  flight: { id: string; flightNumber: string; depAt: string } | null
+}
+export interface AirportGateCount {
+  airportCode: string
+  city: string
+  /** The gates that are turned on. */
+  gates: number
+}
+export interface AddGatesResult {
+  added: GateInfo[]
+  /** The codes that were already there. */
+  skipped: string[]
 }

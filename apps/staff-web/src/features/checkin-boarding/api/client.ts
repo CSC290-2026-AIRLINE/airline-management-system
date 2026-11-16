@@ -1,6 +1,8 @@
 // The staff contract: one interface, two clients (the real API and the browser mock).
 import type {
+  AddGatesResult,
   ApiError,
+  AirportGateCount,
   BoardingPassView,
   CheckedBagView,
   FlightSummary,
@@ -37,7 +39,10 @@ export interface StaffApi {
   clearMismatch(documentId: string): Promise<StaffCheckInView>
   checkVisa(documentId: string): Promise<StaffCheckInView>
   printPass(passId: string): Promise<BoardingPassView>
-  gates(): Promise<GateInfo[]>
+  gates(airportCode: string, opts?: { all?: boolean }): Promise<GateInfo[]>
+  gateCounts(): Promise<AirportGateCount[]>
+  addGates(airportCode: string, codes: string[]): Promise<AddGatesResult>
+  setGateActive(gateId: string, isActive: boolean): Promise<GateInfo>
   flights(): Promise<FlightSummary[]>
   setGate(flightId: string, input: { gateId: string }): Promise<FlightSummary>
   passengerList(gateId: string, flightId: string): Promise<GateList>
@@ -75,6 +80,7 @@ export function createHttpStaffApi(fetchWithAuth: (path: string, init?: RequestI
 
   const post = (body?: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body ?? {}) })
   const put = (body: unknown): RequestInit => ({ method: 'PUT', body: JSON.stringify(body) })
+  const patch = (body: unknown): RequestInit => ({ method: 'PATCH', body: JSON.stringify(body) })
 
   return {
     search: (q) => {
@@ -94,7 +100,14 @@ export function createHttpStaffApi(fetchWithAuth: (path: string, init?: RequestI
     clearMismatch: (documentId) => request<StaffCheckInView>(`/api/staff/travel-documents/${documentId}/clear-mismatch`, post()),
     checkVisa: (documentId) => request<StaffCheckInView>(`/api/staff/travel-documents/${documentId}/check-visa`, post()),
     printPass: (passId) => request<BoardingPassView>(`/api/staff/boarding-passes/${passId}/print`, post()),
-    gates: () => request<GateInfo[]>('/api/staff/gates'),
+    gates: (airportCode, opts) => {
+      const params = new URLSearchParams({ airport: airportCode })
+      if (opts?.all) params.set('all', 'true')
+      return request<GateInfo[]>(`/api/staff/gates?${params.toString()}`)
+    },
+    gateCounts: () => request<AirportGateCount[]>('/api/staff/gates/counts'),
+    addGates: (airportCode, codes) => request<AddGatesResult>(`/api/staff/airports/${airportCode}/gates`, post({ codes })),
+    setGateActive: (gateId, isActive) => request<GateInfo>(`/api/staff/gates/${gateId}`, patch({ isActive })),
     flights: () => request<FlightSummary[]>('/api/staff/flights'),
     setGate: (flightId, input) => request<FlightSummary>(`/api/staff/flights/${flightId}/gate`, put(input)),
     passengerList: (gateId, flightId) => request<GateList>(`/api/staff/gates/${gateId}/flights/${flightId}/passengers`),
