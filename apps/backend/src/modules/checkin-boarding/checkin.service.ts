@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 import type { BagAllowance, BoardingPassView, Cabin, CheckInView, SeatChoice, SeatLock, SeatMap, SeatMapSeat } from './api-types'
 import type { Actor } from './actor'
+import { cancelCheckIn } from './cancel-check-in'
 import { bagAllowance } from './domain/allowance'
 import { boardingGroup } from './domain/boarding'
 import { toAlpha2 } from './domain/countries'
@@ -372,14 +373,11 @@ export class CheckInService {
     const flight = await this.flightOf(record.flight_id)
     const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id, record.flight_id)
     if (flight.status !== 'cancelled' && !booking?.cancelled) return record
-    const cancelled = await this.store.cancelCheckIn(record.id)
-    for (const bag of await this.store.listBags(record.id)) {
-      if (bag.status !== 'offloaded') await this.store.updateBag(bag.id, { status: 'offloaded' })
-    }
     const why = flight.status === 'cancelled' ? 'the flight was cancelled' : 'the booking was cancelled'
-    await this.notify.send('check_in_cancelled', { checkInId: record.id, flightNumber: flight.flightNumber, reason: why })
-    await this.record(actor, 'check_in.cancel', 'check_in', record.id, why)
-    return cancelled
+    return cancelCheckIn({ store: this.store, notify: this.notify, audit: this.audit }, actor, record, {
+      flightNumber: flight.flightNumber,
+      why,
+    })
   }
 
   /**

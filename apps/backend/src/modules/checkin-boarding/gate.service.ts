@@ -11,6 +11,7 @@ import type {
   RejectReason,
   ScanResult,
 } from './api-types'
+import { cancelCheckIn } from './cancel-check-in'
 import { decideScan } from './domain/boarding'
 import { computeWindow } from './domain/window'
 import { CheckInError, conflict, invalidState, notFound, validation } from './errors'
@@ -248,6 +249,7 @@ export class GateService {
     const staffId = this.staffIdOf(actor)
     const reference = input.reference.trim().toUpperCase()
     const scanned = await this.flightOf(input.flightId)
+    if (scanned.status === 'cancelled') throw invalidState('This flight is cancelled')
     const boarding = await this.store.flightBoarding(input.flightId)
     if (!boarding) throw notFound('Flight boarding')
     if (boarding.gate_id !== gateId) {
@@ -284,8 +286,8 @@ export class GateService {
 
     // Feature 3 does not call us when it cancels a booking: the pass of a cancelled booking is cancelled here.
     if (booking?.cancelled && record.status !== 'cancelled') {
-      record = await this.store.cancelCheckIn(record.id)
-      await this.offloadBags(record.id)
+      const flightNumber = record.flight_id === scanned.id ? scanned.flightNumber : (await this.flightOf(record.flight_id)).flightNumber
+      record = await cancelCheckIn(this.cancelDeps(), actor, record, { flightNumber, why: 'the booking was cancelled' })
     }
     // A hold can come after the pass was issued (feature 7 re-screens): the gate asks where the passenger stands now.
     if (record.status === 'checked_in') {
@@ -389,6 +391,7 @@ export class GateService {
     const boarding = await this.store.flightBoarding(flightId)
     if (!boarding) throw notFound('Flight boarding')
     if (boarding.closed_at) throw invalidState('The gate of this flight is closed')
+    if ((await this.flightOf(flightId)).status === 'cancelled') throw invalidState('This flight is cancelled')
 
     if (input.source === 'sensor') {
       const count = await this.sensor.read(boarding.gate_id, { boardedCount: await this.boardedCountOf(flightId) })
@@ -427,6 +430,9 @@ export class GateService {
     const boarding = await this.store.flightBoarding(flightId)
     if (!boarding) throw notFound('Flight boarding')
     if (boarding.closed_at) throw invalidState('The gate of this flight is already closed')
+    // A cancelled flight has no gate to close and nobody on it is a no-show.
+    const flight = await this.flightOf(flightId)
+    if (flight.status === 'cancelled') throw invalidState('This flight is cancelled')
 
     const count = boarding.manual_count ?? boarding.sensor_count
     if (count === null || count === undefined) {
@@ -448,21 +454,21 @@ export class GateService {
     const records = await this.store.listCheckInsByFlight(flightId)
     const passes = await this.store.passesForCheckIns(records.map((record) => record.id))
     const final = finalPassIds(await this.store.listEvents(flightId))
+    const cancelledBookings = new Set(
+      (await this.bookings.listByFlight(flightId)).filter((b) => b.cancelled).map((b) => b.bookingPassengerId),
+    )
     for (const record of records) {
       const pass = passes.find((p) => p.check_in_id === record.id)
       if (pass && final.has(pass.id)) continue
       // Feature 3 does not call us when it cancels a booking: a check-in nobody read or scanned since is cancelled here.
-      if (record.status === 'checked_in' || record.status === 'on_hold' || record.status === 'started') {
-        const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id, record.flight_id)
-        if (booking?.cancelled) {
-          await this.store.cancelCheckIn(record.id)
-          await this.offloadBags(record.id)
-          continue
-        }
+      const open = record.status === 'checked_in' || record.status === 'on_hold' || record.status === 'started'
+      if (open && cancelledBookings.has(record.booking_passenger_id)) {
+        await cancelCheckIn(this.cancelDeps(), actor, record, { flightNumber: flight.flightNumber, why: 'the booking was cancelled' })
+        continue
       }
       if (pass) {
         // Only a passenger who could still board is a no-show; a cancelled or denied check-in keeps its status.
-        if (final.has(pass.id) || (record.status !== 'checked_in' && record.status !== 'on_hold')) continue
+        if (record.status !== 'checked_in' && record.status !== 'on_hold') continue
         const written = await this.store.appendEvent({
           flight_id: flightId,
           gate_id: boarding.gate_id,
@@ -559,6 +565,10 @@ export class GateService {
 
   private async boardedCountOf(flightId: string): Promise<number> {
     return (await this.store.listEvents(flightId)).filter((e) => e.event === 'boarded').length
+  }
+
+  private cancelDeps() {
+    return { store: this.store, notify: this.notify, audit: this.audit }
   }
 
   private async offloadBags(checkInId: string): Promise<void> {

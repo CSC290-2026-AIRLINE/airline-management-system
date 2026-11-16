@@ -270,6 +270,23 @@ describe('GateService.setGate', () => {
     await expect(gate.setGate(staff, 'flt-fy204', { gateId: 'gate-a2' })).rejects.toMatchObject({ code: 'INVALID_STATE' })
   })
 
+  it('a cancelled flight cannot be scanned, counted or closed, and nobody on it becomes a no-show', async () => {
+    const { gate, store, flights } = build()
+    const original = flights.byId.bind(flights)
+    jest.spyOn(flights, 'byId').mockImplementation(async (id: string) => {
+      const flight = await original(id)
+      return flight && id === 'flt-fy204' ? { ...flight, status: 'cancelled' } : flight
+    })
+    await expect(gate.scan(staff, 'gate-a1', { flightId: 'flt-fy204', reference: 'R8KD2WQN' })).rejects.toMatchObject({
+      code: 'INVALID_STATE',
+    })
+    await expect(gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })).rejects.toMatchObject({ code: 'INVALID_STATE' })
+    await store.updateFlightBoarding('flt-fy204', { manual_count: 0 })
+    await expect(gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })).rejects.toMatchObject({ code: 'INVALID_STATE' })
+    expect((await store.getCheckIn(await idOf(store, 'SA224B')))?.status).toBe('checked_in')
+    expect((await store.listEvents('flt-fy204')).filter((e) => e.event === 'boarded' || e.event === 'no_show')).toHaveLength(0)
+  })
+
   it('setGate refuses a cancelled flight its first gate and writes nothing', async () => {
     const { gate, store, flights } = build()
     const original = flights.byId.bind(flights)
@@ -513,7 +530,9 @@ describe('GateService head-count and close', () => {
   })
 
   it('closing the gate cancels the check-in of a booking cancelled since, never a no-show', async () => {
-    const { gate, store } = build()
+    const { gate, store, notify, audit } = build()
+    const notifySpy = jest.spyOn(notify, 'send')
+    const auditSpy = jest.spyOn(audit, 'record')
     const id = await idOf(store, 'SA224B')
     const booking = BOOKINGS.find((b) => b.pnr === 'SA224B')!
     booking.cancelled = true
@@ -524,6 +543,11 @@ describe('GateService head-count and close', () => {
       booking.cancelled = false
     }
     expect((await store.getCheckIn(id))?.status).toBe('cancelled')
+    expect(notifySpy).toHaveBeenCalledWith(
+      'check_in_cancelled',
+      expect.objectContaining({ checkInId: id, reason: 'the booking was cancelled' }),
+    )
+    expect(auditSpy).toHaveBeenCalledWith(expect.objectContaining({ action: 'check_in.cancel', entityId: id, actorType: 'staff' }))
     const pass = (await store.passesForCheckIn(id))[0]
     expect((await store.listEvents('flt-fy204')).filter((e) => e.boarding_pass_id === pass.id && e.event === 'no_show')).toHaveLength(0)
   })
