@@ -161,6 +161,10 @@ export class GateService {
     const flight = await this.flightOf(flightId)
     const boarding = await this.store.flightBoarding(flightId)
     if (boarding?.closed_at) throw invalidState('The gate of this flight is closed')
+    // A cancelled or departed flight keeps the gate it has, but it never gets its first one.
+    if (!boarding && (flight.status === 'cancelled' || flight.status === 'departed')) {
+      throw invalidState('A cancelled or departed flight cannot be given a gate')
+    }
     if (!gate.is_active) throw conflict('GATE_INACTIVE', 'This gate is turned off', { gateId: gate.id })
     if (gate.airport_code !== flight.origin.code) {
       throw validation(`This gate is at ${gate.airport_code} and ${flight.flightNumber} departs from ${flight.origin.code}`)

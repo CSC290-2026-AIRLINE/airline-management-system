@@ -74,7 +74,8 @@ deleted.
 
 `PUT /staff/flights/:flightId/gate` moves a flight to a gate: a turned-off gate is refused with 409
 `GATE_INACTIVE`, a gate another open flight uses with 409 `GATE_TAKEN`, and a gate at another airport than the one
-the flight departs from with `VALIDATION`.
+the flight departs from with `VALIDATION`. A cancelled or departed flight never gets its first gate: it is refused
+with 409 `INVALID_STATE` and nothing is written.
 
 The notifications carry feature 13's type codes: `check_in_completed` and `boarding_pass_issued` when the pass is
 issued, `gate_changed` when a flight moves to another gate, `boarding_call` when the gate closes.

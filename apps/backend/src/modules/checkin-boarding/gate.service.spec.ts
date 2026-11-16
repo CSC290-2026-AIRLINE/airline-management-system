@@ -2,6 +2,7 @@ import type { Actor } from './actor'
 import { CheckInService } from './checkin.service'
 import { CounterService } from './counter.service'
 import { GateService } from './gate.service'
+import { CheckInError } from './errors'
 import { BOOKINGS } from './providers/fixtures'
 import {
   FixtureBookings,
@@ -65,7 +66,7 @@ function build() {
     store,
   )
   const gate = new GateService(clock, flights, bookings, new FixturePolice(), seats, screening, sensor, notify, audit, settings, store)
-  return { gate, checkins, counter, store, clock, notify, audit, sensor, screening }
+  return { gate, checkins, counter, store, clock, notify, audit, sensor, screening, flights }
 }
 
 async function idOf(store: CheckInStore, pnr: string): Promise<string> {
@@ -267,6 +268,24 @@ describe('GateService.setGate', () => {
     await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
     await gate.closeGate(staff, 'flt-fy204', {})
     await expect(gate.setGate(staff, 'flt-fy204', { gateId: 'gate-a2' })).rejects.toMatchObject({ code: 'INVALID_STATE' })
+  })
+
+  it('setGate refuses a cancelled flight its first gate and writes nothing', async () => {
+    const { gate, store, flights } = build()
+    const original = flights.byId.bind(flights)
+    jest.spyOn(flights, 'byId').mockImplementation(async (id: string) => {
+      if (id !== 'flt-cancelled') return original(id)
+      const flight = await original('flt-fy204')
+      if (!flight) return null
+      return { ...flight, id: 'flt-cancelled', flightNumber: 'FY 999', status: 'cancelled' }
+    })
+    await gate.addGates(staff, 'BKK', ['D1'])
+    const error = await gate.setGate(staff, 'flt-cancelled', { gateId: 'gate-bkk-d1' }).catch((err: unknown) => err)
+    expect(error).toMatchObject({ code: 'INVALID_STATE' })
+    expect((error as CheckInError).getResponse()).toMatchObject({
+      error: { message: 'A cancelled or departed flight cannot be given a gate' },
+    })
+    expect(await store.flightBoarding('flt-cancelled')).toBeNull()
   })
 })
 
