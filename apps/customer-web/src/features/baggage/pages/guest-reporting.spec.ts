@@ -5,14 +5,12 @@ import test from 'node:test'
 import { GUEST_REPORT_PATHS, lookUpGuestBooking, submitGuestLostReport, type GuestApiOptions } from './guest-report-api.ts'
 import {
   buildGuestLostReportFormData,
-  caseAccessActionsFor,
   defaultGuestTravellerId,
   GUEST_CONFIRMATION_NOTE,
   GUEST_SUCCESS_MESSAGE,
   guestFlightKey,
   guestFlightsForSelection,
   parseGuestReportResult,
-  reportingModeFor,
   usableGuestFlights,
   usableGuestTravellers,
   validateGuestLostReportForm,
@@ -48,41 +46,23 @@ const pagesDir = import.meta.dirname
 const source = (relative: string) => readFileSync(join(pagesDir, relative), 'utf8')
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Mode selection
+// Login-only route contracts
 
-test('reporting mode follows Clerk sign-in state only', () => {
-  assert.equal(reportingModeFor({ isLoaded: true, isSignedIn: true }), 'customer')
-  assert.equal(reportingModeFor({ isLoaded: true, isSignedIn: false }), 'guest')
-  assert.equal(reportingModeFor({ isLoaded: true, isSignedIn: null }), 'guest')
-  assert.equal(reportingModeFor({ isLoaded: false, isSignedIn: false }), 'pending')
-  assert.equal(reportingModeFor({ isLoaded: false, isSignedIn: true }), 'pending')
-})
-
-test('a Clerk-signed-in user stays in customer mode whatever the app session does (no guest fallback)', () => {
-  // The mode takes only Clerk's state: an app session exchange failure (AppAuthProvider user === null) cannot reach it.
-  assert.equal(reportingModeFor.length, 1)
-  assert.equal(reportingModeFor({ isLoaded: true, isSignedIn: true }), 'customer')
-
+test('reporting requires router-authenticated sign-in and renders only the existing customer page', () => {
   const route = source('../../../routes/report-lost-bag.tsx')
-  assert.match(route, /import \{ useAuth \} from '@clerk\/clerk-react'/)
-  assert.match(route, /reportingModeFor\(\{ isLoaded, isSignedIn \}\)/)
-  assert.doesNotMatch(route, /useAppAuth|\.user\b|accessToken/, 'the route must not infer the mode from the app session')
-  // The root header is shared; signed-in reporting still requires its app session provider.
+  assert.match(route, /beforeLoad: \(\{ context, location \}\)/)
+  assert.match(route, /if \(!context\.auth\.isSignedIn\)/)
+  assert.match(route, /redirect\(\{ to: '\/login', search: \{ redirect: location\.href \} \}\)/)
+  assert.doesNotMatch(route, /GuestLostBagReportPage|reportingModeFor|useAuth/)
   assert.match(route, /<AppAuthProvider>\s*<PassengerLostBagReportPage \/>\s*<\/AppAuthProvider>/)
-  assert.match(route, /if \(mode === 'guest'\) \{\s*return <GuestLostBagReportPage \/>/)
-  assert.doesNotMatch(route, /FlythonHeader|GuestReportHeader/)
   assert.match(route, /createFileRoute\('\/report-lost-bag'\)/)
 })
 
-test('the guest page never touches the signed-in session; the customer page keeps using it', () => {
+test('the routed customer page continues using the existing authenticated session', () => {
+  const route = source('../../../routes/report-lost-bag.tsx')
   const page = source('PassengerLostBagReportPage.tsx')
-  const guestPage = page.slice(page.indexOf('export function GuestLostBagReportPage'), page.indexOf('function LostBagReportForm'))
-  const customerPage = page.slice(
-    page.indexOf('export function PassengerLostBagReportPage'),
-    page.indexOf('export function GuestLostBagReportPage'),
-  )
-  assert.doesNotMatch(guestPage, /useAppAuth|fetchWithAuth/)
-  assert.match(customerPage, /const \{ fetchWithAuth \} = useAppAuth\(\)/)
+  assert.match(route, /<PassengerLostBagReportPage \/>/)
+  assert.match(page, /const \{ fetchWithAuth \} = useAppAuth\(\)/)
 })
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -394,27 +374,17 @@ test('the guest confirmation reads only the minimal result and promises no email
   assert.doesNotMatch(GUEST_CONFIRMATION_NOTE, /email|emailed|sent you/i)
 })
 
-test('the "Already reported?" area sends guests to public tracking and customers to My bag case', () => {
-  assert.deepEqual(caseAccessActionsFor('guest'), { openCreatedCase: false, checkMyCase: false, guestCaseTracking: true })
-  assert.deepEqual(caseAccessActionsFor('customer'), { openCreatedCase: true, checkMyCase: true, guestCaseTracking: false })
-
-  const page = source('PassengerLostBagReportPage.tsx')
-  const sidebar = page.slice(page.indexOf('<aside className="passenger-report-sidebar">'), page.indexOf('</aside>'))
-  assert.match(page, /\{caseAccess\.openCreatedCase && \(/)
-  // The shared area is visible in both modes; only the destination changes.
-  assert.match(sidebar, /<h2>Already reported\?<\/h2>/)
-  assert.match(
-    sidebar.replace(/[\s()]/g, ''),
-    /\{caseAccess\.checkMyCase\?<Linkto="\/lost-bag-case">Checkmycase<\/Link>:<Linkto="\/track-lost-bag">Checkmycase<\/Link>\}/,
-  )
-  // The guest confirmation's "Check my case" also goes to public tracking with the case number only.
-  assert.match(
-    page,
-    /\{caseAccess\.guestCaseTracking && \([\s\S]*?navigate\(\{ to: '\/track-lost-bag', search: \{ case: pageState\.caseNumber \} \}\)[\s\S]*?Check my case/,
-  )
-  // My bag case stays behind the authenticated layout; tracking stays public.
+test('former guest entry points direct users to sign-in or the authenticated case page', () => {
+  const reportRoute = source('../../../routes/report-lost-bag.tsx')
+  const trackingRoute = source('../../../routes/track-lost-bag.tsx')
+  assert.doesNotMatch(reportRoute, /GuestLostBagReportPage/)
+  assert.match(reportRoute, /to: '\/login'/)
+  assert.match(trackingRoute, /if \(!context\.auth\.isSignedIn\)/)
+  assert.match(trackingRoute, /redirect\(\{ to: '\/login', search: \{ redirect: '\/lost-bag-case' \} \}\)/)
+  assert.match(trackingRoute, /throw redirect\(\{ to: '\/lost-bag-case' \}\)/)
+  assert.doesNotMatch(trackingRoute, /GuestLostBagCasePage|useAuth|component:/)
   assert.match(source('../../../routes/_authenticated/lost-bag-case.tsx'), /createFileRoute\('\/_authenticated\/lost-bag-case'\)/)
-  assert.match(source('../../../routes/track-lost-bag.tsx'), /createFileRoute\('\/track-lost-bag'\)/)
+  assert.match(trackingRoute, /createFileRoute\('\/track-lost-bag'\)/)
 })
 
 test('guest follow-up copy promises no online tracking, delivery choice or email; customer copy is unchanged', () => {

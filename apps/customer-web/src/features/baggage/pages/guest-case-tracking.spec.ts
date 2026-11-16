@@ -163,17 +163,15 @@ test('every failed verification gets the same message; other failures are generi
 // ---------------------------------------------------------------------------------------------------------------------
 // Routes and page (source contracts: customer-web has no component-test framework)
 
-test('guest tracking is a public route; signed-in users go to the protected My bag case', () => {
+test('the former guest tracking URL requires sign-in and redirects to the protected My bag case', () => {
   const route = source('../../../routes/track-lost-bag.tsx')
   assert.equal(GUEST_CASE_TRACKING_PATH, '/track-lost-bag')
   assert.match(route, /createFileRoute\('\/track-lost-bag'\)/)
+  assert.match(route, /beforeLoad: \(\{ context \}\)/)
+  assert.match(route, /if \(!context\.auth\.isSignedIn\)/)
+  assert.match(route, /redirect\(\{ to: '\/login', search: \{ redirect: '\/lost-bag-case' \} \}\)/)
   assert.match(route, /throw redirect\(\{ to: '\/lost-bag-case' \}\)/)
-  assert.match(route, /if \(isSignedIn\) return <Navigate to="\/lost-bag-case" \/>/)
-  assert.match(route, /<GuestLostBagCasePage initialCaseNumber=\{caseNumber \?\? ''\} \/>/)
-  assert.doesNotMatch(route, /GuestReportHeader|FlythonHeader/)
-  // Only the case number is accepted from the URL.
-  assert.match(route, /const caseNumber = prefilledCaseNumber\(search\.case\)/)
-  assert.doesNotMatch(route, /search\.(bookingReference|surname)/)
+  assert.doesNotMatch(route, /GuestLostBagCasePage|useAuth|component:/)
   // The signed-in page keeps its authenticated route.
   assert.match(source('../../../routes/_authenticated/lost-bag-case.tsx'), /createFileRoute\('\/_authenticated\/lost-bag-case'\)/)
 })
