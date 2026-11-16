@@ -9,6 +9,7 @@ import { ApiRequestError, type StaffApi } from '../api/index.ts'
 import type { FlightSummary, GateInfo, GateList, GateListEntry, Headcount, ScanResult } from '../api/types.ts'
 import { CameraScan } from './CameraScan.tsx'
 import { ErrorBanner } from './ErrorBanner.tsx'
+import { flightOfGate, flightsWithoutGate } from './gate-flights.ts'
 import { Message, Pill, StatusPill, type MessageTone } from './pills.tsx'
 import { messageOf, numberOrNull } from './errors.ts'
 import { formatDate, formatTime } from '../domain/format.ts'
@@ -78,22 +79,11 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
   /** The gates of this airport that have a flight now. */
   const gatesWithFlight = gates.filter((item) => item.flight)
 
-  // shortcut: lists every flight of the airport that has no gate, filter by departure day when the schedule grows
-  const freeFlights = flights
-    .filter((item) => item.origin.code === airportCode && !item.gate && (item.status === 'scheduled' || item.status === 'delayed'))
-    .sort((a, b) => a.depAt.localeCompare(b.depAt))
+  const freeFlights = flightsWithoutGate(flights, airportCode)
 
   /** The flight in the option list: its number, when it leaves and where it goes. */
   const flightOption = (item: FlightSummary): string =>
     `${item.flightNumber} · ${formatDate(item.depAt)} ${formatTime(item.depAt)} · ${item.destination.city}`
-
-  /** The flight of a gate: the one that is at it now, or the one already on screen when it is the same gate. */
-  const flightOfGate = (id: string): string | null => {
-    const open = gates.find((item) => item.id === id)?.flight?.id ?? null
-    if (open) return open
-    // A gate that was closed keeps the flight that is already on screen; every other gate shows the flight it has now.
-    return picked && id === picked.gateId ? picked.flightId : null
-  }
 
   // The gates and the flights of the airport. The gate on screen keeps its flight when it is picked again.
   useEffect(() => {
@@ -186,7 +176,7 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
   /** The gate the agent picks: the flight on screen is the one that is at that gate now. */
   const chooseGate = (id: string) => {
     resetGateState()
-    setPicked({ gateId: id, flightId: flightOfGate(id) })
+    setPicked({ gateId: id, flightId: flightOfGate(gates, picked, id) })
     setGateMessage(null)
   }
 
@@ -199,7 +189,10 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
       setScan(result)
       setLastReference(value.trim().toUpperCase())
       setReference('')
-      await load()
+      // A scan changes the passengers of this flight and the head-count, not the gates or the flights.
+      const [passengers, counts] = await Promise.all([api.passengerList(gateId, flight.id), api.headcount(flight.id)])
+      setList(passengers)
+      setHeadcount(counts)
     } catch (err) {
       setError(messageOf(err))
     } finally {
@@ -245,9 +238,7 @@ export function GateBoarding({ api, airportCode }: GateBoardingProps) {
       })
       setPicked({ gateId: moveTo, flightId: flight.id })
       // The gates and the flights again: the flight is at the new gate now.
-      const [gateList, flightList] = await Promise.all([api.gates(airportCode), api.flights()])
-      setGates(gateList)
-      setFlights(flightList)
+      await reloadGates()
     } catch (err) {
       setError(messageOf(err))
     } finally {
