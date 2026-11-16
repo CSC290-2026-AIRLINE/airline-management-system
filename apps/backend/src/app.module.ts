@@ -6,8 +6,13 @@ import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
 import { validateEnv } from './config/env.validation'
+import { ScreeningModule } from './modules/screening/screening.module'
 import { PricingModule } from './modules/pricing/pricing.module'
 import { CustomerServiceModule } from './modules/customer-service/customer-service.module'
+import { PassengerProfilesModule } from '@backend/modules/passenger-profiles/passenger-profiles.module'
+import { WatchlistModule } from './modules/watchlist/watchlist.module'
+import { AircraftManagementModule } from '@backend/modules/aircraft-management/aircraft-management.module'
+import { FlightSchedulingModule } from './modules/flight-scheduling/flight-scheduling.module'
 
 @Module({
   imports: [
@@ -17,6 +22,11 @@ import { CustomerServiceModule } from './modules/customer-service/customer-servi
     AdminConsoleModule,
     PricingModule,
     CustomerServiceModule,
+    PassengerProfilesModule,
+    ScreeningModule,
+    WatchlistModule,
+    AircraftManagementModule,
+    FlightSchedulingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

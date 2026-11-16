@@ -1,0 +1,1226 @@
+/*
+ * Feature 2 styles. Every colour, radius and type size comes from the Figma file
+ * (vh4YapGP8tVxXtbVp3MrJO, "F2 / Components · Flight scheduling"); see CLAUDE.md in this folder.
+ * Use the --fs-* tokens below; do not write hex values in rules.
+ */
+.fs-shell {
+  /* colour */
+  --fs-navy: #102544;
+  --fs-navy-hover: #293d61;
+  --fs-ink: #0a1424;
+  --fs-sidebar: #14213d;
+  --fs-sidebar-text: #b7c1d1;
+  --fs-accent: #f2a800;
+  --fs-page: #f7f9fc;
+  --fs-muted: #677287;
+  --fs-slate: #455473;
+  --fs-border: #cbd5e1;
+  --fs-divider: #e2e8f0;
+  --fs-head: #e8edf5;
+  --fs-tint: #eef3ff;
+  --fs-yellow: #fff1c7;
+  --fs-good-bg: #e3f2ea;
+  --fs-good: #1f7a4d;
+  --fs-warn-bg: #fcefd9;
+  --fs-warn: #b45309;
+  --fs-crit-bg: #fdecec;
+  --fs-crit: #b42318;
+  --fs-crit-line: #db1f29;
+  --fs-info-bg: #dde6f7;
+  /* radius */
+  --fs-radius-xs: 2px;
+  --fs-radius-sm: 6px;
+  --fs-radius: 8px;
+  --fs-radius-lg: 10px;
+  /* type */
+  --fs-font: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --fs-font-brand: Merriweather, Georgia, 'Times New Roman', serif;
+  /* type scale, desktop (base 16px): H1 48/800, H2 36/800, H3 28/700, H4 22/600, body-lg 18, body 16, label 14/500 */
+  --fs-text-h1: 48px;
+  --fs-text-h2: 36px;
+  --fs-text-h3: 28px;
+  --fs-text-h4: 22px;
+  --fs-text-lg: 18px;
+  --fs-text-body: 16px;
+  --fs-text-label: 14px;
+  --fs-text-title-sm: 32px; /* page title on a phone, from the Figma mobile frames */
+  --fs-text-caption: 12px; /* Figma caption style */
+  --fs-text-action: 14px; /* buttons; Semi Bold. ponytail: size assumed, the shared type rules were cut off at this row */
+  --fs-text-brand: 40px;
+
+  /* The staff design is light only; the scaffold's dark scheme would put navy text on a dark page. */
+  color-scheme: light;
+  display: grid;
+  flex: 1;
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+/* The shell takes the whole window; the scaffold's #root is a 1126px column with side borders. */
+#root:has(.fs-shell) {
+  width: 100%;
+  border-inline: 0;
+  text-align: left;
+}
+
+/* Inside the main staff frame the shell is a plain wrapper: the main sidebar replaces Feature 2's own. */
+.fs-embedded {
+  display: block;
+}
+
+/* sidebar */
+
+/* page */
+.fs-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fs-page {
+  flex: 1;
+  width: 100%;
+  max-width: 72rem;
+  padding: 24px 24px 40px;
+  text-align: left;
+}
+
+@media (min-width: 1100px) {
+  .fs-page {
+    padding-inline: 63px;
+  }
+}
+
+.fs-page h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* filter box: a plain wrapper on desktop, a folding panel on a phone (see the 800px block) */
+.fs-filter-toggle,
+.fs-filter-clear,
+.fs-selectall {
+  display: none;
+}
+
+/* form controls */
+.fs-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.fs-filters label,
+.fs-form-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--fs-muted);
+  font-size: var(--fs-text-label);
+  font-weight: 500;
+}
+
+.fs-filters select,
+.fs-filters input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius-lg);
+  background: #fff;
+  color: var(--fs-navy);
+  font: inherit;
+  font-size: var(--fs-text-label);
+  font-weight: 400;
+}
+
+/* A native date input is taller and wider than a select unless its size is fixed. */
+.fs-filters select,
+.fs-filters input {
+  height: 42px;
+  padding-block: 0;
+}
+
+.fs-filters select,
+.fs-select {
+  appearance: none;
+  padding-right: 36px;
+  background: #fff
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%23677287' stroke-width='1.5'%3E%3Cpath d='m1 1 4 4 4-4'/%3E%3C/svg%3E")
+    no-repeat right 14px center;
+  cursor: pointer;
+}
+
+.fs-filters select:focus,
+.fs-filters input:focus {
+  border-color: var(--fs-navy);
+  outline: none;
+  box-shadow:
+    0 0 0 0.5px var(--fs-navy),
+    0 0 0 3px rgb(16 37 68 / 12%);
+}
+
+.fs-form-grid {
+  align-items: end;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.fs-field {
+  display: grid;
+  gap: 6px;
+  color: var(--fs-muted);
+  font-size: var(--fs-text-label);
+  font-weight: 500;
+}
+
+.fs-invalid {
+  color: var(--fs-crit);
+}
+
+.fs-error {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: var(--fs-radius);
+  background: var(--fs-crit-bg);
+  color: var(--fs-crit);
+  font-size: var(--fs-text-label);
+}
+
+/* buttons */
+
+/* table */
+
+.fs-table-wrap {
+  margin-bottom: 16px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius);
+  overflow-x: auto;
+  background: #fff;
+}
+
+.fs-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: var(--fs-text-label);
+}
+
+.fs-table th,
+.fs-table td {
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--fs-divider);
+  text-align: left;
+}
+
+.fs-table th {
+  padding-block: 12px;
+  background: var(--fs-head);
+  font-size: var(--fs-text-label);
+  font-weight: 500;
+}
+
+.fs-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.fs-table tbody tr:hover {
+  background: rgb(16 37 68 / 5%);
+  box-shadow: inset 3px 0 0 var(--fs-navy);
+}
+
+.fs-table b {
+  font-weight: 600;
+}
+
+.fs-flight {
+  font-weight: 600;
+}
+
+.fs-to,
+.fs-was {
+  color: var(--fs-muted);
+}
+
+.fs-sub {
+  margin: 2px 0 0;
+  color: var(--fs-muted);
+  font-size: var(--fs-text-caption);
+  font-weight: 400;
+}
+
+/* status pill: neutral by default, tone by status */
+.fs-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--fs-head);
+  color: var(--fs-slate);
+  font-size: var(--fs-text-caption);
+  font-weight: 500;
+}
+
+.fs-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+/* card and toast */
+.fs-card {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius);
+  background: #fff;
+}
+
+.fs-card h2 {
+  margin: 0 0 16px;
+  color: var(--fs-ink);
+  font-size: var(--fs-text-h4);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.fs-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--fs-radius);
+  background: var(--fs-ink);
+  box-shadow: 0 4px 9px rgb(0 0 0 / 25%);
+  color: #fff;
+  font-size: var(--fs-text-label);
+  transform: translateX(-50%);
+}
+
+/* generate flights page */
+.fs-title-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.fs-title-row > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.fs-align-end {
+  align-self: flex-end;
+}
+
+.fs-field-label {
+  margin: 16px 0 8px;
+  color: var(--fs-muted);
+  font-size: var(--fs-text-label);
+  font-weight: 500;
+}
+
+.fs-patterns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.fs-pattern {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius);
+  background: #fff;
+  font-size: var(--fs-text-label);
+  cursor: pointer;
+}
+
+.fs-pattern-on {
+  border: 1.5px solid var(--fs-navy);
+  padding: 9.5px 13.5px;
+}
+
+.fs-pattern input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--fs-navy);
+}
+
+.fs-section-title {
+  margin: 24px 0 12px;
+  color: var(--fs-ink);
+  font-size: var(--fs-text-h4);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* patterns page */
+.fs-days {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.fs-day-badge {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--fs-navy);
+  color: #fff;
+  font-size: var(--fs-text-caption);
+  font-weight: 600;
+}
+
+.fs-day-off {
+  background: var(--fs-head);
+  color: var(--fs-muted);
+}
+
+.fs-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.fs-row-on {
+  background: var(--fs-tint);
+}
+
+.fs-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* top bar, batch actions, demo notice */
+.fs-topbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 24px 60px 0 40px;
+}
+
+.fs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius-sm);
+  background: #fff;
+  color: var(--fs-navy);
+  font-size: var(--fs-text-caption);
+}
+
+.fs-chip-label {
+  color: var(--fs-muted);
+  font-weight: 500;
+}
+
+.fs-toast-warn {
+  background: var(--fs-warn);
+}
+
+.fs-batch {
+  margin-bottom: 24px;
+  padding: 16px 20px;
+  border: 1px solid var(--fs-navy);
+  border-radius: var(--fs-radius);
+  background: var(--fs-tint);
+}
+
+.fs-batch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.fs-batch-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.fs-batch-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 200px;
+  color: var(--fs-muted);
+  font-size: var(--fs-text-label);
+  font-weight: 500;
+}
+
+.fs-batch .fs-sub {
+  margin: 0;
+}
+
+.fs-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.fs-result-head h2 {
+  margin: 0;
+}
+
+.fs-table .fs-check {
+  width: 52px;
+  padding-left: 16px;
+}
+
+.fs-table input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--fs-navy);
+}
+
+.fs-table tr.fs-row-picked {
+  background: var(--fs-tint);
+}
+
+.fs-form-grid-4 {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+/* flight detail */
+.fs-back {
+  display: inline-block;
+  margin-bottom: 20px;
+  color: var(--fs-navy);
+  font-size: var(--fs-text-caption);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.fs-flight-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.fs-flight-no {
+  color: var(--fs-ink);
+  font-size: var(--fs-text-h3);
+  font-weight: 800;
+}
+
+.fs-flight-route {
+  color: var(--fs-slate);
+  font-size: var(--fs-text-h4);
+}
+
+.fs-kv {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 8px 0;
+  margin: 0;
+  font-size: var(--fs-text-label);
+}
+
+.fs-kv dt {
+  color: var(--fs-muted);
+}
+
+.fs-kv dd {
+  margin: 0;
+}
+
+.fs-kv-pairs {
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 12px 24px;
+}
+
+.fs-kv-pairs > div {
+  min-width: 0;
+}
+
+/* The service date carries a longer explanation, so it gets two columns. */
+.fs-kv-pairs > div:has(.fs-wide-only) {
+  grid-column: span 2;
+}
+
+.fs-fold-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fs-fold-toggle {
+  display: none;
+}
+
+.fs-num {
+  text-align: right !important;
+  white-space: nowrap;
+}
+
+.fs-two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  align-items: start;
+  gap: 24px;
+}
+
+.fs-two .fs-card {
+  margin-top: 24px;
+}
+
+.fs-form-grid-2 {
+  grid-template-columns: 2fr 1fr;
+}
+
+.fs-mt {
+  margin-top: 16px;
+}
+
+.fs-checks,
+.fs-events {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-text-label);
+}
+
+.fs-checks li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* conflicts */
+
+.fs-impact {
+  margin: 16px 0;
+  padding: 12px 16px;
+  border-radius: var(--fs-radius);
+  background: var(--fs-tint);
+}
+
+.fs-reason {
+  max-width: 320px;
+  margin-bottom: 16px;
+}
+
+.fs-options {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.fs-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius);
+  background: #fff;
+  font-size: var(--fs-text-label);
+  cursor: pointer;
+}
+
+.fs-option input {
+  margin-top: 3px;
+  accent-color: var(--fs-navy);
+}
+
+.fs-option .fs-sub {
+  display: block;
+  margin-top: 4px;
+}
+
+.fs-option-off {
+  background: var(--fs-page);
+  color: var(--fs-muted);
+  cursor: not-allowed;
+}
+
+.fs-sub-crit {
+  color: var(--fs-crit);
+}
+
+.fs-between {
+  justify-content: space-between;
+}
+
+/* tabs, settings rows, small helpers */
+
+.fs-tab {
+  padding: 10px 16px;
+  border: 1px solid var(--fs-border);
+  border-radius: var(--fs-radius);
+  background: #fff;
+  color: var(--fs-navy);
+  font-size: var(--fs-text-action);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.fs-setting {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  align-items: end;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.fs-setting .fs-sub {
+  margin: 0 0 12px;
+  font-size: var(--fs-text-label);
+}
+
+.fs-flush {
+  margin: 0 0 6px;
+}
+
+.fs-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fs-navy);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.fs-payload {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--fs-radius-sm);
+  background: var(--fs-head);
+  color: var(--fs-navy);
+  font-size: var(--fs-text-caption);
+  white-space: pre-wrap;
+}
+
+.fs-table .fs-plain {
+  text-decoration: none;
+}
+
+.fs-oneoff {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid var(--fs-navy);
+  border-radius: var(--fs-radius);
+  background: var(--fs-tint);
+}
+
+.fs-oneoff h3 {
+  margin: 0 0 12px;
+  color: var(--fs-ink);
+  font-size: var(--fs-text-lg);
+  font-weight: 600;
+}
+
+.fs-mt-lg {
+  margin-top: 28px;
+}
+
+.fs-title-row .fs-section-title {
+  margin: 0;
+}
+
+/* polish found by looking at every page */
+.fs-page a:not([data-slot]) {
+  text-decoration: underline;
+}
+
+.fs-status {
+  white-space: nowrap;
+}
+
+.fs-nowrap {
+  white-space: nowrap;
+}
+
+.fs-card > .fs-sub {
+  margin: 0 0 12px;
+}
+
+.fs-card .fs-filters {
+  margin-top: 16px;
+}
+
+.fs-card > .fs-field {
+  margin-top: 12px;
+}
+
+.fs-title-row > .fs-section-title {
+  flex: 1;
+}
+
+/* dialog */
+
+.fs-start {
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+
+/* mobile bar and menu button are phone-only */
+
+/* tablet */
+@media (max-width: 1100px) {
+  .fs-shell {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .fs-topbar {
+    padding: 16px 24px 0;
+  }
+}
+
+/* phone */
+@media (max-width: 800px) {
+  .fs-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* menu: Figma drops the gold bar, the all-caps wordmark and the role note, and counts conflicts in words */
+
+  /* the chips share one grey strip; the congestion switch is not in the phone design */
+  .fs-topbar {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin: 12px 16px 0;
+    padding: 8px 10px;
+    border: 1px solid var(--fs-border);
+    border-radius: var(--fs-radius-sm);
+    background: var(--fs-head);
+  }
+
+  .fs-chip {
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .fs-title-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .fs-title-row > a,
+  .fs-title-row > button {
+    box-sizing: border-box;
+    width: 100%;
+    text-align: center;
+  }
+
+  .fs-filters {
+    flex-direction: column;
+  }
+
+  .fs-filterbox {
+    margin-bottom: 16px;
+    border: 1px solid var(--fs-border);
+    border-radius: var(--fs-radius-lg);
+    background: #fff;
+  }
+
+  .fs-filterbox.is-open {
+    border-color: var(--fs-navy);
+  }
+
+  .fs-filter-toggle {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 14px 36px 14px 14px;
+    border: 0;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%23677287' stroke-width='1.5'%3E%3Cpath d='m1 1 4 4 4-4'/%3E%3C/svg%3E")
+      no-repeat right 14px center;
+    color: var(--fs-navy);
+    font: inherit;
+    font-size: var(--fs-text-label);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .fs-filterbox.is-open .fs-filter-toggle {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%23677287' stroke-width='1.5'%3E%3Cpath d='m1 5 4-4 4 4'/%3E%3C/svg%3E");
+  }
+
+  .fs-filter-toggle strong {
+    flex: none;
+    font-weight: 700;
+  }
+
+  .fs-filter-toggle span {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--fs-muted);
+    font-size: var(--fs-text-caption);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .fs-filterbox .fs-filters {
+    display: none;
+    margin: 0;
+    padding: 0 14px 14px;
+  }
+
+  .fs-filterbox.is-open .fs-filters {
+    display: flex;
+  }
+
+  .fs-filter-clear {
+    display: block;
+    padding: 10px;
+    border: 0;
+    background: none;
+    color: var(--fs-navy);
+    font: inherit;
+    font-size: var(--fs-text-label);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .fs-selectall {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    color: var(--fs-muted);
+    font-size: var(--fs-text-label);
+  }
+
+  .fs-filters label,
+  .fs-reason {
+    width: 100%;
+    max-width: none;
+  }
+
+  .fs-form-grid,
+  .fs-form-grid-2,
+  .fs-form-grid-4 {
+    grid-template-columns: 1fr;
+  }
+
+  .fs-setting {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+
+  .fs-setting .fs-sub {
+    margin-bottom: 8px;
+    font-size: var(--fs-text-caption);
+  }
+
+  /* a control with two options fills the row */
+
+  .fs-wide-only {
+    display: none;
+  }
+
+  .fs-kv-pairs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+  }
+
+  .fs-kv-pairs > div {
+    display: block;
+    min-width: 0;
+  }
+
+  .fs-kv-pairs > div:has(.fs-wide-only) {
+    grid-column: auto;
+  }
+
+  .fs-kv-pairs dt {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .fs-fold-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--fs-navy);
+    font: inherit;
+    font-size: var(--fs-text-label);
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .fs-fold-toggle::after {
+    content: '';
+    width: 10px;
+    height: 6px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%23677287' stroke-width='1.5'%3E%3Cpath d='m1 1 4 4 4-4'/%3E%3C/svg%3E")
+      no-repeat;
+  }
+
+  .fs-fold.is-open .fs-fold-toggle::after {
+    transform: rotate(180deg);
+  }
+
+  .fs-fold:not(.is-open) .fs-fold-body {
+    display: none;
+  }
+
+  .fs-kv {
+    grid-template-columns: 110px 1fr;
+  }
+
+  .fs-two {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .fs-card,
+  .fs-two .fs-card {
+    margin-top: 16px;
+  }
+
+  .fs-fold:not(.is-open) .fs-fold-head h2 {
+    margin-bottom: 0;
+  }
+
+  .fs-batch-head,
+  .fs-between {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fs-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .fs-card {
+    padding: 16px;
+  }
+
+  .fs-toast {
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    text-align: center;
+  }
+
+  /* ---- tables become cards, laid out like the Figma mobile frames ---- */
+  .fs-table-wrap {
+    border: 0;
+    background: none;
+    overflow: visible;
+  }
+
+  .fs-table {
+    min-width: 0;
+    background: none;
+  }
+
+  .fs-table thead {
+    display: none;
+  }
+
+  .fs-table,
+  .fs-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .fs-table tr {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    align-items: start;
+    gap: 6px 8px;
+    box-sizing: border-box;
+    margin-bottom: 12px;
+    padding: 14px 16px;
+    border: 1px solid var(--fs-border);
+    border-radius: 12px;
+    background: #fff;
+  }
+
+  .fs-table tbody tr:hover {
+    box-shadow: none;
+  }
+
+  /* the cost lines are a plain list with dividers, and an open cost card gets the navy outline */
+
+  .fs-card:has(> .fs-fold.is-open) {
+    border-color: var(--fs-navy);
+  }
+
+  .fs-table td {
+    display: block;
+    grid-column: 1 / -1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
+  /* the column name sits above its value, small and upper case */
+  .fs-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    color: var(--fs-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .fs-table td[data-label='']::before,
+  .fs-table td:empty {
+    display: none;
+  }
+
+  .fs-table .fs-check {
+    width: auto;
+    padding: 0;
+  }
+
+  .fs-table .fs-num {
+    text-align: right !important;
+  }
+
+  .fs-table td.fs-flight {
+    text-decoration: none;
+  }
+
+  .fs-table td.fs-flight a {
+    text-decoration: underline;
+  }
+
+  /* buttons in a row's last cell fill the card */
+
+  .fs-table td[data-label=''] .fs-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    width: 100%;
+  }
+
+  .fs-table td[data-short]::before {
+    content: attr(data-short);
+  }
+
+  .fs-table td .fs-sub {
+    margin: 0;
+  }
+
+  /* placing cells: a row is 12 columns; cells without a column name carry the card's title row */
+
+  /* approver console card: who answers and when it was asked share a row, then the navy Answer button */
+
+  /* title row: fee name, a pill for the movement, small Edit on the right */
+
+  /* ---- forms and buttons ---- */
+  .fs-field,
+  .fs-form-grid label,
+  .fs-filters label,
+  .fs-field-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .fs-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fs-form-grid > * {
+    grid-column: 1 / -1;
+  }
+
+  /* the fee form keeps the desktop order but pairs Amount with Currency and the two dates on a phone */
+  .fs-form-fee > :nth-child(4) {
+    order: 2;
+  }
+
+  .fs-form-fee > :nth-child(n + 6) {
+    order: 3;
+  }
+
+  .fs-form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fs-topbar .fs-chip-dot {
+    display: inline-block;
+  }
+
+  .fs-topbar .fs-chip-label.fs-long {
+    display: none;
+  }
+
+  .fs-topbar .fs-chip-label.fs-short {
+    display: inline;
+  }
+
+  .fs-align-end {
+    align-self: stretch;
+  }
+}
+
+/* clock chip: dot and the short text are phone-only */
+.fs-chip-dot,
+.fs-chip-label.fs-short {
+  display: none;
+}
+
+.fs-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fs-accent);
+}
+
+/* A placeholder must not look like a value: values use the full text colour, placeholders a lighter one. Dialogs are rendered outside the
+   page frame, so they are matched by their own slot. */
+:is(.fs-shell, [data-slot='dialog-content']) :is(input, textarea, select) {
+  color: var(--foreground);
+}
+
+:is(.fs-shell, [data-slot='dialog-content']) :is(input, textarea)::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.55;
+}

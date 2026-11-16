@@ -53,12 +53,7 @@ export function TryFee({ rates, currency }: TryFeeProps) {
 
       <div className="w-[200px] shrink-0 max-[800px]:w-full">
         <FormField htmlFor="try-fee-rate" label="Rate row">
-          <NativeSelect
-            id="try-fee-rate"
-            className="w-full [&_select]:h-[42px]"
-            value={rate.id}
-            onChange={(event) => setRateId(event.target.value)}
-          >
+          <NativeSelect id="try-fee-rate" className="w-full h-[42px]" value={rate.id} onChange={(event) => setRateId(event.target.value)}>
             {active.map((option) => (
               <NativeSelectOption key={option.id} value={option.id}>
                 {option.fare_class.code} · {routeLabel(option.route)}
