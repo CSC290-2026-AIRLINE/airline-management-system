@@ -11,7 +11,7 @@ import { AssignCrewService } from './assign-crew.service'
  * importing that step's service, so the two stay independently replaceable — the same
  * reason this module does not import `setup-crew` for the crew list. `DbModule` is
  * `@Global()`, so no import is needed for `DbService`. It imports Feature 15's `AuditModule` for the one simulation
- * clock, which stamps `assigned_at` and `resolved_at`.
+ * clock, which stamps `assigned_at` and `resolved_at`, and for `AuditService`, which records each auto-assign run.
  *
  * Routes are authenticated by default via the global `JwtAuthGuard`; none is `@Public()`.
  */

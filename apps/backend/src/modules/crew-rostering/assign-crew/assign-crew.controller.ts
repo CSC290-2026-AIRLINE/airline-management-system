@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseFilters, UseGuards } from '@nestjs/common'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import { AssignCrewService, type AssignCrewParams, type CommittedPairingResult, type RunResult } from './assign-crew.service'
 import { asObjectOrEmpty, requireDate, requireText, requireUuid } from '../request-parsing'
 import { RosteringExceptionFilter } from '../rostering-error'
@@ -42,11 +43,15 @@ export class AssignCrewController {
   async autoAssign(
     @Param('rosterRunId') rosterRunId: string,
     @Body() body: unknown,
+    @CurrentUser() user: { id: string },
     @Query('demoBreaks') demoBreaks?: string,
   ): Promise<RunResult> {
-    return this.assignCrewService.autoAssign(requireUuid(rosterRunId, 'rosterRunId'), parsePairingIds(asObjectOrEmpty(body).pairingIds), {
-      demoBreaks: parseFlag(demoBreaks, 'demoBreaks'),
-    })
+    return this.assignCrewService.autoAssign(
+      requireUuid(rosterRunId, 'rosterRunId'),
+      parsePairingIds(asObjectOrEmpty(body).pairingIds),
+      { demoBreaks: parseFlag(demoBreaks, 'demoBreaks') },
+      user.id,
+    )
   }
 }
 

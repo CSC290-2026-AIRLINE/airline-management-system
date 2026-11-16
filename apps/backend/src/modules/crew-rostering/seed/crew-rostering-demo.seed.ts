@@ -159,7 +159,7 @@ export async function seedCrewRosteringDemo(prisma: PrismaClient): Promise<void>
         code: 'A320-V1',
         manufacturer: 'Airbus',
         model: MODEL,
-        layout: { cabins: [{ class: 'economy', rows: 30, seats_per_row: 6 }] },
+        layout: { cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 30, columns: ['A', 'B', 'C', 'D', 'E', 'F'] }] },
         hold_weight_limit_kg: 9000,
         max_takeoff_weight_kg: 78000,
         max_range_km: 6100,

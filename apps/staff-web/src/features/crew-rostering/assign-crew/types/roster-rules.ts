@@ -24,7 +24,7 @@ export const DEFAULT_RULE_LIMITS: RuleLimits = {
   maxFlightHours28d: 100,
   minLocalCrew: 1,
   minPoliceInternational: 2,
-  cabinCrewPerLeg: 4,
+  seatsPerCabinCrew: 50,
 }
 
 export function rosterRules(limits: RuleLimits): RosterRuleDefinition[] {
@@ -35,7 +35,7 @@ export function rosterRules(limits: RuleLimits): RosterRuleDefinition[] {
     { code: 'OVERLAP', label: 'No overlapping flights for one person', severity: 'law' },
     {
       code: 'NO_LEGAL_CREW',
-      label: `1 captain, 1 first officer and ${limits.cabinCrewPerLeg} cabin crew on every leg`,
+      label: `1 captain, 1 first officer and 1 cabin crew per ${limits.seatsPerCabinCrew} seats on every leg`,
       severity: 'law',
     },
     { code: 'LICENCE_EXPIRED', label: 'Licence valid on the flight date', severity: 'law' },
@@ -123,7 +123,7 @@ export function rosterRulesNoteCompact(limits: RuleLimits, aircraftType?: string
   const leg = aircraftType ? `Each ${aircraftType} leg` : 'Each leg'
   const rating = aircraftType ? `${aircraftType} type rating` : 'type rating'
   return (
-    `${leg}: 1 captain, 1 first officer, ${limits.cabinCrewPerLeg} cabin crew, valid licence and ${rating}. ` +
+    `${leg}: 1 captain, 1 first officer, 1 cabin crew per ${limits.seatsPerCabinCrew} seats, valid licence and ${rating}. ` +
     `Rules ${lawText} must be fixed by a swap; ${joinNumbers(company)} can be overridden with a reason.`
   )
 }
@@ -136,7 +136,7 @@ export function rosterRulesNote(limits: RuleLimits, aircraftType?: string): stri
   const leg = aircraftType ? `Each ${aircraftType} leg` : 'Each leg'
   const rating = aircraftType ? `a type rating for the ${aircraftType}` : 'a type rating for the aircraft'
   return (
-    `${leg} needs 1 captain, 1 first officer and ${limits.cabinCrewPerLeg} cabin crew (Feature 9), all with a valid licence; pilots need ${rating}. ` +
+    `${leg} needs 1 captain, 1 first officer and 1 cabin crew per ${limits.seatsPerCabinCrew} seats (Feature 9), all with a valid licence; pilots need ${rating}. ` +
     `Rules ${joinNumbers(law)} are law: a break must be fixed with a swap. Rules ${joinNumbers(company)} are company rules: a break can be overridden with a written reason.`
   )
 }

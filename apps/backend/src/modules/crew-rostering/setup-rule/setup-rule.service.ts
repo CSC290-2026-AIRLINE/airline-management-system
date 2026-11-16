@@ -2,7 +2,6 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { DbService } from '@backend/db/db.service'
 import { AuditService } from '../../admin-console/audit/audit.service'
 import { changedFields, writeRosteringAudit } from '../rostering-audit'
-import { LOCAL_CREW_KEY_PREFIX } from '../base-context'
 
 /**
  * Feature 8 · Step 2 — legality rules.
@@ -83,8 +82,6 @@ export interface CountryLimitRow {
   countryCode: string
   minRestHours: number
   maxDutyHours: number
-  /** Local-speaking cabin crew per leg: the country's own number, else the default's. */
-  minLocalCrew: number
 }
 
 export interface CountryLanguageRow {
@@ -116,8 +113,6 @@ export interface CountryLimitInput {
   country: string
   minRestHours: number
   maxDutyHours: number
-  /** Local-speaking cabin crew per leg for this country. Left out, the stored number is not touched. */
-  minLocalCrew?: number
 }
 
 export interface CountryLanguageInput {
@@ -329,12 +324,10 @@ export class SetupRuleService {
     if (existing) throw new BadRequestException(`${countryLabel(code)} already has a rule`)
 
     await this.assertTightens(input.minRestHours, input.maxDutyHours)
-    this.assertLocalCrew(input.minLocalCrew)
     await this.db.$transaction(async (tx) => {
       await tx.country_legality_rule.create({
         data: { country_code: code, min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours },
       })
-      await this.writeLocalCrew(tx, code, input.minLocalCrew)
       await writeRosteringAudit(
         this.audit,
         actorUserId,
@@ -343,7 +336,7 @@ export class SetupRuleService {
           entityType: 'country_legality_rule',
           entityId: code,
           summary: `Stricter limits added for ${countryLabel(code)}`,
-          after: { minRestHours: input.minRestHours, maxDutyHours: input.maxDutyHours, minLocalCrew: input.minLocalCrew },
+          after: { minRestHours: input.minRestHours, maxDutyHours: input.maxDutyHours },
         },
         tx,
       )
@@ -356,7 +349,6 @@ export class SetupRuleService {
     const code = await this.resolveCountryCode(countryCode)
     await this.assertRuleExists(code)
     await this.assertTightens(input.minRestHours, input.maxDutyHours)
-    this.assertLocalCrew(input.minLocalCrew)
 
     await this.db.$transaction(async (tx) => {
       const was = await tx.country_legality_rule.findUnique({ where: { country_code: code } })
@@ -364,7 +356,6 @@ export class SetupRuleService {
         where: { country_code: code },
         data: { min_rest_hours: input.minRestHours, max_duty_hours: input.maxDutyHours },
       })
-      await this.writeLocalCrew(tx, code, input.minLocalCrew)
       await writeRosteringAudit(
         this.audit,
         actorUserId,
@@ -374,7 +365,7 @@ export class SetupRuleService {
           entityId: code,
           summary: `Stricter limits edited for ${countryLabel(code)}`,
           before: { minRestHours: was ? Number(was.min_rest_hours) : null, maxDutyHours: was ? Number(was.max_duty_hours) : null },
-          after: { minRestHours: input.minRestHours, maxDutyHours: input.maxDutyHours, minLocalCrew: input.minLocalCrew },
+          after: { minRestHours: input.minRestHours, maxDutyHours: input.maxDutyHours },
         },
         tx,
       )
@@ -386,11 +377,9 @@ export class SetupRuleService {
   async deleteCountryLimit(countryCode: string, actorUserId?: string): Promise<void> {
     const code = await this.resolveCountryCode(countryCode)
     await this.assertRuleExists(code)
-    // The country's own local-crew number goes with its rule, so it goes back to the default too.
     await this.db.$transaction(async (tx) => {
       const was = await tx.country_legality_rule.findUnique({ where: { country_code: code } })
       await tx.country_legality_rule.delete({ where: { country_code: code } })
-      await tx.crew_setting.deleteMany({ where: { key: `${LOCAL_CREW_KEY_PREFIX}${code}` } })
       await writeRosteringAudit(
         this.audit,
         actorUserId,
@@ -507,31 +496,6 @@ export class SetupRuleService {
     return code
   }
 
-  private assertLocalCrew(value: number | undefined): void {
-    if (value === undefined) return
-    if (!Number.isInteger(value) || value < 0) throw new BadRequestException('minLocalCrew must be a whole number, 0 or more')
-  }
-
-  /**
-   * Stores a country's own local-crew number as a `crew_setting` row (`min_local_crew.jp`), the table the other
-   * limits already live in. A number equal to the default writes no row and removes an old one, so the country
-   * follows the default; left out, nothing is touched.
-   */
-  private async writeLocalCrew(tx: Pick<DbService, 'crew_setting'>, code: string, value: number | undefined): Promise<void> {
-    if (value === undefined) return
-    const key = `${LOCAL_CREW_KEY_PREFIX}${code}`
-    const defaults = await this.getDefaults()
-    if (value === defaults.minLocalCrew) {
-      await tx.crew_setting.deleteMany({ where: { key } })
-      return
-    }
-    await tx.crew_setting.upsert({
-      where: { key },
-      update: { value: String(value), updated_at: new Date() },
-      create: { key, value: String(value) },
-    })
-  }
-
   private async assertRuleExists(code: string): Promise<void> {
     const found = await this.db.country_legality_rule.findUnique({ where: { country_code: code }, select: { country_code: true } })
     if (!found) throw new NotFoundException(`${countryLabel(code)} has no rule`)
@@ -550,21 +514,13 @@ export class SetupRuleService {
 
   /** Builds the page rows with one read for the baseline, however many countries there are. */
   private async limitRows(rows: LegalityRuleDbRow[]): Promise<CountryLimitRow[]> {
-    const [defaults, own] = await Promise.all([
-      this.getDefaults(),
-      this.db.crew_setting.findMany({
-        where: { key: { in: rows.map((row) => `${LOCAL_CREW_KEY_PREFIX}${row.country_code}`) } },
-        select: { key: true, value: true },
-      }),
-    ])
-    const localCrew = new Map(own.map((row) => [row.key.slice(LOCAL_CREW_KEY_PREFIX.length), num(row.value, defaults.minLocalCrew)]))
+    const defaults = await this.getDefaults()
     return rows.map((row) => ({
       id: `RL-${row.country_code}`,
       country: countryLabel(row.country_code),
       countryCode: row.country_code,
       minRestHours: num(Number(row.min_rest_hours), defaults.minRestHours),
       maxDutyHours: num(Number(row.max_duty_hours), defaults.maxDutyHours),
-      minLocalCrew: localCrew.get(row.country_code) ?? defaults.minLocalCrew,
     }))
   }
 }

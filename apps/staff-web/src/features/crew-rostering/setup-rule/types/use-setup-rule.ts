@@ -47,9 +47,7 @@ function sameDefaults(a: DefaultLimits, b: DefaultLimits): boolean {
 }
 
 function sameLimit(a: CountryLimit, b: CountryLimit): boolean {
-  return (
-    a.country === b.country && a.minRestHours === b.minRestHours && a.maxDutyHours === b.maxDutyHours && a.minLocalCrew === b.minLocalCrew
-  )
+  return a.country === b.country && a.minRestHours === b.minRestHours && a.maxDutyHours === b.maxDutyHours
 }
 
 function sameMapping(a: CountryLanguage, b: CountryLanguage): boolean {
@@ -67,7 +65,7 @@ interface SavePlan {
   writeLimits: {
     create: boolean
     code: string
-    body: { country: string; minRestHours: number; maxDutyHours: number; minLocalCrew: number }
+    body: { country: string; minRestHours: number; maxDutyHours: number }
   }[]
   deleteMappings: string[]
   writeMappings: { code: string; body: { country: string; languages: string[] } }[]
@@ -99,7 +97,6 @@ function planSave(working: RuleSet, saved: RuleSet, countries: readonly CountryO
             country: limit.country,
             minRestHours: limit.minRestHours,
             maxDutyHours: limit.maxDutyHours,
-            minLocalCrew: limit.minLocalCrew,
           },
         },
       ]
@@ -206,7 +203,6 @@ export function useSetupRule() {
       countryCode: country.code,
       minRestHours: Number(input.minRestHours),
       maxDutyHours: Number(input.maxDutyHours),
-      minLocalCrew: Number(input.minLocalCrew),
     }
     setRules((current) => (current ? { ...current, countryLimits: [...current.countryLimits, limit] } : current))
   }
@@ -223,7 +219,6 @@ export function useSetupRule() {
                     country: input.country,
                     minRestHours: Number(input.minRestHours),
                     maxDutyHours: Number(input.maxDutyHours),
-                    minLocalCrew: Number(input.minLocalCrew),
                   }
                 : limit,
             ),

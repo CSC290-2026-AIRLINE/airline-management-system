@@ -84,7 +84,8 @@ export interface RuleLimits {
   maxFlightHours28d: number
   minLocalCrew: number
   minPoliceInternational: number
-  cabinCrewPerLeg: number
+  /** One cabin crew member per this many seats; each leg's own number is its `cabinRequired`. */
+  seatsPerCabinCrew: number
 }
 
 export interface RosterCrewMember {

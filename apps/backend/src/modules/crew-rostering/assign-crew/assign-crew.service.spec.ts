@@ -1,12 +1,17 @@
 import type { DbService } from '@backend/db/db.service'
 import { AssignCrewService, type Leg, type RuleLimitsRow, type RunPairing } from './assign-crew.service'
 import type { SimulationClock } from '../../admin-console/simulation-clock'
+import type { AuditService } from '../../admin-console/audit/audit.service'
 
 // The services only need these for types; the real modules are ESM.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('@backend/db/generated/prisma/client', () => ({ Prisma: { PrismaClientKnownRequestError: class extends Error {} } }))
 
 const fakeClock = () => ({ now: () => new Date() })
+const fakeAudit = () => ({
+  resolveActor: jest.fn().mockResolvedValue({ type: 'staff', id: 'user-1', role: 'ops' }),
+  write: jest.fn().mockResolvedValue({ id: 'a', seq: '1' }),
+})
 
 const RUN = '7c1b9d2e-3a44-4c1f-8f0a-5b6d7e8f9a00'
 const HOUR = 3_600_000
@@ -18,6 +23,7 @@ const LIMITS: RuleLimitsRow = {
   maxFlightHours28d: 100,
   minLocalCrew: 1,
   minPoliceInternational: 2,
+  seatsPerCabinCrew: 50,
   cabinCrewPerLeg: 4,
   reportMinutes: 60,
   releaseMinutes: 30,
@@ -40,6 +46,7 @@ function leg(id: string, dep: string, arr: string, overrides: Partial<Leg> = {})
     international: true,
     localLanguages: ['ja'],
     localCrewRequired: 1,
+    cabinCrewRequired: 4,
     ...overrides,
   }
 }
@@ -79,7 +86,11 @@ interface Internals {
 }
 
 function service() {
-  return new AssignCrewService({} as unknown as DbService, fakeClock() as unknown as SimulationClock)
+  return new AssignCrewService(
+    {} as unknown as DbService,
+    fakeClock() as unknown as SimulationClock,
+    fakeAudit() as unknown as AuditService,
+  )
 }
 const internals = (instance: AssignCrewService) => instance as unknown as Internals
 
@@ -192,26 +203,37 @@ describe('AssignCrewService duties', () => {
   })
 })
 
+/** An auto-assign run over one domestic pairing, with the transaction and the audit writer recorded. */
+function autoAssignSetup() {
+  const flight = pairing([leg('1', '2026-09-15T01:00:00Z', '2026-09-15T07:00:00Z', { international: false, localLanguages: [] })])
+  const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    pairing_leg_assignment: {
+      count: jest.fn().mockResolvedValue(0),
+      deleteMany: jest.fn().mockResolvedValue({ count: 3 }),
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+  }
+  const db = {
+    crew: { findMany: jest.fn().mockResolvedValue([crew('captain-ok', 'captain')]) },
+    pairing_leg_assignment: { findMany: jest.fn().mockResolvedValue([]) },
+    $transaction: jest.fn(async (run: (client: typeof tx) => Promise<void>) => run(tx)),
+  }
+  const audit = fakeAudit()
+  const instance = new AssignCrewService(
+    db as unknown as DbService,
+    fakeClock() as unknown as SimulationClock,
+    audit as unknown as AuditService,
+  )
+  const loose = instance as unknown as { loadRun: unknown; check: unknown }
+  loose.loadRun = jest.fn().mockResolvedValue({ run: { status: 'draft', base_airport: 'BKK' }, pairings: [flight], context: {} })
+  loose.check = jest.fn().mockResolvedValue({})
+  return { instance, tx, audit }
+}
+
 describe('AssignCrewService.autoAssign re-run', () => {
   it('replaces only live automatic rows, so a sick call keeps its history row', async () => {
-    const flight = pairing([leg('1', '2026-09-15T01:00:00Z', '2026-09-15T07:00:00Z', { international: false, localLanguages: [] })])
-    const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([]),
-      pairing_leg_assignment: {
-        count: jest.fn().mockResolvedValue(0),
-        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-        createMany: jest.fn().mockResolvedValue({ count: 0 }),
-      },
-    }
-    const db = {
-      crew: { findMany: jest.fn().mockResolvedValue([crew('captain-ok', 'captain')]) },
-      pairing_leg_assignment: { findMany: jest.fn().mockResolvedValue([]) },
-      $transaction: jest.fn(async (run: (client: typeof tx) => Promise<void>) => run(tx)),
-    }
-    const instance = new AssignCrewService(db as unknown as DbService, fakeClock() as unknown as SimulationClock)
-    const loose = instance as unknown as { loadRun: unknown; check: unknown }
-    loose.loadRun = jest.fn().mockResolvedValue({ run: { status: 'draft', base_airport: 'BKK' }, pairings: [flight], context: {} })
-    loose.check = jest.fn().mockResolvedValue({})
+    const { instance, tx } = autoAssignSetup()
 
     await instance.autoAssign(RUN, [])
 
@@ -219,10 +241,35 @@ describe('AssignCrewService.autoAssign re-run', () => {
       where: { pairing_id: { in: ['p-1'] }, assigned_by: 'auto', unassigned_at: null },
     })
   })
+
+  it('records the run in the audit log, in the same transaction, as the signed-in staff member', async () => {
+    const { instance, tx, audit } = autoAssignSetup()
+
+    await instance.autoAssign(RUN, [], {}, 'user-1')
+
+    expect(audit.resolveActor).toHaveBeenCalledWith('user-1')
+    expect(audit.write).toHaveBeenCalledTimes(1)
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceFeature: '8',
+        action: 'update',
+        entityType: 'roster_run',
+        entityId: RUN,
+        summary: 'Auto-assigned 1 seat on 1 pairing: P-1',
+        before: { autoSeats: 3 },
+        after: { autoSeats: 1, pairings: ['P-1'] },
+      }),
+      tx,
+    )
+  })
 })
 
 describe('AssignCrewService.scopeOf', () => {
-  const service = new AssignCrewService({} as unknown as DbService, fakeClock() as unknown as SimulationClock)
+  const service = new AssignCrewService(
+    {} as unknown as DbService,
+    fakeClock() as unknown as SimulationClock,
+    fakeAudit() as unknown as AuditService,
+  )
   const pairings = ['p-1', 'p-2', 'p-3', 'p-4'].map((id) => ({ id })) as unknown as RunPairing[]
 
   it('is the pairings somebody is crewed on, so the rest raise nothing', () => {

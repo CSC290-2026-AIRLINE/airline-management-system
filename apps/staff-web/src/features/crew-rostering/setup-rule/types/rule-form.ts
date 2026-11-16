@@ -15,7 +15,6 @@ export const EMPTY_COUNTRY_LIMIT_FORM: CountryLimitInput = {
   country: '',
   minRestHours: '',
   maxDutyHours: '',
-  minLocalCrew: '',
 }
 
 export const EMPTY_COUNTRY_LANGUAGE_FORM: CountryLanguageInput = {
@@ -29,7 +28,6 @@ export function toCountryLimitForm(limit: CountryLimit): CountryLimitInput {
     country: limit.country,
     minRestHours: String(limit.minRestHours),
     maxDutyHours: String(limit.maxDutyHours),
-    minLocalCrew: String(limit.minLocalCrew),
   }
 }
 
@@ -98,8 +96,6 @@ export function validateCountryLimit(
   const maxDuty = parseHours(input.maxDutyHours)
   if (maxDuty === null) errors.maxDutyHours = 'Enter whole hours.'
   else if (maxDuty > defaults.maxDutyHours) errors.maxDutyHours = `Cannot be above the ${defaults.maxDutyHours} h default.`
-
-  if (!isCount(input.minLocalCrew)) errors.minLocalCrew = 'Enter a whole number, 0 or more.'
 
   return errors
 }

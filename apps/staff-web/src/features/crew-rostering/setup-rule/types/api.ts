@@ -17,7 +17,6 @@ export interface CountryLimitBody {
   country: string
   minRestHours: number
   maxDutyHours: number
-  minLocalCrew: number
 }
 
 export interface CountryLanguageBody {

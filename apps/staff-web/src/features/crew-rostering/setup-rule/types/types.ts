@@ -43,8 +43,6 @@ export interface CountryLimit {
   countryCode: string
   minRestHours: number
   maxDutyHours: number
-  /** Cabin crew per leg who speak the destination's language: this country's own number, else the default's. */
-  minLocalCrew: number
 }
 
 /** A destination and the languages that count as local there. */
@@ -71,7 +69,6 @@ export interface CountryLimitInput {
   country: string
   minRestHours: string
   maxDutyHours: string
-  minLocalCrew: string
 }
 
 export type CountryLimitErrors = Partial<Record<keyof CountryLimitInput, string>>

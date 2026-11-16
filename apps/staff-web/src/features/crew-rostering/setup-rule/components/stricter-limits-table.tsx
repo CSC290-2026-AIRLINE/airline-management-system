@@ -86,7 +86,7 @@ export function StricterLimitsTable({
                 </th>
                 <td className="py-3 text-sm text-primary-text">{formatHours(limit.minRestHours)}</td>
                 <td className="py-3 text-sm text-primary-text">{formatHours(limit.maxDutyHours)}</td>
-                <td className="py-3 text-sm text-primary-text/60">{formatLocalCrew(limit.minLocalCrew)}</td>
+                <td className="py-3 text-sm text-primary-text/60">{formatLocalCrew(defaults.minLocalCrew)}</td>
                 <td className="py-3">
                   <div className="flex items-center justify-end gap-3">
                     <IconButton label={`Edit ${limit.country} limits`} onClick={() => onEdit(limit)}>

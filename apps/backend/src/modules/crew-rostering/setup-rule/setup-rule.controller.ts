@@ -145,7 +145,6 @@ function parseCountryLimit(body: Record<string, unknown>): CountryLimitInput {
     country: requireText(body.country, 'country'),
     minRestHours: requireNumber(body.minRestHours, 'minRestHours'),
     maxDutyHours: requireNumber(body.maxDutyHours, 'maxDutyHours'),
-    minLocalCrew: body.minLocalCrew === undefined ? undefined : requireNumber(body.minLocalCrew, 'minLocalCrew'),
   }
 }
 

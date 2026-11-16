@@ -2,7 +2,10 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
 import { SimulationClock } from '../../admin-console/simulation-clock'
+import { AuditService } from '../../admin-console/audit/audit.service'
+import { writeRosteringAudit } from '../rostering-audit'
 import { loadBaseContext } from '../base-context'
+import { cabinCrewFor, DEFAULT_SEATS_PER_CABIN_CREW, MIN_CABIN_CREW } from '../cabin-crew'
 import { LOCAL_MISS_RATE, POLICE_SHORT_RATE, pickOne } from './random-pick'
 import { isoDate, isRestBetween, shortName } from '../crew-format'
 
@@ -65,14 +68,6 @@ const RULE_TITLES: Record<RuleCode, string> = {
   POLICE_NO_SEAT: 'No seat for police',
 }
 
-/**
- * Cabin crew per leg. The migration derives it from the aircraft layout
- * (`ceil(seats / seats_per_cabin_crew)`), but feature 9 has not documented the layout
- * JSON yet, so a fixed complement stands in.
- * TODO(f9): read the seat count from `aircraft_type.layout` once its shape is agreed.
- */
-const CABIN_CREW_PER_LEG = 4
-
 export interface AssignCrewParams {
   /** `YYYY-MM-DD`. */
   dateFrom: string
@@ -110,6 +105,12 @@ export interface RuleLimitsRow {
   maxFlightHours28d: number
   minLocalCrew: number
   minPoliceInternational: number
+  /** One cabin crew member per this many seats on the aircraft. */
+  seatsPerCabinCrew: number
+  /**
+   * Cabin crew the pairing carries: the most any of its legs needs, since the same people fly every leg. In the defaults,
+   * before any pairing, it is the floor every leg starts from.
+   */
   cabinCrewPerLeg: number
   reportMinutes: number
   releaseMinutes: number
@@ -211,7 +212,7 @@ const LEG_SELECT = {
       dep_at: true,
       arr_at: true,
       route: { select: { origin: true, destination: true } },
-      aircraft: { select: { aircraft_type: { select: { model: true } } } },
+      aircraft: { select: { aircraft_type: { select: { model: true, layout: true } } } },
     },
   },
 } satisfies Prisma.pairing_legSelect
@@ -269,8 +270,10 @@ export interface Leg {
   aircraftType: string
   international: boolean
   localLanguages: string[]
-  /** Cabin crew on this leg who must speak the destination's language: the country's own number, else the default. */
+  /** Cabin crew on this leg who must speak the destination's language (`min_local_crew`). */
   localCrewRequired: number
+  /** Cabin crew this leg's aircraft needs: `ceil(seats / seats_per_cabin_crew)`. */
+  cabinCrewRequired: number
 }
 
 export interface RunPairing {
@@ -284,7 +287,6 @@ export interface RunPairing {
 export interface Context {
   defaults: RuleLimitsRow
   countryRules: Map<string, { minRestHours: number; maxDutyHours: number }>
-  localCrewByCountry: Map<string, number>
   airportCountry: Map<string, string>
   countryLanguages: Map<string, string[]>
   /** Duty days are cut at local midnight in the base's timezone. */
@@ -316,6 +318,7 @@ export class AssignCrewService {
   constructor(
     private readonly db: DbService,
     private readonly clock: SimulationClock,
+    private readonly audit: AuditService,
   ) {}
 
   /** Bases a run can be crewed from — the same set Build pairings offers. */
@@ -385,7 +388,7 @@ export class AssignCrewService {
    * so a re-run is a re-crew rather than a second set of seats. Rows Ops added by hand
    * (`assigned_by = 'ops'`) stay, and the seats they fill are not filled again.
    */
-  async autoAssign(rosterRunId: string, pairingIds: string[], options: AutoAssignOptions = {}): Promise<RunResult> {
+  async autoAssign(rosterRunId: string, pairingIds: string[], options: AutoAssignOptions = {}, actorUserId?: string): Promise<RunResult> {
     const { run, pairings } = await this.loadRun(rosterRunId)
     if (run.status === 'published') throw new ConflictException('This roster is published and can no longer be crewed automatically')
 
@@ -448,10 +451,24 @@ export class AssignCrewService {
         if (raced > 0) throw new ConflictException('Some of this crew were assigned elsewhere while auto-assign ran. Run it again.')
       }
       // Rows already taken off (a sick call or a swap) are history, so only the live automatic rows are replaced.
-      await tx.pairing_leg_assignment.deleteMany({
+      const replaced = await tx.pairing_leg_assignment.deleteMany({
         where: { pairing_id: { in: [...targetIds] }, assigned_by: 'auto', unassigned_at: null },
       })
       if (rows.length > 0) await tx.pairing_leg_assignment.createMany({ data: rows })
+      const codes = targets.map((pairing) => pairing.code)
+      await writeRosteringAudit(
+        this.audit,
+        actorUserId,
+        {
+          action: 'update',
+          entityType: 'roster_run',
+          entityId: rosterRunId,
+          summary: `Auto-assigned ${plural(rows.length, 'seat')} on ${plural(codes.length, 'pairing')}: ${codes.join(', ')}`,
+          before: { autoSeats: replaced.count },
+          after: { autoSeats: rows.length, pairings: codes, ...(options.demoBreaks ? { demoBreaks: true } : {}) },
+        },
+        tx,
+      )
     })
 
     return this.check(rosterRunId, [...targetIds])
@@ -563,12 +580,12 @@ export class AssignCrewService {
     }
     for (const { languages, required } of languageSets.values()) {
       const have = cabin.filter((member) => speaks(member.languages, languages)).length
-      const room = CABIN_CREW_PER_LEG - cabin.length
+      const room = limits.cabinCrewPerLeg - cabin.length
       // In demo mode the speaker is sometimes left to chance, which is what raises NO_LOCAL_CREW.
       const wanted = demoBreaks && random() < LOCAL_MISS_RATE ? 0 : Math.min(room, required - have)
       cabin.push(...pick('cabin_crew', wanted, (member) => speaks(member.languages, languages)))
     }
-    cabin.push(...pick('cabin_crew', CABIN_CREW_PER_LEG - cabin.length))
+    cabin.push(...pick('cabin_crew', limits.cabinCrewPerLeg - cabin.length))
 
     const international = pairing.legs.some((leg) => leg.international)
     const policeWanted =
@@ -585,7 +602,7 @@ export class AssignCrewService {
   }
 
   private required(role: SeatRole, leg: Leg, limits: RuleLimitsRow): number {
-    if (role === 'cabin_crew') return CABIN_CREW_PER_LEG
+    if (role === 'cabin_crew') return leg.cabinCrewRequired
     if (role === 'police') return leg.international ? limits.minPoliceInternational : 0
     return 1
   }
@@ -650,13 +667,13 @@ export class AssignCrewService {
             detail: `${leg.flightNumber} has no legal first officer.`,
           })
         const cabin = seat('cabin_crew')
-        if (cabin.length < CABIN_CREW_PER_LEG) {
+        if (cabin.length < leg.cabinCrewRequired) {
           raise({
             ...base,
             crewId: null,
             role: 'cabin_crew',
             rule: 'NO_LEGAL_CREW',
-            detail: `${cabin.length} of ${CABIN_CREW_PER_LEG} cabin crew on ${leg.flightNumber}.`,
+            detail: `${cabin.length} of ${leg.cabinCrewRequired} cabin crew on ${leg.flightNumber}.`,
           })
         }
 
@@ -926,7 +943,8 @@ export class AssignCrewService {
         maxFlightHours28d: read('max_flight_hours_28d', 100),
         minLocalCrew: read('min_local_crew', 1),
         minPoliceInternational: read('min_police_international', 2),
-        cabinCrewPerLeg: CABIN_CREW_PER_LEG,
+        seatsPerCabinCrew: read('seats_per_cabin_crew', DEFAULT_SEATS_PER_CABIN_CREW),
+        cabinCrewPerLeg: MIN_CABIN_CREW,
         reportMinutes: read('report_minutes', 60),
         releaseMinutes: read('release_minutes', 0),
       },
@@ -960,13 +978,15 @@ export class AssignCrewService {
             aircraftType: flight.aircraft.aircraft_type.model,
             international,
             localLanguages: international ? (context.countryLanguages.get(destinationCountry) ?? []) : [],
-            localCrewRequired: context.localCrewByCountry.get(destinationCountry) ?? context.defaults.minLocalCrew,
+            localCrewRequired: context.defaults.minLocalCrew,
+            cabinCrewRequired: cabinCrewFor(flight.aircraft.aircraft_type.layout, context.defaults.seatsPerCabinCrew),
           }
         })
         .sort((a, b) => a.dep.getTime() - b.dep.getTime())
 
       const limits = { ...context.defaults }
       for (const leg of legs) {
+        limits.cabinCrewPerLeg = Math.max(limits.cabinCrewPerLeg, leg.cabinCrewRequired)
         const rule = context.countryRules.get(leg.destinationCountry)
         if (!rule) continue
         limits.minRestHours = Math.max(limits.minRestHours, rule.minRestHours)
@@ -996,7 +1016,7 @@ export class AssignCrewService {
           cabinCrew,
           localCrew: leg.international ? cabinCrew.filter((member) => speaks(member.languages, leg.localLanguages)) : [],
           police: seat('police'),
-          cabinRequired: CABIN_CREW_PER_LEG,
+          cabinRequired: leg.cabinCrewRequired,
           policeRequired: this.required('police', leg, pairing.limits),
         }
       }),
@@ -1094,4 +1114,9 @@ function toCrewSummary(member: CrewDbRow): CrewSummaryRow {
 
 function hours(value: number): string {
   return `${Math.round(value * 10) / 10} h`
+}
+
+/** `1 seat`, `3 seats`. */
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
