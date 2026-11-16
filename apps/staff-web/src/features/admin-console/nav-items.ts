@@ -1,5 +1,9 @@
 import {
   Calendar,
+  CalendarClock,
+  Globe,
+  Route,
+  Gauge,
   ChartColumn,
   ClipboardCheck,
   CreditCard,
@@ -12,7 +16,6 @@ import {
   Monitor,
   Package,
   Percent,
-  Plane,
   PlaneLanding,
   PlaneTakeoff,
   Receipt,
@@ -57,7 +60,6 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Operations',
     items: [
-      { label: 'Flight Operations', icon: Plane },
       { label: 'Fleet & Aircraft', icon: PlaneLanding, to: '/aircraft', activePrefix: '/aircraft' },
       { label: 'Aircraft Types', icon: PlaneTakeoff, to: '/aircraft-types', activePrefix: '/aircraft-types' },
       { label: 'Aircraft Readiness', icon: ClipboardCheck, to: '/readiness' },
@@ -105,3 +107,16 @@ export const CHECKIN_ITEMS = [
   { to: '/check-in/issues', code: 'f06.issues', label: 'Issue list', icon: ListChecks },
   { to: '/check-in/gate', code: 'f06.gate', label: 'Gate', icon: DoorOpen },
 ] as const
+
+/** The Feature 2 (flight scheduling and network operations) pages. `ownsPrefixes` keeps an item lit on its sub-pages, such as a flight's detail. */
+export const FLIGHT_SCHEDULING_ITEMS: readonly {
+  to: '/airports' | '/routes' | '/schedule-board' | '/congestion'
+  label: string
+  icon: LucideIcon
+  ownsPrefixes?: readonly string[]
+}[] = [
+  { to: '/schedule-board', label: 'Schedule flight', icon: CalendarClock, ownsPrefixes: ['/flights', '/generate-flights'] },
+  { to: '/airports', label: 'Airports', icon: Globe },
+  { to: '/routes', label: 'Routes', icon: Route },
+  { to: '/congestion', label: 'Congestion', icon: Gauge },
+]

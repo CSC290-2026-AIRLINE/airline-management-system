@@ -155,7 +155,7 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
           <FormField htmlFor="tax-fee-kind" label="Kind">
             <NativeSelect
               id="tax-fee-kind"
-              className="w-full [&_select]:h-[42px]"
+              className="w-full h-[42px]"
               value={form.kind}
               disabled={busy}
               onChange={(e) => set('kind', e.target.value as FormState['kind'])}
@@ -170,7 +170,7 @@ export function TaxFeeDialog({ taxFee, currency, onSaved, onRemoved, onClose }: 
           <FormField htmlFor="tax-fee-calc_type" label="Calculation">
             <NativeSelect
               id="tax-fee-calc_type"
-              className="w-full [&_select]:h-[42px]"
+              className="w-full h-[42px]"
               value={form.calc_type}
               disabled={busy}
               onChange={(e) => set('calc_type', e.target.value as FormState['calc_type'])}
