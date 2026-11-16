@@ -26,9 +26,7 @@ export function ComplaintPage({
       }}
     >
       <CustomerNavbar isGuest={isGuest} onSignInClick={onSignInClick} />
-      <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '32px 24px 80px' }}>
-        {children}
-      </main>
+      <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '32px 24px 80px' }}>{children}</main>
     </div>
   )
 }

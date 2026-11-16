@@ -49,10 +49,7 @@ export class CustomerServiceStaffGuard implements CanActivate {
       throw new ForbiddenException('Customer service staff role required')
     }
 
-    const requireSupervisor = this.reflector.getAllAndOverride<boolean>(IS_SUPERVISOR_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ])
+    const requireSupervisor = this.reflector.getAllAndOverride<boolean>(IS_SUPERVISOR_KEY, [context.getHandler(), context.getClass()])
 
     if (requireSupervisor && !isSupervisor) {
       throw new ForbiddenException('CS supervisor role required')

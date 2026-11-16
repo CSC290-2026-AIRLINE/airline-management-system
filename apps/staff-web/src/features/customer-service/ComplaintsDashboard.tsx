@@ -1,23 +1,10 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import { errorMessage, useComplaintsApi } from './api'
-import {
-  STATUS_LABEL,
-  TYPE_LABEL,
-  humanize,
-  type CaseStatus,
-  type Complaint,
-  type ComplaintType,
-} from './types'
+import { STATUS_LABEL, TYPE_LABEL, humanize, type CaseStatus, type Complaint, type ComplaintType } from './types'
 
 const REFRESH_MS = 10_000
 
-const STAFF_OWNERS = [
-  'Ploy Wong',
-  'Mali Rattana',
-  'Somsak Jaidee',
-  'Kenji Sato',
-  'Tong Charoen',
-]
+const STAFF_OWNERS = ['Ploy Wong', 'Mali Rattana', 'Somsak Jaidee', 'Kenji Sato', 'Tong Charoen']
 
 function shortCaseNo(caseNumber: string): string {
   const parts = caseNumber.split('-')
@@ -156,8 +143,14 @@ export function ComplaintsDashboard() {
   const fetchList = useEffectEvent(() => api.list())
 
   useEffect(() => {
-    void api.getStaffMembers().then(setStaffMembers).catch(() => {})
-    void api.getMe().then(setCurrentStaff).catch(() => {})
+    void api
+      .getStaffMembers()
+      .then(setStaffMembers)
+      .catch(() => {})
+    void api
+      .getMe()
+      .then(setCurrentStaff)
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -196,12 +189,7 @@ export function ComplaintsDashboard() {
         : filterStatusChip === 'open'
           ? c.status === 'with_supervisor' || c.status === 'assigned'
           : c.status === filterStatusChip
-    const matchOwner =
-      filterOwner === 'Anyone'
-        ? true
-        : filterOwner === 'Unassigned'
-          ? !c.ownerName
-          : c.ownerName === filterOwner
+    const matchOwner = filterOwner === 'Anyone' ? true : filterOwner === 'Unassigned' ? !c.ownerName : c.ownerName === filterOwner
     return matchType && matchStatus && matchOwner
   })
 
@@ -209,6 +197,7 @@ export function ComplaintsDashboard() {
 
   useEffect(() => {
     if (selected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the edit drafts when another case is selected
       setOwnerDraft(selected.ownerStaffId ?? '')
       setResolutionDraft('Not a duplicate')
       setNoteDraft('')
@@ -326,9 +315,7 @@ export function ComplaintsDashboard() {
             textAlign: 'left',
           }}
         >
-          <span style={{ fontSize: '26px', fontWeight: 700, color: '#0A1424', lineHeight: 1.2 }}>
-            {openCasesCount}
-          </span>
+          <span style={{ fontSize: '26px', fontWeight: 700, color: '#0A1424', lineHeight: 1.2 }}>{openCasesCount}</span>
           <span style={{ fontSize: '13px', fontWeight: 400, color: '#677287' }}>Open cases</span>
         </div>
 
@@ -344,9 +331,7 @@ export function ComplaintsDashboard() {
             textAlign: 'left',
           }}
         >
-          <span style={{ fontSize: '26px', fontWeight: 700, color: '#0A1424', lineHeight: 1.2 }}>
-            {waitingOwnerCount}
-          </span>
+          <span style={{ fontSize: '26px', fontWeight: 700, color: '#0A1424', lineHeight: 1.2 }}>{waitingOwnerCount}</span>
           <span style={{ fontSize: '13px', fontWeight: 400, color: '#677287' }}>Waiting for an owner</span>
         </div>
 
@@ -362,9 +347,7 @@ export function ComplaintsDashboard() {
             textAlign: 'left',
           }}
         >
-          <span style={{ fontSize: '26px', fontWeight: 700, color: '#0A1424', lineHeight: 1.2 }}>
-            {resolvedOrClosedCount}
-          </span>
+          <span style={{ fontSize: '26px', fontWeight: 700, color: '#0A1424', lineHeight: 1.2 }}>{resolvedOrClosedCount}</span>
           <span style={{ fontSize: '13px', fontWeight: 400, color: '#677287' }}>Resolved or closed</span>
         </div>
       </div>
@@ -608,9 +591,7 @@ export function ComplaintsDashboard() {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
                           <StatusPill status={c.status} />
-                          <span style={{ fontSize: '12px', color: '#677287' }}>
-                            {c.ownerName ?? 'Unassigned'}
-                          </span>
+                          <span style={{ fontSize: '12px', color: '#677287' }}>{c.ownerName ?? 'Unassigned'}</span>
                         </div>
                         <div
                           style={{
@@ -765,18 +746,14 @@ export function ComplaintsDashboard() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <span style={{ fontSize: '11px', fontWeight: 600, color: '#677287' }}>CONTACT</span>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>
-                    {selected.contactEmail ?? '—'}
-                  </span>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>{selected.contactEmail ?? '—'}</span>
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', padding: '8px 0' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <span style={{ fontSize: '11px', fontWeight: 600, color: '#677287' }}>BOOKING</span>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>
-                    {selected.bookingRef ?? 'FLY7K2'}
-                  </span>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>{selected.bookingRef ?? 'FLY7K2'}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <span style={{ fontSize: '11px', fontWeight: 600, color: '#677287' }}>FLIGHT</span>
@@ -797,9 +774,7 @@ export function ComplaintsDashboard() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <span style={{ fontSize: '11px', fontWeight: 600, color: '#677287' }}>ISSUE</span>
-                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>
-                    {humanize(selected.issue ?? 'missing')}
-                  </span>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>{humanize(selected.issue ?? 'missing')}</span>
                 </div>
               </div>
             </div>
@@ -1041,11 +1016,7 @@ export function ComplaintsDashboard() {
                       disabled={busy || !compReasonDraft.trim() || !currentStaff?.isSupervisor || Boolean(selected.compensation)}
                       onClick={() => void handleSendComp()}
                       title={
-                        !currentStaff?.isSupervisor
-                          ? 'Supervisor only'
-                          : selected.compensation
-                            ? 'Compensation already decided'
-                            : undefined
+                        !currentStaff?.isSupervisor ? 'Supervisor only' : selected.compensation ? 'Compensation already decided' : undefined
                       }
                       style={{
                         backgroundColor: '#FFFFFF',
@@ -1060,17 +1031,13 @@ export function ComplaintsDashboard() {
                             ? 'not-allowed'
                             : 'pointer',
                         opacity:
-                          busy || !compReasonDraft.trim() || !currentStaff?.isSupervisor || Boolean(selected.compensation)
-                            ? 0.65
-                            : 1,
+                          busy || !compReasonDraft.trim() || !currentStaff?.isSupervisor || Boolean(selected.compensation) ? 0.65 : 1,
                         whiteSpace: 'nowrap',
                       }}
                     >
                       Send to Feature 5B
                     </button>
-                    <span style={{ fontSize: '12px', color: '#677287' }}>
-                      One live decision per case. Audit entry in Feature 15 first.
-                    </span>
+                    <span style={{ fontSize: '12px', color: '#677287' }}>One live decision per case. Audit entry in Feature 15 first.</span>
                   </div>
                 </div>
               </div>
@@ -1104,9 +1071,7 @@ export function ComplaintsDashboard() {
             </div>
 
             {/* History and internal notes (Figma 5552:35770) */}
-            <div style={{ fontSize: '16px', fontWeight: 700, color: '#0A1424' }}>
-              History and internal notes
-            </div>
+            <div style={{ fontSize: '16px', fontWeight: 700, color: '#0A1424' }}>History and internal notes</div>
 
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {(selected.events ?? []).map((ev, idx, arr) => {

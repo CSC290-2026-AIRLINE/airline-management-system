@@ -86,7 +86,11 @@ export const FOOD_ISSUES = [
 
 /** The customer's progress steps, one per status (matching Figma 06 / 06c). */
 export const STATUS_STEPS: { status: CaseStatus; label: string; description: string }[] = [
-  { status: 'with_supervisor', label: 'With supervisor', description: 'Your complaint has been received and is with the Customer Service supervisor.' },
+  {
+    status: 'with_supervisor',
+    label: 'With supervisor',
+    description: 'Your complaint has been received and is with the Customer Service supervisor.',
+  },
   { status: 'assigned', label: 'Assigned', description: 'A customer service agent is handling your case.' },
   { status: 'resolved', label: 'Resolved', description: 'Your complaint has been resolved.' },
   { status: 'closed', label: 'Closed', description: 'This case has been closed.' },
@@ -113,18 +117,114 @@ export interface NotificationPreferenceRow {
 const PREFERENCES_STORAGE_KEY = 'cs_notification_preferences'
 
 export const DEFAULT_PREFERENCES: NotificationPreferenceRow[] = [
-  { typeCode: 'flight_delayed', typeName: 'Flight delayed', sourceFeature: 'Flight Scheduling', isMandatory: true, email: true, sms: true, push: true },
-  { typeCode: 'flight_rescheduled', typeName: 'Flight rescheduled', sourceFeature: 'Flight Scheduling', isMandatory: true, email: true, sms: true, push: false },
-  { typeCode: 'flight_diverted', typeName: 'Flight diverted', sourceFeature: 'Flight Scheduling', isMandatory: true, email: true, sms: true, push: true },
-  { typeCode: 'flight_cancelled', typeName: 'Flight cancelled', sourceFeature: 'Flight Scheduling', isMandatory: true, email: true, sms: true, push: true },
-  { typeCode: 'check_in_completed', typeName: 'Check-in completed', sourceFeature: 'Check-in & Boarding', isMandatory: false, email: true, sms: false, push: true },
-  { typeCode: 'boarding_pass_issued', typeName: 'Boarding pass issued', sourceFeature: 'Check-in & Boarding', isMandatory: false, email: true, sms: false, push: true },
-  { typeCode: 'gate_changed', typeName: 'Gate changed', sourceFeature: 'Check-in & Boarding', isMandatory: true, email: true, sms: true, push: true },
-  { typeCode: 'boarding_call', typeName: 'Boarding call', sourceFeature: 'Check-in & Boarding', isMandatory: false, email: false, sms: true, push: true },
-  { typeCode: 'bag_case_updated', typeName: 'Lost bag case updated', sourceFeature: 'Lost and Found', isMandatory: false, email: true, sms: false, push: true },
-  { typeCode: 'bag_delivery_updated', typeName: 'Bag delivery updated', sourceFeature: 'Lost and Found', isMandatory: false, email: true, sms: false, push: true },
-  { typeCode: 'complaint_received', typeName: 'Complaint received', sourceFeature: 'Customer Service', isMandatory: false, email: true, sms: false, push: false },
-  { typeCode: 'complaint_updated', typeName: 'Complaint updated', sourceFeature: 'Customer Service', isMandatory: false, email: true, sms: false, push: false },
+  {
+    typeCode: 'flight_delayed',
+    typeName: 'Flight delayed',
+    sourceFeature: 'Flight Scheduling',
+    isMandatory: true,
+    email: true,
+    sms: true,
+    push: true,
+  },
+  {
+    typeCode: 'flight_rescheduled',
+    typeName: 'Flight rescheduled',
+    sourceFeature: 'Flight Scheduling',
+    isMandatory: true,
+    email: true,
+    sms: true,
+    push: false,
+  },
+  {
+    typeCode: 'flight_diverted',
+    typeName: 'Flight diverted',
+    sourceFeature: 'Flight Scheduling',
+    isMandatory: true,
+    email: true,
+    sms: true,
+    push: true,
+  },
+  {
+    typeCode: 'flight_cancelled',
+    typeName: 'Flight cancelled',
+    sourceFeature: 'Flight Scheduling',
+    isMandatory: true,
+    email: true,
+    sms: true,
+    push: true,
+  },
+  {
+    typeCode: 'check_in_completed',
+    typeName: 'Check-in completed',
+    sourceFeature: 'Check-in & Boarding',
+    isMandatory: false,
+    email: true,
+    sms: false,
+    push: true,
+  },
+  {
+    typeCode: 'boarding_pass_issued',
+    typeName: 'Boarding pass issued',
+    sourceFeature: 'Check-in & Boarding',
+    isMandatory: false,
+    email: true,
+    sms: false,
+    push: true,
+  },
+  {
+    typeCode: 'gate_changed',
+    typeName: 'Gate changed',
+    sourceFeature: 'Check-in & Boarding',
+    isMandatory: true,
+    email: true,
+    sms: true,
+    push: true,
+  },
+  {
+    typeCode: 'boarding_call',
+    typeName: 'Boarding call',
+    sourceFeature: 'Check-in & Boarding',
+    isMandatory: false,
+    email: false,
+    sms: true,
+    push: true,
+  },
+  {
+    typeCode: 'bag_case_updated',
+    typeName: 'Lost bag case updated',
+    sourceFeature: 'Lost and Found',
+    isMandatory: false,
+    email: true,
+    sms: false,
+    push: true,
+  },
+  {
+    typeCode: 'bag_delivery_updated',
+    typeName: 'Bag delivery updated',
+    sourceFeature: 'Lost and Found',
+    isMandatory: false,
+    email: true,
+    sms: false,
+    push: true,
+  },
+  {
+    typeCode: 'complaint_received',
+    typeName: 'Complaint received',
+    sourceFeature: 'Customer Service',
+    isMandatory: false,
+    email: true,
+    sms: false,
+    push: false,
+  },
+  {
+    typeCode: 'complaint_updated',
+    typeName: 'Complaint updated',
+    sourceFeature: 'Customer Service',
+    isMandatory: false,
+    email: true,
+    sms: false,
+    push: false,
+  },
 ]
 
 export function loadPreferences(): NotificationPreferenceRow[] {
@@ -143,4 +243,3 @@ export function loadPreferences(): NotificationPreferenceRow[] {
 export function savePreferences(prefs: NotificationPreferenceRow[]): void {
   localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(prefs))
 }
-

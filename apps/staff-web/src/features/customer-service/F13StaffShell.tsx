@@ -40,7 +40,10 @@ export function F13StaffShell({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<'queue' | 'charts' | 'delivery' | 'templates'>('queue')
 
   useEffect(() => {
-    void api.getMe().then(setMe).catch(() => {})
+    void api
+      .getMe()
+      .then(setMe)
+      .catch(() => {})
   }, [])
 
   const navItems: { key: 'queue' | 'charts' | 'delivery' | 'templates'; label: string; short: string }[] = [
@@ -121,11 +124,7 @@ export function F13StaffShell({ children }: { children: ReactNode }) {
                 }}
                 style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
               >
-                <img
-                  src={flythonLogoDark}
-                  alt="Flython Airlines"
-                  style={{ height: '32px', width: 'auto', display: 'block' }}
-                />
+                <img src={flythonLogoDark} alt="Flython Airlines" style={{ height: '32px', width: 'auto', display: 'block' }} />
               </div>
             ) : (
               <div
@@ -280,9 +279,7 @@ export function F13StaffShell({ children }: { children: ReactNode }) {
                   SIMULATION CLOCK
                 </span>
               </div>
-              <div style={{ fontSize: '15px', fontWeight: 600, color: '#FFFFFF', textAlign: 'left' }}>
-                {clockText}
-              </div>
+              <div style={{ fontSize: '15px', fontWeight: 600, color: '#FFFFFF', textAlign: 'left' }}>{clockText}</div>
             </div>
 
             {/* SIGNED IN AS Widget (Figma 5947:37492) */}
@@ -320,9 +317,7 @@ export function F13StaffShell({ children }: { children: ReactNode }) {
                   SIGNED IN AS
                 </span>
               </div>
-              <div style={{ fontSize: '15px', fontWeight: 600, color: '#FFFFFF', textAlign: 'left' }}>
-                {me?.name ?? 'Tong Charoen'}
-              </div>
+              <div style={{ fontSize: '15px', fontWeight: 600, color: '#FFFFFF', textAlign: 'left' }}>{me?.name ?? 'Tong Charoen'}</div>
             </div>
 
             {/* Role Disclaimer */}
@@ -336,7 +331,9 @@ export function F13StaffShell({ children }: { children: ReactNode }) {
                 textAlign: 'left',
               }}
             >
-              {me ? `${me.roleName}. Navigation follows assigned staff permissions.` : 'Customer Service Staff (supervisor). Navigation follows assigned staff permissions.'}
+              {me
+                ? `${me.roleName}. Navigation follows assigned staff permissions.`
+                : 'Customer Service Staff (supervisor). Navigation follows assigned staff permissions.'}
             </p>
 
             {/* Sign Out link */}

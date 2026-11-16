@@ -22,15 +22,9 @@ export function ComplaintSentPage() {
   const [complaint, setComplaint] = useState<Complaint | null>(null)
   const [error, setError] = useState<string | null>(caseNumber ? null : 'No case number was given.')
 
-  const isGuest =
-    !user ||
-    guest === '1' ||
-    sessionStorage.getItem('f13_guest_mode') === '1' ||
-    complaint?.fromSource === 'No account'
+  const isGuest = !user || guest === '1' || sessionStorage.getItem('f13_guest_mode') === '1' || complaint?.fromSource === 'No account'
 
-  const fetchCase = useEffectEvent((n: string) =>
-    isGuest ? api.getGuest(n, bookingRef, surname) : api.get(n, bookingRef, surname),
-  )
+  const fetchCase = useEffectEvent((n: string) => (isGuest ? api.getGuest(n, bookingRef, surname) : api.get(n, bookingRef, surname)))
 
   useEffect(() => {
     if (!caseNumber) return
@@ -49,10 +43,7 @@ export function ComplaintSentPage() {
   }, [caseNumber])
 
   const activeBookingRef = complaint?.bookingRef || bookingRef || ''
-  const activeSurname =
-    surname ||
-    (complaint?.passengerName ? complaint.passengerName.trim().split(/\s+/).pop() : undefined) ||
-    ''
+  const activeSurname = surname || (complaint?.passengerName ? complaint.passengerName.trim().split(/\s+/).pop() : undefined) || ''
   const currentStepIdx = Math.max(
     0,
     TRACKER_STEPS.findIndex((s) => s.status === (complaint?.status ?? 'with_supervisor')),
@@ -110,13 +101,27 @@ export function ComplaintSentPage() {
 
           {/* Facts Table */}
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #E8EDF3', fontSize: '14px' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 0',
+                borderTop: '1px solid #E8EDF3',
+                fontSize: '14px',
+              }}
+            >
               <span style={{ color: '#677287', flex: 1 }}>Type</span>
-              <span style={{ fontWeight: 500, color: '#0A1424', flex: 1, textTransform: 'capitalize' }}>
-                {complaint?.type || 'Food'}
-              </span>
+              <span style={{ fontWeight: 500, color: '#0A1424', flex: 1, textTransform: 'capitalize' }}>{complaint?.type || 'Food'}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #E8EDF3', fontSize: '14px' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 0',
+                borderTop: '1px solid #E8EDF3',
+                fontSize: '14px',
+              }}
+            >
               <span style={{ color: '#677287', flex: 1 }}>From</span>
               <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>
                 {isGuest
@@ -125,7 +130,15 @@ export function ComplaintSentPage() {
               </span>
             </div>
             {complaint?.flightNumber && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #E8EDF3', fontSize: '14px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  padding: '10px 0',
+                  borderTop: '1px solid #E8EDF3',
+                  fontSize: '14px',
+                }}
+              >
                 <span style={{ color: '#677287', flex: 1 }}>Flight</span>
                 <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>
                   {complaint.flightRoute || `${complaint.flightNumber} · ${complaint.serviceDate ?? 'Mon 12 Oct'}`}
@@ -133,7 +146,15 @@ export function ComplaintSentPage() {
               </div>
             )}
             {complaint?.issue && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #E8EDF3', fontSize: '14px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  padding: '10px 0',
+                  borderTop: '1px solid #E8EDF3',
+                  fontSize: '14px',
+                }}
+              >
                 <span style={{ color: '#677287', flex: 1 }}>Issue</span>
                 <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>
                   {optionLabel(complaint.type === 'food' ? FOOD_ISSUES : FLIGHT_ISSUES, complaint.issue)}
@@ -141,21 +162,41 @@ export function ComplaintSentPage() {
               </div>
             )}
             {complaint?.location && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #E8EDF3', fontSize: '14px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  padding: '10px 0',
+                  borderTop: '1px solid #E8EDF3',
+                  fontSize: '14px',
+                }}
+              >
                 <span style={{ color: '#677287', flex: 1 }}>Location</span>
-                <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>
-                  {optionLabel(LOCATIONS, complaint.location)}
-                </span>
+                <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>{optionLabel(LOCATIONS, complaint.location)}</span>
               </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #E8EDF3', fontSize: '14px' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 0',
+                borderTop: '1px solid #E8EDF3',
+                fontSize: '14px',
+              }}
+            >
               <span style={{ color: '#677287', flex: 1 }}>Sent to</span>
-              <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>
-                Customer Service supervisor
-              </span>
+              <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>Customer Service supervisor</span>
             </div>
             {!isGuest && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #E8EDF3', fontSize: '14px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  padding: '10px 0',
+                  borderTop: '1px solid #E8EDF3',
+                  fontSize: '14px',
+                }}
+              >
                 <span style={{ color: '#677287', flex: 1 }}>Opened</span>
                 <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>
                   {complaint ? formatDateTime(complaint.openedAt) : 'Just now'}
@@ -166,9 +207,7 @@ export function ComplaintSentPage() {
 
           {/* Status Tracker matching Figma 05 / 05c */}
           <div>
-            <div style={{ fontSize: '16px', fontWeight: 700, color: '#0A1424', marginBottom: '12px' }}>
-              Status
-            </div>
+            <div style={{ fontSize: '16px', fontWeight: 700, color: '#0A1424', marginBottom: '12px' }}>Status</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               {TRACKER_STEPS.map((step, idx) => {
                 const isReached = idx <= currentStepIdx
@@ -225,11 +264,7 @@ export function ComplaintSentPage() {
 
           {/* Action Buttons */}
           <div style={{ display: 'flex', gap: '16px', justifyContent: 'flex-end', marginTop: '4px' }}>
-            <button
-              type="button"
-              onClick={() => void navigate({ to: '/complaints' })}
-              style={btnSecondary}
-            >
+            <button type="button" onClick={() => void navigate({ to: '/complaints' })} style={btnSecondary}>
               Make another complaint
             </button>
             <button
@@ -264,9 +299,7 @@ export function ComplaintSentPage() {
               textAlign: 'left',
             }}
           >
-            <h3 style={{ margin: '0 0 12px', fontSize: '18px', fontWeight: 700, color: '#0A1424' }}>
-              What happens next
-            </h3>
+            <h3 style={{ margin: '0 0 12px', fontSize: '18px', fontWeight: 700, color: '#0A1424' }}>What happens next</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {[
                 { step: 1, text: 'We give you a case number.' },

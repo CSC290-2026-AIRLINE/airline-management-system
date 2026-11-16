@@ -126,11 +126,7 @@ export class StaffComplaintsController {
 
   @SupervisorOnly()
   @Patch('templates/:code')
-  updateTemplate(
-    @Param('code') code: string,
-    @Body() dto: UpdateNotificationTemplateDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  updateTemplate(@Param('code') code: string, @Body() dto: UpdateNotificationTemplateDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.updateTemplateForStaff(user.id, code, dto)
   }
 

@@ -1,11 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useComplaintsApi } from './api'
-import type {
-  DeliveryLogRowView,
-  StaffChartsResponse,
-  StaffDeliveryLogResponse,
-  StaffTemplateItemView,
-} from './types'
+import type { DeliveryLogRowView, StaffChartsResponse, StaffDeliveryLogResponse, StaffTemplateItemView } from './types'
 
 /* ============================================================================
  * 08 / Staff / Complaint charts (Figma 4032:16149) — Live Database-Backed
@@ -54,7 +49,6 @@ export function StaffChartsView() {
 
   useEffect(() => {
     let active = true
-    setLoading(true)
     api
       .getCharts()
       .then((data) => {
@@ -85,10 +79,7 @@ export function StaffChartsView() {
   const weeklyCounts = charts.weeklyData.map((w) => w.count)
   const maxWeekCount = Math.max(...weeklyCounts, 1)
   const weekYMax = Math.max(20, Math.ceil(maxWeekCount / 4) * 4)
-  const weeklyAvg =
-    weeklyCounts.length > 0
-      ? Number((weeklyCounts.reduce((acc, n) => acc + n, 0) / weeklyCounts.length).toFixed(1))
-      : 0
+  const weeklyAvg = weeklyCounts.length > 0 ? Number((weeklyCounts.reduce((acc, n) => acc + n, 0) / weeklyCounts.length).toFixed(1)) : 0
   // Chart plotting area: top=20 (value=weekYMax) to top=212 (value=0), height=192px
   const avgLineTop = Math.round(212 - (Math.min(weeklyAvg, weekYMax) / weekYMax) * 192)
 
@@ -178,40 +169,75 @@ export function StaffChartsView() {
 
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '16px' }}>
-        <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #DEE3EB', borderRadius: '12px', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #DEE3EB',
+            borderRadius: '12px',
+            padding: '16px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+          }}
+        >
           <span style={{ fontSize: '12px', fontWeight: 500, color: '#677287' }}>Complaints this month</span>
-          <span style={{ fontSize: '28px', fontWeight: 800, color: '#0A1424', lineHeight: 1.2 }}>
-            {charts.totalComplaints}
-          </span>
+          <span style={{ fontSize: '28px', fontWeight: 800, color: '#0A1424', lineHeight: 1.2 }}>{charts.totalComplaints}</span>
           <span style={{ fontSize: '12px', color: '#677287' }}>
             {loading ? 'Syncing with database…' : 'Live from DB · duplicates left out'}
           </span>
         </div>
-        <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #DEE3EB', borderRadius: '12px', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #DEE3EB',
+            borderRadius: '12px',
+            padding: '16px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+          }}
+        >
           <span style={{ fontSize: '12px', fontWeight: 500, color: '#677287' }}>Open now</span>
-          <span style={{ fontSize: '28px', fontWeight: 800, color: '#0A1424', lineHeight: 1.2 }}>
-            {charts.openNow}
-          </span>
+          <span style={{ fontSize: '28px', fontWeight: 800, color: '#0A1424', lineHeight: 1.2 }}>{charts.openNow}</span>
           <span style={{ fontSize: '12px', color: '#677287' }}>
             {charts.withSupervisorCount} with supervisor · {charts.assignedCount} assigned
           </span>
         </div>
-        <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #DEE3EB', borderRadius: '12px', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #DEE3EB',
+            borderRadius: '12px',
+            padding: '16px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+          }}
+        >
           <span style={{ fontSize: '12px', fontWeight: 500, color: '#677287' }}>Average time to close</span>
-          <span style={{ fontSize: '28px', fontWeight: 800, color: '#0A1424', lineHeight: 1.2 }}>
-            {charts.avgDaysToClose} days
-          </span>
+          <span style={{ fontSize: '28px', fontWeight: 800, color: '#0A1424', lineHeight: 1.2 }}>{charts.avgDaysToClose} days</span>
           <span style={{ fontSize: '12px', color: '#677287' }}>
             {charts.closedCount} closed · {charts.resolvedCount} resolved
           </span>
         </div>
-        <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #DEE3EB', borderRadius: '12px', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <div
+          style={{
+            backgroundColor: '#FFFFFF',
+            border: '1px solid #DEE3EB',
+            borderRadius: '12px',
+            padding: '16px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+          }}
+        >
           <span style={{ fontSize: '12px', fontWeight: 500, color: '#677287' }}>Compensation decided</span>
           <span style={{ fontSize: '28px', fontWeight: 800, color: '#0A1424', lineHeight: 1.2 }}>
             ฿{charts.compensationTotalThb.toLocaleString()}
           </span>
           <span style={{ fontSize: '12px', color: '#677287' }}>
-            {charts.compensationDecisions} decision{charts.compensationDecisions === 1 ? '' : 's'} · {charts.compensationFailed} failed at Feature 5B
+            {charts.compensationDecisions} decision{charts.compensationDecisions === 1 ? '' : 's'} · {charts.compensationFailed} failed at
+            Feature 5B
           </span>
         </div>
       </div>
@@ -535,9 +561,7 @@ export function StaffChartsView() {
                     position: 'relative',
                   }}
                 >
-                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#0A1424', marginBottom: '4px' }}>
-                    {w.count}
-                  </span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#0A1424', marginBottom: '4px' }}>{w.count}</span>
                   <div
                     style={{
                       width: '54px',
@@ -580,7 +604,8 @@ export function StaffChartsView() {
       </div>
 
       <p style={{ margin: 0, fontSize: '12px', color: '#677287' }}>
-        Duplicates are left out of every count. Times use the Feature 1 simulation clock. Feature 14 reads the same numbers (by type, week and flight) directly from PostgreSQL.
+        Duplicates are left out of every count. Times use the Feature 1 simulation clock. Feature 14 reads the same numbers (by type, week
+        and flight) directly from PostgreSQL.
       </p>
     </div>
   )
@@ -613,7 +638,6 @@ export function StaffDeliveryLogView() {
 
   useEffect(() => {
     let active = true
-    setLoading(true)
     api
       .getDeliveryLog()
       .then((res) => {
@@ -644,8 +668,7 @@ export function StaffDeliveryLogView() {
       (r.body ?? '').toLowerCase().includes(q)
     const matchEvent = eventFilter === 'All 15 types' || r.event === eventFilter
     const matchCh = channelFilter === 'All channels' || r.channel === channelFilter
-    const matchSt =
-      statusFilter === 'All statuses' || r.status.toLowerCase().startsWith(statusFilter.toLowerCase())
+    const matchSt = statusFilter === 'All statuses' || r.status.toLowerCase().startsWith(statusFilter.toLowerCase())
     return matchSearch && matchEvent && matchCh && matchSt
   })
 
@@ -656,7 +679,19 @@ export function StaffDeliveryLogView() {
   function renderStatusChip(status: DeliveryLogRowView['status']) {
     if (status === 'Sent' || status === 'Sent on retry') {
       return (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: '#E5F7ED', color: '#0F6B3D', padding: '3px 9px 3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 600 }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            backgroundColor: '#E5F7ED',
+            color: '#0F6B3D',
+            padding: '3px 9px 3px 8px',
+            borderRadius: '6px',
+            fontSize: '11px',
+            fontWeight: 600,
+          }}
+        >
           <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#0F6B3D' }} />
           {status}
         </span>
@@ -664,7 +699,19 @@ export function StaffDeliveryLogView() {
     }
     if (status === 'Failed · retrying') {
       return (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: '#FCEBEB', color: '#A8171C', padding: '3px 9px 3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 600 }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            backgroundColor: '#FCEBEB',
+            color: '#A8171C',
+            padding: '3px 9px 3px 8px',
+            borderRadius: '6px',
+            fontSize: '11px',
+            fontWeight: 600,
+          }}
+        >
           <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#A8171C' }} />
           {status}
         </span>
@@ -672,14 +719,38 @@ export function StaffDeliveryLogView() {
     }
     if (status === 'Queued') {
       return (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: '#FFF5E0', color: '#855705', padding: '3px 9px 3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 600 }}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            backgroundColor: '#FFF5E0',
+            color: '#855705',
+            padding: '3px 9px 3px 8px',
+            borderRadius: '6px',
+            fontSize: '11px',
+            fontWeight: 600,
+          }}
+        >
           <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#855705' }} />
           {status}
         </span>
       )
     }
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', backgroundColor: '#F2F5F7', color: '#545E70', padding: '3px 9px 3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 600 }}>
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          backgroundColor: '#F2F5F7',
+          color: '#545E70',
+          padding: '3px 9px 3px 8px',
+          borderRadius: '6px',
+          fontSize: '11px',
+          fontWeight: 600,
+        }}
+      >
         <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#545E70' }} />
         {status}
       </span>
@@ -852,14 +923,38 @@ export function StaffDeliveryLogView() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <span style={{ fontSize: '12px', fontWeight: 500, color: '#677287' }}>From</span>
-            <div style={{ height: '42px', width: '130px', borderRadius: '6px', border: '1px solid #C4CCD6', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '14px', color: '#0A1424' }}>
+            <div
+              style={{
+                height: '42px',
+                width: '130px',
+                borderRadius: '6px',
+                border: '1px solid #C4CCD6',
+                padding: '0 12px',
+                display: 'flex',
+                alignItems: 'center',
+                fontSize: '14px',
+                color: '#0A1424',
+              }}
+            >
               All dates
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <span style={{ fontSize: '12px', fontWeight: 500, color: '#677287' }}>To</span>
-            <div style={{ height: '42px', width: '130px', borderRadius: '6px', border: '1px solid #C4CCD6', padding: '0 12px', display: 'flex', alignItems: 'center', fontSize: '14px', color: '#0A1424' }}>
+            <div
+              style={{
+                height: '42px',
+                width: '130px',
+                borderRadius: '6px',
+                border: '1px solid #C4CCD6',
+                padding: '0 12px',
+                display: 'flex',
+                alignItems: 'center',
+                fontSize: '14px',
+                color: '#0A1424',
+              }}
+            >
               Today
             </div>
           </div>
@@ -942,7 +1037,7 @@ export function StaffDeliveryLogView() {
                 }}
               >
                 <div style={{ color: '#677287', fontSize: '12.5px' }}>
-                  {isExpanded ? '▾' : '▸'}  {r.time}
+                  {isExpanded ? '▾' : '▸'} {r.time}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
                   <span style={{ fontWeight: 600 }}>{r.event}</span>
@@ -987,15 +1082,19 @@ export function StaffDeliveryLogView() {
                     </div>
                   )}
                   {r.body && (
-                    <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '8px 12px', color: '#0A1424' }}>
+                    <div
+                      style={{
+                        backgroundColor: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '6px',
+                        padding: '8px 12px',
+                        color: '#0A1424',
+                      }}
+                    >
                       {r.body}
                     </div>
                   )}
-                  {r.error && (
-                    <div style={{ color: '#A8171C', fontWeight: 600 }}>
-                      Provider error: {r.error}
-                    </div>
-                  )}
+                  {r.error && <div style={{ color: '#A8171C', fontWeight: 600 }}>Provider error: {r.error}</div>}
                 </div>
               )}
             </div>
@@ -1004,7 +1103,8 @@ export function StaffDeliveryLogView() {
 
         {/* Duplicate event note */}
         <div style={{ backgroundColor: '#F0F4FD', padding: '10px 20px', fontSize: '12px', color: '#29427A' }}>
-          Duplicate ignored: FY405 delay event ev-2041 arrived twice from Feature 2 at 17:05. The second copy was skipped by event ID, so nobody got the message twice.
+          Duplicate ignored: FY405 delay event ev-2041 arrived twice from Feature 2 at 17:05. The second copy was skipped by event ID, so
+          nobody got the message twice.
         </div>
 
         {/* Pager */}
@@ -1018,8 +1118,8 @@ export function StaffDeliveryLogView() {
           }}
         >
           <span style={{ fontSize: '13px', color: '#677287' }}>
-            Showing {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}–
-            {Math.min(currentPage * pageSize, filtered.length)} of {filtered.length}
+            Showing {filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filtered.length)} of{' '}
+            {filtered.length}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <button
@@ -1093,22 +1193,103 @@ const INITIAL_TEMPLATES: StaffTemplateItemView[] = [
     smsState: '✓',
     pushState: '✓',
     emailTitle: 'Your flight {{flight_number}} is delayed',
-    emailBody: 'Hi {{first_name}}, flight {{flight_number}} from {{origin}} to {{destination}} now leaves at {{new_time}} ({{delay}} late). Reason: {{reason}}.',
+    emailBody:
+      'Hi {{first_name}}, flight {{flight_number}} from {{origin}} to {{destination}} now leaves at {{new_time}} ({{delay}} late). Reason: {{reason}}.',
     smsBody: '{{flight_number}} now leaves {{new_time}} ({{delay}} late, {{reason}}). Sorry for the wait. Flython',
     pushTitle: '{{flight_number}} delayed',
     pushBody: 'Now leaving at {{new_time}} ({{delay}} late).',
   },
-  { code: 'flight_rescheduled', name: 'Flight rescheduled', feature: 'Feature 2', group: 'ALWAYS SENT', emailState: '✓', smsState: '✓', pushState: '✓' },
-  { code: 'flight_diverted', name: 'Flight diverted', feature: 'Feature 2', group: 'ALWAYS SENT', emailState: '✓', smsState: '✓', pushState: '!' },
-  { code: 'flight_cancelled', name: 'Flight cancelled', feature: 'Feature 2', group: 'ALWAYS SENT', emailState: '✓', smsState: '✓', pushState: '✓' },
-  { code: 'gate_changed', name: 'Gate changed', feature: 'Feature 6', group: 'ALWAYS SENT', emailState: '✓', smsState: '✓', pushState: '✓' },
-  { code: 'security_alert', name: 'Security alert to the authority', feature: 'Feature 7', group: 'ALWAYS SENT', emailState: '✓', smsState: ' ', pushState: ' ' },
-  { code: 'check_in_completed', name: 'Check-in completed', feature: 'Feature 6', group: 'OPTIONAL', emailState: '✓', smsState: ' ', pushState: '✓' },
-  { code: 'boarding_pass_issued', name: 'Boarding pass issued', feature: 'Feature 6', group: 'OPTIONAL', emailState: '✓', smsState: ' ', pushState: '✓' },
+  {
+    code: 'flight_rescheduled',
+    name: 'Flight rescheduled',
+    feature: 'Feature 2',
+    group: 'ALWAYS SENT',
+    emailState: '✓',
+    smsState: '✓',
+    pushState: '✓',
+  },
+  {
+    code: 'flight_diverted',
+    name: 'Flight diverted',
+    feature: 'Feature 2',
+    group: 'ALWAYS SENT',
+    emailState: '✓',
+    smsState: '✓',
+    pushState: '!',
+  },
+  {
+    code: 'flight_cancelled',
+    name: 'Flight cancelled',
+    feature: 'Feature 2',
+    group: 'ALWAYS SENT',
+    emailState: '✓',
+    smsState: '✓',
+    pushState: '✓',
+  },
+  {
+    code: 'gate_changed',
+    name: 'Gate changed',
+    feature: 'Feature 6',
+    group: 'ALWAYS SENT',
+    emailState: '✓',
+    smsState: '✓',
+    pushState: '✓',
+  },
+  {
+    code: 'security_alert',
+    name: 'Security alert to the authority',
+    feature: 'Feature 7',
+    group: 'ALWAYS SENT',
+    emailState: '✓',
+    smsState: ' ',
+    pushState: ' ',
+  },
+  {
+    code: 'check_in_completed',
+    name: 'Check-in completed',
+    feature: 'Feature 6',
+    group: 'OPTIONAL',
+    emailState: '✓',
+    smsState: ' ',
+    pushState: '✓',
+  },
+  {
+    code: 'boarding_pass_issued',
+    name: 'Boarding pass issued',
+    feature: 'Feature 6',
+    group: 'OPTIONAL',
+    emailState: '✓',
+    smsState: ' ',
+    pushState: '✓',
+  },
   { code: 'boarding_call', name: 'Boarding call', feature: 'Feature 6', group: 'OPTIONAL', emailState: ' ', smsState: '✓', pushState: '✓' },
-  { code: 'bag_case_updated', name: 'Lost bag case updated', feature: 'Feature 10', group: 'OPTIONAL', emailState: '✓', smsState: '✓', pushState: '–' },
-  { code: 'bag_delivery_updated', name: 'Bag delivery updated', feature: 'Feature 10', group: 'OPTIONAL', emailState: '✓', smsState: '–', pushState: '✓' },
-  { code: 'miles_expiring', name: 'Miles expiring', feature: 'Feature 11', group: 'OPTIONAL', emailState: '✓', smsState: '✓', pushState: '✓' },
+  {
+    code: 'bag_case_updated',
+    name: 'Lost bag case updated',
+    feature: 'Feature 10',
+    group: 'OPTIONAL',
+    emailState: '✓',
+    smsState: '✓',
+    pushState: '–',
+  },
+  {
+    code: 'bag_delivery_updated',
+    name: 'Bag delivery updated',
+    feature: 'Feature 10',
+    group: 'OPTIONAL',
+    emailState: '✓',
+    smsState: '–',
+    pushState: '✓',
+  },
+  {
+    code: 'miles_expiring',
+    name: 'Miles expiring',
+    feature: 'Feature 11',
+    group: 'OPTIONAL',
+    emailState: '✓',
+    smsState: '✓',
+    pushState: '✓',
+  },
   { code: 'tier_changed', name: 'Tier changed', feature: 'Feature 11', group: 'OPTIONAL', emailState: '✓', smsState: '✓', pushState: '✓' },
   {
     code: 'complaint_received',
@@ -1169,9 +1350,7 @@ export function StaffTemplatesView() {
   const filtered = templates.filter((t) => {
     const matchSource = sourceFilter === 'All features' || t.feature === sourceFilter
     const matchQ =
-      !search.trim() ||
-      t.name.toLowerCase().includes(search.trim().toLowerCase()) ||
-      t.code.includes(search.trim().toLowerCase())
+      !search.trim() || t.name.toLowerCase().includes(search.trim().toLowerCase()) || t.code.includes(search.trim().toLowerCase())
     return matchSource && matchQ
   })
 
@@ -1182,9 +1361,7 @@ export function StaffTemplatesView() {
     if (!target) return
     const nextActive = target[channelKey] !== '✓'
     const nextVal = nextActive ? '✓' : '–'
-    setTemplates((prev) =>
-      prev.map((item) => (item.code === code ? { ...item, [channelKey]: nextVal } : item)),
-    )
+    setTemplates((prev) => prev.map((item) => (item.code === code ? { ...item, [channelKey]: nextVal } : item)))
     try {
       const updated = await api.updateTemplate(code, {
         channel: channelKey === 'smsState' ? 'sms' : 'push',
@@ -1193,7 +1370,9 @@ export function StaffTemplatesView() {
       if (Array.isArray(updated) && updated.length > 0) {
         setTemplates(updated)
       }
-    } catch {}
+    } catch {
+      // keep the optimistic toggle; the next load shows the saved state
+    }
   }
 
   function startEdit(ch: 'email' | 'sms' | 'push') {
@@ -1207,8 +1386,7 @@ export function StaffTemplatesView() {
     } else if (ch === 'sms') {
       setDraftSubject('')
       setDraftBody(
-        selected.smsBody ??
-          `{{flight_number}} now leaves {{new_time}} ({{delay}} late, {{reason}}). Sorry for the wait. Flython`,
+        selected.smsBody ?? `{{flight_number}} now leaves {{new_time}} ({{delay}} late, {{reason}}). Sorry for the wait. Flython`,
       )
     } else {
       setDraftSubject(selected.pushTitle ?? `{{flight_number}} delayed`)
@@ -1238,6 +1416,7 @@ export function StaffTemplatesView() {
         setTemplates(updated)
       }
     } catch {
+      // keep the optimistic edit; the next load shows the saved state
     } finally {
       setSaving(false)
       setEditingChannel(null)
@@ -1296,7 +1475,9 @@ export function StaffTemplatesView() {
           Templates
         </h1>
         <p style={{ margin: 0, fontSize: '16px', color: '#677287' }}>
-          {'One template per message type and channel; placeholders like {{flight_number}} are filled when a message is sent. Only the supervisor edits or switches templates.'}
+          {
+            'One template per message type and channel; placeholders like {{flight_number}} are filled when a message is sent. Only the supervisor edits or switches templates.'
+          }
         </p>
       </div>
 
@@ -1378,12 +1559,16 @@ export function StaffTemplatesView() {
             if (items.length === 0) return null
             return (
               <div key={grp}>
-                <div style={{ backgroundColor: '#F8F9FB', padding: '10px 16px 8px', borderTop: grp === 'OPTIONAL' ? '1px solid #E8EDF2' : undefined }}>
+                <div
+                  style={{
+                    backgroundColor: '#F8F9FB',
+                    padding: '10px 16px 8px',
+                    borderTop: grp === 'OPTIONAL' ? '1px solid #E8EDF2' : undefined,
+                  }}
+                >
                   <div style={{ fontSize: '11px', fontWeight: 700, color: '#0A1424', letterSpacing: '0.55px' }}>{grp}</div>
                   <div style={{ fontSize: '11px', color: '#677287', marginTop: '2px' }}>
-                    {grp === 'ALWAYS SENT'
-                      ? 'Email can’t be switched off. SMS and push can.'
-                      : 'Every channel can be switched on or off.'}
+                    {grp === 'ALWAYS SENT' ? 'Email can’t be switched off. SMS and push can.' : 'Every channel can be switched on or off.'}
                   </div>
                 </div>
                 {items.map((item) => {
@@ -1424,7 +1609,7 @@ export function StaffTemplatesView() {
           })}
 
           <div style={{ borderTop: '1px solid #E8EDF2', padding: '10px 16px', fontSize: '11px', color: '#677287' }}>
-            ✓ on    – off    ! missing template    grey = not used for that message
+            ✓ on – off ! missing template grey = not used for that message
           </div>
         </div>
 
@@ -1473,19 +1658,43 @@ export function StaffTemplatesView() {
                 <button
                   type="button"
                   onClick={() => startEdit('email')}
-                  style={{ background: 'none', border: 'none', padding: 0, fontSize: '13px', fontWeight: 600, color: '#1F408C', cursor: 'pointer' }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#1F408C',
+                    cursor: 'pointer',
+                  }}
                 >
                   Edit
                 </button>
               </div>
             </div>
             {editingChannel === 'email' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#F7F8FB', borderRadius: '8px', padding: '12px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  backgroundColor: '#F7F8FB',
+                  borderRadius: '8px',
+                  padding: '12px',
+                }}
+              >
                 <input
                   type="text"
                   value={draftSubject}
                   onChange={(e) => setDraftSubject(e.target.value)}
-                  style={{ height: '36px', borderRadius: '6px', border: '1px solid #C4CCD6', padding: '0 10px', fontSize: '13px', fontWeight: 600 }}
+                  style={{
+                    height: '36px',
+                    borderRadius: '6px',
+                    border: '1px solid #C4CCD6',
+                    padding: '0 10px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                  }}
                 />
                 <textarea
                   rows={3}
@@ -1497,7 +1706,15 @@ export function StaffTemplatesView() {
                   <button
                     type="button"
                     onClick={() => setEditingChannel(null)}
-                    style={{ background: '#FFFFFF', border: '1px solid #C4CCD6', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                    style={{
+                      background: '#FFFFFF',
+                      border: '1px solid #C4CCD6',
+                      borderRadius: '6px',
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
                   >
                     Cancel
                   </button>
@@ -1505,16 +1722,39 @@ export function StaffTemplatesView() {
                     type="button"
                     disabled={saving}
                     onClick={saveEdit}
-                    style={{ background: '#0F2645', color: '#FFFFFF', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                    style={{
+                      background: '#0F2645',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
                   >
                     {saving ? 'Saving…' : 'Save to DB'}
                   </button>
                 </div>
               </div>
             ) : (
-              <div style={{ backgroundColor: '#F7F8FB', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: '#0A1424', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <div
+                style={{
+                  backgroundColor: '#F7F8FB',
+                  borderRadius: '8px',
+                  padding: '10px 12px',
+                  fontSize: '13px',
+                  color: '#0A1424',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '3px',
+                }}
+              >
                 <div style={{ fontWeight: 600 }}>{selected.emailTitle ?? `Your flight {{flight_number}} is delayed`}</div>
-                <div>{selected.emailBody ?? `Hi {{first_name}}, flight {{flight_number}} from {{origin}} to {{destination}} now leaves at {{new_time}} ({{delay}} late). Reason: {{reason}}.`}</div>
+                <div>
+                  {selected.emailBody ??
+                    `Hi {{first_name}}, flight {{flight_number}} from {{origin}} to {{destination}} now leaves at {{new_time}} ({{delay}} late). Reason: {{reason}}.`}
+                </div>
               </div>
             )}
           </div>
@@ -1524,9 +1764,7 @@ export function StaffTemplatesView() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '15px', fontWeight: 700, color: '#0A1424' }}>SMS</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>
-                  {selected.smsState === '✓' ? 'On' : 'Off'}
-                </span>
+                <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>{selected.smsState === '✓' ? 'On' : 'Off'}</span>
                 <button
                   type="button"
                   onClick={() => toggleChannel(selected.code, 'smsState')}
@@ -1558,14 +1796,31 @@ export function StaffTemplatesView() {
                 <button
                   type="button"
                   onClick={() => startEdit('sms')}
-                  style={{ background: 'none', border: 'none', padding: 0, fontSize: '13px', fontWeight: 600, color: '#1F408C', cursor: 'pointer' }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#1F408C',
+                    cursor: 'pointer',
+                  }}
                 >
                   Edit
                 </button>
               </div>
             </div>
             {editingChannel === 'sms' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#F7F8FB', borderRadius: '8px', padding: '12px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  backgroundColor: '#F7F8FB',
+                  borderRadius: '8px',
+                  padding: '12px',
+                }}
+              >
                 <textarea
                   rows={2}
                   value={draftBody}
@@ -1576,7 +1831,15 @@ export function StaffTemplatesView() {
                   <button
                     type="button"
                     onClick={() => setEditingChannel(null)}
-                    style={{ background: '#FFFFFF', border: '1px solid #C4CCD6', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                    style={{
+                      background: '#FFFFFF',
+                      border: '1px solid #C4CCD6',
+                      borderRadius: '6px',
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
                   >
                     Cancel
                   </button>
@@ -1584,7 +1847,16 @@ export function StaffTemplatesView() {
                     type="button"
                     disabled={saving}
                     onClick={saveEdit}
-                    style={{ background: '#0F2645', color: '#FFFFFF', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                    style={{
+                      background: '#0F2645',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
                   >
                     {saving ? 'Saving…' : 'Save to DB'}
                   </button>
@@ -1602,9 +1874,7 @@ export function StaffTemplatesView() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '15px', fontWeight: 700, color: '#0A1424' }}>Push</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>
-                  {selected.pushState === '✓' ? 'On' : 'Off'}
-                </span>
+                <span style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>{selected.pushState === '✓' ? 'On' : 'Off'}</span>
                 <button
                   type="button"
                   onClick={() => toggleChannel(selected.code, 'pushState')}
@@ -1636,19 +1906,43 @@ export function StaffTemplatesView() {
                 <button
                   type="button"
                   onClick={() => startEdit('push')}
-                  style={{ background: 'none', border: 'none', padding: 0, fontSize: '13px', fontWeight: 600, color: '#1F408C', cursor: 'pointer' }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#1F408C',
+                    cursor: 'pointer',
+                  }}
                 >
                   Edit
                 </button>
               </div>
             </div>
             {editingChannel === 'push' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: '#F7F8FB', borderRadius: '8px', padding: '12px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  backgroundColor: '#F7F8FB',
+                  borderRadius: '8px',
+                  padding: '12px',
+                }}
+              >
                 <input
                   type="text"
                   value={draftSubject}
                   onChange={(e) => setDraftSubject(e.target.value)}
-                  style={{ height: '36px', borderRadius: '6px', border: '1px solid #C4CCD6', padding: '0 10px', fontSize: '13px', fontWeight: 600 }}
+                  style={{
+                    height: '36px',
+                    borderRadius: '6px',
+                    border: '1px solid #C4CCD6',
+                    padding: '0 10px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                  }}
                 />
                 <textarea
                   rows={2}
@@ -1660,7 +1954,15 @@ export function StaffTemplatesView() {
                   <button
                     type="button"
                     onClick={() => setEditingChannel(null)}
-                    style={{ background: '#FFFFFF', border: '1px solid #C4CCD6', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                    style={{
+                      background: '#FFFFFF',
+                      border: '1px solid #C4CCD6',
+                      borderRadius: '6px',
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
                   >
                     Cancel
                   </button>
@@ -1668,14 +1970,34 @@ export function StaffTemplatesView() {
                     type="button"
                     disabled={saving}
                     onClick={saveEdit}
-                    style={{ background: '#0F2645', color: '#FFFFFF', border: 'none', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                    style={{
+                      background: '#0F2645',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
                   >
                     {saving ? 'Saving…' : 'Save to DB'}
                   </button>
                 </div>
               </div>
             ) : (
-              <div style={{ backgroundColor: '#F7F8FB', borderRadius: '8px', padding: '10px 12px', fontSize: '13px', color: '#0A1424', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <div
+                style={{
+                  backgroundColor: '#F7F8FB',
+                  borderRadius: '8px',
+                  padding: '10px 12px',
+                  fontSize: '13px',
+                  color: '#0A1424',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '3px',
+                }}
+              >
                 <div style={{ fontWeight: 600 }}>{selected.pushTitle ?? `{{flight_number}} delayed`}</div>
                 <div>{selected.pushBody ?? `Now leaving at {{new_time}} ({{delay}} late).`}</div>
               </div>
@@ -1685,7 +2007,8 @@ export function StaffTemplatesView() {
       </div>
 
       <p style={{ margin: 0, fontSize: '12px', color: '#677287' }}>
-        Every change is saved with the staff member in PostgreSQL (`notification_template`) and sent to the Feature 15 audit log. Switched-off templates are skipped and show as Skipped in the delivery log.
+        Every change is saved with the staff member in PostgreSQL (`notification_template`) and sent to the Feature 15 audit log.
+        Switched-off templates are skipped and show as Skipped in the delivery log.
       </p>
     </div>
   )

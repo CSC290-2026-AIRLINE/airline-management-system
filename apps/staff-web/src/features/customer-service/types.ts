@@ -159,4 +159,3 @@ export interface UpdateTemplatePayload {
   subjectTemplate?: string | null
   bodyTemplate?: string
 }
-

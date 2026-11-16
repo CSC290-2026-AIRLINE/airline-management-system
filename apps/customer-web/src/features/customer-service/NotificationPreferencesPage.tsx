@@ -1,15 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { CustomerNavbar } from './CustomerNavbar'
 import type { NotificationPreferenceRow } from './types'
 import { loadPreferences, savePreferences } from './types'
 
 export function NotificationPreferencesPage() {
-  const [preferences, setPreferences] = useState<NotificationPreferenceRow[]>([])
+  const [preferences, setPreferences] = useState<NotificationPreferenceRow[]>(loadPreferences)
   const [isSaved, setIsSaved] = useState(false)
-
-  useEffect(() => {
-    setPreferences(loadPreferences())
-  }, [])
 
   function handleToggle(typeCode: string, channel: 'email' | 'sms' | 'push') {
     setPreferences((prev) =>
@@ -21,9 +17,7 @@ export function NotificationPreferencesPage() {
 
         // If turning off, check if mandatory and all channels would become false
         if (!newVal && row.isMandatory) {
-          const remainingChannels = (['email', 'sms', 'push'] as const).filter(
-            (ch) => ch !== channel && row[ch]
-          )
+          const remainingChannels = (['email', 'sms', 'push'] as const).filter((ch) => ch !== channel && row[ch])
           if (remainingChannels.length === 0) {
             alert(`"${row.typeName}" is a critical flight alert and must remain active on at least one channel.`)
             return row
@@ -34,7 +28,7 @@ export function NotificationPreferencesPage() {
           ...row,
           [channel]: newVal,
         }
-      })
+      }),
     )
     setIsSaved(false)
   }
@@ -79,9 +73,7 @@ export function NotificationPreferencesPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <span style={{ fontSize: '20px', color: '#16A34A', fontWeight: 700 }}>✓</span>
               <div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: '#14532D' }}>
-                  Preferences saved
-                </div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#14532D' }}>Preferences saved</div>
                 <div style={{ fontSize: '13px', color: '#166534', marginTop: '2px' }}>
                   Your notification settings have been updated across email, SMS and push.
                 </div>
@@ -112,7 +104,8 @@ export function NotificationPreferencesPage() {
               Notification preferences
             </h1>
             <p style={{ margin: 0, fontSize: '14px', color: '#677287', lineHeight: 1.5 }}>
-              Choose how you receive flight alerts and customer service notices. Critical messages (flight delays, cancellations and gate changes) are always sent on at least one channel.
+              Choose how you receive flight alerts and customer service notices. Critical messages (flight delays, cancellations and gate
+              changes) are always sent on at least one channel.
             </p>
           </div>
 
@@ -120,7 +113,15 @@ export function NotificationPreferencesPage() {
           <div style={{ overflowX: 'auto', marginBottom: '32px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13.5px' }}>
               <thead>
-                <tr style={{ borderBottom: '2px solid #E2E8F0', color: '#677287', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <tr
+                  style={{
+                    borderBottom: '2px solid #E2E8F0',
+                    color: '#677287',
+                    fontSize: '11px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}
+                >
                   <th style={{ padding: '12px 14px' }}>EVENT TYPE</th>
                   <th style={{ padding: '12px 14px' }}>SERVICE</th>
                   <th style={{ padding: '12px 14px', textAlign: 'center', width: '90px' }}>EMAIL</th>
@@ -152,9 +153,7 @@ export function NotificationPreferencesPage() {
                         )}
                       </div>
                     </td>
-                    <td style={{ padding: '14px', color: '#677287', fontSize: '13px' }}>
-                      {row.sourceFeature}
-                    </td>
+                    <td style={{ padding: '14px', color: '#677287', fontSize: '13px' }}>{row.sourceFeature}</td>
 
                     {/* Email Checkbox */}
                     <td style={{ padding: '14px', textAlign: 'center' }}>
@@ -192,10 +191,16 @@ export function NotificationPreferencesPage() {
           </div>
 
           {/* Action Row */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '20px', borderTop: '1px solid #F1F5F9' }}>
-            <div style={{ fontSize: '13px', color: '#677287' }}>
-              All notifications are delivered via mocked channels in real time.
-            </div>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              paddingTop: '20px',
+              borderTop: '1px solid #F1F5F9',
+            }}
+          >
+            <div style={{ fontSize: '13px', color: '#677287' }}>All notifications are delivered via mocked channels in real time.</div>
             <button
               onClick={handleSave}
               style={{

@@ -11,7 +11,14 @@ const MIN_DESCRIPTION = 20
 function EmployeeIcon({ selected }: { selected: boolean }) {
   return (
     <svg width="44" height="44" viewBox="0 0 44 44" fill="none" style={{ display: 'block' }}>
-      <rect width="44" height="44" rx="10" fill={selected ? '#2563EB' : '#FFFFFF'} stroke={selected ? '#2563EB' : '#DBE2EA'} strokeWidth="1" />
+      <rect
+        width="44"
+        height="44"
+        rx="10"
+        fill={selected ? '#2563EB' : '#FFFFFF'}
+        stroke={selected ? '#2563EB' : '#DBE2EA'}
+        strokeWidth="1"
+      />
       <circle cx="22" cy="15.5" r="3.6" strokeWidth="1.8" stroke={selected ? '#FFFFFF' : '#0A1424'} />
       <mask id="stroke_emp_mask" fill="white">
         <path d="M14 32C14 27.5817 17.5817 24 22 24V24C26.4183 24 30 27.5817 30 32V32H14V32Z" />
@@ -29,7 +36,14 @@ function EmployeeIcon({ selected }: { selected: boolean }) {
 function FlightIcon({ selected }: { selected: boolean }) {
   return (
     <svg width="44" height="44" viewBox="0 0 44 44" fill="none" style={{ display: 'block' }}>
-      <rect width="44" height="44" rx="10" fill={selected ? '#2563EB' : '#FFFFFF'} stroke={selected ? '#2563EB' : '#DBE2EA'} strokeWidth="1" />
+      <rect
+        width="44"
+        height="44"
+        rx="10"
+        fill={selected ? '#2563EB' : '#FFFFFF'}
+        stroke={selected ? '#2563EB' : '#DBE2EA'}
+        strokeWidth="1"
+      />
       <path d="M11 12L33 22L11 32L15 22L11 12Z" strokeWidth="1.8" strokeLinejoin="round" stroke={selected ? '#FFFFFF' : '#0A1424'} />
       <path d="M15 22H24" strokeWidth="1.8" strokeLinecap="round" stroke={selected ? '#FFFFFF' : '#0A1424'} />
     </svg>
@@ -40,7 +54,14 @@ function FoodIcon({ selected }: { selected: boolean }) {
   const color = selected ? '#FFFFFF' : '#0A1424'
   return (
     <svg width="44" height="44" viewBox="0 0 44 44" fill="none" style={{ display: 'block' }}>
-      <rect width="44" height="44" rx="10" fill={selected ? '#2563EB' : '#FFFFFF'} stroke={selected ? '#2563EB' : '#DBE2EA'} strokeWidth="1" />
+      <rect
+        width="44"
+        height="44"
+        rx="10"
+        fill={selected ? '#2563EB' : '#FFFFFF'}
+        stroke={selected ? '#2563EB' : '#DBE2EA'}
+        strokeWidth="1"
+      />
       <rect x="14.5" y="11" width="1.6" height="7" fill={color} />
       <rect x="17.7" y="11" width="1.6" height="7" fill={color} />
       <rect x="20.9" y="11" width="1.6" height="7" fill={color} />
@@ -95,7 +116,9 @@ export function MakeComplaintPage() {
     setType(newType)
     if (newType === 'food') {
       setIssue('missing')
-      setDescription('Malee pre-ordered a vegetarian meal (VGML). The crew said it was not loaded, so she only had bread and fruit on the 6-hour flight.')
+      setDescription(
+        'Malee pre-ordered a vegetarian meal (VGML). The crew said it was not loaded, so she only had bread and fruit on the 6-hour flight.',
+      )
     } else if (newType === 'flight') {
       setIssue('delay')
       setDescription('We waited 3 hours at the gate and nobody told us why.')
@@ -243,9 +266,7 @@ export function MakeComplaintPage() {
         >
           {/* Section 1: Who are you */}
           <div>
-            <h2 style={{ margin: '0 0 14px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>
-              1. Who are you?
-            </h2>
+            <h2 style={{ margin: '0 0 14px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>1. Who are you?</h2>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               {/* Option: I have an account */}
               <div
@@ -260,9 +281,7 @@ export function MakeComplaintPage() {
                   transition: 'all 0.15s ease',
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: '15px', color: '#0A1424', textAlign: 'left' }}>
-                  I have an account
-                </div>
+                <div style={{ fontWeight: 600, fontSize: '15px', color: '#0A1424', textAlign: 'left' }}>I have an account</div>
                 <div style={{ fontSize: '13px', color: '#677287', marginTop: '2px', textAlign: 'left' }}>
                   {accountMode === 'account' ? 'Use your Flython account' : 'Sign in to fill in your trips'}
                 </div>
@@ -425,12 +444,7 @@ export function MakeComplaintPage() {
           {/* Section 3: Dynamic Category Details */}
           <div>
             <h2 style={{ margin: '0 0 14px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>
-              3.{' '}
-              {type === 'food'
-                ? 'Food details'
-                : type === 'flight'
-                  ? 'Flight details'
-                  : 'Employee details'}
+              3. {type === 'food' ? 'Food details' : type === 'flight' ? 'Flight details' : 'Employee details'}
             </h2>
 
             {/* FOOD TYPE SPECIFIC UI */}
@@ -454,12 +468,8 @@ export function MakeComplaintPage() {
                       onChange={(e) => setMealSelection(e.target.value)}
                       style={{ ...inputStyle, textAlign: 'left' }}
                     >
-                      <option value="FY308 · 12 Oct · Vegetarian meal (VGML)">
-                        FY308 · 12 Oct · Vegetarian meal (VGML)
-                      </option>
-                      <option value="FY308 · 12 Oct · Standard chicken rice">
-                        FY308 · 12 Oct · Standard chicken rice
-                      </option>
+                      <option value="FY308 · 12 Oct · Vegetarian meal (VGML)">FY308 · 12 Oct · Vegetarian meal (VGML)</option>
+                      <option value="FY308 · 12 Oct · Standard chicken rice">FY308 · 12 Oct · Standard chicken rice</option>
                       <option value="Other flight / meal">Other flight / meal</option>
                     </select>
                   </Field>
@@ -569,11 +579,7 @@ export function MakeComplaintPage() {
 
             {/* Shared What Happened description field */}
             <div style={{ marginTop: '16px', textAlign: 'left' }}>
-              <Field
-                label="What happened?"
-                htmlFor="f-description"
-                error={errors.description}
-              >
+              <Field label="What happened?" htmlFor="f-description" error={errors.description}>
                 <textarea
                   id="f-description"
                   rows={4}
@@ -758,9 +764,7 @@ export function MakeComplaintPage() {
                 textAlign: 'left',
               }}
             >
-              <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>
-                Check a case
-              </h3>
+              <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>Check a case</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'left' }}>
                 <Field label="Case number" htmlFor="check-case-no">
                   <input

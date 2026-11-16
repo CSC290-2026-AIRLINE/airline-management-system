@@ -3,15 +3,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import { errorMessage, useComplaintsApi } from './api'
 import { alertStyle, inputStyle } from './styles'
-import {
-  FLIGHT_ISSUES,
-  FOOD_ISSUES,
-  LOCATIONS,
-  STATUS_LABEL,
-  optionLabel,
-  type CaseStatus,
-  type Complaint,
-} from './types'
+import { FLIGHT_ISSUES, FOOD_ISSUES, LOCATIONS, STATUS_LABEL, optionLabel, type CaseStatus, type Complaint } from './types'
 import { ComplaintPage } from './ui'
 
 const TRACKER_STEPS: { status: CaseStatus; label: string }[] = [
@@ -176,7 +168,12 @@ function buildTimeline(complaint: Complaint, isGuest: boolean, activeBookingRef:
 export function CheckCasePage() {
   const navigate = useNavigate()
   const { user } = useAppAuth()
-  const { caseNumber, bookingRef: urlBookingRef, surname: urlSurname, guest: urlGuest } = useSearch({
+  const {
+    caseNumber,
+    bookingRef: urlBookingRef,
+    surname: urlSurname,
+    guest: urlGuest,
+  } = useSearch({
     from: '/complaints/check',
   })
   const api = useComplaintsApi()
@@ -208,6 +205,7 @@ export function CheckCasePage() {
   // Only load "Your complaints" when signed in AND not in guest lookup mode
   useEffect(() => {
     if (isGuestMode) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the signed-in list when switching to guest lookup
       setCases(null)
       setListError(null)
       return
@@ -242,6 +240,7 @@ export function CheckCasePage() {
   // Load the case specified in the URL
   useEffect(() => {
     if (!caseNumber) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the detail pane when the URL has no case
       setComplaint(null)
       setCaseError(null)
       return
@@ -251,9 +250,7 @@ export function CheckCasePage() {
     if (urlSurname) setSurnameInput(urlSurname)
 
     let cancelled = false
-    const promise = isGuestMode
-      ? fetchGuestCase(caseNumber, urlBookingRef, urlSurname)
-      : fetchAccountCase(caseNumber)
+    const promise = isGuestMode ? fetchGuestCase(caseNumber, urlBookingRef, urlSurname) : fetchAccountCase(caseNumber)
 
     promise.then(
       (row) => {
@@ -352,9 +349,7 @@ export function CheckCasePage() {
       : complaint.flightNumber || 'FY402 · BKK → CNX'
     : '—'
   const dateFactValue = complaint ? formatDayMonthLabel(complaint.serviceDate, complaint.openedAt) : '—'
-  const issueFactValue = complaint
-    ? optionLabel(complaint.type === 'food' ? FOOD_ISSUES : FLIGHT_ISSUES, complaint.issue) || 'Delay'
-    : '—'
+  const issueFactValue = complaint ? optionLabel(complaint.type === 'food' ? FOOD_ISSUES : FLIGHT_ISSUES, complaint.issue) || 'Delay' : '—'
 
   return (
     <ComplaintPage isGuest={isGuestMode} onSignInClick={switchToAccountView}>
@@ -410,9 +405,7 @@ export function CheckCasePage() {
               textAlign: 'left',
             }}
           >
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0A1424' }}>
-              Check a case
-            </h2>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0A1424' }}>Check a case</h2>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label htmlFor="guest-check-case" style={{ fontSize: '13px', fontWeight: 500, color: '#0A1424' }}>
@@ -493,12 +486,8 @@ export function CheckCasePage() {
             }}
           >
             <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0A1424' }}>
-                Your complaints
-              </h2>
-              <p style={{ margin: 0, fontSize: '13px', color: '#677287' }}>
-                Only you can see these.
-              </p>
+              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0A1424' }}>Your complaints</h2>
+              <p style={{ margin: 0, fontSize: '13px', color: '#677287' }}>Only you can see these.</p>
             </div>
 
             {listError && (
@@ -544,12 +533,8 @@ export function CheckCasePage() {
                     }}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <span style={{ fontSize: '14px', fontWeight: 600, color: '#0A1424' }}>
-                        {c.caseNumber}
-                      </span>
-                      <span style={{ fontSize: '12px', color: '#677287' }}>
-                        {subLabel}
-                      </span>
+                      <span style={{ fontSize: '14px', fontWeight: 600, color: '#0A1424' }}>{c.caseNumber}</span>
+                      <span style={{ fontSize: '12px', color: '#677287' }}>{subLabel}</span>
                     </div>
                     <StatusPill status={c.status} />
                   </div>
@@ -567,13 +552,8 @@ export function CheckCasePage() {
                 fontSize: '13px',
               }}
             >
-              <span style={{ fontWeight: 500, color: '#0A1424' }}>
-                Sent a complaint without signing in?
-              </span>
-              <span
-                onClick={switchToGuestLookupView}
-                style={{ fontWeight: 600, color: '#1F408C', cursor: 'pointer' }}
-              >
+              <span style={{ fontWeight: 500, color: '#0A1424' }}>Sent a complaint without signing in?</span>
+              <span onClick={switchToGuestLookupView} style={{ fontWeight: 600, color: '#1F408C', cursor: 'pointer' }}>
                 Check it with your booking reference →
               </span>
             </div>
@@ -603,9 +583,7 @@ export function CheckCasePage() {
             >
               {/* Top Row: Case Number + Type Pill & Status Pill */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                <div style={{ fontSize: '24px', fontWeight: 700, color: '#0A1424' }}>
-                  {complaint.caseNumber}
-                </div>
+                <div style={{ fontSize: '24px', fontWeight: 700, color: '#0A1424' }}>{complaint.caseNumber}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div
                     style={{
@@ -688,38 +666,24 @@ export function CheckCasePage() {
                   <>
                     <div style={{ display: 'flex', gap: '16px' }}>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>
-                          WHERE
-                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>WHERE</span>
                         <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>
                           {optionLabel(LOCATIONS, complaint.location)}
                         </span>
                       </div>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>
-                          DATE
-                        </span>
-                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>
-                          {dateFactValue}
-                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>DATE</span>
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{dateFactValue}</span>
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '16px' }}>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>
-                          STAFF MEMBER
-                        </span>
-                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>
-                          {complaint.staffName || '—'}
-                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>STAFF MEMBER</span>
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{complaint.staffName || '—'}</span>
                       </div>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>
-                          BOOKING
-                        </span>
-                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>
-                          {activeBookingRef}
-                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>BOOKING</span>
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{activeBookingRef}</span>
                       </div>
                     </div>
                   </>
@@ -727,38 +691,24 @@ export function CheckCasePage() {
                   <>
                     <div style={{ display: 'flex', gap: '16px' }}>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>
-                          FLIGHT
-                        </span>
-                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>
-                          {flightFactValue}
-                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>FLIGHT</span>
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{flightFactValue}</span>
                       </div>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>
-                          DATE
-                        </span>
-                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>
-                          {dateFactValue}
-                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>DATE</span>
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{dateFactValue}</span>
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '16px' }}>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>
-                          MEAL
-                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>MEAL</span>
                         <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>
                           {complaint.mealDetail || 'Vegetarian meal (VGML)'}
                         </span>
                       </div>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>
-                          ISSUE
-                        </span>
-                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>
-                          {issueFactValue}
-                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>ISSUE</span>
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{issueFactValue}</span>
                       </div>
                     </div>
                   </>
@@ -766,50 +716,30 @@ export function CheckCasePage() {
                   <>
                     <div style={{ display: 'flex', gap: '16px' }}>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>
-                          FLIGHT
-                        </span>
-                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>
-                          {flightFactValue}
-                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>FLIGHT</span>
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{flightFactValue}</span>
                       </div>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>
-                          DATE
-                        </span>
-                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>
-                          {dateFactValue}
-                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>DATE</span>
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{dateFactValue}</span>
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '16px' }}>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>
-                          ISSUE
-                        </span>
-                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>
-                          {issueFactValue}
-                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>ISSUE</span>
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{issueFactValue}</span>
                       </div>
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>
-                          BOOKING
-                        </span>
-                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>
-                          {activeBookingRef}
-                        </span>
+                        <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>BOOKING</span>
+                        <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{activeBookingRef}</span>
                       </div>
                     </div>
                   </>
                 )}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>
-                    WHAT YOU TOLD US
-                  </span>
-                  <span style={{ fontSize: '14px', color: '#0A1424', lineHeight: 1.5 }}>
-                    “{complaint.description}”
-                  </span>
+                  <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>WHAT YOU TOLD US</span>
+                  <span style={{ fontSize: '14px', color: '#0A1424', lineHeight: 1.5 }}>“{complaint.description}”</span>
                 </div>
               </div>
 
@@ -824,9 +754,7 @@ export function CheckCasePage() {
                   gap: '10px',
                 }}
               >
-                <span style={{ fontSize: '15px', fontWeight: 600, color: '#1F408C', lineHeight: 1.2 }}>
-                  ⓘ
-                </span>
+                <span style={{ fontSize: '15px', fontWeight: 600, color: '#1F408C', lineHeight: 1.2 }}>ⓘ</span>
                 <span style={{ fontSize: '13px', color: '#29427A', lineHeight: 1.45 }}>
                   {isGuestMode
                     ? `What happens next: a Customer Service supervisor reviews new cases, usually within 2 days. We email the address on booking ${activeBookingRef} each time the status changes.`
@@ -836,9 +764,7 @@ export function CheckCasePage() {
 
               {/* History Section */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0A1424' }}>
-                  History
-                </h3>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0A1424' }}>History</h3>
 
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {timelineItems.map((item, idx) => {
@@ -889,18 +815,14 @@ export function CheckCasePage() {
                         >
                           <span style={{ fontSize: '12px', color: '#677287' }}>{item.time}</span>
                           <span style={{ fontSize: '14px', color: '#0A1424' }}>{item.title}</span>
-                          {item.subtext && (
-                            <span style={{ fontSize: '13px', color: '#677287' }}>{item.subtext}</span>
-                          )}
+                          {item.subtext && <span style={{ fontSize: '13px', color: '#677287' }}>{item.subtext}</span>}
                         </div>
                       </div>
                     )
                   })}
                 </div>
 
-                <p style={{ margin: 0, fontSize: '12px', color: '#677287' }}>
-                  Notes the team writes for each other are not shown here.
-                </p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#677287' }}>Notes the team writes for each other are not shown here.</p>
               </div>
 
               {/* Actions */}
@@ -940,9 +862,7 @@ export function CheckCasePage() {
                 textAlign: 'center',
               }}
             >
-              <div style={{ fontSize: '18px', fontWeight: 700, color: '#0A1424' }}>
-                Your case will show here
-              </div>
+              <div style={{ fontSize: '18px', fontWeight: 700, color: '#0A1424' }}>Your case will show here</div>
               <div style={{ fontSize: '14px', color: '#677287', maxWidth: '420px', lineHeight: 1.5 }}>
                 {isGuestMode
                   ? 'Enter the case number from your email, plus the booking reference and surname on the booking.'

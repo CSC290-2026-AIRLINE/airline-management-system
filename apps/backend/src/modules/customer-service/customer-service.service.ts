@@ -1,23 +1,9 @@
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  Logger,
-  NotFoundException,
-  Optional,
-} from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { SimulationClock } from '../admin-console/simulation-clock'
 import { AuditService } from '../admin-console/audit/audit.service'
 import { FLIGHT_ISSUES, FOOD_ISSUES, type CaseStatus } from './customer-service.constants'
-import {
-  CASE_DETAIL_INCLUDE,
-  CASE_INCLUDE,
-  toComplaintDetail,
-  toComplaintView,
-  type ComplaintView,
-} from './complaint.view'
+import { CASE_DETAIL_INCLUDE, CASE_INCLUDE, toComplaintDetail, toComplaintView, type ComplaintView } from './complaint.view'
 import type { CreateComplaintDto, CreateGuestComplaintDto } from './dto/create-complaint.dto'
 import type { DecideCompensationDto, UpdateNotificationTemplateDto } from './dto/staff-actions.dto'
 
@@ -750,7 +736,7 @@ export class CustomerServiceService {
     let eventsReceived = 0
     let messagesSent = 0
     let failedRetrying = 0
-    let duplicateIgnored = 0
+    const duplicateIgnored = 0
 
     const rows: DeliveryLogRowView[] = notifs.map((n) => {
       if (n.status === 'sent') messagesSent++

@@ -146,10 +146,15 @@ function deriveSummary(row: CaseRow): string {
   return `${firstSentence.slice(0, 41)}...`
 }
 
-function mapEventView(e: CaseRow['case_event'][number], audience: 'staff' | 'customer', contactEmail: string | null, isGuest: boolean): CaseEventView {
+function mapEventView(
+  e: CaseRow['case_event'][number],
+  audience: 'staff' | 'customer',
+  contactEmail: string | null,
+  isGuest: boolean,
+): CaseEventView {
   const staffFullName = fullName(e.staff)
   const timeLabel = formatShortTime(e.occurred_at)
-  let actorLabel = e.actor_type === 'staff' ? staffFullName ?? 'Staff' : e.actor_type === 'complainant' ? 'Customer' : 'System'
+  let actorLabel = e.actor_type === 'staff' ? (staffFullName ?? 'Staff') : e.actor_type === 'complainant' ? 'Customer' : 'System'
   let title = e.note || e.event_type
 
   if (e.event_type === 'created') {
@@ -199,13 +204,9 @@ function mapEventView(e: CaseRow['case_event'][number], audience: 'staff' | 'cus
 export function toComplaintView(row: CaseRow): ComplaintView {
   const details = row.flight_complaint ?? row.food_complaint
   const isGuest = row.customer_id === null && row.source !== 'feature_10'
-  const fromSource: ComplaintView['fromSource'] =
-    row.source === 'feature_10' ? 'Feature 10' : isGuest ? 'No account' : 'Customer'
+  const fromSource: ComplaintView['fromSource'] = row.source === 'feature_10' ? 'Feature 10' : isGuest ? 'No account' : 'Customer'
 
-  const bookingRef =
-    row.booking_passenger?.booking?.booking_reference ??
-    row.customer?.booking?.[0]?.booking_reference ??
-    'P4LM8T'
+  const bookingRef = row.booking_passenger?.booking?.booking_reference ?? row.customer?.booking?.[0]?.booking_reference ?? 'P4LM8T'
 
   const flightRoute = details?.flight
     ? `${details.flight.flight_number} · ${details.flight.route.origin} → ${details.flight.route.destination} · ${formatDayMonth(details.flight.service_date)}`
@@ -215,9 +216,9 @@ export function toComplaintView(row: CaseRow): ComplaintView {
 
   const mealDetail =
     row.type === 'food'
-      ? row.food_complaint?.product?.name ?? 'Pre-ordered meal (VGML)'
+      ? (row.food_complaint?.product?.name ?? 'Pre-ordered meal (VGML)')
       : row.type === 'employee'
-        ? row.employee_complaint?.staff_name ?? row.employee_complaint?.location ?? '—'
+        ? (row.employee_complaint?.staff_name ?? row.employee_complaint?.location ?? '—')
         : '—'
 
   const openedLabel =

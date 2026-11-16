@@ -4,12 +4,11 @@ import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import flythonLogo from '../../assets/flython-logo.png'
 
 interface CustomerNavbarProps {
-  activeTab?: string
   isGuest?: boolean
   onSignInClick?: () => void
 }
 
-export function CustomerNavbar({ activeTab: _activeTab, isGuest = false, onSignInClick }: CustomerNavbarProps = {}) {
+export function CustomerNavbar({ isGuest = false, onSignInClick }: CustomerNavbarProps = {}) {
   const navigate = useNavigate()
   const { user, logout } = useAppAuth()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -39,15 +38,8 @@ export function CustomerNavbar({ activeTab: _activeTab, isGuest = false, onSignI
         }}
       >
         {/* Brand Logo */}
-        <div
-          onClick={() => void navigate({ to: '/complaints' })}
-          style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}
-        >
-          <img
-            src={flythonLogo}
-            alt="Flython Airlines"
-            style={{ height: '38px', width: 'auto', display: 'block' }}
-          />
+        <div onClick={() => void navigate({ to: '/complaints' })} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+          <img src={flythonLogo} alt="Flython Airlines" style={{ height: '38px', width: 'auto', display: 'block' }} />
         </div>
 
         {/* Navigation links matching Figma */}
@@ -163,9 +155,7 @@ export function CustomerNavbar({ activeTab: _activeTab, isGuest = false, onSignI
                 zIndex: 52,
               }}
             >
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#0A1424' }}>
-                Somchai Wongsakul
-              </div>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#0A1424' }}>Somchai Wongsakul</div>
               <div style={{ fontSize: '12px', color: '#677287', marginTop: '2px', marginBottom: '12px' }}>
                 {user?.email ?? 'somchai.w@example.com'}
               </div>
@@ -180,15 +170,11 @@ export function CustomerNavbar({ activeTab: _activeTab, isGuest = false, onSignI
                   fontSize: '13px',
                 }}
               >
-                <div
-                  style={{ color: '#64748B', padding: '6px 8px', borderRadius: '6px' }}
-                >
-                  My profile
-                </div>
+                <div style={{ color: '#64748B', padding: '6px 8px', borderRadius: '6px' }}>My profile</div>
                 <div
                   onClick={() => {
                     setMenuOpen(false)
-                    void (navigate as any)({ to: '/complaints' })
+                    void navigate({ to: '/complaints' })
                   }}
                   style={{
                     color: '#0A1424',
@@ -205,7 +191,7 @@ export function CustomerNavbar({ activeTab: _activeTab, isGuest = false, onSignI
                   onClick={() => {
                     sessionStorage.removeItem('f13_guest_mode')
                     setMenuOpen(false)
-                    void (navigate as any)({
+                    void navigate({
                       to: '/complaints/check',
                       search: { caseNumber: undefined, bookingRef: undefined, surname: undefined, guest: undefined },
                     })
@@ -228,7 +214,7 @@ export function CustomerNavbar({ activeTab: _activeTab, isGuest = false, onSignI
                   }}
                   onClick={() => {
                     setMenuOpen(false)
-                    void (navigate as any)({ to: '/complaints/preferences' })
+                    void navigate({ to: '/complaints/preferences' })
                   }}
                 >
                   Notification preferences
