@@ -1,9 +1,12 @@
-import { Module } from '@nestjs/common'
+import { Module, Optional, type OnModuleInit } from '@nestjs/common'
 import type { DynamicModule } from '@nestjs/common'
 import { DbModule } from '@backend/db/db.module'
+import { AdminConsoleModule } from '@backend/modules/admin-console/admin-console.module'
+import { AdminConsoleService } from '@backend/modules/admin-console/admin-console.service'
 import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
 import { CheckInController } from './checkin.controller'
 import { CheckInService } from './checkin.service'
+import { F06_SCREENS } from './checkin-boarding.screens'
 import { CounterService } from './counter.service'
 import { GateService } from './gate.service'
 import { ActorGuard, StaffGuard } from './guards/staff.guard'
@@ -109,7 +112,18 @@ const EXPORTED_TOKENS = [
 ]
 
 @Module({})
-export class CheckinBoardingModule {
+export class CheckinBoardingModule implements OnModuleInit {
+  /**
+   * The admin console is optional: 'memory' mode runs without a database, so there is nowhere to register the screens.
+   */
+  constructor(@Optional() private readonly adminConsole?: AdminConsoleService) {}
+
+  async onModuleInit(): Promise<void> {
+    if (!this.adminConsole) return
+    // Idempotent upsert on `code`, so the check-in screens appear in Role access without a manual insert.
+    await this.adminConsole.registerSelfScreens(F06_SCREENS)
+  }
+
   /**
    * The module of feature 6. 'memory' runs on the fixtures and the in-memory store, 'db' on the Prisma repository and
    * the real tables of the other groups.
@@ -119,7 +133,7 @@ export class CheckinBoardingModule {
     const repository = db ? PrismaCheckInRepository : CheckInStore
     return {
       module: CheckinBoardingModule,
-      imports: db ? [DbModule, AuditModule, ScreeningModule] : [DbModule],
+      imports: db ? [DbModule, AuditModule, ScreeningModule, AdminConsoleModule] : [DbModule],
       controllers: [CheckInController, StaffController],
       providers: [
         ...(db ? DB_PROVIDERS : MEMORY_PROVIDERS),

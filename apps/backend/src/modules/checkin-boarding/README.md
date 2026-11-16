@@ -73,6 +73,13 @@ deleted.
 The notifications carry feature 13's type codes: `check_in_completed` and `boarding_pass_issued` when the pass is
 issued, `gate_changed` when a flight moves to another gate, `boarding_call` when the gate closes.
 
+### The screens in the admin console
+
+Feature 15 keeps the registry of screens a role may hold. On boot, in `db` mode, the module registers its three staff
+pages there — `f06.counter`, `f06.issues` and `f06.gate` (`checkin-boarding.screens.ts`) — so they show up as tickable
+rows under "CHECK-IN" in Role access. The codes are the ones staff-web asks for in `CHECKIN_ITEMS`. `memory` mode has no
+database and registers nothing.
+
 ## Provider seams
 
 One interface per feature we do not own, in `providers/providers.ts`. The database-backed implementations live in
@@ -267,7 +274,8 @@ npm run test -w apps/backend -- http   # the HTTP smoke test of the routes
 ```
 
 `checkin-boarding.http.spec.ts` builds the Nest application from this module alone in `memory` mode — no database, no
-Clerk — and signs a user in with an `x-test-user` header. The database-backed classes are unit-tested against
+Clerk — and signs a user in with an `x-test-user` header. `checkin-boarding.module.spec.ts` covers the screen
+registration and the two modes of the module. The database-backed classes are unit-tested against
 hand-written fake `db` objects (`store/prisma-checkin-repository.spec.ts`, `providers/db-providers.spec.ts`,
 `providers/db-seats.spec.ts`, `providers/db-payments.spec.ts`, `providers/f15-adapters.spec.ts`,
 `providers/db-staff-identity.spec.ts`, `providers/demo-data.spec.ts`); what they do against a real PostgreSQL is
