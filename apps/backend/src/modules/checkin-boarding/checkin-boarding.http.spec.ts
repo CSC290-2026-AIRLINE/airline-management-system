@@ -263,7 +263,7 @@ describe('staff routes', () => {
 
   it('the gate list routes need an actor', async () => {
     const controller = app.get(StaffController)
-    await expect(controller.gates(null)).rejects.toMatchObject({ code: 'FORBIDDEN' })
+    await expect(controller.gates(null, {})).rejects.toMatchObject({ code: 'FORBIDDEN' })
     await expect(controller.flights(null)).rejects.toMatchObject({ code: 'FORBIDDEN' })
   })
 })

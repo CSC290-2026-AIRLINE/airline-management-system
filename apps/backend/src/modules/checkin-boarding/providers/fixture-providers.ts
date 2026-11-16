@@ -339,7 +339,7 @@ export class FixtureScreening implements ScreeningProvider {
   }
 
   /** The fixtures have no security review, so a passenger they held stays held; anyone else has no run on record. */
-  async status(input: { passengerId: string }): Promise<'clear' | 'held' | 'denied' | 'not_screened'> {
+  async status(input: { passengerId: string; flightId: string }): Promise<'clear' | 'held' | 'denied' | 'not_screened'> {
     return this.held.has(input.passengerId) ? 'held' : 'not_screened'
   }
 }

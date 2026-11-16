@@ -180,6 +180,7 @@ describe('CheckInService.start', () => {
       specialAssistance: [],
       isPolice: false,
       customerUserId: null,
+      cancelled: false,
     })
     addBooking({
       bookingPassengerId: 'bp-test-cancelled',
@@ -195,6 +196,7 @@ describe('CheckInService.start', () => {
       specialAssistance: [],
       isPolice: false,
       customerUserId: null,
+      cancelled: false,
     })
 
     await expect(svc.start(cust, { pnr: 'ZZ9999', lastName: 'Nobody' })).rejects.toMatchObject({ code: 'NOT_FOUND' })
@@ -387,6 +389,7 @@ describe('CheckInService.submitDocument', () => {
       specialAssistance: [],
       isPolice: false,
       customerUserId: null,
+      cancelled: false,
     })
     // The passport holder was born in 1926: with the clock on 2025 the MRZ year 26 must read 1926, not 2026.
     passengers.extra = {
@@ -437,6 +440,7 @@ describe('CheckInService.submitDocument', () => {
       specialAssistance: [],
       isPolice: false,
       customerUserId: null,
+      cancelled: false,
     })
     const c = await svc.start(cust, { pnr: 'VS318X', lastName: 'Lopez' })
     await expect(svc.submitDocument(cust, c.id, { mrzLine1: SARA_LINE1, mrzLine2: SARA_LINE2 })).rejects.toMatchObject({
@@ -491,6 +495,7 @@ describe('CheckInService.submitDocument', () => {
       specialAssistance: [],
       isPolice: false,
       customerUserId: null,
+      cancelled: false,
     })
     passengers.extra = {
       id: 'pax-other',
@@ -693,6 +698,7 @@ describe('CheckInService seats', () => {
       specialAssistance: [],
       isPolice: false,
       customerUserId: null,
+      cancelled: false,
     })
     const other: Actor = { userId: 'user-other', staffId: null }
     const a = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })

@@ -299,6 +299,7 @@ describe('CounterService issues', () => {
       specialAssistance: [],
       isPolice: false,
       customerUserId: null,
+      cancelled: false,
     }
     addedBookings.push(sara)
     BOOKINGS.push(sara)
@@ -346,6 +347,7 @@ describe('CounterService issues', () => {
       specialAssistance: [],
       isPolice: false,
       customerUserId: null,
+      cancelled: false,
     }
     addedBookings.push(sara)
     BOOKINGS.push(sara)
@@ -378,6 +380,7 @@ describe('CounterService issues', () => {
       specialAssistance: [],
       isPolice: false,
       customerUserId: null,
+      cancelled: false,
     }
     addedBookings.push(sara)
     BOOKINGS.push(sara)
@@ -414,6 +417,7 @@ describe('CounterService issues', () => {
       specialAssistance: [],
       isPolice: false,
       customerUserId: null,
+      cancelled: false,
     }
     addedBookings.push(sara)
     BOOKINGS.push(sara)
@@ -464,6 +468,7 @@ describe('CounterService issues', () => {
       specialAssistance: [],
       isPolice: false,
       customerUserId: null,
+      cancelled: false,
     }
     addedBookings.push(sara)
     BOOKINGS.push(sara)
@@ -494,6 +499,7 @@ describe('CounterService issues', () => {
       specialAssistance: [],
       isPolice: false,
       customerUserId: null,
+      cancelled: false,
     }
     addedBookings.push(sara)
     BOOKINGS.push(sara)

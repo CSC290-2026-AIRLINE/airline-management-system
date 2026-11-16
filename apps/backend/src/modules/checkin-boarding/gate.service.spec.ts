@@ -385,6 +385,19 @@ describe('GateService.setGateActive', () => {
     expect(await gate.setGateActive(staff, 'gate-a1', true)).toMatchObject({ isActive: true })
   })
 
+  it('a cancelled flight frees its gate: it can be turned off and take another flight', async () => {
+    const { gate, flights } = build()
+    const original = flights.byId.bind(flights)
+    jest.spyOn(flights, 'byId').mockImplementation(async (id: string) => {
+      const flight = await original(id)
+      return flight && id === 'flt-fy204' ? { ...flight, status: 'cancelled' } : flight
+    })
+    expect((await gate.gates('BKK')).find((g) => g.id === 'gate-a1')?.flight).toBeNull()
+    expect(await gate.setGateActive(staff, 'gate-a1', false)).toMatchObject({ isActive: false })
+    await gate.setGateActive(staff, 'gate-a1', true)
+    expect(await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a1' })).toMatchObject({ gate: { code: 'A1' } })
+  })
+
   it('a gate whose flight is closed can take another flight', async () => {
     const { gate, store } = build()
     await store.updateFlightBoarding('flt-fy204', { closed_at: new Date() })
@@ -497,6 +510,22 @@ describe('GateService head-count and close', () => {
     await gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })
     expect((await store.getCheckIn(await idOf(store, 'SA224B')))?.status).not.toBe('no_show')
     expect(notifySpy).toHaveBeenCalledWith('boarding_call', expect.objectContaining({ noShow: 7 }))
+  })
+
+  it('closing the gate cancels the check-in of a booking cancelled since, never a no-show', async () => {
+    const { gate, store } = build()
+    const id = await idOf(store, 'SA224B')
+    const booking = BOOKINGS.find((b) => b.pnr === 'SA224B')!
+    booking.cancelled = true
+    try {
+      await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
+      await gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })
+    } finally {
+      booking.cancelled = false
+    }
+    expect((await store.getCheckIn(id))?.status).toBe('cancelled')
+    const pass = (await store.passesForCheckIn(id))[0]
+    expect((await store.listEvents('flt-fy204')).filter((e) => e.boarding_pass_id === pass.id && e.event === 'no_show')).toHaveLength(0)
   })
 
   it('a cancelled check-in with a pass is not turned into a no-show', async () => {
