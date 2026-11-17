@@ -5,6 +5,7 @@ import type { AwardInventory, AwardSeatPort } from './award-seats.port'
 import type { LoyaltyStaffPrincipal } from './guards/loyalty-staff.guard'
 import { LoyaltyAwardService } from './loyalty-award.service'
 import { LoyaltyDataService } from './loyalty-data.service'
+import { LoyaltyMemberService } from './loyalty-member.service'
 import { LoyaltyError } from './loyalty-error'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
@@ -48,6 +49,7 @@ function makeSvc(opts: { inventory?: AwardInventory | null; balance?: number } =
     opts.inventory === undefined ? { capacity: 150, awardLimit: 6, awardHeld: 1, awardSold: 1 } : opts.inventory
   const db = {
     $queryRaw: jest.fn().mockResolvedValue([]),
+    $executeRaw: jest.fn().mockResolvedValue(0),
     $transaction: jest.fn(),
     loyalty_setting: { findMany: jest.fn().mockResolvedValue([]) },
     flight: {
@@ -61,7 +63,11 @@ function makeSvc(opts: { inventory?: AwardInventory | null; balance?: number } =
     },
     audit_log: { create: jest.fn().mockResolvedValue({ id: 'audit-1', seq: 1n }) },
     booking: { findUnique: jest.fn().mockResolvedValue({ customer_id: 'cust-1', payment_type: 'miles' }) },
-    loyalty_member: { findUnique: jest.fn().mockResolvedValue({ id: 'mem-1', miles_balance: opts.balance ?? 20000 }) },
+    loyalty_member: {
+      findUnique: jest.fn().mockResolvedValue({ id: 'mem-1', miles_balance: opts.balance ?? 20000 }),
+      findFirst: jest.fn().mockResolvedValue({ miles_balance: opts.balance ?? 20000 }),
+      findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'mem-1', miles_balance: opts.balance ?? 20000 }),
+    },
     booking_coupon: {
       findMany: jest.fn().mockResolvedValue([
         { id: 'c1', flight_id: FLIGHT_ID, booking_segment: { cabin: 'economy' }, booking_passenger: { lap_of_id: null } },
@@ -82,9 +88,14 @@ function makeSvc(opts: { inventory?: AwardInventory | null; balance?: number } =
   const clock = new SimulationClock()
   jest.spyOn(clock, 'now').mockReturnValue(NOW)
   const dbService = db as unknown as DbService
-  const svc = new LoyaltyAwardService(dbService, new LoyaltyDataService(dbService), new AuditService(dbService, clock), clock, seats)
+  const data = new LoyaltyDataService(dbService)
+  const members = new LoyaltyMemberService(dbService, data, clock)
+  const svc = new LoyaltyAwardService(dbService, data, new AuditService(dbService, clock), clock, seats, members)
   return { svc, db, seats, tx: db as never }
 }
+
+/** The values of the first tagged-template raw call (everything after the template strings). */
+const rawValuesOf = (fn: jest.Mock) => (fn.mock.calls[0] as unknown[]).slice(1)
 
 async function errorOf(promise: Promise<unknown>) {
   const e = await promise.then(
@@ -212,6 +223,15 @@ describe('LoyaltyAwardService', () => {
       ])
     })
 
+    it('treats a customer with no member row yet as 0 miles, not as a non-member', async () => {
+      const { svc, db } = makeSvc()
+      db.loyalty_award_release.findMany.mockResolvedValueOnce([release('economy')])
+      db.loyalty_member.findUnique.mockResolvedValueOnce(null)
+      const [offer] = await svc.awardAvailability([{ flightId: FLIGHT_ID }], { adults: 1, children: 0, infants: 0 }, 'cust-new')
+      expect(offer).toMatchObject({ balance: 0, balanceCovers: false })
+      expect(db.$executeRaw).not.toHaveBeenCalled() // a read path: it never writes
+    })
+
     it('gives no balance without a customer, and never throws', async () => {
       const { svc, db } = makeSvc()
       db.loyalty_award_release.findMany.mockResolvedValueOnce([release('economy')])
@@ -274,7 +294,15 @@ describe('LoyaltyAwardService', () => {
       expect(await errorOf(svc.redeem(tx, 'booking-1'))).toEqual({ status: 409, code: 'INSUFFICIENT_MILES' })
     })
 
-    it('refuses past the cutoff, a cash booking, a non-member and a cabin with no release', async () => {
+    it('enrols a customer with no member row inside the hold transaction; with 0 miles the award is refused', async () => {
+      const { svc, db, tx } = makeSvc({ balance: 0 })
+      expect(await errorOf(svc.redeem(tx, 'booking-1'))).toEqual({ status: 409, code: 'INSUFFICIENT_MILES' })
+      expect(rawValuesOf(db.$executeRaw)).toEqual([['cust-1']])
+      expect(db.loyalty_member.findUniqueOrThrow).toHaveBeenCalledWith(expect.objectContaining({ where: { customer_id: 'cust-1' } }))
+      expect(db.loyalty_transaction.createMany).not.toHaveBeenCalled()
+    })
+
+    it('refuses past the cutoff, a cash booking and a cabin with no release', async () => {
       const a = makeSvc()
       a.db.flight.findMany.mockResolvedValueOnce([
         { id: FLIGHT_ID, flight_number: 'FY 811', dep_at: new Date('2026-11-10T00:00:00Z'), status: 'scheduled' },
@@ -284,10 +312,6 @@ describe('LoyaltyAwardService', () => {
       const b = makeSvc()
       b.db.booking.findUnique.mockResolvedValueOnce({ customer_id: 'cust-1', payment_type: 'cash' })
       expect(await errorOf(b.svc.redeem(b.tx, 'b'))).toEqual({ status: 409, code: 'NOT_A_MILES_BOOKING' })
-
-      const c = makeSvc()
-      c.db.loyalty_member.findUnique.mockResolvedValueOnce(null)
-      expect(await errorOf(c.svc.redeem(c.tx, 'b'))).toEqual({ status: 409, code: 'NOT_A_MEMBER' })
 
       const d = makeSvc()
       d.db.loyalty_award_release.findUnique.mockResolvedValueOnce(null)

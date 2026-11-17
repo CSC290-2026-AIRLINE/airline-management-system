@@ -4,8 +4,6 @@ import type { ValidationError } from '@nestjs/common'
 export type LoyaltyErrorCode =
   | 'VALIDATION_FAILED'
   | 'NOT_A_CUSTOMER'
-  | 'NOT_A_MEMBER'
-  | 'ALREADY_A_MEMBER'
   | 'MEMBER_NOT_FOUND'
   | 'TIER_NOT_FOUND'
   | 'FARE_CLASS_NOT_FOUND'
@@ -41,8 +39,6 @@ export class LoyaltyError extends HttpException {
 
 export const invalid = (field: string, message: string) =>
   new LoyaltyError(HttpStatus.BAD_REQUEST, 'VALIDATION_FAILED', message, { fields: { [field]: [message] } })
-
-export const notAMember = () => new LoyaltyError(HttpStatus.NOT_FOUND, 'NOT_A_MEMBER', 'You have not joined Flython Miles yet.')
 
 export const memberNotFound = () => new LoyaltyError(HttpStatus.NOT_FOUND, 'MEMBER_NOT_FOUND', 'No member with that id.')
 

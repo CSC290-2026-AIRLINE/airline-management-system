@@ -1,12 +1,15 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import type { Prisma } from '@backend/db/generated/prisma/client'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { filterStatement, statementLines, type StatementFilter } from './domain/ledger-view'
 import { NO_TIER, tierForPassenger, type PassengerTier } from './domain/tier-lookup'
 import type { MemberTier, TierCode } from './domain/types'
 import type { BenefitUseDto, BookingStatus, MemberSummaryDto, RedemptionRowDto, StatementRowDto } from './dto/responses'
-import { LoyaltyError, isUniqueViolation, notAMember } from './loyalty-error'
+import { LoyaltyError } from './loyalty-error'
 import { LoyaltyDataService, MEMBER_SELECT, type MemberRow } from './loyalty-data.service'
+
+type Client = DbService | Prisma.TransactionClient
 
 const route = (f: { flight_number: string; route: { origin: string; destination: string } }) =>
   `${f.route.origin} → ${f.route.destination} · ${f.flight_number}`
@@ -17,8 +20,9 @@ const cabinName = (cabin: string) =>
     .join(' ')
 
 /**
- * The customer side of Feature 11: join, the dashboard summary, the statement, redemptions and benefits, plus
- * `tierForPassenger`, the in-process method features 6 and 12 call. Every timestamp comes from the simulation clock.
+ * The customer side of Feature 11: enrolment, the dashboard summary, the statement, redemptions and benefits, plus
+ * `tierForPassenger`, the in-process method features 6 and 12 call. Every customer is a member: the row is created on
+ * first use (`ensureMember`), with `joined_at` = the customer's `created_at`, since membership starts with the account.
  */
 @Injectable()
 export class LoyaltyMemberService {
@@ -30,24 +34,42 @@ export class LoyaltyMemberService {
     private readonly clock: SimulationClock,
   ) {}
 
-  /** POST /loyalty/members. One member per customer; the member number comes from the database sequence. */
-  async join(userId: string): Promise<MemberSummaryDto> {
-    const customer = await this.customerFor(userId)
-    try {
-      const member = await this.db.loyalty_member.create({
-        data: { customer_id: customer.id, joined_at: this.clock.now() },
-        select: MEMBER_SELECT,
-      })
-      return this.data.summary(member, this.clock.now())
-    } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw new LoyaltyError(HttpStatus.CONFLICT, 'ALREADY_A_MEMBER', 'You are already a Flython Miles member.')
-      }
-      throw error
-    }
+  /**
+   * The customer's member row, created if it is missing. `ON CONFLICT DO NOTHING` makes two concurrent calls safe: the
+   * loser waits for the winner's insert and then reads its row. Pass `client` to enrol inside a transaction.
+   */
+  async ensureMember(customerId: string, client: Client = this.db): Promise<MemberRow> {
+    await this.ensureMembers([customerId], client)
+    return client.loyalty_member.findUniqueOrThrow({ where: { customer_id: customerId }, select: MEMBER_SELECT })
   }
 
-  /** GET /loyalty/members/me. 404 NOT_A_MEMBER until the customer joins, which the Join page relies on. */
+  /** Enrols every given customer that has no member row yet. Returns how many rows were created. */
+  async ensureMembers(customerIds: string[], client: Client = this.db): Promise<number> {
+    if (customerIds.length === 0) return 0
+    return client.$executeRaw`
+      INSERT INTO loyalty_member (customer_id, joined_at)
+      SELECT c.id, c.created_at FROM customer c WHERE c.id = ANY(${customerIds}::uuid[])
+      ON CONFLICT (customer_id) DO NOTHING`
+  }
+
+  /** Enrols every live customer that has no member row yet, so Member Lookup finds everyone. Run by the tier job. */
+  async enrolAllCustomers(): Promise<number> {
+    return this.db.$executeRaw`
+      INSERT INTO loyalty_member (customer_id, joined_at)
+      SELECT c.id, c.created_at
+        FROM customer c
+        JOIN "user" u ON u.id = c.user_id
+       WHERE c.deleted_at IS NULL AND u.deleted_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM loyalty_member m WHERE m.customer_id = c.id)
+      ON CONFLICT (customer_id) DO NOTHING`
+  }
+
+  /** POST /loyalty/members. Kept for old clients: every customer is already a member, so it returns their summary. */
+  async join(userId: string): Promise<MemberSummaryDto> {
+    return this.me(userId)
+  }
+
+  /** GET /loyalty/members/me. A customer with no member row yet is enrolled on the spot. */
   async me(userId: string): Promise<MemberSummaryDto> {
     return this.data.summary(await this.memberFor(userId), this.clock.now())
   }
@@ -234,16 +256,17 @@ export class LoyaltyMemberService {
       where: { user_id: userId, deleted_at: null, user: { type: 'customer', deleted_at: null } },
       select: { id: true },
     })
-    if (!customer) throw new LoyaltyError(HttpStatus.FORBIDDEN, 'NOT_A_CUSTOMER', 'Only customer accounts can join Flython Miles.')
+    if (!customer) throw new LoyaltyError(HttpStatus.FORBIDDEN, 'NOT_A_CUSTOMER', 'Only customer accounts have Flython Miles.')
     return customer
   }
 
+  /** The signed-in customer's member row, enrolling them first if they have none. */
   private async memberFor(userId: string): Promise<MemberRow> {
     const member = await this.db.loyalty_member.findFirst({
       where: { customer: { user_id: userId, deleted_at: null, user: { type: 'customer', deleted_at: null } } },
       select: MEMBER_SELECT,
     })
-    if (!member) throw notAMember()
-    return member
+    if (member) return member
+    return this.ensureMember((await this.customerFor(userId)).id)
   }
 }

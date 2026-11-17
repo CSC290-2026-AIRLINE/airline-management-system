@@ -78,11 +78,7 @@ function MemberCard({ member }: { member: MemberSummary }) {
 
 function TierProgress({ member }: { member: MemberSummary }) {
   const next = member.nextTier
-  const title = member.tier
-    ? next
-      ? `${member.tier.name} to ${next.name}`
-      : `${member.tier.name} · our highest tier`
-    : `No tier yet · next ${next?.name ?? ''}`
+  const title = member.tier ? (next ? `${member.tier.name} to ${next.name}` : `${member.tier.name} · our highest tier`) : 'No tier yet'
   return (
     <section className={cx(ui.card, 'flex flex-col gap-4 p-5 sm:p-6')} aria-labelledby="tier-progress">
       <div className="flex flex-col gap-1">
@@ -93,6 +89,13 @@ function TierProgress({ member }: { member: MemberSummary }) {
         <h2 id="tier-progress" className="text-[22px] font-semibold sm:text-2xl">
           {title}
         </h2>
+        {!member.tier && next && (
+          // Every customer starts here: enrolled with their account, no tier, earning from the first flight.
+          <p className="text-[13px] text-muted">
+            {formatMiles(Math.max(0, next.minMiles - member.tierMiles))} miles or {Math.max(0, next.minFlights - member.tierFlights)}{' '}
+            flights to {next.name}. Every flight you take earns miles, starting with your first.
+          </p>
+        )}
       </div>
       {next ? (
         <>

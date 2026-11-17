@@ -144,7 +144,7 @@ export interface AwardSearchFlightDto {
 export interface AwardSearchDto {
   asOf: string // the simulation clock's now
   seats: number
-  milesBalance: number | null // null = not a member
+  milesBalance: number // 0 for a customer with no member row yet
   awardCutoffHours: number
   flights: AwardSearchFlightDto[]
 }

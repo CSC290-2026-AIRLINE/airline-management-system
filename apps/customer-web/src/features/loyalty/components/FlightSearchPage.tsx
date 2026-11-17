@@ -1,5 +1,4 @@
 import { useCallback, useState, type FormEvent } from 'react'
-import { Link } from '@tanstack/react-router'
 import type { AwardFlight, AwardRoute, AwardSearchResult } from '../api/types'
 import { useLoyaltyApi } from '../api/use-loyalty-api'
 import { seatsFor, type AwardSearchParams } from '../award-search'
@@ -185,26 +184,15 @@ function Results({ search, from, to, date }: { search: AwardSearchParams; from: 
   return (
     <Loaded state={state} retry={retry}>
       {({ out, ret }) => {
-        const isMember = out.milesBalance !== null
         const party = partyLabel(search.adults ?? 1, search.children ?? 0)
         return (
           <>
-            {isMember ? (
-              <p className="rounded-xl bg-[#e8eef7] px-4 py-3.5 text-[13px] font-medium text-link">
-                Where you see “or … miles”, you can pay the fare with miles on the next step. Taxes and surcharges are still paid by card.
-              </p>
-            ) : (
-              <p className="rounded-xl bg-[#e8eef7] px-4 py-3.5 text-[13px] font-medium text-link">
-                FlySmiles members can pay the fare with miles where you see “or … miles”.{' '}
-                <Link to="/loyalty" className={cx(ui.link, 'inline')}>
-                  Join FlySmiles
-                </Link>{' '}
-                to use them. Taxes and surcharges are always paid by card.
-              </p>
-            )}
+            <p className="rounded-xl bg-[#e8eef7] px-4 py-3.5 text-[13px] font-medium text-link">
+              Where you see “or … miles”, you can pay the fare with miles on the next step. Taxes and surcharges are still paid by card.
+            </p>
             <p className={ui.small}>
               Award seats as of {out.asOf.slice(11, 16)} UTC · simulated time · miles close {out.awardCutoffHours} hours before departure
-              {isMember && ` · your balance ${formatMiles(out.milesBalance ?? 0)} miles`}
+              {` · your balance ${formatMiles(out.milesBalance)} miles`}
             </p>
             <Leg
               title="Leg 1 · Outbound"

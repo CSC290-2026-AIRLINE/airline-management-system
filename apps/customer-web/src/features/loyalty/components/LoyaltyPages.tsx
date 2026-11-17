@@ -1,35 +1,26 @@
-import { useCallback, useState } from 'react'
-import { Navigate } from '@tanstack/react-router'
-import { useUser } from '@clerk/clerk-react'
-import type { MemberSummary } from '../api/types'
+import { useCallback } from 'react'
 import { useLoyaltyApi } from '../api/use-loyalty-api'
 import { useLoad } from '../use-load'
 import { BenefitsPage } from './BenefitsPage'
 import { Dashboard } from './Dashboard'
-import { JoinPage } from './JoinPage'
 import { LoyaltyLayout } from './LoyaltyLayout'
 import { Loaded } from './parts'
 import { RedemptionsPage } from './RedemptionsPage'
 import type { StatementSearch } from '../statement-search'
 import { StatementPage } from './StatementPage'
 import { ui } from './ui'
-import { WelcomePage } from './WelcomePage'
 
 // Route-level pages: each loads what it needs through LoyaltyApi and renders the loading, error and ready states.
-// A customer who has not joined is sent to /loyalty, which shows the Join page.
+// Every customer is a Flython Miles member: the backend enrols them on their first visit, so there is no Join step.
 
-// /loyalty: Join (not a member), Welcome (just joined), or the Dashboard.
+// /loyalty: the Dashboard, straight away.
 export function LoyaltyHomePage() {
   const api = useLoyaltyApi()
   const load = useCallback(async () => {
-    const [member, tiers] = await Promise.all([api.getMember(), api.getTiers()])
-    const activity = member ? await api.getStatement() : []
+    const [member, tiers, activity] = await Promise.all([api.getMember(), api.getTiers(), api.getStatement()])
     return { member, tiers, activity }
   }, [api])
   const [state, retry] = useLoad(load)
-  const [joined, setJoined] = useState<MemberSummary | null>(null)
-  const [welcomed, setWelcomed] = useState(false)
-  const { user } = useUser()
 
   if (state.status !== 'ready') {
     return (
@@ -42,17 +33,6 @@ export function LoyaltyHomePage() {
   }
 
   const { member, tiers, activity } = state.data
-  if (joined && !welcomed) {
-    return <WelcomePage member={joined} tiers={tiers} onContinue={() => setWelcomed(true)} />
-  }
-  if (joined && welcomed) {
-    return <Dashboard member={joined} tiers={tiers} activity={[]} />
-  }
-  if (!member) {
-    // The Join page greets the customer by the name and email they signed in with.
-    const name = user?.fullName || user?.primaryEmailAddress?.emailAddress || 'there'
-    return <JoinPage tiers={tiers} name={name} email={user?.primaryEmailAddress?.emailAddress ?? ''} onJoined={setJoined} />
-  }
   return <Dashboard member={member} tiers={tiers} activity={activity} />
 }
 
@@ -63,12 +43,10 @@ export function StatementRoutePage({ search, onSearch }: { search: StatementSear
     return { member, rows }
   }, [api])
   const [state, retry] = useLoad(load)
-  const member = state.status === 'ready' ? state.data.member : undefined
-  if (member === null) return <Navigate to="/loyalty" replace />
   return (
     <LoyaltyLayout subtitle="Every mile you earned, spent, lost to expiry or had adjusted, with your balance after each.">
       <Loaded state={state} retry={retry}>
-        {({ member: m, rows }) => m && <StatementPage member={m} rows={rows} search={search} onSearch={onSearch} />}
+        {({ member, rows }) => <StatementPage member={member} rows={rows} search={search} onSearch={onSearch} />}
       </Loaded>
     </LoyaltyLayout>
   )
@@ -81,12 +59,10 @@ export function BenefitsRoutePage() {
     return { member, tiers, uses }
   }, [api])
   const [state, retry] = useLoad(load)
-  const member = state.status === 'ready' ? state.data.member : undefined
-  if (member === null) return <Navigate to="/loyalty" replace />
   return (
     <LoyaltyLayout subtitle="What your tier gives you, and what you have used.">
       <Loaded state={state} retry={retry}>
-        {({ member: m, tiers, uses }) => m && <BenefitsPage member={m} tiers={tiers} uses={uses} />}
+        {({ member, tiers, uses }) => <BenefitsPage member={member} tiers={tiers} uses={uses} />}
       </Loaded>
     </LoyaltyLayout>
   )
@@ -95,12 +71,9 @@ export function BenefitsRoutePage() {
 export function RedemptionsRoutePage() {
   const api = useLoyaltyApi()
   const load = useCallback(async () => {
-    const [member, rows] = await Promise.all([api.getMember(), api.getRedemptions()])
-    return { member, rows }
+    return { rows: await api.getRedemptions() }
   }, [api])
   const [state, retry] = useLoad(load)
-  const member = state.status === 'ready' ? state.data.member : undefined
-  if (member === null) return <Navigate to="/loyalty" replace />
   return (
     <LoyaltyLayout subtitle="Seats you paid for with miles.">
       <Loaded state={state} retry={retry}>

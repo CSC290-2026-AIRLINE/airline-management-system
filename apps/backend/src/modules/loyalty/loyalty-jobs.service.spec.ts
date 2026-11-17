@@ -6,6 +6,7 @@ import { LoyaltyDataService } from './loyalty-data.service'
 import { LoyaltyError } from './loyalty-error'
 import { LoyaltyJobScheduler } from './loyalty-job-scheduler'
 import { LoyaltyJobsService } from './loyalty-jobs.service'
+import { LoyaltyMemberService } from './loyalty-member.service'
 import type { LoyaltyUpgradeService } from './loyalty-upgrade.service'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
@@ -25,7 +26,6 @@ const RULES = [
 const candidate = (over: Partial<Record<string, unknown>> = {}) => ({
   coupon_id: 'coupon-1',
   member_id: 'mem-1',
-  joined_at: day('2026-01-01'),
   fare_class_id: 'fc-business',
   distance_km: 1000,
   arr_at: new Date('2026-11-07T10:00:00Z'),
@@ -63,9 +63,18 @@ const ledgerRow = (id: string, type: string, miles: number, expires: string | nu
   ...extra,
 })
 
+/** The values passed to a tagged-template raw query (everything after the template strings). */
+const rawValues = (call: unknown[]) => call.slice(1)
+
 function makeSvc() {
+  // The earn job runs two raw queries: the customers to enrol first, then the coupons that can earn.
+  const enrolQuery = jest.fn().mockResolvedValue([])
+  const earnQuery = jest.fn().mockResolvedValue([])
   const db = {
-    $queryRaw: jest.fn().mockResolvedValue([]),
+    $queryRaw: jest.fn((strings: TemplateStringsArray) =>
+      strings.join('?').includes('DISTINCT b.customer_id') ? enrolQuery() : earnQuery(),
+    ),
+    $executeRaw: jest.fn().mockResolvedValue(0),
     $transaction: jest.fn(),
     loyalty_setting: { findMany: jest.fn().mockResolvedValue([]) },
     loyalty_tier_rule: { findMany: jest.fn().mockResolvedValue(RULES) },
@@ -85,14 +94,16 @@ function makeSvc() {
   const dbService = db as unknown as DbService
   const awards = { returnToCash: jest.fn().mockResolvedValue({ cabins: 2, seatsReturned: 5 }) }
   const upgrades = { run: jest.fn().mockResolvedValue({ candidates: 0, upgraded: 0, noSeat: 0, skipped: 0 }) }
+  const data = new LoyaltyDataService(dbService)
   const svc = new LoyaltyJobsService(
     dbService,
-    new LoyaltyDataService(dbService),
+    data,
     clock,
     awards as unknown as LoyaltyAwardService,
     upgrades as unknown as LoyaltyUpgradeService,
+    new LoyaltyMemberService(dbService, data, clock),
   )
-  return { svc, db, clock, awards, upgrades }
+  return { svc, db, clock, awards, upgrades, enrolQuery, earnQuery }
 }
 
 async function errorOf(promise: Promise<unknown>) {
@@ -107,8 +118,8 @@ async function errorOf(promise: Promise<unknown>) {
 describe('LoyaltyJobsService', () => {
   describe('earn', () => {
     it('writes one earn row per boarded coupon, with miles = round(distance × multiplier) and expiry from retention', async () => {
-      const { svc, db } = makeSvc()
-      db.$queryRaw.mockResolvedValueOnce([candidate(), candidate({ coupon_id: 'coupon-award', fare_class_id: null })])
+      const { svc, db, earnQuery } = makeSvc()
+      earnQuery.mockResolvedValueOnce([candidate(), candidate({ coupon_id: 'coupon-award', fare_class_id: null })])
 
       const result = await svc.run('earn')
 
@@ -128,23 +139,72 @@ describe('LoyaltyJobsService', () => {
         ],
         skipDuplicates: true,
       })
-      expect(result).toMatchObject({ job: 'earn', ranAt: NOW.toISOString(), counts: { scanned: 2, earned: 1, skipped: 1, members: 1 } })
+      expect(result).toMatchObject({
+        job: 'earn',
+        ranAt: NOW.toISOString(),
+        counts: { enrolled: 0, scanned: 2, earned: 1, skipped: 1, members: 1 },
+      })
     })
 
     it('re-evaluates the tier of the members who earned, and only them', async () => {
-      const { svc, db } = makeSvc()
-      db.$queryRaw.mockResolvedValueOnce([candidate()])
+      const { svc, db, earnQuery } = makeSvc()
+      earnQuery.mockResolvedValueOnce([candidate()])
       await svc.run('earn')
       expect(db.loyalty_member.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['mem-1'] } } }))
     })
 
     it('reads retention from loyalty_setting at run time', async () => {
-      const { svc, db } = makeSvc()
+      const { svc, db, earnQuery } = makeSvc()
       db.loyalty_setting.findMany.mockResolvedValue([{ key: 'miles_retention_months', value: '24' }])
-      db.$queryRaw.mockResolvedValueOnce([candidate()])
+      earnQuery.mockResolvedValueOnce([candidate()])
       await svc.run('earn')
       const [{ data }] = db.loyalty_transaction.createMany.mock.calls[0] as [{ data: { expires_at: Date }[] }]
       expect(data[0].expires_at).toEqual(new Date('2028-11-07T10:00:00Z'))
+    })
+
+    it('enrols a customer who never opened /loyalty, then credits their flight', async () => {
+      const { svc, db, enrolQuery, earnQuery } = makeSvc()
+      enrolQuery.mockResolvedValueOnce([{ customer_id: 'cust-new' }])
+      db.$executeRaw.mockResolvedValueOnce(1)
+      earnQuery.mockResolvedValueOnce([candidate({ member_id: 'mem-new' })])
+
+      const result = await svc.run('earn')
+
+      expect(db.$executeRaw).toHaveBeenCalledTimes(1)
+      const sql = (db.$executeRaw.mock.calls[0][0] as TemplateStringsArray).join('?')
+      expect(sql).toContain('ON CONFLICT (customer_id) DO NOTHING')
+      expect(rawValues(db.$executeRaw.mock.calls[0])).toEqual([['cust-new']])
+      // Enrolment happens before the earn sweep, so the new member's coupon is found in the same run.
+      expect(db.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(earnQuery.mock.invocationCallOrder[0])
+      const [{ data }] = db.loyalty_transaction.createMany.mock.calls[0] as [{ data: { member_id: string }[] }]
+      expect(data.map((d) => d.member_id)).toEqual(['mem-new'])
+      expect(result.counts).toMatchObject({ enrolled: 1, earned: 1, members: 1 })
+    })
+
+    it('credits a flight that arrived before the member row existed (no joined_at cut-off)', async () => {
+      const { svc, db, earnQuery } = makeSvc()
+      earnQuery.mockResolvedValueOnce([candidate({ arr_at: new Date('2020-01-01T10:00:00Z') })])
+      const result = await svc.run('earn')
+      expect(db.loyalty_transaction.createMany).toHaveBeenCalledTimes(1)
+      expect(result.counts).toMatchObject({ earned: 1, skipped: 0 })
+      const sql = (db.$queryRaw.mock.calls.at(-1)?.[0] as TemplateStringsArray).join('?')
+      expect(sql).not.toContain('joined_at')
+    })
+
+    it('running twice enrols and credits only once', async () => {
+      const { svc, db, enrolQuery, earnQuery } = makeSvc()
+      enrolQuery.mockResolvedValueOnce([{ customer_id: 'cust-new' }])
+      db.$executeRaw.mockResolvedValueOnce(1)
+      earnQuery.mockResolvedValueOnce([candidate({ member_id: 'mem-new' })])
+      const first = await svc.run('earn')
+
+      // Second run: the customer now has a member row and the coupon an earn row, so both queries find nothing.
+      const second = await svc.run('earn')
+
+      expect(first.counts).toMatchObject({ enrolled: 1, earned: 1 })
+      expect(second.counts).toMatchObject({ enrolled: 0, scanned: 0, earned: 0 })
+      expect(db.$executeRaw).toHaveBeenCalledTimes(1) // no customers to enrol, so no insert at all
+      expect(db.loyalty_transaction.createMany).toHaveBeenCalledTimes(1)
     })
 
     it('writes nothing when no flight has arrived', async () => {
@@ -188,7 +248,7 @@ describe('LoyaltyJobsService', () => {
         ],
         skipDuplicates: true,
       })
-      expect(result.counts).toEqual({ evaluated: 1, changed: 1, notified: 1 })
+      expect(result.counts).toEqual({ enrolled: 0, evaluated: 1, changed: 1, notified: 1 })
     })
 
     it('counts only flights the member flew personally toward min_flights', async () => {
@@ -197,7 +257,21 @@ describe('LoyaltyJobsService', () => {
       db.loyalty_transaction.findMany.mockResolvedValueOnce(Array.from({ length: 25 }, () => earnRow(100, 'pax-companion')))
       const result = await svc.run('tier')
       expect(db.loyalty_member.update).not.toHaveBeenCalled()
-      expect(result.counts).toEqual({ evaluated: 1, changed: 0, notified: 0 })
+      expect(result.counts).toEqual({ enrolled: 0, evaluated: 1, changed: 0, notified: 0 })
+    })
+
+    it('enrols every customer with no member row before evaluating, so Member Lookup finds everyone', async () => {
+      const { svc, db } = makeSvc()
+      db.$executeRaw.mockResolvedValueOnce(3)
+      const result = await svc.run('tier')
+      expect(db.$executeRaw).toHaveBeenCalledTimes(1)
+      const sql = (db.$executeRaw.mock.calls[0][0] as TemplateStringsArray).join('?')
+      expect(sql).toContain('INSERT INTO loyalty_member (customer_id, joined_at)')
+      expect(sql).toContain('c.created_at')
+      expect(sql).toContain('NOT EXISTS (SELECT 1 FROM loyalty_member m WHERE m.customer_id = c.id)')
+      expect(sql).toContain('ON CONFLICT (customer_id) DO NOTHING')
+      expect(db.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(db.loyalty_member.findMany.mock.invocationCallOrder[0])
+      expect(result.counts).toMatchObject({ enrolled: 3 })
     })
 
     it('renews the same tier without a message', async () => {
@@ -314,9 +388,9 @@ describe('LoyaltyJobsService', () => {
     })
 
     it('refuses a second run of the same job while the first is running', async () => {
-      const { svc, db } = makeSvc()
+      const { svc, earnQuery } = makeSvc()
       let release: (v: unknown[]) => void = () => undefined
-      db.$queryRaw.mockReturnValueOnce(new Promise((resolve) => (release = resolve)))
+      earnQuery.mockReturnValueOnce(new Promise((resolve) => (release = resolve)))
       const first = svc.run('earn')
       await Promise.resolve()
       expect(await errorOf(svc.run('earn'))).toEqual({ status: 409, code: 'JOB_RUNNING' })

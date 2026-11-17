@@ -22,12 +22,7 @@ async function json<T>(res: Response): Promise<T> {
 export function createHttpLoyaltyApi(fetchWithAuth: FetchWithAuth): LoyaltyApi {
   return {
     getTiers: async () => json<TierInfo[]>(await fetchWithAuth('/api/loyalty/tier-benefits')),
-    async getMember() {
-      const res = await fetchWithAuth('/api/loyalty/members/me')
-      if (res.status === 404) return null // signed in, but has not joined
-      return json<MemberSummary>(res)
-    },
-    join: async () => json<MemberSummary>(await fetchWithAuth('/api/loyalty/members', { method: 'POST' })),
+    getMember: async () => json<MemberSummary>(await fetchWithAuth('/api/loyalty/members/me')),
     getStatement: async () => json<StatementRow[]>(await fetchWithAuth('/api/loyalty/members/me/transactions')),
     getRedemptions: async () => json<RedemptionRow[]>(await fetchWithAuth('/api/loyalty/redemptions')),
     getBenefitUses: async () => json<BenefitUse[]>(await fetchWithAuth('/api/loyalty/members/me/benefits')),

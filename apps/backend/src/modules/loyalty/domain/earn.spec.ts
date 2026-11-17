@@ -19,7 +19,6 @@ describe('earnMiles', () => {
 })
 
 describe('draftEarn', () => {
-  const joinedAt = new Date('2026-01-01T00:00:00Z')
   const now = new Date('2026-10-30T00:00:00Z')
   const rules = new Map<string, EarnRule>([
     ['fc-y', { fareClassId: 'fc-y', multiplier: '1.00' }],
@@ -36,7 +35,7 @@ describe('draftEarn', () => {
   }
 
   it('builds an earn row with the copied rule and the arrival as occurred_at', () => {
-    expect(draftEarn(base, rules, joinedAt, now)).toEqual({
+    expect(draftEarn(base, rules, now)).toEqual({
       draft: { bookingCouponId: 'c1', miles: 580, distanceKm: 580, fareClassId: 'fc-y', multiplier: '1.00', occurredAt: base.arrAt },
     })
   })
@@ -47,10 +46,9 @@ describe('draftEarn', () => {
     [{ boarded: false }, 'not_boarded'],
     [{ isLapInfant: true }, 'lap_infant'],
     [{ fareClassId: null }, 'award_seat'],
-    [{ arrAt: new Date('2025-12-31T23:59:00Z') }, 'before_joined'],
     [{ fareClassId: 'fc-promo' }, 'no_miles'],
     [{ fareClassId: 'fc-unknown' }, 'no_miles'],
   ])('skips %o as %s', (change, reason) => {
-    expect(draftEarn({ ...base, ...change }, rules, joinedAt, now)).toEqual({ skip: reason })
+    expect(draftEarn({ ...base, ...change }, rules, now)).toEqual({ skip: reason })
   })
 })

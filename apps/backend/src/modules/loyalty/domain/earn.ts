@@ -34,14 +34,13 @@ export interface EarnRowDraft {
   occurredAt: Date
 }
 
-export type EarnSkipReason = 'not_arrived' | 'cancelled' | 'not_boarded' | 'lap_infant' | 'award_seat' | 'before_joined' | 'no_miles'
+export type EarnSkipReason = 'not_arrived' | 'cancelled' | 'not_boarded' | 'lap_infant' | 'award_seat' | 'no_miles'
 
 // Decides whether one coupon earns and builds its ledger row. A skipped coupon is not an error: the job moves on.
 // Repeats are safe in the database through UNIQUE (booking_coupon_id, type), so the job may see a coupon twice.
 export function draftEarn(
   candidate: EarnCandidate,
   rules: ReadonlyMap<string, EarnRule>,
-  memberJoinedAt: Date,
   now: Date,
 ): { draft: EarnRowDraft } | { skip: EarnSkipReason } {
   if (candidate.arrAt > now) return { skip: 'not_arrived' }
@@ -49,7 +48,6 @@ export function draftEarn(
   if (!candidate.boarded) return { skip: 'not_boarded' }
   if (candidate.isLapInfant) return { skip: 'lap_infant' }
   if (candidate.fareClassId === null) return { skip: 'award_seat' }
-  if (candidate.arrAt < memberJoinedAt) return { skip: 'before_joined' }
 
   const rule = rules.get(candidate.fareClassId)
   if (!rule) return { skip: 'no_miles' }

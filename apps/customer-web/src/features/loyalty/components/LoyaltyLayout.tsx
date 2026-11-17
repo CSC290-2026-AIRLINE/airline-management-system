@@ -47,12 +47,3 @@ export function LoyaltyLayout({ subtitle, children }: { subtitle?: string; child
     </div>
   )
 }
-
-// Shell for the pages without the membership tabs: Join and Welcome, which fill the width with their own bands.
-export function LoyaltyBareLayout({ children }: { children: ReactNode }) {
-  return (
-    <div className={PAGE} data-full-bleed>
-      <main className="flex flex-1 flex-col pt-3 sm:pt-5">{children}</main>
-    </div>
-  )
-}

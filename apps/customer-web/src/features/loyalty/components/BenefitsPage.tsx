@@ -25,7 +25,7 @@ const BENEFIT_HINT: Record<BenefitKey, string> = {
   insurance: 'On every booking you make.',
 }
 
-// The C09 cards use shorter labels than the tier tables on the Join page.
+// The C09 cards use shorter labels than the benefit names elsewhere.
 const CARD_LABEL: Record<BenefitKey, string> = { ...BENEFIT_NAMES, checkIn: 'Priority check-in' }
 
 const HISTORY_TABS: { kind: BenefitUseKind; label: string; title: string; empty: string }[] = [

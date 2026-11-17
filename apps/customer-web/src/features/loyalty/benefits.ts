@@ -1,6 +1,6 @@
 import type { Insurance, TierInfo } from './api/types'
 
-// Wording for tier benefits, shared by the Join, Welcome, Dashboard and Benefits pages.
+// Wording for tier benefits, shared by the Dashboard and Benefits pages.
 
 export const BENEFIT_NAMES = {
   lounge: 'Lounge access',
@@ -63,13 +63,6 @@ export function benefitLines(tier: TierInfo, tiers: TierInfo[]): BenefitLine[] {
 }
 
 const lower = (s: string) => `${s.charAt(0).toLowerCase()}${s.slice(1)}`
-
-// One line per benefit for the Welcome tier cards, e.g. "Lounge access · member + 1 guest".
-export function benefitSentence(line: BenefitLine) {
-  if (line.key === 'baggage') return `${line.value} free baggage`
-  const name = BENEFIT_NAMES[line.key]
-  return line.value ? `${name} · ${lower(line.value)}` : name
-}
 
 // The Dashboard benefits card, e.g. "Lounge access for you and 1 guest, +10 kg free baggage, priority check-in and
 // boarding, and travel insurance included. Upgrades come after Platinum members."

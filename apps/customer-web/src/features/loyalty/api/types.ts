@@ -125,7 +125,7 @@ export interface AwardFlight {
 export interface AwardSearchResult {
   asOf: string
   seats: number
-  milesBalance: number | null // null = not a member
+  milesBalance: number
   awardCutoffHours: number
   flights: AwardFlight[]
 }
@@ -139,8 +139,7 @@ export interface AwardSearchQuery {
 
 export interface LoyaltyApi {
   getTiers(): Promise<TierInfo[]>
-  getMember(): Promise<MemberSummary | null> // null = not a member yet
-  join(): Promise<MemberSummary>
+  getMember(): Promise<MemberSummary> // every customer is a member; the backend enrols on first visit
   getStatement(): Promise<StatementRow[]> // newest first
   getRedemptions(): Promise<RedemptionRow[]>
   getBenefitUses(): Promise<BenefitUse[]>

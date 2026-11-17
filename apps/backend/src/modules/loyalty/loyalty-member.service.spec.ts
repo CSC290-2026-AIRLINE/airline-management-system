@@ -43,8 +43,9 @@ const earn = (id: string, seq: number, miles: number, passengerId: string, occur
 
 function makeSvc() {
   const db = {
+    $executeRaw: jest.fn().mockResolvedValue(0),
     customer: { findFirst: jest.fn().mockResolvedValue({ id: 'cust-1' }) },
-    loyalty_member: { create: jest.fn().mockResolvedValue(member), findFirst: jest.fn().mockResolvedValue(member) },
+    loyalty_member: { findFirst: jest.fn().mockResolvedValue(member), findUniqueOrThrow: jest.fn().mockResolvedValue(member) },
     loyalty_setting: { findMany: jest.fn().mockResolvedValue([]) },
     loyalty_tier_rule: {
       findMany: jest.fn().mockResolvedValue([
@@ -79,29 +80,99 @@ async function errorOf(promise: Promise<unknown>) {
 }
 
 describe('LoyaltyMemberService', () => {
-  it('joins with joined_at from the simulation clock', async () => {
-    const { svc, db } = makeSvc()
-    const summary = await svc.join('user-1')
-    expect(db.loyalty_member.create).toHaveBeenCalledWith(expect.objectContaining({ data: { customer_id: 'cust-1', joined_at: NOW } }))
-    expect(summary.memberNumber).toBe('FL10000001')
+  describe('ensureMember', () => {
+    it('inserts with ON CONFLICT (customer_id) DO NOTHING and joined_at = the customer’s created_at', async () => {
+      const { svc, db } = makeSvc()
+      const row = await svc.ensureMember('cust-1')
+      const [strings, ...values] = db.$executeRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]]
+      const sql = strings.join('?')
+      expect(sql).toContain('INSERT INTO loyalty_member (customer_id, joined_at)')
+      expect(sql).toContain('SELECT c.id, c.created_at FROM customer c')
+      expect(sql).toContain('ON CONFLICT (customer_id) DO NOTHING')
+      expect(values).toEqual([['cust-1']])
+      expect(db.loyalty_member.findUniqueOrThrow).toHaveBeenCalledWith(expect.objectContaining({ where: { customer_id: 'cust-1' } }))
+      expect(row.member_number).toBe('FL10000001')
+    })
+
+    it('is safe to call twice, including at the same time: both calls get the same row', async () => {
+      const { svc, db } = makeSvc()
+      // The first insert creates the row; the concurrent one hits the conflict and inserts nothing.
+      db.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(0)
+      const [a, b] = await Promise.all([svc.ensureMember('cust-1'), svc.ensureMember('cust-1')])
+      expect(a).toEqual(b)
+      expect(db.$executeRaw).toHaveBeenCalledTimes(2)
+      const third = await svc.ensureMember('cust-1')
+      expect(third.id).toBe('mem-1')
+    })
+
+    it('enrols inside a transaction when given one', async () => {
+      const { svc, db } = makeSvc()
+      const tx = { $executeRaw: jest.fn().mockResolvedValue(1), loyalty_member: { findUniqueOrThrow: jest.fn().mockResolvedValue(member) } }
+      await svc.ensureMember('cust-1', tx as never)
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
+      expect(db.$executeRaw).not.toHaveBeenCalled()
+    })
+
+    it('ensureMembers skips the insert when there is nobody to enrol', async () => {
+      const { svc, db } = makeSvc()
+      await expect(svc.ensureMembers([])).resolves.toBe(0)
+      expect(db.$executeRaw).not.toHaveBeenCalled()
+    })
   })
 
-  it('answers 409 when the customer has already joined', async () => {
+  it('a new customer opening /loyalty is enrolled and sees 0 miles and no tier', async () => {
     const { svc, db } = makeSvc()
-    db.loyalty_member.create.mockRejectedValue({ code: 'P2002' })
-    expect(await errorOf(svc.join('user-1'))).toEqual({ status: 409, code: 'ALREADY_A_MEMBER' })
+    db.loyalty_member.findFirst.mockResolvedValueOnce(null)
+    db.loyalty_member.findUniqueOrThrow.mockResolvedValueOnce({ ...member, miles_balance: 0 })
+    db.loyalty_transaction.findMany.mockResolvedValue([])
+    const summary = await svc.me('user-1')
+    expect(db.$executeRaw).toHaveBeenCalledTimes(1)
+    expect(summary).toMatchObject({
+      memberNumber: 'FL10000001',
+      milesBalance: 0,
+      tier: null,
+      tierMiles: 0,
+      tierFlights: 0,
+      nextTier: { code: 'silver', minMiles: 15000, minFlights: 20 },
+    })
+  })
+
+  it('does not insert when the customer already has a member row', async () => {
+    const { svc, db } = makeSvc()
+    await svc.me('user-1')
+    expect(db.$executeRaw).not.toHaveBeenCalled()
+  })
+
+  it('enrols on the statement, benefits and redemptions routes too', async () => {
+    for (const call of [
+      (svc: LoyaltyMemberService) => svc.statement('user-1', {}),
+      (svc: LoyaltyMemberService) => svc.benefits('user-1'),
+      (svc: LoyaltyMemberService) => svc.redemptions('user-1'),
+    ]) {
+      const { svc, db } = makeSvc()
+      Object.assign(db, {
+        loyalty_benefit_use: { findMany: jest.fn().mockResolvedValue([]) },
+        loyalty_insurance_policy: { findMany: jest.fn().mockResolvedValue([]) },
+      })
+      db.loyalty_member.findFirst.mockResolvedValueOnce(null)
+      db.loyalty_transaction.findMany.mockResolvedValue([])
+      await expect(call(svc)).resolves.toEqual([])
+      expect(db.$executeRaw).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('POST /members returns the existing member instead of an error', async () => {
+    const { svc, db } = makeSvc()
+    const summary = await svc.join('user-1')
+    expect(summary.memberNumber).toBe('FL10000001')
+    expect(db.$executeRaw).not.toHaveBeenCalled()
   })
 
   it('refuses a user with no customer row', async () => {
     const { svc, db } = makeSvc()
-    db.customer.findFirst.mockResolvedValue(null)
-    expect(await errorOf(svc.join('user-staff'))).toEqual({ status: 403, code: 'NOT_A_CUSTOMER' })
-  })
-
-  it('answers 404 NOT_A_MEMBER before joining', async () => {
-    const { svc, db } = makeSvc()
     db.loyalty_member.findFirst.mockResolvedValue(null)
-    expect(await errorOf(svc.me('user-1'))).toEqual({ status: 404, code: 'NOT_A_MEMBER' })
+    db.customer.findFirst.mockResolvedValue(null)
+    expect(await errorOf(svc.me('user-staff'))).toEqual({ status: 403, code: 'NOT_A_CUSTOMER' })
   })
 
   it('counts companions’ miles but only the member’s own flights, within 12 months, toward the tier', async () => {

@@ -11,6 +11,7 @@ import type { JobRunResultDto } from './dto/responses'
 import { LoyaltyAwardService } from './loyalty-award.service'
 import { LoyaltyError, isCheckViolation } from './loyalty-error'
 import { LoyaltyDataService } from './loyalty-data.service'
+import { LoyaltyMemberService } from './loyalty-member.service'
 import { LoyaltyUpgradeService } from './loyalty-upgrade.service'
 
 /** The jobs `POST /staff/loyalty/jobs/:name/run` accepts. */
@@ -29,7 +30,6 @@ export const EVENT_SOURCE = '11'
 interface EarnCandidateRow {
   coupon_id: string
   member_id: string
-  joined_at: Date
   fare_class_id: string | null
   distance_km: number
   arr_at: Date
@@ -55,9 +55,10 @@ const passengerName = (m: { customer: { passenger: { first_name: string; last_na
  * The Feature 11 background jobs. Every run reads `now` from the simulation clock and the rules and settings at run
  * time, and every write is safe to repeat:
  *
- *   - earn:   one `earn` row per boarded, paying coupon (UNIQUE (booking_coupon_id, type)), then a tier pass for the
- *             members who earned.
- *   - tier:   re-evaluates members on the rolling 12 months; a change of tier sends `tier_changed`.
+ *   - earn:   enrols the customers behind newly flown bookings, then one `earn` row per boarded, paying coupon
+ *             (UNIQUE (booking_coupon_id, type)), then a tier pass for the members who earned.
+ *   - tier:   enrols customers with no member row yet, then re-evaluates members on the rolling 12 months; a change of
+ *             tier sends `tier_changed`.
  *   - expire: one `expire` row per credit past its `expires_at` (UNIQUE (expired_transaction_id, member_id)), then one
  *             `miles_expiring` reminder per member and expiry date. Messages go through feature 13's `inbound_event`,
  *             whose UNIQUE (source, source_event_id) makes a repeat a no-op, so Feature 11 records nothing.
@@ -79,6 +80,7 @@ export class LoyaltyJobsService {
     private readonly clock: SimulationClock,
     private readonly awards: LoyaltyAwardService,
     private readonly upgrades: LoyaltyUpgradeService,
+    private readonly members: LoyaltyMemberService,
   ) {}
 
   async run(name: JobName): Promise<JobRunResultDto> {
@@ -99,7 +101,7 @@ export class LoyaltyJobsService {
         name === 'earn'
           ? await this.earn(now)
           : name === 'tier'
-            ? await this.tier(now)
+            ? await this.tierWithEnrolment(now)
             : name === 'return-to-cash'
               ? await this.awards.returnToCash(now)
               : name === 'upgrade'
@@ -119,13 +121,15 @@ export class LoyaltyJobsService {
   // --- Earn ---------------------------------------------------------------------------------------------------
 
   /**
-   * Sweeps flights whose planned `arr_at` has passed. The query already keeps only coupons that can earn (confirmed,
-   * boarded in feature 6, not a lap infant or award seat, a fare class with a multiplier above 0, a member who had
-   * joined by arrival, no earn row yet, flight neither cancelled nor diverted); `draftEarn` checks the same rules again
-   * and computes the miles. Pages by (arr_at, coupon id), so a coupon that earns 0 miles never blocks the next page.
+   * Sweeps flights whose planned `arr_at` has passed. First enrols every customer with a coupon waiting to earn, so a
+   * customer who never opened /loyalty still gets their miles. The query then keeps only coupons that can earn
+   * (confirmed, boarded in feature 6, not a lap infant or award seat, a fare class with a multiplier above 0, no earn
+   * row yet, flight neither cancelled nor diverted); `draftEarn` checks the same rules again and computes the miles.
+   * Pages by (arr_at, coupon id), so a coupon that earns 0 miles never blocks the next page.
    */
   private async earn(now: Date): Promise<Record<string, number>> {
     const [settings, rules] = await Promise.all([this.data.settings(), this.earnRules()])
+    const enrolled = await this.members.ensureMembers(await this.customersToEnrolForEarn(now))
     let after: { arrAt: Date; couponId: string } | null = null
     let scanned = 0
     let written = 0
@@ -150,7 +154,6 @@ export class LoyaltyJobsService {
             arrAt: row.arr_at,
           },
           rules,
-          row.joined_at,
           now,
         )
         if ('skip' in result) skipped += 1
@@ -182,14 +185,41 @@ export class LoyaltyJobsService {
     }
 
     const tier = earnedBy.size > 0 ? await this.tier(now, [...earnedBy]) : { evaluated: 0, changed: 0, notified: 0 }
-    return { scanned, earned: written, skipped, members: earnedBy.size, tierChanged: tier.changed, tierNotified: tier.notified }
+    return {
+      enrolled,
+      scanned,
+      earned: written,
+      skipped,
+      members: earnedBy.size,
+      tierChanged: tier.changed,
+      tierNotified: tier.notified,
+    }
+  }
+
+  /** Customers with a flown, boarded, paying coupon still waiting to earn who have no member row yet. */
+  private async customersToEnrolForEarn(now: Date): Promise<string[]> {
+    const rows = await this.db.$queryRaw<{ customer_id: string }[]>`
+      SELECT DISTINCT b.customer_id
+        FROM booking_coupon c
+        JOIN booking b            ON b.id = c.booking_id
+        JOIN customer cu          ON cu.id = b.customer_id
+        JOIN booking_segment s    ON s.id = c.booking_segment_id
+        JOIN flight f             ON f.id = c.flight_id
+       WHERE c.status = 'confirmed'
+         AND f.arr_at <= ${now}
+         AND s.fare_class_id IS NOT NULL
+         AND cu.deleted_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM loyalty_member m WHERE m.customer_id = b.customer_id)
+         AND EXISTS (SELECT 1 FROM check_in ci
+                      WHERE ci.booking_passenger_id = c.booking_passenger_id AND ci.flight_id = c.flight_id AND ci.status = 'boarded')`
+    return rows.map((r) => r.customer_id)
   }
 
   private earnCandidates(now: Date, after: { arrAt: Date; couponId: string } | null): Promise<EarnCandidateRow[]> {
     const afterArr = after?.arrAt ?? new Date(0)
     const afterId = after?.couponId ?? '00000000-0000-0000-0000-000000000000'
     return this.db.$queryRaw<EarnCandidateRow[]>`
-      SELECT c.id AS coupon_id, m.id AS member_id, m.joined_at, s.fare_class_id, r.distance_km, f.arr_at,
+      SELECT c.id AS coupon_id, m.id AS member_id, s.fare_class_id, r.distance_km, f.arr_at,
              f.status AS flight_status, (bp.lap_of_id IS NOT NULL) AS is_lap_infant
         FROM booking_coupon c
         JOIN booking_segment s    ON s.id = c.booking_segment_id
@@ -201,7 +231,6 @@ export class LoyaltyJobsService {
         JOIN loyalty_earn_rule er ON er.fare_class_id = s.fare_class_id AND er.multiplier > 0
        WHERE c.status = 'confirmed'
          AND f.arr_at <= ${now}
-         AND f.arr_at >= m.joined_at
          AND f.status NOT IN ('cancelled', 'diverted')
          AND f.actual_destination IS NULL
          AND bp.lap_of_id IS NULL
@@ -219,6 +248,12 @@ export class LoyaltyJobsService {
   }
 
   // --- Tier ---------------------------------------------------------------------------------------------------
+
+  /** The daily tier job: enrols customers with no member row first, so Member Lookup finds everyone. */
+  private async tierWithEnrolment(now: Date): Promise<Record<string, number>> {
+    const enrolled = await this.members.enrolAllCustomers()
+    return { enrolled, ...(await this.tier(now)) }
+  }
 
   /**
    * Re-evaluates the given members, or every member when none are given. Miles count every earn row in the rolling

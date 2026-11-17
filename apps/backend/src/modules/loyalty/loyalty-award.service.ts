@@ -22,6 +22,7 @@ import { AWARD_SEAT_PORT, type AwardSeatPort } from './award-seats.port'
 import type { LoyaltyStaffPrincipal } from './guards/loyalty-staff.guard'
 import { LoyaltyError, invalid, isCheckViolation } from './loyalty-error'
 import { LoyaltyDataService } from './loyalty-data.service'
+import { LoyaltyMemberService } from './loyalty-member.service'
 
 type Tx = Prisma.TransactionClient
 
@@ -136,6 +137,7 @@ export class LoyaltyAwardService {
     private readonly audit: AuditService,
     private readonly clock: SimulationClock,
     @Inject(AWARD_SEAT_PORT) private readonly seats: AwardSeatPort,
+    private readonly members: LoyaltyMemberService,
   ) {}
 
   // --- Staff: Award Release ----------------------------------------------------------------------------------
@@ -318,7 +320,8 @@ export class LoyaltyAwardService {
         this.data.settings(),
         customerId ? this.db.loyalty_member.findUnique({ where: { customer_id: customerId }, select: { miles_balance: true } }) : null,
       ])
-      const balance = member?.miles_balance ?? null
+      // Every customer is a member; one with no row yet simply has 0 miles. No customer (signed out) has no balance.
+      const balance = customerId ? (member?.miles_balance ?? 0) : null
       return releases
         .filter((r) => {
           const cabins = wanted.get(r.flight_id)
@@ -354,7 +357,7 @@ export class LoyaltyAwardService {
   /**
    * Writes one `redeem` row per award coupon of a miles booking, inside feature 3b's hold transaction `tx`, for that
    * cabin's `miles_cost`. A lap infant takes no seat and has no row. Refuses with 409 (and writes nothing) when the
-   * member has not joined, a flight is past the cutoff or not for sale, a cabin has no release or too few award seats,
+   * a flight is past the cutoff or not for sale, a cabin has no release or too few award seats,
    * or the balance is short. Safe to repeat: coupons that already have a redeem row are skipped.
    *
    * Call it after `InventoryPort.lock` and either before 3b raises `award_held_count` (the default: the seats are checked
@@ -369,11 +372,8 @@ export class LoyaltyAwardService {
     if (booking.payment_type !== 'miles') {
       throw new LoyaltyError(HttpStatus.CONFLICT, 'NOT_A_MILES_BOOKING', 'This booking is not paid with miles.')
     }
-    const member = await tx.loyalty_member.findUnique({
-      where: { customer_id: booking.customer_id },
-      select: { id: true, miles_balance: true },
-    })
-    if (!member) throw new LoyaltyError(HttpStatus.CONFLICT, 'NOT_A_MEMBER', 'The customer has not joined Flython Miles.')
+    // Every customer is a member: enrol one who has no row yet (0 miles, so any award is refused for the balance).
+    const member = await this.members.ensureMember(booking.customer_id, tx)
 
     // Award coupons are the live coupons with no fare class (an award seat is not sold under a feature 4 fare class).
     const coupons = await tx.booking_coupon.findMany({
@@ -600,8 +600,8 @@ export class LoyaltyAwardService {
 
   /**
    * GET /loyalty/award-flights: every open flight on the route and service date, earliest first, each with its award
-   * cabins (empty when nothing is released, or inside the cutoff). Signed-in customers; the balance is null for a
-   * customer who has not joined, so the page can offer to join instead.
+   * cabins (empty when nothing is released, or inside the cutoff). Signed-in customers; a customer with no member row
+   * yet has a balance of 0.
    */
   async search(userId: string, q: { origin: string; destination: string; date: string; seats: number }): Promise<AwardSearchDto> {
     const now = this.clock.now()
@@ -661,9 +661,9 @@ export class LoyaltyAwardService {
     }
   }
 
-  private async balanceOf(where: { customer_id: string } | { customer: { user_id: string; deleted_at: null } }): Promise<number | null> {
+  private async balanceOf(where: { customer_id: string } | { customer: { user_id: string; deleted_at: null } }): Promise<number> {
     const member = await this.db.loyalty_member.findFirst({ where, select: { miles_balance: true } })
-    return member?.miles_balance ?? null
+    return member?.miles_balance ?? 0
   }
 }
 

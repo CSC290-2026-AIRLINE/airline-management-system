@@ -33,7 +33,7 @@ export function SignedMiles({ type, miles, tone, className }: { type: Transactio
   return <span className={cx('font-bold tabular-nums whitespace-nowrap', color, className)}>{formatSignedMiles(miles)}</span>
 }
 
-// A small FlySmiles tier card, as in the Join page's tier table.
+// A small FlySmiles tier card.
 export function TierCard({ code, name, className }: { code: TierCode | null; name: string; className?: string }) {
   return (
     <div

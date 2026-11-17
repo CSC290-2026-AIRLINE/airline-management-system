@@ -34,13 +34,14 @@ export class LoyaltyController {
     private readonly awards: LoyaltyAwardService,
   ) {}
 
-  /** The tier table with each tier's benefits, for the Join page and the dashboard. */
+  /** The tier table with each tier's benefits, for the dashboard and the benefits page. */
   @Public()
   @Get('tier-benefits')
   tierBenefits(): Promise<TierInfoDto[]> {
     return this.rules.tiers()
   }
 
+  /** Kept for old clients. Every customer is a member already, so this returns the existing (or newly enrolled) member. */
   @Post('members')
   @HttpCode(201)
   join(@CurrentUser() user: AuthenticatedUser): Promise<MemberSummaryDto> {
