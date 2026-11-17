@@ -12,6 +12,7 @@ import { PricingModule } from './modules/pricing/pricing.module'
 import { PassengerProfilesModule } from '@backend/modules/passenger-profiles/passenger-profiles.module'
 import { WatchlistModule } from './modules/watchlist/watchlist.module'
 import { AircraftManagementModule } from '@backend/modules/aircraft-management/aircraft-management.module'
+import { FlightSchedulingModule } from './modules/flight-scheduling/flight-scheduling.module'
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AircraftManagementModule } from '@backend/modules/aircraft-management/a
     ScreeningModule,
     WatchlistModule,
     AircraftManagementModule,
+    FlightSchedulingModule,
     LoyaltyModule,
   ],
   controllers: [AppController],
