@@ -1,6 +1,11 @@
 import {
   Calendar,
+  CalendarClock,
+  Globe,
+  Route,
+  Gauge,
   ChartColumn,
+  ClipboardCheck,
   CreditCard,
   FileText,
   KeyRound,
@@ -9,8 +14,8 @@ import {
   Monitor,
   Package,
   Percent,
-  Plane,
   PlaneLanding,
+  PlaneTakeoff,
   Receipt,
   ScrollText,
   Search,
@@ -31,16 +36,31 @@ import {
 export interface NavItem {
   label: string
   icon: LucideIcon
+  /** Set once the owning team has a route. Items without one stay disabled in the live sidebar. */
+  to?: '/customer-search' | '/security-screening/screening-queue' | '/aircraft' | '/aircraft-types' | '/readiness'
+  /** Path prefix that keeps the item highlighted on the feature's other pages. */
+  activePrefix?: string
 }
 
 export const REPORTS_ITEM: NavItem = { label: 'Reports & Analytics', icon: ChartColumn }
 
 export const GROUPS: { label: string; items: NavItem[] }[] = [
+  // Groups with live links come first; the rest are disabled placeholders until their teams add routes.
+  {
+    label: 'Customer Management',
+    items: [
+      { label: 'Customer Search', icon: Search, to: '/customer-search', activePrefix: '/customer-search' },
+      { label: 'Security Screening', icon: ShieldCheck, to: '/security-screening/screening-queue', activePrefix: '/security-screening' },
+      { label: 'Service & Compensation', icon: MessageSquare },
+      { label: 'Loyalty Programme', icon: Star },
+    ],
+  },
   {
     label: 'Operations',
     items: [
-      { label: 'Flight Operations', icon: Plane },
-      { label: 'Fleet & Aircraft', icon: PlaneLanding },
+      { label: 'Fleet & Aircraft', icon: PlaneLanding, to: '/aircraft', activePrefix: '/aircraft' },
+      { label: 'Aircraft Types', icon: PlaneTakeoff, to: '/aircraft-types', activePrefix: '/aircraft-types' },
+      { label: 'Aircraft Readiness', icon: ClipboardCheck, to: '/readiness' },
       { label: 'Crew Scheduling', icon: Calendar },
       { label: 'My Roster', icon: User },
     ],
@@ -62,15 +82,6 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
       { label: 'Onboard Products', icon: Utensils },
     ],
   },
-  {
-    label: 'Customer Management',
-    items: [
-      { label: 'Customer Search', icon: Search },
-      { label: 'Security Screening', icon: ShieldCheck },
-      { label: 'Service & Compensation', icon: MessageSquare },
-      { label: 'Loyalty Programme', icon: Star },
-    ],
-  },
 ]
 
 /** The three admin screens, one per tab of the admin page. These are the live links in this app. */
@@ -88,3 +99,16 @@ export const PRICING_ITEMS = [
   { to: '/pricing/expenses-payments', code: 'f04.expenses_payments', label: 'Expenses & Payments', icon: Receipt },
   { to: '/pricing/monthly-report', code: 'f04.monthly_report', label: 'Monthly Report', icon: FileText },
 ] as const
+
+/** The Feature 2 (flight scheduling and network operations) pages. `ownsPrefixes` keeps an item lit on its sub-pages, such as a flight's detail. */
+export const FLIGHT_SCHEDULING_ITEMS: readonly {
+  to: '/airports' | '/routes' | '/schedule-board' | '/congestion'
+  label: string
+  icon: LucideIcon
+  ownsPrefixes?: readonly string[]
+}[] = [
+  { to: '/schedule-board', label: 'Schedule flight', icon: CalendarClock, ownsPrefixes: ['/flights', '/generate-flights'] },
+  { to: '/airports', label: 'Airports', icon: Globe },
+  { to: '/routes', label: 'Routes', icon: Route },
+  { to: '/congestion', label: 'Congestion', icon: Gauge },
+]

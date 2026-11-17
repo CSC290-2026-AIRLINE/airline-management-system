@@ -135,7 +135,7 @@ export function BaggageRateDialog({ rate, fareClasses, routes, currency, onSaved
           <FormField htmlFor="baggage-fare_class_id" label="Class" error={errors.fare_class_id}>
             <NativeSelect
               {...fieldProps('fare_class_id')}
-              className="w-full [&_select]:h-[42px]"
+              className="w-full h-[42px]"
               value={form.fare_class_id}
               onChange={(e) => set('fare_class_id', e.target.value)}
             >
@@ -150,7 +150,7 @@ export function BaggageRateDialog({ rate, fareClasses, routes, currency, onSaved
           <FormField htmlFor="baggage-route_id" label="Route" error={errors.route_id}>
             <NativeSelect
               {...fieldProps('route_id')}
-              className="w-full [&_select]:h-[42px]"
+              className="w-full h-[42px]"
               value={form.route_id}
               onChange={(e) => set('route_id', e.target.value)}
             >
