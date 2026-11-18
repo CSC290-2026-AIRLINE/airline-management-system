@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { Button } from '@staff-web/components/ui/button'
 import { Label } from '@staff-web/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@staff-web/components/ui/popover'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { SelectContent, SelectItem, SelectTrigger, SelectValue, Select } from '@staff-web/components/ui/select'
 import { cn } from '@staff-web/lib/utils'
@@ -88,7 +89,12 @@ export function SelectBox({
       <SelectTrigger id={id} className={cn(FIELD_BOX, 'data-[size=default]:h-auto [&_svg:not([class*=text-])]:text-[#14213d]')}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent className="font-[family-name:Inter,system-ui,sans-serif]">
+      <SelectContent
+        position="popper"
+        side="bottom"
+        align="start"
+        className="max-h-[min(18rem,var(--radix-select-content-available-height))] font-[family-name:Inter,system-ui,sans-serif]"
+      >
         {options.map((o) => (
           <SelectItem key={o.value} value={o.value}>
             {o.label}
@@ -96,6 +102,142 @@ export function SelectBox({
         ))}
       </SelectContent>
     </Select>
+  )
+}
+
+/** Words typed in the search box must all appear in the label, in any order, ignoring case. */
+function matchesSearch(label: string, query: string): boolean {
+  const text = label.toLowerCase()
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((word) => text.includes(word))
+}
+
+/** A SelectBox for long lists: the list opens below the box with a search field on top. */
+export function SearchSelectBox({
+  id,
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  searchPlaceholder = 'Type to search',
+  disabled,
+}: {
+  id: string
+  value: string
+  onValueChange: (value: string) => void
+  options: Option[]
+  placeholder?: string
+  searchPlaceholder?: string
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [active, setActive] = useState(0)
+  const listRef = useRef<HTMLUListElement>(null)
+  const listId = useId()
+
+  const shown = options.filter((o) => matchesSearch(o.label, query))
+  const current = options.find((o) => o.value === value)
+  const activeIndex = Math.min(active, Math.max(shown.length - 1, 0))
+
+  function changeOpen(next: boolean) {
+    setOpen(next)
+    setQuery('')
+    setActive(0)
+  }
+
+  function choose(option: Option) {
+    onValueChange(option.value)
+    changeOpen(false)
+  }
+
+  function moveTo(index: number) {
+    setActive(index)
+    listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: 'nearest' })
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'ArrowDown' && shown.length > 0) {
+      event.preventDefault()
+      moveTo(Math.min(activeIndex + 1, shown.length - 1))
+    } else if (event.key === 'ArrowUp' && shown.length > 0) {
+      event.preventDefault()
+      moveTo(Math.max(activeIndex - 1, 0))
+    } else if (event.key === 'Enter' && shown[activeIndex]) {
+      event.preventDefault()
+      choose(shown[activeIndex])
+    }
+  }
+
+  return (
+    <Popover open={open} onOpenChange={changeOpen}>
+      <PopoverTrigger asChild disabled={disabled}>
+        <button
+          id={id}
+          type="button"
+          className={cn(
+            FIELD_BOX,
+            'flex items-center justify-between gap-2 border text-left outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50',
+          )}
+        >
+          <span className={cn('min-w-0 truncate', !current && 'text-[#b8bcca]')}>{current ? current.label : placeholder}</span>
+          <ChevronDown className="size-4 shrink-0 text-[#14213d]" aria-hidden />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="bottom"
+        align="start"
+        avoidCollisions={false}
+        className="flex w-(--radix-popover-trigger-width) min-w-[16rem] flex-col gap-1 p-1 font-[family-name:Inter,system-ui,sans-serif]"
+      >
+        <div className="flex items-center gap-2 border-b border-[#d8dce6] px-2.5 py-2">
+          <Search className="size-4 shrink-0 text-[#677287]" aria-hidden />
+          <input
+            autoFocus
+            value={query}
+            onChange={(event) => {
+              setQuery(event.currentTarget.value)
+              setActive(0)
+            }}
+            onKeyDown={onKeyDown}
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            role="combobox"
+            aria-expanded
+            aria-controls={listId}
+            aria-activedescendant={shown[activeIndex] ? `${listId}-${activeIndex}` : undefined}
+            className="min-w-0 flex-1 bg-transparent text-sm text-[#14213d] outline-none placeholder:text-[#b8bcca]"
+          />
+        </div>
+        {shown.length === 0 ? (
+          <p className="px-2.5 py-2 text-sm text-[#677287]">Nothing matches your search.</p>
+        ) : (
+          <ul ref={listRef} id={listId} role="listbox" className="m-0 max-h-[min(16rem,40vh)] list-none overflow-y-auto p-0">
+            {shown.map((o, index) => (
+              <li
+                key={o.value}
+                id={`${listId}-${index}`}
+                data-index={index}
+                role="option"
+                aria-selected={o.value === value}
+                onMouseMove={() => setActive(index)}
+                onClick={() => choose(o)}
+                className={cn(
+                  'flex cursor-default items-center justify-between gap-2 rounded-sm px-2.5 py-1.5 text-sm text-[#14213d] select-none',
+                  index === activeIndex && 'bg-accent',
+                )}
+              >
+                <span className="min-w-0 break-words">{o.label}</span>
+                {o.value === value && <Check className="size-4 shrink-0" aria-hidden />}
+              </li>
+            ))}
+          </ul>
+        )}
+      </PopoverContent>
+    </Popover>
   )
 }
 

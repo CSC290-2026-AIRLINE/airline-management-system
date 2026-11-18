@@ -14,7 +14,7 @@ import {
   colourLabel,
 } from '../constants'
 import { errorMessage } from '../hooks/useFoundBags'
-import { FormError, Pill, SelectBox } from './primitives'
+import { FormError, Pill, SearchSelectBox } from './primitives'
 
 /** "FB-0413 · Red backpack at ICN" */
 function heldBagLabel(bag: FoundBag): string {
@@ -95,12 +95,13 @@ export function CaseMatches({
             </label>
             <div className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
-                <SelectBox
+                <SearchSelectBox
                   id="case-link-bag"
                   value={chosen}
                   onValueChange={setBagId}
                   options={options}
                   placeholder={options.length > 0 ? 'Choose a held bag' : 'No held bags'}
+                  searchPlaceholder="Search by FB number, colour, type or airport"
                   disabled={options.length === 0 || busy}
                 />
               </div>
