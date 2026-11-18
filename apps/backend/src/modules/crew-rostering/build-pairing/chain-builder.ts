@@ -7,7 +7,8 @@
  *
  *  · Every chain starts at the base, in a random order of seeds.
  *  · After each flight the next one is picked at random from the flights that can follow it
- *    (leave where it landed, after the minimum connection, inside the pairing-length limit).
+ *    (leave where it landed, after the minimum connection, inside the pairing-length limit, on the
+ *    seed's aircraft model, because the same crew fly every leg and each holds one fleet type).
  *  · When one of those flights goes home, it is preferred seven times in ten, so most chains
  *    close at base and some do not. The ones that do not are stored as Invalid for Ops to repair,
  *    exactly as before.
@@ -17,6 +18,7 @@ export interface ChainFlight {
   dep_at: Date
   arr_at: Date
   route: { origin: string; destination: string }
+  aircraft: { aircraft_type: { model: string } }
 }
 
 /** How often a flight that returns to base wins over the other options. */
@@ -58,6 +60,7 @@ export function buildChains<F extends ChainFlight>(
         (flight) =>
           !used.has(flight.id) &&
           flight.route.origin === previous.route.destination &&
+          flight.aircraft.aircraft_type.model === seed.aircraft.aircraft_type.model &&
           flight.dep_at.getTime() >= previous.arr_at.getTime() + minConnectionMinutes * 60_000 &&
           withinSpan(seed, flight),
       )

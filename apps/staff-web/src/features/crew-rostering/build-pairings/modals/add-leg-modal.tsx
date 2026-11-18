@@ -67,8 +67,8 @@ export function AddLegModal({
     >
       {lastLeg ? (
         <p className="text-sm text-primary-text/60">
-          <span className="hidden sm:inline">Flights from Feature 2 that</span>
-          <span className="sm:hidden">Flights that</span> leave {lastLeg.destination} after {lastLeg.flightNumber} lands (
+          {lastLeg.aircraftType} <span className="hidden sm:inline">flights from Feature 2 that</span>
+          <span className="sm:hidden">flights that</span> leave {lastLeg.destination} after {lastLeg.flightNumber} lands (
           {formatTime(lastLeg.arrivalAt)}, <span className="hidden sm:inline">{formatDay(lastLeg.arrivalAt)}</span>
           <span className="sm:hidden">{shortDay(lastLeg.arrivalAt)}</span>).
         </p>
@@ -162,9 +162,10 @@ function emptyMessage(pairing: Pairing, lastLeg: FlightLeg | undefined, searchin
   if (searching) return 'No matching flight. Clear the search to see every flight that connects.'
   if (!lastLeg) return 'No scheduled flight connects from here.'
   const closing = lastLeg.destination !== pairing.base
+  const none = `No scheduled ${lastLeg.aircraftType} flight leaves ${lastLeg.destination} after ${lastLeg.flightNumber} lands at ${formatTime(lastLeg.arrivalAt)} on ${formatDay(lastLeg.arrivalAt)}`
   return closing
-    ? `No scheduled flight leaves ${lastLeg.destination} after ${lastLeg.flightNumber} lands at ${formatTime(lastLeg.arrivalAt)} on ${formatDay(lastLeg.arrivalAt)}, so ${pairing.code} cannot be brought back to ${pairing.base} from here. Delete it, or ask Flight Scheduling (Feature 2) for a flight out of ${lastLeg.destination}.`
-    : `No scheduled flight leaves ${lastLeg.destination} after ${lastLeg.flightNumber} lands at ${formatTime(lastLeg.arrivalAt)} on ${formatDay(lastLeg.arrivalAt)}.`
+    ? `${none}, so ${pairing.code} cannot be brought back to ${pairing.base} from here. Delete it, or ask Flight Scheduling (Feature 2) for a ${lastLeg.aircraftType} flight out of ${lastLeg.destination}.`
+    : `${none}.`
 }
 
 function MatchingFlightsList({
@@ -240,6 +241,7 @@ function toLeg(candidate: AddLegCandidate): FlightLeg {
     destination: candidate.flight.destination,
     departureAt: candidate.flight.departureAt,
     arrivalAt: candidate.flight.arrivalAt,
+    aircraftType: candidate.flight.aircraftType,
     addedManually: true,
   }
 }

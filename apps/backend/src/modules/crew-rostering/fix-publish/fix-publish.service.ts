@@ -736,7 +736,7 @@ export class FixPublishService {
       facts.push({ label: 'Police on this leg', value: `${count('police')} of ${pairing.limits.minPoliceInternational}`, danger: open })
     }
     if (row.rule === 'NO_LEGAL_CREW' && row.role) {
-      const need = row.role === 'cabin_crew' ? (pairing?.limits.cabinCrewPerLeg ?? 4) : 1
+      const need = row.role === 'cabin_crew' && leg ? leg.cabinCrewRequired : 1
       facts.push({ label: ROLE_LABEL[row.role as SeatRole], value: `${count(row.role as SeatRole)} of ${need}`, danger: open })
     }
     if (row.rule === 'NO_LOCAL_CREW' && leg) {
@@ -746,7 +746,7 @@ export class FixPublishService {
         danger: open,
       })
     }
-    const requiredAction = this.requiredAction(row, plan, subject, pairing, this.seatsToFill(plan, world))
+    const requiredAction = this.requiredAction(row, plan, subject, leg, this.seatsToFill(plan, world))
     if (open) facts.push({ label: 'Needed', value: requiredAction, danger: true })
 
     return {
@@ -799,13 +799,7 @@ export class FixPublishService {
     }
   }
 
-  private requiredAction(
-    row: BreakDbRow,
-    plan: Plan,
-    subject: CrewDbRow | undefined,
-    pairing: RunPairing | undefined,
-    seats: number,
-  ): string {
+  private requiredAction(row: BreakDbRow, plan: Plan, subject: CrewDbRow | undefined, leg: Leg | undefined, seats: number): string {
     switch (row.rule) {
       case 'POLICE_MIN':
       case 'POLICE_NO_SEAT':
@@ -816,7 +810,7 @@ export class FixPublishService {
           : 'Set local languages in Setup rules'
       case 'NO_LEGAL_CREW': {
         const role = (row.role as SeatRole | null) ?? 'captain'
-        return `Add ${seats} ${ROLE_LABEL[role].toLowerCase()}${role === 'cabin_crew' ? ` (${pairing?.limits.cabinCrewPerLeg ?? 4} per leg)` : ''}`
+        return `Add ${seats} ${ROLE_LABEL[role].toLowerCase()}${role === 'cabin_crew' && leg ? ` (${leg.cabinCrewRequired} on this leg)` : ''}`
       }
       case 'DUTY_LIMIT':
         return 'Change the pairing in Build pairings'
@@ -865,7 +859,7 @@ export class FixPublishService {
       }
       const cabin = world.assignments.filter((item) => item.legId === leg.id && item.role === 'cabin_crew').length
       return {
-        mode: cabin < pairing.limits.cabinCrewPerLeg ? 'add' : 'replace-non-speaker',
+        mode: cabin < leg.cabinCrewRequired ? 'add' : 'replace-non-speaker',
         role: 'cabin_crew',
         scope: [leg],
         languages: [...leg.localLanguages],
@@ -922,7 +916,7 @@ export class FixPublishService {
     if (plan.mode !== 'add' || plan.role === null || plan.languages.length > 0 || !leg) return 1
     const limits = world.pairings.find((pairing) => pairing.id === leg.pairingId)?.limits
     if (!limits) return 1
-    const need = plan.role === 'cabin_crew' ? limits.cabinCrewPerLeg : plan.role === 'police' ? limits.minPoliceInternational : 1
+    const need = plan.role === 'cabin_crew' ? leg.cabinCrewRequired : plan.role === 'police' ? limits.minPoliceInternational : 1
     const have = world.assignments.filter((item) => item.legId === leg.id && item.role === plan.role).length
     return Math.max(1, need - have)
   }

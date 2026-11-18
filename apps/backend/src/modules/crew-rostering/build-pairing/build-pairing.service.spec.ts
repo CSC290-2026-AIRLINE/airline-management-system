@@ -27,6 +27,7 @@ function flight(id: string, origin: string, destination: string, dep: number, ar
     service_date: new Date(Date.UTC(2026, 8, 15 + Math.floor(dep / 24))),
     status: 'scheduled',
     route: { origin, destination },
+    aircraft: { aircraft_type: { model: 'A320' } },
     pairing_leg: null,
     ...extra,
   }
@@ -131,6 +132,16 @@ describe('BuildPairingService.commitPairings', () => {
     expect(tx.pairing.create).toHaveBeenCalledTimes(1)
   })
 
+  it('leaves out a draft that mixes aircraft types, which nobody could crew', async () => {
+    const otherType = flight('2', 'NRT', 'BKK', 12.5, 16.5, { aircraft: { aircraft_type: { model: 'ATR 72-600' } } })
+    const { service, tx } = setup({ flights: [out, otherType] })
+
+    const result = await service.commitPairings(params, [{ ref: 'P-108', legs: [leg('1'), leg('2')] }])
+
+    expect(result.skippedInvalid).toEqual(['P-108'])
+    expect(tx.pairing.create).not.toHaveBeenCalled()
+  })
+
   it('skips a draft with a flight that is already in another pairing, and a flight claimed twice in one request', async () => {
     const taken = flight('1', 'BKK', 'NRT', 5.5, 11.5, { pairing_leg: { pairing_id: 'someone-else' } })
     const first = setup({ flights: [taken, back] })
@@ -198,7 +209,7 @@ function setupEdit() {
       findMany: jest.fn().mockResolvedValue([{ id: row.id, roster_run_pairing: { pairing_id: row.id } }]),
       deleteMany: jest.fn(),
     },
-    flight: { findMany: jest.fn().mockResolvedValue([{ id: '1', flight_number: 'FD1', pairing_leg: { pairing_id: 'pairing-1' } }]) },
+    flight: { findMany: jest.fn().mockResolvedValue([flight('1', 'BKK', 'NRT', 1, 7, { pairing_leg: { pairing_id: 'pairing-1' } })]) },
     $transaction: jest.fn((run: (client: typeof tx) => Promise<unknown>) => run(tx)),
   }
   const audit = fakeAudit()
@@ -216,6 +227,19 @@ describe('BuildPairingService.saveLegs on a committed pairing', () => {
     expect(tx.pairing_leg_assignment.deleteMany).toHaveBeenCalledWith({ where: { pairing_leg_id: { in: ['leg-2'] } } })
     expect(tx.pairing_leg.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['leg-2'] } } })
     expect(result.withdrawnFromRun).toBe(false)
+  })
+
+  it('refuses flights on two aircraft types and changes nothing', async () => {
+    const { service, tx, db } = setupEdit()
+    db.flight.findMany.mockResolvedValue([
+      flight('1', 'BKK', 'NRT', 1, 7, { pairing_leg: { pairing_id: 'pairing-1' } }),
+      flight('3', 'NRT', 'BKK', 9, 15, { aircraft: { aircraft_type: { model: 'ATR 72-600' } } }),
+    ])
+
+    await expect(service.saveLegs('pairing-1', [leg('1'), leg('3')])).rejects.toBeInstanceOf(BadRequestException)
+
+    expect(tx.pairing_leg.createMany).not.toHaveBeenCalled()
+    expect(tx.pairing_leg.deleteMany).not.toHaveBeenCalled()
   })
 
   it('records which flights were added and taken off, in the transaction that changes them', async () => {

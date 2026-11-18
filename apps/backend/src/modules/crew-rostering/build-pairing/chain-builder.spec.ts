@@ -3,8 +3,8 @@ import { buildChains, shuffle, type ChainFlight } from './chain-builder'
 const HOUR = 3_600_000
 const at = (hour: number) => new Date(Date.UTC(2026, 8, 15) + hour * HOUR)
 
-function flight(id: string, origin: string, destination: string, dep: number, arr: number): ChainFlight {
-  return { id, dep_at: at(dep), arr_at: at(arr), route: { origin, destination } }
+function flight(id: string, origin: string, destination: string, dep: number, arr: number, model = 'A320'): ChainFlight {
+  return { id, dep_at: at(dep), arr_at: at(arr), route: { origin, destination }, aircraft: { aircraft_type: { model } } }
 }
 
 /** A fixed sequence of "random" numbers, cycling, so a test chooses exactly which option wins. */
@@ -43,6 +43,12 @@ describe('buildChains', () => {
     const tight = flight('tight', 'NRT', 'BKK', 6.5, 12)
     expect(buildChains([outbound, tight], 'BKK', 60, always, sequence(0))[0].map((item) => item.id)).toEqual(['out'])
     expect(buildChains([outbound, home], 'BKK', 60, () => false, sequence(0))[0].map((item) => item.id)).toEqual(['out'])
+  })
+
+  it('only follows a flight with a flight on the same aircraft model', () => {
+    const otherType = flight('atr', 'NRT', 'BKK', 8, 14, 'ATR 72-600')
+    expect(buildChains([outbound, otherType], 'BKK', 60, always, sequence(0))[0].map((item) => item.id)).toEqual(['out'])
+    expect(buildChains([outbound, otherType, home], 'BKK', 60, always, sequence(0))[0].map((item) => item.id)).toEqual(['out', 'home'])
   })
 
   it('uses every flight once and only starts chains at base', () => {

@@ -30,7 +30,13 @@ import { isRestBetween, localDay, shortName } from '../crew-format'
  */
 
 export type PairingErrorCode =
-  'PAIRING_EMPTY' | 'SEQUENCE_BROKEN' | 'PAIRING_NOT_CLOSED' | 'FLIGHTS_PER_DAY_EXCEEDED' | 'DUTY_DAY_EXCEEDED' | 'PAIRING_TOO_LONG'
+  | 'PAIRING_EMPTY'
+  | 'SEQUENCE_BROKEN'
+  | 'PAIRING_NOT_CLOSED'
+  | 'FLIGHTS_PER_DAY_EXCEEDED'
+  | 'DUTY_DAY_EXCEEDED'
+  | 'PAIRING_TOO_LONG'
+  | 'MIXED_AIRCRAFT'
 
 export type CheckStatus = 'passed' | 'failed'
 
@@ -64,6 +70,8 @@ export interface ScheduledFlightRow {
   departureAt: string
   /** ISO-8601 UTC instant, the flight's current arrival time. */
   arrivalAt: string
+  /** Feature 9's `aircraft_type.model`, which crew fleets are held against. */
+  aircraftType: string
   /** `paired` when the flight is already a leg of a pairing (a flight is in one pairing at most). */
   status: 'available' | 'paired'
   pairingId: string | null
@@ -76,6 +84,8 @@ export interface FlightLegRow {
   destination: string
   departureAt: string
   arrivalAt: string
+  /** Feature 9's `aircraft_type.model`. */
+  aircraftType: string
   /** `pairing_leg.added_by = 'ops'`. */
   addedManually: boolean
 }
@@ -218,6 +228,7 @@ const FLIGHT_SELECT = {
   dep_at: true,
   arr_at: true,
   route: { select: { origin: true, destination: true } },
+  aircraft: { select: { aircraft_type: { select: { model: true } } } },
 } satisfies Prisma.flightSelect
 
 const PAIRING_SELECT = {
@@ -403,6 +414,7 @@ export class BuildPairingService {
    * in a published run is refused; one in a draft run stays in that run, and only the legs
    * taken off lose their assignments and rule breaks (the foreign keys require it). Seats on
    * the legs that stay are kept, and the next auto-assign and check fill and re-judge the rest.
+   * Flights on two aircraft models are refused, because nobody could be crewed on the result.
    */
   async saveLegs(pairingId: string, legs: SaveLegInput[], actorUserId?: string): Promise<SaveLegsResult> {
     const flightIds = [...new Set(legs.map((leg) => leg.flightId))]
@@ -414,11 +426,20 @@ export class BuildPairingService {
 
     const flights = await this.db.flight.findMany({
       where: { id: { in: flightIds } },
-      select: { id: true, flight_number: true, pairing_leg: { select: { pairing_id: true } } },
+      select: {
+        id: true,
+        flight_number: true,
+        pairing_leg: { select: { pairing_id: true } },
+        aircraft: { select: { aircraft_type: { select: { model: true } } } },
+      },
     })
     if (flights.length !== flightIds.length) throw new NotFoundException('One or more flights were not found')
     const taken = flights.find((flight) => flight.pairing_leg !== null && flight.pairing_leg.pairing_id !== pairingId)
     if (taken) throw new ConflictException(`${taken.flight_number} is already in another pairing`)
+    const models = [...new Set(flights.map((flight) => flight.aircraft.aircraft_type.model))]
+    if (models.length > 1) {
+      throw new BadRequestException(`A pairing must use one aircraft type, but these flights use ${models.join(' and ')}.`)
+    }
 
     const keep = new Set(flightIds)
     const current = new Set(row.pairing_leg.map((leg) => leg.flight.id))
@@ -738,6 +759,14 @@ export class BuildPairingService {
     const span = this.spanDays(new Date(first.departureAt), new Date(last.arrivalAt), timeZone)
     add('PAIRING_TOO_LONG', span <= limits.maxPairingDays, `Pairing runs ${span} days, over the ${limits.maxPairingDays} day limit.`)
 
+    // The same crew fly every leg and each holds one fleet type, so nobody could be crewed on a mix.
+    const otherType = legs.find((leg) => leg.aircraftType !== first.aircraftType)
+    add(
+      'MIXED_AIRCRAFT',
+      otherType === undefined,
+      otherType ? `${otherType.flightNumber} uses ${otherType.aircraftType}, but ${first.flightNumber} uses ${first.aircraftType}.` : '',
+    )
+
     return { status: checks.some((check) => check.status === 'failed') ? 'failed' : 'passed', checks }
   }
 
@@ -903,6 +932,7 @@ export class BuildPairingService {
       destination: flight.route.destination,
       departureAt: flight.dep_at.toISOString(),
       arrivalAt: flight.arr_at.toISOString(),
+      aircraftType: flight.aircraft.aircraft_type.model,
     }
   }
 

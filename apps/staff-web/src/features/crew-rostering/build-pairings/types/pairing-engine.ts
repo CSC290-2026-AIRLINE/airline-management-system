@@ -31,9 +31,13 @@ function byDeparture(a: ScheduledFlight, b: ScheduledFlight): number {
   return a.departureAt.localeCompare(b.departureAt)
 }
 
-/** True when `candidate` leaves `from` strictly after the crew can be ready. */
+/** True when `candidate` leaves `from` on the same aircraft model, after the crew can be ready. */
 function canFollow(candidate: ScheduledFlight, from: FlightLeg): boolean {
-  return candidate.origin === from.destination && minutesBetween(from.arrivalAt, candidate.departureAt) >= MIN_CONNECTION_MINUTES
+  return (
+    candidate.origin === from.destination &&
+    candidate.aircraftType === from.aircraftType &&
+    minutesBetween(from.arrivalAt, candidate.departureAt) >= MIN_CONNECTION_MINUTES
+  )
 }
 
 /**
@@ -151,6 +155,8 @@ export function validatePairing(pairing: Pairing): PairingEvaluation {
   const withinDuty = maxDayDuty <= limits.maxDutyHours * 60
   const withinFlights = maxFlightsPerDay <= limits.maxFlightsPerDuty
   const withinLength = dayCount <= limits.maxPairingDays
+  const firstLeg = legs[0]
+  const otherType = legs.find((leg) => leg.aircraftType !== firstLeg.aircraftType)
 
   const checks: LegalityCheck[] = [
     check('PAIRING_NOT_CLOSED', 'Starts and ends at base', closed, formatRoute(route), notClosed),
@@ -185,6 +191,15 @@ export function validatePairing(pairing: Pairing): PairingEvaluation {
       withinLength,
       `${dayCount} ${dayCount === 1 ? 'day' : 'days'}`,
       withinLength ? undefined : `Pairing runs ${dayCount} days, over the ${limits.maxPairingDays} day limit.`,
+    ),
+    check(
+      'MIXED_AIRCRAFT',
+      'One aircraft type on every flight',
+      otherType === undefined,
+      otherType ? 'Mixed' : (firstLeg?.aircraftType ?? '—'),
+      otherType
+        ? `${otherType.flightNumber} uses ${otherType.aircraftType}, but ${firstLeg.flightNumber} uses ${firstLeg.aircraftType}. The same crew fly every leg, so remove the flights on the other type.`
+        : undefined,
     ),
   ]
 
@@ -237,8 +252,8 @@ export function nightStopLabel(layover: Layover, nextLeg: FlightLeg): string {
 }
 
 /**
- * Candidate flights for the Add Leg modal: everything leaving the pairing's last
- * airport after the current end, tagged with whether it would close the pairing.
+ * Candidate flights for the Add Leg modal: everything on the same aircraft model leaving the
+ * pairing's last airport after the current end, tagged with whether it would close the pairing.
  * A flight already in another pairing is left out, because a flight can only be
  * in one pairing.
  */
@@ -279,6 +294,7 @@ function toLeg(flight: ScheduledFlight): FlightLeg {
     destination: flight.destination,
     departureAt: flight.departureAt,
     arrivalAt: flight.arrivalAt,
+    aircraftType: flight.aircraftType,
     addedManually: true,
   }
 }
@@ -291,7 +307,7 @@ function when(flight: { departureAt: string; arrivalAt: string }): string {
   return `${formatDay(flight.departureAt)} · ${formatTime(flight.departureAt)}–${formatTime(flight.arrivalAt)}`
 }
 
-/** Flights that could go in front of the pairing: they land where it starts, with time for the crew to connect. */
+/** Flights that could go in front of the pairing: same aircraft model, landing where it starts, with time for the crew to connect. */
 function findPrependCandidates(flights: readonly ScheduledFlight[], pairing: Pairing): ScheduledFlight[] {
   const firstLeg = pairing.legs[0]
   if (!firstLeg) return []
@@ -300,7 +316,9 @@ function findPrependCandidates(flights: readonly ScheduledFlight[], pairing: Pai
     .filter((flight) => !inThisPairing.has(flight.id) && (flight.pairingId == null || flight.pairingId === pairing.id))
     .filter(
       (flight) =>
-        flight.destination === firstLeg.origin && minutesBetween(flight.arrivalAt, firstLeg.departureAt) >= MIN_CONNECTION_MINUTES,
+        flight.destination === firstLeg.origin &&
+        flight.aircraftType === firstLeg.aircraftType &&
+        minutesBetween(flight.arrivalAt, firstLeg.departureAt) >= MIN_CONNECTION_MINUTES,
     )
     .sort(byDeparture)
 }
@@ -418,11 +436,11 @@ export function explainNoFix(pairing: Pairing, flights: readonly ScheduledFlight
     case 'PAIRING_NOT_CLOSED': {
       if (!first || !last) return error.detail ?? ''
       if (first.origin !== pairing.base) {
-        return `It starts in ${first.origin}, and no flight in this date range lands there in time to start from ${pairing.base}. Widen the dates, delete the pairing, or ask Flight Scheduling (Feature 2) for a flight into ${first.origin} before ${formatTime(first.departureAt)} on ${formatDay(first.departureAt)}.`
+        return `It starts in ${first.origin}, and no ${first.aircraftType} flight in this date range lands there in time to start from ${pairing.base}. Widen the dates, delete the pairing, or ask Flight Scheduling (Feature 2) for a flight into ${first.origin} before ${formatTime(first.departureAt)} on ${formatDay(first.departureAt)}.`
       }
       const onward = findAddLegCandidates(flights, pairing, pairing.base)
       return onward.length === 0
-        ? `No scheduled flight in this date range leaves ${last.destination} after ${last.flightNumber} lands at ${formatTime(last.arrivalAt)} on ${formatDay(last.arrivalAt)}, so it cannot get back to ${pairing.base}. Widen the dates (a flight the next day may be outside them), delete the pairing, or ask Flight Scheduling (Feature 2) for a flight out of ${last.destination}.`
+        ? `No scheduled ${last.aircraftType} flight in this date range leaves ${last.destination} after ${last.flightNumber} lands at ${formatTime(last.arrivalAt)} on ${formatDay(last.arrivalAt)}, so it cannot get back to ${pairing.base}. Widen the dates (a flight the next day may be outside them), delete the pairing, or ask Flight Scheduling (Feature 2) for a flight out of ${last.destination}.`
         : `${onward.length} flight${onward.length === 1 ? ' leaves' : 's leave'} ${last.destination} later, but none of them gets back to ${pairing.base} within the duty, flight and length limits. Add one and then another in Edit legs, or delete this pairing.`
     }
     case 'SEQUENCE_BROKEN':

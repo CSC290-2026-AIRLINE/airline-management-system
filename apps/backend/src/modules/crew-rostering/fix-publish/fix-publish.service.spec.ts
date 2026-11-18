@@ -350,11 +350,35 @@ describe('FixPublishService.seatsToFill', () => {
     pairings: [{ id: 'p-1', limits: { cabinCrewPerLeg: 4, minPoliceInternational: 2 } }],
     assignments: assigned.map((item) => ({ legId: 'leg-1', role: item.role })),
   })
-  const plan = (role: string, languages: string[] = []) => ({ mode: 'add', role, scope: [{ id: 'leg-1', pairingId: 'p-1' }], languages })
+  const plan = (role: string, languages: string[] = [], cabinCrewRequired = 4) => ({
+    mode: 'add',
+    role,
+    scope: [{ id: 'leg-1', pairingId: 'p-1', cabinCrewRequired }],
+    languages,
+  })
 
   it('counts the cabin crew a leg is short, so three can be added in one go', () => {
     expect(seatsToFill(plan('cabin_crew'), world([{ role: 'cabin_crew' }]))).toBe(3)
     expect(seatsToFill(plan('cabin_crew'), world([]))).toBe(4)
+  })
+
+  it("goes by the leg's own aircraft, not the biggest one in the pairing", () => {
+    expect(seatsToFill(plan('cabin_crew', [], 2), world([]))).toBe(2)
+    expect(seatsToFill(plan('cabin_crew', [], 2), world([{ role: 'cabin_crew' }]))).toBe(1)
+  })
+
+  it('swaps a speaker in when the leg is full, even if a bigger leg in the pairing needs more', () => {
+    const leg = { id: 'leg-1', pairingId: 'p-1', cabinCrewRequired: 2, localLanguages: ['ja'] }
+    const planFor = (service as unknown as { planFor: (row: unknown, world: unknown) => { mode: string } }).planFor.bind(service)
+    const result = planFor(
+      { rule: 'NO_LOCAL_CREW', pairing_leg_id: 'leg-1', pairing_id: 'p-1' },
+      {
+        ...world([{ role: 'cabin_crew' }, { role: 'cabin_crew' }]),
+        legs: new Map([['leg-1', leg]]),
+        pairingById: new Map([['p-1', { id: 'p-1', limits: { cabinCrewPerLeg: 4 } }]]),
+      },
+    )
+    expect(result.mode).toBe('replace-non-speaker')
   })
 
   it('counts the police a leg is short', () => {

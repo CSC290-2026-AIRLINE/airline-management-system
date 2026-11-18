@@ -30,6 +30,8 @@ export interface ScheduledFlight {
   departureAt: IsoInstant
   /** UTC instant of wheels-down. */
   arrivalAt: IsoInstant
+  /** Feature 9's aircraft model, e.g. `A320`. Every flight in a pairing must share one. */
+  aircraftType: string
   /**
    * Whether the flight is still free to be put into a pairing. The backend sends
    * `available` or `paired`; `manually_added` is only used by the older mock set.
@@ -49,6 +51,7 @@ export interface FlightLeg {
   destination: AirportCode
   departureAt: IsoInstant
   arrivalAt: IsoInstant
+  aircraftType: string
   /**
    * True when an operator added this leg by hand in the Edit Legs modal.
    * Drives the green `Added` tag and stops the leg being re-derived on regenerate.
@@ -64,6 +67,7 @@ export type PairingErrorCode =
   | 'PAIRING_TOO_LONG'
   | 'PAIRING_EMPTY'
   | 'SEQUENCE_BROKEN'
+  | 'MIXED_AIRCRAFT'
   | 'PAIRING_IN_USE'
 
 export type CheckStatus = 'passed' | 'failed'
