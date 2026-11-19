@@ -38,13 +38,11 @@ export function useComplaintsApi() {
     setStatus: (id: string, status: CaseStatus, resolutionNote?: string) =>
       request<Complaint>(`/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, resolutionNote }) }),
     addNote: (id: string, note: string) => request<Complaint>(`/${id}/notes`, { method: 'POST', body: JSON.stringify({ note }) }),
-    sendCompensation: (id: string, comp: { type: string; amount: number; reason: string }) =>
+    sendCompensation: (id: string, comp: { type: 'voucher' | 'refund'; amount: number; reason: string }) =>
       request<Complaint>(`/${id}/compensation`, { method: 'POST', body: JSON.stringify(comp) }),
     getCharts: () => request<StaffChartsResponse>('/charts'),
     getDeliveryLog: () => request<StaffDeliveryLogResponse>('/delivery-log'),
     retryNotification: (id: string) => request<{ id: string; status: string }>(`/delivery-log/${id}/retry`, { method: 'POST' }),
-    setMockFailure: (fail: boolean) =>
-      request<{ mockFailure: boolean }>('/delivery-log/mock-failure', { method: 'POST', body: JSON.stringify({ fail }) }),
     getTemplates: () => request<StaffTemplateItemView[]>('/templates'),
     updateTemplate: (code: string, payload: UpdateTemplatePayload) =>
       request<StaffTemplateItemView[]>(`/templates/${code}`, {

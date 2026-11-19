@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import type { Prisma } from '@backend/db/generated/prisma/client'
 import { SimulationClock } from '../admin-console/simulation-clock'
 import { FlightEventBus, type FlightStatusEvent } from '../flight-scheduling/operations/flight-event-bus'
 import {
@@ -97,7 +98,9 @@ export class NotificationService implements OnModuleInit {
       for (const bp of b.booking_passenger) {
         const p = bp.passenger
         const name = `${p.first_name} ${p.last_name}`.trim()
-        const customerId = p.customer?.id ?? (p.id === b.customer?.id ? b.customer_id : (b.customer_id ?? null))
+        // The traveller's own account, if they have one. The booker's account is not theirs, so a co-traveller without an
+        // account gets no push and the default preferences (email to the booking contact).
+        const customerId = p.customer?.id ?? null
         const phone = p.customer?.phone ?? b.contact_phone ?? null
         const email = b.contact_email ?? null
 
@@ -496,8 +499,9 @@ export class NotificationService implements OnModuleInit {
    * - A row that failed because its template was missing (subject & body NULL):
    *   Once template exists, fill them in on retry in same update that marks row sent.
    */
-  async retryFailedNotification(notificationId: string) {
-    const notif = await this.db.notification.findUnique({
+  /** Retries a failed message. Pass `db` to run it inside the caller's transaction, so its audit entry commits with it. */
+  async retryFailedNotification(notificationId: string, db: Prisma.TransactionClient = this.db) {
+    const notif = await db.notification.findUnique({
       where: { id: notificationId },
       include: { inbound_event: true },
     })
@@ -506,9 +510,9 @@ export class NotificationService implements OnModuleInit {
 
     const now = this.clock.now()
 
-    // Case 1: Template was missing (subject and body are null)
-    if (notif.subject === null && notif.body === null) {
-      const tpl = await this.db.notification_template.findUnique({
+    // Case 1: Nothing was rendered (no active template), so the body is null. An SMS has no subject either.
+    if (notif.body === null) {
+      const tpl = await db.notification_template.findUnique({
         where: {
           type_code_channel: {
             type_code: notif.type_code,
@@ -518,7 +522,7 @@ export class NotificationService implements OnModuleInit {
       })
 
       if (!tpl || !tpl.is_active) {
-        return this.db.notification.update({
+        return db.notification.update({
           where: { id: notificationId },
           data: {
             attempts: { increment: 1 },
@@ -532,7 +536,7 @@ export class NotificationService implements OnModuleInit {
       const body = renderTemplate(tpl.body_template, payload) ?? ''
 
       if (this.mockFailure) {
-        return this.db.notification.update({
+        return db.notification.update({
           where: { id: notificationId },
           data: {
             attempts: { increment: 1 },
@@ -541,10 +545,11 @@ export class NotificationService implements OnModuleInit {
         })
       }
 
-      return this.db.notification.update({
+      return db.notification.update({
         where: { id: notificationId },
         data: {
-          subject,
+          // A subject that was already saved cannot change (notification_content_fixed trigger), so keep it.
+          subject: notif.subject ?? subject,
           body,
           status: 'sent',
           sent_at: now,
@@ -556,7 +561,7 @@ export class NotificationService implements OnModuleInit {
 
     // Case 2: Body exists, failed due to provider error
     if (this.mockFailure) {
-      return this.db.notification.update({
+      return db.notification.update({
         where: { id: notificationId },
         data: {
           attempts: { increment: 1 },
@@ -565,7 +570,7 @@ export class NotificationService implements OnModuleInit {
       })
     }
 
-    return this.db.notification.update({
+    return db.notification.update({
       where: { id: notificationId },
       data: {
         status: 'sent',

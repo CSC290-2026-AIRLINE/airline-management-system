@@ -28,13 +28,13 @@ function formatShortTimestamp(isoStr: string): string {
 
 function formatDayMonthLabel(dateStr: string | null, fallbackIso: string): string {
   const d = new Date(dateStr ? `${dateStr}T00:00:00` : fallbackIso)
-  if (Number.isNaN(d.getTime())) return dateStr ?? 'Mon 12 Oct'
+  if (Number.isNaN(d.getTime())) return dateStr ?? '—'
   return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`
 }
 
 function formatShortMonthDay(dateStr: string | null, fallbackIso: string): string {
   const d = new Date(dateStr ? `${dateStr}T00:00:00` : fallbackIso)
-  if (Number.isNaN(d.getTime())) return dateStr ?? '12 Oct'
+  if (Number.isNaN(d.getTime())) return dateStr ?? '—'
   return `${d.getDate()} ${MONTHS[d.getMonth()]}`
 }
 
@@ -119,7 +119,8 @@ function buildTimeline(complaint: Complaint, isGuest: boolean, activeBookingRef:
 
   for (const ev of complaint.events ?? []) {
     if (ev.type === 'created' || ev.type === 'routed_to_supervisor') continue
-    const evTime = ev.timeLabel || formatShortTimestamp(ev.occurredAt)
+    // Formatted here in the browser's time zone, like the opened time above; the API's timeLabel is in UTC.
+    const evTime = formatShortTimestamp(ev.occurredAt)
     if (ev.type === 'assigned') {
       items.push({
         id: ev.id,

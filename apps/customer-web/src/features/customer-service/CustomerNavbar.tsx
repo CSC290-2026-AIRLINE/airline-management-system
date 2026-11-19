@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useUser } from '@clerk/clerk-react'
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import flythonLogo from '../../assets/flython-logo.png'
 
@@ -11,6 +12,7 @@ interface CustomerNavbarProps {
 export function CustomerNavbar({ isGuest = false, onSignInClick }: CustomerNavbarProps = {}) {
   const navigate = useNavigate()
   const { user, logout } = useAppAuth()
+  const { user: clerkUser } = useUser()
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
@@ -155,10 +157,8 @@ export function CustomerNavbar({ isGuest = false, onSignInClick }: CustomerNavba
                 zIndex: 52,
               }}
             >
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#0A1424' }}>Somchai Wongsakul</div>
-              <div style={{ fontSize: '12px', color: '#677287', marginTop: '2px', marginBottom: '12px' }}>
-                {user?.email ?? 'somchai.w@example.com'}
-              </div>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#0A1424' }}>{clerkUser?.fullName || 'Your account'}</div>
+              <div style={{ fontSize: '12px', color: '#677287', marginTop: '2px', marginBottom: '12px' }}>{user?.email}</div>
 
               <div
                 style={{

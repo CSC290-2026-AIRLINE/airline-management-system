@@ -167,7 +167,8 @@ function mapEventView(
     title = 'Routed to Customer Service supervisor'
   } else if (e.event_type === 'assigned') {
     actorLabel = staffFullName ?? 'Supervisor'
-    title = `Assigned to ${e.to_value || staffFullName || 'agent'}`
+    // The note names the new owner ("Assigned to <name>"); to_value is only the status, so it is not used here.
+    title = audience === 'staff' ? (e.note ?? 'Assigned') : 'Assigned to a Customer Service agent'
   } else if (e.event_type === 'status_changed') {
     actorLabel = staffFullName ?? 'Staff'
     title = e.to_value === 'resolved' ? `Resolved (${e.note || 'Not a duplicate'})` : `Status changed to ${e.to_value}`
@@ -192,7 +193,8 @@ function mapEventView(
     actorName: audience === 'staff' ? staffFullName : null,
     fromValue: e.from_value,
     toValue: e.to_value,
-    note: e.note,
+    // The assignment note names the staff member, which the customer does not see.
+    note: audience === 'customer' && e.event_type === 'assigned' ? null : e.note,
     isInternal: e.is_internal,
     occurredAt: e.occurred_at.toISOString(),
     timeLabel,
@@ -282,5 +284,10 @@ export function toComplaintDetail(row: CaseRow, audience: 'staff' | 'customer'):
     .filter((e) => audience === 'staff' || !e.is_internal)
     .map((e) => mapEventView(e, audience, row.contact_email, isGuest))
   const view = toComplaintView(row)
-  return audience === 'staff' ? { ...view, events } : { ...view, ownerName: null, events }
+  return audience === 'staff' ? { ...view, events } : { ...withoutStaff(view), events }
+}
+
+/** The customer's copy of a case: no staff name or staff id. */
+export function withoutStaff(view: ComplaintView): ComplaintView {
+  return { ...view, ownerName: null, ownerStaffId: undefined }
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useUser } from '@clerk/clerk-react'
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import { errorMessage, useComplaintsApi } from './api'
 import { alertStyle, btnPrimary, btnSecondary, inputStyle } from './styles'
@@ -75,6 +76,8 @@ function FoodIcon({ selected }: { selected: boolean }) {
 export function MakeComplaintPage() {
   const navigate = useNavigate()
   const { user } = useAppAuth()
+  const { user: clerkUser } = useUser()
+  const displayName = clerkUser?.fullName || user?.email || 'your account'
   const api = useComplaintsApi()
 
   // Account mode: 'account' = signed in passenger, 'guest' = passenger without an account
@@ -116,16 +119,12 @@ export function MakeComplaintPage() {
     setType(newType)
     if (newType === 'food') {
       setIssue('missing')
-      setDescription(
-        'Malee pre-ordered a vegetarian meal (VGML). The crew said it was not loaded, so she only had bread and fruit on the 6-hour flight.',
-      )
     } else if (newType === 'flight') {
       setIssue('delay')
-      setDescription('We waited 3 hours at the gate and nobody told us why.')
     } else {
       setIssue('')
-      setDescription('Staff member at gate C4 was dismissive and unhelpful when answering boarding group questions.')
     }
+    setDescription('')
   }
 
   function validate(): boolean {
@@ -322,7 +321,7 @@ export function MakeComplaintPage() {
                   textAlign: 'left',
                 }}
               >
-                Signed in as <strong>Somchai Wongsakul</strong>. Your trips are filled in for you.
+                Signed in as <strong>{displayName}</strong>. Your trips are filled in for you.
               </div>
             ) : (
               <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>

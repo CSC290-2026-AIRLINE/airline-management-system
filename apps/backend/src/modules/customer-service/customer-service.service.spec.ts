@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { validate } from 'class-validator'
 import type { DbService } from '@backend/db/db.service'
@@ -6,6 +6,7 @@ import type { SimulationClock } from '../admin-console/simulation-clock'
 import type { AuditService } from '../admin-console/audit/audit.service'
 import { CustomerServiceService } from './customer-service.service'
 import { CreateComplaintDto } from './dto/create-complaint.dto'
+import type { NotificationService } from './notification.service'
 
 // The real DbService loads @nestjs/config (ESM only), which Jest cannot load. The tests pass a mock `db` instead.
 jest.mock('@backend/db/db.service', () => ({ DbService: class DbService {} }))
@@ -512,6 +513,72 @@ describe('CustomerServiceService', () => {
       await expect(update).rejects.toBeInstanceOf(BadRequestException)
       await expect(update).rejects.toMatchObject({ response: { message: 'INVALID_PLACEHOLDER', placeholders: ['first_name'] } })
       expect(tx.notification_template.update).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('customer view of an assigned case', () => {
+    it('leaves out the owner’s name and staff id, including the assignment note', async () => {
+      const assigned = {
+        id: 'e3',
+        event_type: 'assigned',
+        actor_type: 'staff',
+        staff: { first_name: 'Sam', last_name: 'Ng' },
+        from_value: 'with_supervisor',
+        to_value: 'assigned',
+        note: 'Assigned to Kenji Sato',
+        is_internal: false,
+        occurred_at: NOW,
+      }
+      const row = caseRow({ staff: { first_name: 'Kenji', last_name: 'Sato' }, owner_staff_id: STAFF_ID, case_event: [assigned] })
+      db.complaint_case.findFirst.mockResolvedValue(row)
+      db.complaint_case.findUnique.mockResolvedValue(row)
+
+      const customerView = await service.getForCustomer(USER_ID, 'CS-2026-000001')
+      expect(customerView.ownerStaffId).toBeUndefined()
+      expect(customerView.events?.[0]).toMatchObject({ title: 'Assigned to a Customer Service agent', note: null })
+
+      const staffView = await service.getForStaff(USER_ID, CASE_ID)
+      expect(staffView.ownerStaffId).toBe(STAFF_ID)
+      expect(staffView.events?.[0]).toMatchObject({ title: 'Assigned to Kenji Sato' })
+    })
+  })
+
+  describe('notification after a saved change', () => {
+    it('logs a failed notification instead of failing the request, and sends a readable status', async () => {
+      const notifications = { handleEvent: jest.fn().mockRejectedValue(new Error('provider down')) }
+      service = new CustomerServiceService(
+        db as unknown as DbService,
+        clock as unknown as SimulationClock,
+        audit as unknown as AuditService,
+        notifications as unknown as NotificationService,
+      )
+      jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined)
+      tx.complaint_case.updateMany.mockResolvedValue({ count: 1 })
+      tx.case_event.create.mockResolvedValue({ id: 'ev-1' })
+      db.complaint_case.findUnique
+        .mockResolvedValueOnce({ status: 'assigned', owner_staff_id: STAFF_ID, case_number: 'CS-2026-000001' })
+        .mockResolvedValue(caseRow())
+
+      await expect(service.setStatus(USER_ID, CASE_ID, 'resolved', 'Apologised')).resolves.toMatchObject({ id: CASE_ID })
+      expect(notifications.handleEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ payload: expect.objectContaining({ status: 'Resolved' }) }),
+      )
+    })
+  })
+
+  describe('updatePreferencesForCustomer', () => {
+    it('refuses unknown and security types with a 400 and saves nothing', async () => {
+      db.notification_type.findMany.mockResolvedValue([{ code: 'flight_delayed' }])
+      const preferences = [
+        { typeCode: 'flight_delayed', email: true, sms: false, push: false },
+        { typeCode: 'no_such_type', email: true, sms: false, push: false },
+        { typeCode: 'security_alert', email: false, sms: false, push: false },
+      ]
+
+      await expect(service.updatePreferencesForCustomer(USER_ID, { preferences })).rejects.toThrow(
+        'Unknown notification type: no_such_type, security_alert',
+      )
+      expect(db.$transaction).not.toHaveBeenCalled()
     })
   })
 })

@@ -125,8 +125,8 @@ export function ComplaintSentPage() {
               <span style={{ color: '#677287', flex: 1 }}>From</span>
               <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>
                 {isGuest
-                  ? `${complaint?.passengerName || `Somchai ${activeSurname}`} · Passenger (booking ${activeBookingRef})`
-                  : `${complaint?.passengerName || 'Somchai Wongsakul'} · Customer`}
+                  ? `${complaint?.passengerName || activeSurname || '—'} · Passenger (booking ${activeBookingRef})`
+                  : `${complaint?.passengerName || '—'} · Customer`}
               </span>
             </div>
             {complaint?.flightNumber && (
@@ -141,7 +141,7 @@ export function ComplaintSentPage() {
               >
                 <span style={{ color: '#677287', flex: 1 }}>Flight</span>
                 <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>
-                  {complaint.flightRoute || `${complaint.flightNumber} · ${complaint.serviceDate ?? 'Mon 12 Oct'}`}
+                  {complaint.flightRoute || [complaint.flightNumber, complaint.serviceDate].filter(Boolean).join(' · ')}
                 </span>
               </div>
             )}

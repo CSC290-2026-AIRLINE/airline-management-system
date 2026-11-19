@@ -624,4 +624,58 @@ describe('NotificationService', () => {
       )
     })
   })
+
+  describe('Retry and recipients (review fixes)', () => {
+    it('renders a failed message that has a subject but no body, and keeps the saved subject', async () => {
+      db.notification.findUnique.mockResolvedValue({
+        id: 'notif-fail-3',
+        status: 'failed',
+        attempts: 1,
+        subject: 'Push token timeout',
+        body: null,
+        type_code: 'complaint_updated',
+        channel: 'push',
+        inbound_event: { payload: { case_number: 'CS-2026-000001', status: 'Resolved' } },
+      })
+      db.notification_template.findUnique.mockResolvedValue({
+        is_active: true,
+        subject_template: 'Complaint update',
+        body_template: 'Case {{case_number}}: {{status}}.',
+      })
+      clock.now.mockReturnValue(LATER)
+
+      await service.retryFailedNotification('notif-fail-3')
+
+      expect(db.notification.update).toHaveBeenCalledWith({
+        where: { id: 'notif-fail-3' },
+        data: expect.objectContaining({ subject: 'Push token timeout', body: 'Case CS-2026-000001: Resolved.', status: 'sent' }),
+      })
+    })
+
+    it('gives a co-traveller without an account no customer id, instead of the booker’s', async () => {
+      db.booking_segment.findMany.mockResolvedValue([
+        {
+          booking: {
+            customer_id: 'cust-booker',
+            customer: { id: 'cust-booker', phone: null },
+            contact_email: 'booker@example.com',
+            contact_phone: null,
+            booking_passenger: [
+              { passenger: { id: 'p1', first_name: 'Ann', last_name: 'Lee', customer: { id: 'cust-booker', phone: null } } },
+              { passenger: { id: 'p2', first_name: 'Ben', last_name: 'Lee', customer: null } },
+              { passenger: { id: 'p3', first_name: 'Cat', last_name: 'Lee', customer: { id: 'cust-cat', phone: '+6600' } } },
+            ],
+          },
+        },
+      ])
+
+      const recipients = await service.findPassengersForFlightTemporary('flight-1')
+
+      expect(recipients.map((r) => [r.passengerName, r.customerId])).toEqual([
+        ['Ann Lee', 'cust-booker'],
+        ['Ben Lee', null],
+        ['Cat Lee', 'cust-cat'],
+      ])
+    })
+  })
 })

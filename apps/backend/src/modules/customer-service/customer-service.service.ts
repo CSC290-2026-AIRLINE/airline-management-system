@@ -3,10 +3,11 @@ import { DbService } from '@backend/db/db.service'
 import { SimulationClock } from '../admin-console/simulation-clock'
 import { AuditService } from '../admin-console/audit/audit.service'
 import { FLIGHT_ISSUES, FOOD_ISSUES, type CaseStatus } from './customer-service.constants'
-import { CASE_DETAIL_INCLUDE, CASE_INCLUDE, toComplaintDetail, toComplaintView, type ComplaintView } from './complaint.view'
+import { CASE_DETAIL_INCLUDE, CASE_INCLUDE, toComplaintDetail, toComplaintView, withoutStaff, type ComplaintView } from './complaint.view'
 import type { CreateComplaintDto, CreateGuestComplaintDto } from './dto/create-complaint.dto'
 import type { DecideCompensationDto, UpdateNotificationTemplateDto } from './dto/staff-actions.dto'
 import { placeholdersFor, unknownPlaceholders } from './notification-placeholders'
+import type { InboundEventInput } from './notification-events'
 import { NotificationService } from './notification.service'
 import type { NotificationPreferenceView, UpdateNotificationPreferencesDto } from './dto/preferences.dto'
 
@@ -161,6 +162,15 @@ export interface StaffTemplateItemView {
   pushBody?: string
 }
 
+/** Notification types the customer cannot see or switch off: they go to the security authority, not the customer. */
+const HIDDEN_PREFERENCE_TYPES = ['security_alert', 'security_alert_withdrawn'] as const
+
+/** The status as the customer reads it in an update message, for example `with_supervisor` -> `With supervisor`. */
+function statusLabel(status: string): string {
+  const words = status.replace(/_/g, ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 @Injectable()
 export class CustomerServiceService {
   private readonly logger = new Logger(CustomerServiceService.name)
@@ -171,6 +181,22 @@ export class CustomerServiceService {
     @Optional() private readonly audit?: AuditService,
     @Optional() private readonly notificationService?: NotificationService,
   ) {}
+
+  /**
+   * Sends the notification for a change that is already committed. A failure here is logged, not thrown, so the
+   * caller still gets the saved result instead of a 500 for a change that went through.
+   */
+  private async notify(input: InboundEventInput): Promise<void> {
+    if (!this.notificationService) return
+    try {
+      await this.notificationService.handleEvent(input)
+    } catch (e) {
+      this.logger.error(
+        `Notification for ${input.eventType} (event ${input.sourceEventId}) failed`,
+        e instanceof Error ? e.stack : String(e),
+      )
+    }
+  }
 
   // ── Customer (Signed-In Account) ─────────────────────────────────────────
 
@@ -246,7 +272,7 @@ export class CustomerServiceService {
     })
 
     if (this.notificationService && eventId) {
-      await this.notificationService.handleEvent({
+      await this.notify({
         source: '13',
         sourceEventId: eventId,
         eventType: 'complaint_received',
@@ -275,7 +301,7 @@ export class CustomerServiceService {
       include: CASE_INCLUDE,
       orderBy: { opened_at: 'desc' },
     })
-    return rows.map((row) => ({ ...toComplaintView(row), ownerName: null }))
+    return rows.map((row) => withoutStaff(toComplaintView(row)))
   }
 
   async getForCustomer(userId: string, caseNumber: string): Promise<ComplaintView> {
@@ -344,7 +370,7 @@ export class CustomerServiceService {
 
     if (this.notificationService && reopenEventId) {
       const passengerName = row.passenger ? `${row.passenger.first_name} ${row.passenger.last_name}`.trim() : 'Customer'
-      await this.notificationService.handleEvent({
+      await this.notify({
         source: '13',
         sourceEventId: reopenEventId,
         eventType: 'complaint_updated',
@@ -352,7 +378,7 @@ export class CustomerServiceService {
         payload: {
           case_number: caseNumber,
           passenger_name: passengerName,
-          status: 'reopened',
+          status: statusLabel('reopened'),
         },
         recipients: [
           {
@@ -457,7 +483,7 @@ export class CustomerServiceService {
     })
 
     if (this.notificationService) {
-      await this.notificationService.handleEvent({
+      await this.notify({
         source: '13',
         sourceEventId: eventId,
         eventType: 'complaint_received',
@@ -638,7 +664,7 @@ export class CustomerServiceService {
 
     if (this.notificationService && assignedEventId) {
       const passengerName = current.passenger ? `${current.passenger.first_name} ${current.passenger.last_name}`.trim() : 'Customer'
-      await this.notificationService.handleEvent({
+      await this.notify({
         source: '13',
         sourceEventId: assignedEventId,
         eventType: 'complaint_updated',
@@ -646,7 +672,7 @@ export class CustomerServiceService {
         payload: {
           case_number: current.case_number,
           passenger_name: passengerName,
-          status: 'assigned',
+          status: statusLabel('assigned'),
         },
         recipients: [
           {
@@ -732,7 +758,7 @@ export class CustomerServiceService {
 
     if (this.notificationService && statusEventId) {
       const passengerName = current.passenger ? `${current.passenger.first_name} ${current.passenger.last_name}`.trim() : 'Customer'
-      await this.notificationService.handleEvent({
+      await this.notify({
         source: '13',
         sourceEventId: statusEventId,
         eventType: 'complaint_updated',
@@ -740,7 +766,7 @@ export class CustomerServiceService {
         payload: {
           case_number: current.case_number,
           passenger_name: passengerName,
-          status,
+          status: statusLabel(status),
         },
         recipients: [
           {
@@ -1117,7 +1143,7 @@ export class CustomerServiceService {
     const customer = await this.customerFor(userId)
     const types = await this.db.notification_type.findMany({
       where: {
-        code: { notIn: ['security_alert', 'security_alert_withdrawn'] },
+        code: { notIn: [...HIDDEN_PREFERENCE_TYPES] },
       },
       orderBy: { code: 'asc' },
     })
@@ -1141,6 +1167,18 @@ export class CustomerServiceService {
   async updatePreferencesForCustomer(userId: string, dto: UpdateNotificationPreferencesDto): Promise<NotificationPreferenceView[]> {
     const customer = await this.customerFor(userId)
     const list = Array.isArray(dto) ? dto : (dto?.preferences ?? [])
+
+    // Only the types the GET lists may be set: an unknown code would hit the foreign key, and the security types go to
+    // the authority, not the customer.
+    const settable = await this.db.notification_type.findMany({
+      where: { code: { in: list.map((item) => item.typeCode), notIn: [...HIDDEN_PREFERENCE_TYPES] } },
+      select: { code: true },
+    })
+    const settableCodes = new Set(settable.map((t) => t.code))
+    const rejected = [...new Set(list.map((item) => item.typeCode).filter((code) => !settableCodes.has(code)))]
+    if (rejected.length > 0) {
+      throw new BadRequestException(`Unknown notification type: ${rejected.join(', ')}`)
+    }
 
     await this.db.$transaction(async (tx) => {
       for (const item of list) {
@@ -1178,19 +1216,28 @@ export class CustomerServiceService {
 
   async retryNotificationForStaff(userId: string, id: string) {
     await this.staffIdFor(userId)
-    if (!this.notificationService) {
+    const notificationService = this.notificationService
+    if (!notificationService) {
       throw new BadRequestException('Notification service not available')
     }
-    return this.notificationService.retryFailedNotification(id)
-  }
-
-  async setMockFailureForStaff(userId: string, fail: boolean) {
-    await this.staffIdFor(userId)
-    if (!this.notificationService) {
-      throw new BadRequestException('Notification service not available')
-    }
-    this.notificationService.setMockFailure(fail)
-    return { mockFailure: fail }
+    return this.db.$transaction(async (tx) => {
+      const result = await notificationService.retryFailedNotification(id, tx)
+      if (this.audit) {
+        const actor = await this.audit.resolveActor(userId)
+        await this.audit.write(
+          {
+            actor,
+            sourceFeature: '13',
+            action: 'update',
+            entityType: 'notification',
+            entityId: id,
+            summary: `Retried notification ${id}: ${result.status}`,
+          },
+          tx,
+        )
+      }
+      return result
+    })
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────

@@ -166,12 +166,6 @@ export class StaffComplaintsController {
   retryNotification(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.retryNotificationForStaff(user.id, id)
   }
-
-  @Post('delivery-log/mock-failure')
-  @HttpCode(200)
-  setMockFailure(@Body('fail') fail: boolean, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.setMockFailureForStaff(user.id, Boolean(fail))
-  }
 }
 
 /** Customer notification preferences controller: GET and PUT /customers/me/notification-preferences */

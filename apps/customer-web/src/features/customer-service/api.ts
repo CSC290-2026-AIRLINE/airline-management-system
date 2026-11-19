@@ -70,7 +70,8 @@ export function useComplaintsApi() {
     updateNotificationPreferences: (preferences: NotificationPreferenceRow[]) =>
       request<NotificationPreferenceRow[]>('/api/customers/me/notification-preferences', {
         method: 'PUT',
-        body: JSON.stringify({ preferences }),
+        // The API accepts only these four fields; the labels from GET would be refused.
+        body: JSON.stringify({ preferences: preferences.map(({ typeCode, email, sms, push }) => ({ typeCode, email, sms, push })) }),
       }),
   }
 }

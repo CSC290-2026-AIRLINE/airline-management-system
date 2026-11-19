@@ -126,10 +126,11 @@ export function ComplaintsDashboard() {
   const [ownerDraft, setOwnerDraft] = useState<string>('')
   const [resolutionDraft, setResolutionDraft] = useState<string>('Not a duplicate')
   const [noteDraft, setNoteDraft] = useState<string>('')
-  const [compTypeDraft, setCompTypeDraft] = useState<string>('Travel voucher')
+  const [compTypeDraft, setCompTypeDraft] = useState<'voucher' | 'refund'>('voucher')
   const [compAmountDraft, setCompAmountDraft] = useState<string>('1,000 THB')
   const [compReasonDraft, setCompReasonDraft] = useState<string>('')
   const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const fetchList = useEffectEvent(() => api.list())
   const loadStaffContext = useEffectEvent(() => {
@@ -195,9 +196,11 @@ export function ComplaintsDashboard() {
     setOwnerDraft(selected.ownerStaffId ?? '')
     setResolutionDraft('Not a duplicate')
     setNoteDraft('')
-    setCompTypeDraft(selected.compensation?.type ?? 'Travel voucher')
+    // The view labels the decided type ("Cash refund"); the API takes the code.
+    setCompTypeDraft(selected.compensation?.type === 'Cash refund' ? 'refund' : 'voucher')
     setCompAmountDraft(selected.compensation?.amount ? String(selected.compensation.amount) : '1,000')
     setCompReasonDraft(selected.compensation?.reason ?? '')
+    setActionError(null)
   })
 
   useEffect(() => {
@@ -205,65 +208,51 @@ export function ComplaintsDashboard() {
     resetDrafts()
   }, [selected?.id])
 
-  async function handleAssign() {
-    if (!selected || !ownerDraft) return
+  /** Runs one staff action, then reloads; a refused action shows its error instead of failing silently. */
+  async function runAction(work: () => Promise<unknown>) {
     setBusy(true)
+    setActionError(null)
     try {
-      await api.assignOwner(selected.id, ownerDraft)
+      await work()
       setReloadToken((n) => n + 1)
+    } catch (e) {
+      setActionError(errorMessage(e))
     } finally {
       setBusy(false)
     }
+  }
+
+  async function handleAssign() {
+    if (!selected || !ownerDraft) return
+    await runAction(() => api.assignOwner(selected.id, ownerDraft))
   }
 
   async function handleResolve() {
     if (!selected || !selected.ownerName) return
-    setBusy(true)
-    try {
-      await api.setStatus(selected.id, 'resolved', resolutionDraft)
-      setReloadToken((n) => n + 1)
-    } finally {
-      setBusy(false)
-    }
+    await runAction(() => api.setStatus(selected.id, 'resolved', resolutionDraft))
   }
 
   async function handleAddNote() {
     if (!selected || !noteDraft.trim()) return
-    setBusy(true)
-    try {
+    await runAction(async () => {
       await api.addNote(selected.id, noteDraft.trim())
       setNoteDraft('')
-      setReloadToken((n) => n + 1)
-    } finally {
-      setBusy(false)
-    }
+    })
   }
 
   async function handleSendComp() {
     if (!selected || !compReasonDraft.trim()) return
-    setBusy(true)
-    try {
-      const parsedAmount = Number(String(compAmountDraft).replace(/[^0-9.]/g, '')) || 1000
-      await api.sendCompensation(selected.id, {
-        type: compTypeDraft,
-        amount: parsedAmount,
-        reason: compReasonDraft.trim(),
-      })
-      setReloadToken((n) => n + 1)
-    } finally {
-      setBusy(false)
+    const amount = Number(String(compAmountDraft).replace(/[^0-9.]/g, ''))
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setActionError('Enter a compensation amount above 0.')
+      return
     }
+    await runAction(() => api.sendCompensation(selected.id, { type: compTypeDraft, amount, reason: compReasonDraft.trim() }))
   }
 
   async function handleCloseCase() {
     if (!selected) return
-    setBusy(true)
-    try {
-      await api.setStatus(selected.id, 'closed')
-      setReloadToken((n) => n + 1)
-    } finally {
-      setBusy(false)
-    }
+    await runAction(() => api.setStatus(selected.id, 'closed'))
   }
 
   const supervisor = Boolean(currentStaff?.isSupervisor)
@@ -285,6 +274,12 @@ export function ComplaintsDashboard() {
       {loadError && (
         <Alert variant="destructive">
           <AlertDescription className="block">Could not load complaints: {loadError}</AlertDescription>
+        </Alert>
+      )}
+
+      {actionError && (
+        <Alert variant="destructive">
+          <AlertDescription className="block">Could not save the change: {actionError}</AlertDescription>
         </Alert>
       )}
 
@@ -411,12 +406,12 @@ export function ComplaintsDashboard() {
                 {selected.passengerName} · {selected.fromSource ?? 'Customer'}
               </Fact>
               <Fact label="Contact">{selected.contactEmail ?? '—'}</Fact>
-              <Fact label="Booking">{selected.bookingRef ?? 'FLY7K2'}</Fact>
-              <Fact label="Flight">{selected.flightRoute ?? `${selected.flightNumber ?? 'FY308'} · Mon 12 Oct`}</Fact>
+              <Fact label="Booking">{selected.bookingRef ?? '—'}</Fact>
+              <Fact label="Flight">{selected.flightRoute ?? selected.flightNumber ?? '—'}</Fact>
               <Fact label={selected.type === 'food' ? 'Meal' : selected.type === 'employee' ? 'Location' : 'Details'}>
                 {selected.mealDetail ?? (selected.location ? humanize(selected.location) : '—')}
               </Fact>
-              <Fact label="Issue">{humanize(selected.issue ?? 'missing')}</Fact>
+              <Fact label="Issue">{selected.issue ? humanize(selected.issue) : '—'}</Fact>
             </dl>
 
             <blockquote className="m-0 rounded-lg bg-page px-3 py-2.5 text-sm leading-relaxed text-foreground">
@@ -506,12 +501,11 @@ export function ComplaintsDashboard() {
                   <NativeSelect
                     aria-label="Compensation type"
                     value={compTypeDraft}
-                    onChange={(e) => setCompTypeDraft(e.target.value)}
+                    onChange={(e) => setCompTypeDraft(e.target.value === 'refund' ? 'refund' : 'voucher')}
                     className="h-9 flex-1"
                   >
-                    <option value="Travel voucher">Travel voucher</option>
-                    <option value="Cash refund">Cash refund</option>
-                    <option value="Bonus miles">Bonus miles</option>
+                    <option value="voucher">Travel voucher</option>
+                    <option value="refund">Cash refund</option>
                   </NativeSelect>
                   <Input
                     aria-label="Compensation amount"

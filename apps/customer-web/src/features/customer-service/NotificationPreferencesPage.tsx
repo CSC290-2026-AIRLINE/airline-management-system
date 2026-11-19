@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import { CustomerNavbar } from './CustomerNavbar'
 import type { NotificationPreferenceRow } from './types'
-import { DEFAULT_PREFERENCES } from './types'
 import { errorMessage, useComplaintsApi } from './api'
 
 export function NotificationPreferencesPage() {
   const api = useComplaintsApi()
-  const [preferences, setPreferences] = useState<NotificationPreferenceRow[]>(DEFAULT_PREFERENCES)
+  const [preferences, setPreferences] = useState<NotificationPreferenceRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -17,7 +16,7 @@ export function NotificationPreferencesPage() {
     api
       .getNotificationPreferences()
       .then((data) => {
-        if (active && Array.isArray(data) && data.length > 0) {
+        if (active && Array.isArray(data)) {
           setPreferences(data)
         }
       })
@@ -195,6 +194,13 @@ export function NotificationPreferencesPage() {
                 </tr>
               </thead>
               <tbody>
+                {isLoading && (
+                  <tr>
+                    <td colSpan={5} style={{ padding: '14px', color: '#677287' }}>
+                      Loading your preferences…
+                    </td>
+                  </tr>
+                )}
                 {preferences.map((row) => (
                   <tr key={row.typeCode} style={{ borderBottom: '1px solid #F1F5F9' }}>
                     <td style={{ padding: '14px' }}>
@@ -268,16 +274,16 @@ export function NotificationPreferencesPage() {
             <div style={{ fontSize: '13px', color: '#677287' }}>All notifications are delivered via mocked channels in real time.</div>
             <button
               onClick={handleSave}
-              disabled={isSaving || isLoading}
+              disabled={isSaving || isLoading || preferences.length === 0}
               style={{
-                backgroundColor: isSaving || isLoading ? '#94A3B8' : '#102544',
+                backgroundColor: isSaving || isLoading || preferences.length === 0 ? '#94A3B8' : '#102544',
                 color: '#FFFFFF',
                 padding: '11px 24px',
                 borderRadius: '8px',
                 border: 'none',
                 fontSize: '14px',
                 fontWeight: 600,
-                cursor: isSaving || isLoading ? 'not-allowed' : 'pointer',
+                cursor: isSaving || isLoading || preferences.length === 0 ? 'not-allowed' : 'pointer',
                 boxShadow: '0 2px 4px rgba(10, 20, 36, 0.08)',
               }}
             >
