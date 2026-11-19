@@ -1,7 +1,8 @@
-import { Controller, Get, Inject, UseGuards } from '@nestjs/common'
+import { Controller, Get, Inject, UseFilters, UseGuards } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
 import { BaggageStaffGuard, CurrentBaggageStaff, type BaggageStaff } from './guards/baggage-staff.guard'
+import { BaggageErrorFilter } from './common/baggage-error.filter'
 
 /** What the baggage desk sidebar shows: the simulation time and the signed-in staff member's role. */
 export interface BaggageDesk {
@@ -14,6 +15,7 @@ export interface BaggageDesk {
 /** `/api/staff/baggage-desk`. Staff only. */
 @Controller('staff/baggage-desk')
 @UseGuards(BaggageStaffGuard)
+@UseFilters(BaggageErrorFilter)
 export class BaggageDeskController {
   constructor(
     private readonly db: DbService,

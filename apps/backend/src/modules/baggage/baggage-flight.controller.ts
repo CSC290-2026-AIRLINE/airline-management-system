@@ -1,9 +1,10 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
+import { Controller, Get, Param, ParseUUIDPipe, Query, UseFilters, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
 import type { ValidationError } from '@nestjs/common'
 import { BaggageFlightService, type BaggageAirport, type BaggageFlight } from './baggage-flight.service'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { ArrivalsQuery, DeparturesQuery } from './dto/baggage-flight.query'
 import { BaggageStaffGuard } from './guards/baggage-staff.guard'
+import { BaggageErrorFilter } from './common/baggage-error.filter'
 
 function toValidationError(errors: ValidationError[]): FoundBagError {
   return new FoundBagError(FOUND_BAG_ERROR_CODES.INVALID_FOUND_BAG, errors.flatMap((e) => Object.values(e.constraints ?? {})).join('; '))
@@ -16,6 +17,7 @@ function flightNotFound(): FoundBagError {
 /** `/api/staff/baggage-flights`: read-only flight lookups for the found bag screens. Staff only. */
 @Controller('staff/baggage-flights')
 @UseGuards(BaggageStaffGuard)
+@UseFilters(BaggageErrorFilter)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, exceptionFactory: toValidationError }))
 export class BaggageFlightController {
   constructor(private readonly flights: BaggageFlightService) {}

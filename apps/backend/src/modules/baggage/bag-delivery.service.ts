@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import { BaggageCaseNotices } from './baggage-case-notices'
 import { AUDIT_SOURCE_FEATURE, MAX_LIST_ROWS, type ReportStatus } from './common/baggage.constants'
 import {
   CHOICE_OPEN_STATUSES,
@@ -244,6 +245,7 @@ export class BagDeliveryService {
     private readonly db: DbService,
     private readonly audit: AuditService,
     @Inject(FOUND_BAG_CLOCK) private readonly clock: FoundBagClock,
+    private readonly notices: BaggageCaseNotices = new BaggageCaseNotices(),
   ) {}
 
   async list(filter: DeliveryFilter = {}): Promise<BagDelivery[]> {
@@ -504,6 +506,8 @@ export class BagDeliveryService {
       )
     })
 
+    this.notices.notify([{ event: 'delivering', reportId, detail: input.status }])
+
     return this.getById(input.deliveryId)
   }
 
@@ -658,6 +662,8 @@ export class BagDeliveryService {
       const what = failure.map((m) => MISMATCH_LABELS[m]).join(', ')
       throw new FoundBagError(FOUND_BAG_ERROR_CODES.OWNERSHIP_NOT_VERIFIED, `Ownership not verified: the ${what} does not match the case`)
     }
+
+    this.notices.notify([{ event: 'closed', reportId }])
 
     return this.getById(input.deliveryId)
   }

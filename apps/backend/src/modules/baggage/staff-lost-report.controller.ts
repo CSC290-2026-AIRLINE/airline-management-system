@@ -68,6 +68,7 @@ function costNotFound(): FoundBagError {
  */
 @Controller('staff/lost-reports')
 @UseGuards(BaggageStaffGuard)
+@UseFilters(BaggageErrorFilter)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, exceptionFactory: toValidationError }))
 export class StaffLostReportController {
   constructor(
@@ -127,7 +128,6 @@ export class StaffLostReportController {
   @Get(':id/photo')
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
-  @UseFilters(BaggageErrorFilter)
   async getPhoto(@Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string): Promise<StreamableFile> {
     const report = await this.reports.getById(id)
     if (!report.photoUrl) {

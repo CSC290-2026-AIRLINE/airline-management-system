@@ -21,6 +21,8 @@ export class BaggageError extends Error {
   constructor(
     public readonly code: BaggageErrorCode,
     message: string,
+    /** Sent as `error.details`, for example the case number of a duplicate report. */
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message)
     this.name = 'BaggageError'

@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Put, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
+import { Body, Controller, Get, Put, UseFilters, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
 import type { ValidationError } from '@nestjs/common'
 import { BaggageSettingsService, type BaggageSettings } from './baggage-settings.service'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { UpdateBaggageSettingsDto } from './dto/update-baggage-settings.dto'
 import { BaggageAdminGuard } from './guards/baggage-admin.guard'
 import { BaggageStaffGuard, CurrentBaggageStaff, baggageAuditActor, type BaggageStaff } from './guards/baggage-staff.guard'
+import { BaggageErrorFilter } from './common/baggage-error.filter'
 
 function toValidationError(errors: ValidationError[]): FoundBagError {
   const messages = errors.flatMap((e) => Object.values(e.constraints ?? {}))
@@ -19,6 +20,7 @@ function toValidationError(errors: ValidationError[]): FoundBagError {
  */
 @Controller('staff/baggage-settings')
 @UseGuards(BaggageStaffGuard, BaggageAdminGuard)
+@UseFilters(BaggageErrorFilter)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, exceptionFactory: toValidationError }))
 export class BaggageSettingsController {
   constructor(private readonly service: BaggageSettingsService) {}

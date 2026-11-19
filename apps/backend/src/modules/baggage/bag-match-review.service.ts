@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { AuditService, type AuditActor } from '@backend/modules/admin-console/audit/audit.service'
+import { BaggageCaseNotices } from './baggage-case-notices'
 import { AUDIT_SOURCE_FEATURE, MAX_LIST_ROWS, type BagColour, type BagType, type ReportStatus } from './common/baggage.constants'
 import {
   MATCHABLE_REPORT_STATUSES,
@@ -192,6 +193,7 @@ export class BagMatchReviewService {
     private readonly db: DbService,
     private readonly audit: AuditService,
     @Inject(FOUND_BAG_CLOCK) private readonly clock: FoundBagClock,
+    private readonly notices: BaggageCaseNotices = new BaggageCaseNotices(),
   ) {}
 
   async list(filter: MatchFilter = {}): Promise<BagMatch[]> {
@@ -411,6 +413,8 @@ export class BagMatchReviewService {
 
       throw e
     }
+
+    this.notices.notify([{ event: 'matched', reportId: match.report_id }])
 
     return this.getById(match.id)
   }

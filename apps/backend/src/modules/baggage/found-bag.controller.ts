@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  UseFilters,
   UseGuards,
   UsePipes,
   ValidationPipe,
@@ -25,6 +26,7 @@ import { RecordFoundBagDto } from './dto/record-found-bag.dto'
 import { BaggageStaffGuard, CurrentBaggageStaff, baggageAuditActor, type BaggageStaff } from './guards/baggage-staff.guard'
 import { FoundBagService } from './found-bag.service'
 import { BagMatchingService } from './bag-matching.service'
+import { BaggageErrorFilter } from './common/baggage-error.filter'
 
 function toValidationError(errors: ValidationError[]): FoundBagError {
   const tagError = errors.some((e) => e.property === 'tagNumber')
@@ -44,6 +46,7 @@ function notFound(): FoundBagError {
 /** `/api/staff/found-bags`: the baggage desk records and looks up bags found at an airport. Staff only. */
 @Controller('staff/found-bags')
 @UseGuards(BaggageStaffGuard)
+@UseFilters(BaggageErrorFilter)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, exceptionFactory: toValidationError }))
 export class FoundBagController {
   constructor(

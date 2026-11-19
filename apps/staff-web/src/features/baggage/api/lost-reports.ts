@@ -102,6 +102,7 @@ export function useLostReportApi() {
 
   return {
     list: () => send<LostReportCase[]>('/api/staff/lost-reports'),
+    listByTag: (tagNumber: string) => send<LostReportCase[]>(`/api/staff/lost-reports?tagNumber=${encodeURIComponent(tagNumber)}`),
     lookupBooking: (reference: string) => send<BookingLookup>(`/api/staff/lost-reports/bookings/${encodeURIComponent(reference)}`),
     create: (body: CreateLostReportBody) => send<LostReportCase>('/api/staff/lost-reports', { method: 'POST', body: JSON.stringify(body) }),
     createFromFoundBag: (foundBagId: string) =>

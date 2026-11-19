@@ -3,6 +3,7 @@ import { useLostReportApi, type AddBagCostBody, type BagCostSummary, type LostRe
 import { errorMessage } from './useFoundBags'
 import { useRetryWhileUnreachable } from './useRetryWhileUnreachable'
 import { usePoll } from './usePoll'
+import { liveCaseNumber } from '../live-case'
 
 interface ListState {
   /** Which reload the data belongs to; while it differs from the current one, the list is loading. */
@@ -103,4 +104,33 @@ export function useCaseCosts(reportId: string | undefined) {
     add,
     remove,
   }
+}
+
+/**
+ * Whether a tag already has a live case, so "Open case for owner" is offered only when it has none. Until the answer is
+ * in, `checked` is false. A failed lookup counts as no live case: the backend still refuses a second case (REPORT_EXISTS).
+ */
+export function useLiveCaseForTag(tagNumber: string | null | undefined) {
+  const api = useLostReportApi()
+  const [state, setState] = useState<{ forTag: string | null; caseNumber: string | null }>({ forTag: null, caseNumber: null })
+
+  useEffect(() => {
+    if (!tagNumber) return
+    let cancelled = false
+    api
+      .listByTag(tagNumber)
+      .then(liveCaseNumber)
+      .catch(() => null)
+      .then((caseNumber) => {
+        if (!cancelled) setState({ forTag: tagNumber, caseNumber })
+      })
+    return () => {
+      cancelled = true
+    }
+    // The API functions close over `fetchWithAuth`, which is recreated every render; see `useFoundBagApi`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagNumber])
+
+  const checked = !!tagNumber && state.forTag === tagNumber
+  return { checked, caseNumber: checked ? state.caseNumber : null }
 }

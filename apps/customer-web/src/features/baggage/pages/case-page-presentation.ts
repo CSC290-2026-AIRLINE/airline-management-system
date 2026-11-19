@@ -33,7 +33,7 @@ export function caseProgressPresentation(status: string, deliveryStatus: string 
 export function deliveryUnavailableMessage(reportStatus: string): string {
   if (reportStatus === 'cancelled') return 'Nothing to choose for this case.'
   if (reportStatus === 'lost') return 'Nothing to choose for this case yet. If staff find the bag, you can choose where we send it here.'
-  return 'Once staff confirm a found bag is yours, you can choose home, hotel, another address, or airport pickup here.'
+  return 'Once staff confirm they have found the bag, you can choose home, hotel, another address, or airport pickup here.'
 }
 
 export function shouldShowNoOpenCase(hasReport: boolean, isLookingUp: boolean, hasError: boolean): boolean {
@@ -41,7 +41,7 @@ export function shouldShowNoOpenCase(hasReport: boolean, isLookingUp: boolean, h
 }
 
 /**
- * The passenger may cancel ("I found it myself") only before staff confirm a found bag as theirs: an open case, or a lost
+ * The passenger may cancel ("The bag has been found") only before staff confirm a found bag as theirs: an open case, or a lost
  * one no bag has been confirmed for. A delivery record only exists after that confirmation, so its presence also closes it.
  */
 export function canReportBagFoundByPassenger(status: string, deliveryStatus: string | null = null): boolean {
@@ -49,9 +49,9 @@ export function canReportBagFoundByPassenger(status: string, deliveryStatus: str
 }
 
 export const CANCELLATION_UNAVAILABLE_MESSAGE =
-  'Online cancellation is unavailable after staff confirms the bag is yours. Please contact airline staff if you need help changing your recovery arrangements.'
+  'Online cancellation is unavailable once staff have confirmed the bag. Please contact airline staff if you need help changing the recovery arrangements.'
 
-/** After staff confirm the bag is the passenger's, and until it is back with them, explain why there is no cancel option. */
+/** After staff confirm the bag, and until it is back with its owner, explain why there is no cancel option. */
 export function shouldShowCancellationUnavailable(status: string, deliveryStatus: string | null): boolean {
   if (status === 'cancelled' || status === 'closed' || deliveryStatus === 'delivered') return false
   return status === 'matched' || status === 'delivering' || deliveryStatus !== null

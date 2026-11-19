@@ -88,13 +88,29 @@ function toReport(row: lost_bag_report): LostBagReport {
   }
 }
 
+/**
+ * Spec section 6 "One case per tag": the same bag owner (so the same booking) is told which case already covers the bag.
+ * Anyone else only learns that one exists.
+ */
+function reportExists(existing: LostBagReport, attempted: LostBagReport): BaggageError {
+  if (existing.bookingPassengerId !== attempted.bookingPassengerId) {
+    return new BaggageError(BAGGAGE_ERROR_CODES.REPORT_EXISTS, 'A live report already exists for this baggage tag')
+  }
+
+  return new BaggageError(BAGGAGE_ERROR_CODES.REPORT_EXISTS, `This bag already has an open case: ${existing.caseNumber}`, {
+    caseNumber: existing.caseNumber,
+  })
+}
+
 @Injectable()
 export class PrismaReportRepository implements ReportRepository {
   constructor(private readonly db: DbService) {}
 
   async create(report: LostBagReport): Promise<LostBagReport> {
-    if (report.tagNumber && (await this.findLiveByTag(report.tagNumber))) {
-      throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_EXISTS, 'A live report already exists for this baggage tag')
+    const existing = report.tagNumber ? await this.findLiveByTag(report.tagNumber) : null
+
+    if (existing) {
+      throw reportExists(existing, report)
     }
 
     try {
@@ -130,8 +146,10 @@ export class PrismaReportRepository implements ReportRepository {
 
       // Handle concurrent attempts to report the same live baggage tag.
       if (code === 'P2002' && report.tagNumber) {
-        if (await this.findLiveByTag(report.tagNumber)) {
-          throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_EXISTS, 'A live report already exists for this baggage tag')
+        const winner = await this.findLiveByTag(report.tagNumber)
+
+        if (winner) {
+          throw reportExists(winner, report)
         }
       }
 

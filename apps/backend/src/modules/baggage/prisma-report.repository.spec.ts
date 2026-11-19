@@ -116,6 +116,63 @@ describe('PrismaReportRepository photo reference persistence', () => {
   })
 })
 
+describe('PrismaReportRepository duplicate tag', () => {
+  const TAG = '0789000001'
+  const attempted = {
+    id: '00000000-0000-4000-8000-000000000010',
+    caseNumber: 'LB-2026-000009',
+    bookingPassengerId: reportRow().booking_passenger_id,
+    passengerId: reportRow().passenger_id,
+    flightId: reportRow().flight_id,
+    reportedByCustomerId: '00000000-0000-4000-8000-000000000007',
+    reportedByStaffId: null,
+    tagNumber: TAG,
+    bagType: 'suitcase' as const,
+    colour: 'black' as const,
+    brand: null,
+    description: null,
+    photoUrl: null,
+    contactEmail: 'passenger@example.com',
+    contactPhone: null,
+    status: 'open' as const,
+    reportedAt: new Date('2026-10-29T10:00:00Z'),
+    lostAt: null,
+    closedAt: null,
+    createdAt: new Date('2026-10-29T10:00:00Z'),
+    updatedAt: new Date('2026-10-29T10:00:00Z'),
+  }
+
+  function repositoryWithLive(live: ReturnType<typeof reportRow>) {
+    const create = jest.fn()
+    const repository = new PrismaReportRepository({
+      lost_bag_report: { findFirst: jest.fn().mockResolvedValue(live), create },
+    } as unknown as DbService)
+    return { repository, create }
+  }
+
+  it('tells the same bag owner which case already covers the tag', async () => {
+    const { repository, create } = repositoryWithLive(reportRow({ status: 'open', tag_number: TAG }))
+
+    await expect(repository.create(attempted)).rejects.toMatchObject({
+      code: 'REPORT_EXISTS',
+      message: 'This bag already has an open case: LB-2026-000001',
+      details: { caseNumber: 'LB-2026-000001' },
+    })
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it('does not reveal the case number of a live case for another bag owner', async () => {
+    const { repository } = repositoryWithLive(
+      reportRow({ status: 'open', tag_number: TAG, booking_passenger_id: '00000000-0000-4000-8000-0000000000ff' }),
+    )
+
+    const error = await repository.create(attempted).catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ code: 'REPORT_EXISTS', message: 'A live report already exists for this baggage tag' })
+    expect((error as { details?: unknown }).details).toBeUndefined()
+  })
+})
+
 describe('PrismaReportRepository delivery lookup', () => {
   it('looks up the delivery by the verified report id', async () => {
     const harness = makeRepository()

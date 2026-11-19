@@ -4,6 +4,7 @@ import { S3Client } from '@aws-sdk/client-s3'
 import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { FlightSchedulingModule } from '@backend/modules/flight-scheduling/flight-scheduling.module'
+import { BaggageLifecycleModule } from './baggage-lifecycle.module'
 import { FOUND_BAG_CLOCK, FOUND_BAG_RECORDED_LISTENERS, type FoundBagRecordedListener } from './common/found-bag.ports'
 import { BaggageDeskController } from './baggage-desk.controller'
 import { BaggageFlightController } from './baggage-flight.controller'
@@ -34,9 +35,10 @@ import { StaffLostReportService } from './staff-lost-report.service'
  * Feature 10 (Lost and Found Baggage).
  * `DbModule` is `@Global()`, so `DbService` needs no import here. `AuditModule` brings the audit writer (ownership checks
  * at handover) and the shared simulation clock. `FlightSchedulingModule` (Feature 2) exports the flight event bus.
+ * `BaggageLifecycleModule` shares BaggageCaseNotices, the one hook for Feature 13 notifications.
  */
 @Module({
-  imports: [AuditModule, FlightSchedulingModule],
+  imports: [AuditModule, FlightSchedulingModule, BaggageLifecycleModule],
   controllers: [
     FoundBagController,
     StationContactController,

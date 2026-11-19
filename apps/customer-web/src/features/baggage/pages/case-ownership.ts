@@ -51,7 +51,7 @@ export async function resolveViewerOwnership(
 }
 
 /**
- * Owner-only controls (delivery choice, "I found it myself") are allowed only once ownership is confirmed. While it is
+ * Owner-only controls (delivery choice, "The bag has been found") are allowed only once ownership is confirmed. While it is
  * loading, or when the lookup failed (null), they stay hidden and inert, like for a known non-owner.
  */
 export function canUseOwnerActions(ownership: boolean | null): boolean {

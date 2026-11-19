@@ -193,7 +193,8 @@ function unclaimedSweepService(client: PrismaClient, gate?: LockGate): FoundBagL
 }
 
 function lostSweepService(client: PrismaClient, gate?: LockGate): LostReportLifecycleService {
-  return new LostReportLifecycleService(serviceDb(client, gate), new FixedSimulationClock())
+  const db = serviceDb(client, gate)
+  return new LostReportLifecycleService(db, new FixedSimulationClock(), new AuditService(db, new FixedSimulationClock()))
 }
 
 function startParty<T>(label: string, gate: LockGate, run: () => Promise<T>): Party<T> {

@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { AuditService, type AuditActor } from '@backend/modules/admin-console/audit/audit.service'
+import { BaggageCaseNotices } from './baggage-case-notices'
 import {
   AUDIT_SOURCE_FEATURE,
   BAG_COLOURS,
@@ -189,6 +190,7 @@ export class StaffLostReportService {
     private readonly db: DbService,
     private readonly audit: AuditService,
     @Inject(FOUND_BAG_CLOCK) private readonly clock: FoundBagClock,
+    private readonly notices: BaggageCaseNotices = new BaggageCaseNotices(),
   ) {}
 
   /**
@@ -523,6 +525,8 @@ export class StaffLostReportService {
       )
     })
 
+    this.notices.notify([{ event: 'cancelled', reportId: input.reportId }])
+
     return this.getById(input.reportId)
   }
 
@@ -621,6 +625,10 @@ export class StaffLostReportService {
 
         return created
       })
+
+      if (report.openedFrom === 'found_bag') {
+        this.notices.notify([{ event: 'opened_for_found_bag', reportId: row.id }])
+      }
 
       return toLostReportCase(row)
     } catch (e) {
