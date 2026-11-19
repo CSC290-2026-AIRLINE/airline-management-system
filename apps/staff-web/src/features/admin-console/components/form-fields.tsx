@@ -3,11 +3,11 @@ import { Label } from '@staff-web/components/ui/label'
 import { cn } from '@staff-web/lib/utils'
 
 /**
- * The small form pieces the Role access dialogs use: a labelled field, a hint under it, and the red box for a failure
+ * The small form pieces the admin-console dialogs use: a labelled field, a hint under it, and the red box for a failure
  * that belongs to the dialog rather than to one field.
  *
- * These mirror the ones `StaffRolesPage.tsx` keeps for itself. That page belongs to another team member, so its copies
- * stay where they are; these are the Role access copies.
+ * One set for the whole admin console: the Staff & roles dialogs and the Role access dialogs both use them, so a fix
+ * to the pieces only has to be made once.
  */
 export function Field({ label, htmlFor, error, children }: { label: ReactNode; htmlFor: string; error?: boolean; children: ReactNode }) {
   return (

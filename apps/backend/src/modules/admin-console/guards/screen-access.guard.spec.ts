@@ -140,6 +140,20 @@ describe('ScreenAccessGuard', () => {
     })
   })
 
+  it('works the access out once when the decorator is on the controller and on the route', async () => {
+    // Nest runs the guard once for the controller and once for the route. The second run must not ask the database
+    // again — the first one already resolved the access for this request.
+    const { guard, db } = setup({ grant: true })
+    const { ctx: c, req } = ctx(REPORT)
+
+    await expect(guard.canActivate(c)).resolves.toBe(true)
+    await expect(guard.canActivate(c)).resolves.toBe(true)
+
+    expect(db.staff.findFirst).toHaveBeenCalledTimes(1)
+    expect(db.screen.findUnique).toHaveBeenCalledTimes(1)
+    expect(req.screenAccess).toMatchObject({ screenCode: 'f04.monthly_report' })
+  })
+
   it('lets an admin role open any active screen without a grant lookup', async () => {
     const { guard, db } = setup({ staff: ADMIN, screen: { id: 's', kind: 'admin', is_active: true } })
     await expect(guard.canActivate(ctx().ctx)).resolves.toBe(true)

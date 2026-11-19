@@ -2,17 +2,17 @@ import { useId, useState, type FormEvent } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '@staff-web/components/ui/button'
 import { Input } from '@staff-web/components/ui/input'
-import { RoleApiError } from '../api/roles'
-import type { RoleSummary } from '../types'
+import { ApiError, errorText } from '../api/fetch'
+import type { RoleErrorCode, RoleSummary } from '../types'
 import { ErrorBox, Field, Hint, type BoxError } from './form-fields'
 import { Modal } from './Modal'
 
 /** Mirrors `MIN_REASON_LENGTH` in the backend's `DeleteRoleDto`. */
 const MIN_REASON_LENGTH = 10
 
-const BOX_TITLES: Record<string, string> = {
+const BOX_TITLES: Partial<Record<RoleErrorCode, string>> = {
   ROLE_IN_USE: 'The role is still in use',
-  ROLE_NOT_DELETABLE: 'The Admin role cannot be deleted',
+  ROLE_NOT_DELETABLE: 'This role cannot be deleted',
   ROLE_NOT_FOUND: 'Role not found',
   VALIDATION_FAILED: 'Some fields need fixing',
 }
@@ -54,9 +54,11 @@ export function DeleteRoleDialog({
     try {
       await onSubmit(reason.trim())
     } catch (err) {
-      if (err instanceof RoleApiError) {
-        if (err.code === 'REASON_REQUIRED') setReasonError(err.message)
-        else setBoxError({ title: BOX_TITLES[err.code] ?? "Couldn't delete the role", message: err.message, code: err.code })
+      if (err instanceof ApiError) {
+        const code = (err.code ?? '') as RoleErrorCode
+        const message = errorText(err)
+        if (code === 'REASON_REQUIRED') setReasonError(message)
+        else setBoxError({ title: BOX_TITLES[code] ?? "Couldn't delete the role", message, code })
       } else {
         setBoxError({
           title: "Couldn't delete the role",

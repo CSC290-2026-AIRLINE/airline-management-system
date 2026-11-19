@@ -1,22 +1,5 @@
-import { useAppAuth } from '@staff-web/auth/AuthProvider'
-import type { RoleErrorCode, RoleSummary } from '../types'
-
-/**
- * Thrown for any non-2xx answer from `/api/admin/roles*`. The backend answers `{ error: { code, message } }`, and the
- * page switches on `code` to put the message in the right place — under the name field, under the reason field, or in
- * the dialog-level error box — so this keeps the code instead of flattening the response into a string.
- */
-export class RoleApiError extends Error {
-  readonly status: number
-  readonly code: RoleErrorCode | `HTTP_${number}`
-
-  constructor(status: number, code: RoleErrorCode | `HTTP_${number}`, message: string) {
-    super(message)
-    this.name = 'RoleApiError'
-    this.status = status
-    this.code = code
-  }
-}
+import { useFetchJson } from './fetch'
+import type { RoleSummary } from '../types'
 
 export interface RolesResponse {
   roles: RoleSummary[]
@@ -44,7 +27,7 @@ export interface ReplaceRoleScreensResponse {
 export interface CreateRoleBody {
   name: string
   reason: string
-  /** The screens the role can open from the start. Omit for a role with no assignable screens yet. */
+  /** The screens the role can open from the start. Omit it for a role with no assignable screens yet. */
   screen_ids?: string[]
 }
 
@@ -52,50 +35,28 @@ export interface DeleteRoleBody {
   reason: string
 }
 
-async function readError(res: Response): Promise<RoleApiError> {
-  let body: unknown = null
-  try {
-    body = await res.json()
-  } catch {
-    // Not JSON (a proxy error page, an empty body) — fall back to the status line below.
-  }
-  const err = (body as { error?: { code?: string; message?: string } } | null)?.error
-  if (err?.code) return new RoleApiError(res.status, err.code as RoleErrorCode, err.message ?? res.statusText)
-  const message = (body as { message?: unknown } | null)?.message
-  return new RoleApiError(res.status, `HTTP_${res.status}`, typeof message === 'string' ? message : res.statusText || 'Request failed')
-}
-
 /**
- * Role access endpoints. Like `useFetchJson`, the returned functions close over `fetchWithAuth`, which is recreated
- * every render — call them from event handlers or a mount effect, never list them as effect dependencies.
+ * Role access endpoints.
+ *
+ * Every call goes through the shared `useFetchJson`, so a failure comes back as one `ApiError` — the same one the
+ * screen, audit and "my screens" clients throw — carrying the status and the server's error code. The pages read that
+ * code to decide where the message goes: under the name field, under the reason field, or in the dialog-level box.
+ *
+ * The returned functions close over `fetchWithAuth`, which is recreated every render — call them from event handlers or
+ * a mount effect, never list them as effect dependencies.
  */
 export function useRoleApi() {
-  const { fetchWithAuth } = useAppAuth()
-
-  async function send<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetchWithAuth(path, {
-      ...init,
-      headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
-    })
-    if (!res.ok) throw await readError(res)
-    return (await res.json()) as T
-  }
+  const fetchJson = useFetchJson()
 
   return {
-    list: () => send<RolesResponse>('/api/admin/roles'),
-    screens: (roleId: string) => send<RoleScreensResponse>(`/api/admin/roles/${roleId}/screens`),
+    list: () => fetchJson<RolesResponse>('/api/admin/roles'),
+    screens: (roleId: string) => fetchJson<RoleScreensResponse>(`/api/admin/roles/${roleId}/screens`),
     replaceScreens: (roleId: string, body: ReplaceRoleScreensBody) =>
-      send<ReplaceRoleScreensResponse>(`/api/admin/roles/${roleId}/screens`, { method: 'PUT', body: JSON.stringify(body) }),
-    create: (body: CreateRoleBody) => send<RoleSummary>('/api/admin/roles', { method: 'POST', body: JSON.stringify(body) }),
-    /** The answer is 204 with no body, so this one does not try to read JSON. */
-    remove: async (roleId: string, body: DeleteRoleBody) => {
-      const res = await fetchWithAuth(`/api/admin/roles/${roleId}`, {
-        method: 'DELETE',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) throw await readError(res)
-    },
+      fetchJson<ReplaceRoleScreensResponse>(`/api/admin/roles/${roleId}/screens`, { method: 'PUT', body: JSON.stringify(body) }),
+    create: (body: CreateRoleBody) => fetchJson<RoleSummary>('/api/admin/roles', { method: 'POST', body: JSON.stringify(body) }),
+    /** The answer is 204 with no body, so this one has nothing to read back. */
+    remove: (roleId: string, body: DeleteRoleBody) =>
+      fetchJson<void>(`/api/admin/roles/${roleId}`, { method: 'DELETE', body: JSON.stringify(body) }),
   }
 }
 

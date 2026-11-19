@@ -253,7 +253,7 @@ export function RoleAccessPage() {
         setPanel({ kind: 'saved', reason: savedReason, previous, staffCount: currentRole?.staff_count ?? 0 })
       }
     } catch (e: unknown) {
-      setSaveError(e instanceof Error ? e.message : String(e))
+      setSaveError(errorText(e))
     } finally {
       setSaving(false)
     }

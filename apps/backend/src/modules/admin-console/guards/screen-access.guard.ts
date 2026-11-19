@@ -35,6 +35,10 @@ type DenyReason = 'not_staff' | 'unknown_screen' | 'screen_off' | 'not_granted' 
  * as `APP_GUARD`. It depends only on `DbService` (global) and `AuditService`, so any module that imports `AuditModule`
  * or `AdminConsoleModule` can use it.
  *
+ * The access is worked out once per request. `@RequireScreen` may sit on the controller and on the route at the same
+ * time, and Nest runs the guard once for each; the second run sees what the first one resolved on the request and stops
+ * there, so the extra run costs no database work.
+ *
  * A refusal is a 403 with the admin console's `{ error: { code, message, details } }` body, and is written to
  * `audit_log` as `access_denied`. Writing that row can never change the answer: if it fails, the request is still
  * refused.
@@ -57,6 +61,12 @@ export class ScreenAccessGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<ScreenRequest>()
     const user = req.user
     if (!user) throw new UnauthorizedException()
+
+    // `@RequireScreen` can sit on the controller and on the route, and Nest then runs the guard once for each. The
+    // access for this request was already worked out, so the second run stops here rather than asking the database
+    // again. The guard stays attached to both on purpose: a route that names a screen is protected even when the
+    // controller does not name one, and a team cannot leave a route open by forgetting to register the guard.
+    if (req.screenAccess?.screenCode === screenCode) return true
 
     const [staff, screen] = await Promise.all([
       this.db.staff.findFirst({

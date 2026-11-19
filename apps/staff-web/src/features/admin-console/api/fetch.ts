@@ -54,6 +54,8 @@ export function useFetchJson() {
       const body = await res.text().catch(() => '')
       throw new ApiError(res.status, res.statusText, body)
     }
+    // A 204 has no body at all, so there is nothing to parse — the caller asked for the deletion, not for an answer.
+    if (res.status === 204) return undefined as T
     return (await res.json()) as T
   }
 }

@@ -6,9 +6,8 @@ import { cn } from '@staff-web/lib/utils'
  * Centred pop-up (shadcn `Dialog`). Escape and a click outside both cancel, unless `busy` (a request is in flight).
  * Fonts are set again here because the dialog is portalled outside the admin shell.
  *
- * This is a copy of the shell `StaffRolesPage.tsx` keeps for itself. That page belongs to another team member, so
- * moving its copy into a shared file would edit their file; this one serves the Role access dialogs instead. If the
- * two ever disagree about the shell, fold them into one then.
+ * One shell for the whole admin console: the Staff & roles dialogs and the Role access dialogs both use it, so a fix
+ * to the shell only has to be made once.
  */
 export function Modal({
   title,

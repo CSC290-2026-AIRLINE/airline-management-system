@@ -2,9 +2,10 @@ import { useId, useState, type FormEvent } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '@staff-web/components/ui/button'
 import { Input } from '@staff-web/components/ui/input'
-import { RoleApiError, type CreateRoleBody } from '../api/roles'
+import { ApiError, errorText } from '../api/fetch'
+import type { CreateRoleBody } from '../api/roles'
 import type { DisplayGroup } from '../screen-groups'
-import type { ScreenDto, ScreenKind } from '../types'
+import type { RoleErrorCode, ScreenDto, ScreenKind } from '../types'
 import { ErrorBox, Field, Hint, type BoxError } from './form-fields'
 import { Modal } from './Modal'
 import { ScreenRows } from './ScreenRows'
@@ -13,12 +14,12 @@ import { ScreenRows } from './ScreenRows'
 const MIN_REASON_LENGTH = 10
 
 /** The dialog-level title for each code the backend can answer with. */
-const BOX_TITLES: Record<string, string> = {
+const BOX_TITLES: Partial<Record<RoleErrorCode, string>> = {
   ROLE_NAME_TAKEN: 'That name is taken',
   ROLE_CODE_TAKEN: 'That name collides with another role',
   ROLE_NOT_FOUND: 'Role not found',
   ROLE_IN_USE: 'The role is still in use',
-  ROLE_NOT_DELETABLE: 'The Admin role cannot be deleted',
+  ROLE_NOT_DELETABLE: 'This role cannot be deleted',
   VALIDATION_FAILED: 'Some fields need fixing',
 }
 
@@ -95,10 +96,12 @@ export function CreateRoleDialog({
     try {
       await onSubmit({ name: name.trim(), reason: reason.trim(), screen_ids: [...selected] })
     } catch (err) {
-      if (err instanceof RoleApiError) {
-        if (err.code === 'ROLE_NAME_TAKEN' || err.code === 'ROLE_CODE_TAKEN') setNameError(err.message)
-        else if (err.code === 'REASON_REQUIRED') setReasonError(err.message)
-        else setBoxError({ title: BOX_TITLES[err.code] ?? "Couldn't create the role", message: err.message, code: err.code })
+      if (err instanceof ApiError) {
+        const code = (err.code ?? '') as RoleErrorCode
+        const message = errorText(err)
+        if (code === 'ROLE_NAME_TAKEN' || code === 'ROLE_CODE_TAKEN') setNameError(message)
+        else if (code === 'REASON_REQUIRED') setReasonError(message)
+        else setBoxError({ title: BOX_TITLES[code] ?? "Couldn't create the role", message, code })
       } else {
         setBoxError({
           title: "Couldn't create the role",

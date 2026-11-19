@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { RoleApiError } from '../api/roles'
-import { ApiError } from '../api/fetch'
+import { ApiError, errorText } from '../api/fetch'
 import type { RoleSummary, RoleScreensResponse, ScreenGroup } from '../types'
 
 interface UseRoleAccessState {
@@ -14,27 +13,6 @@ interface UseRoleAccessState {
   granted: Set<string>
   /** Set when the selected role came back `ROLE_NOT_FOUND` (it was removed since the list loaded). */
   missingRoleId: string | null
-}
-
-/**
- * The HTTP status of a failed request, whichever shape the error has: the Role access client throws a `RoleApiError`
- * that carries the status, while the shared screen client flattens the body into the message.
- */
-function statusOf(e: unknown): number | undefined {
-  if (e instanceof RoleApiError) return e.status
-  if (e instanceof ApiError) return e.status
-  const m = /^\s*(\d{3})\b/.exec(e instanceof Error ? e.message : '')
-  return m ? Number(m[1]) : undefined
-}
-
-/**
- * The error code of a failed request, whichever client threw it — the Role access client answers with its own
- * `RoleApiError`, the shared screen client with `ApiError`. Both carry the server's `code`.
- */
-function codeOf(e: unknown): string | null {
-  if (e instanceof RoleApiError) return e.code
-  if (e instanceof ApiError) return e.code
-  return null
 }
 
 /**
@@ -77,8 +55,8 @@ export function useRoleAccess(
         setState((prev) => ({
           ...prev,
           loading: false,
-          error: e instanceof Error ? e.message : String(e),
-          status: statusOf(e),
+          error: errorText(e),
+          status: e instanceof ApiError ? e.status : undefined,
         }))
       }
     })()
@@ -114,11 +92,15 @@ export function useRoleAccess(
       } catch (e: unknown) {
         if (cancelled) return
         // A role removed since the list loaded is not a broken page: the page says so and offers the list again.
-        if (codeOf(e) === 'ROLE_NOT_FOUND') {
+        if (e instanceof ApiError && e.code === 'ROLE_NOT_FOUND') {
           setState((prev) => ({ ...prev, granted: new Set(), missingRoleId: roleId }))
           return
         }
-        setState((prev) => ({ ...prev, error: e instanceof Error ? e.message : String(e), status: statusOf(e) }))
+        setState((prev) => ({
+          ...prev,
+          error: errorText(e),
+          status: e instanceof ApiError ? e.status : undefined,
+        }))
       }
     })()
     return () => {
