@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config'
 import { S3Client } from '@aws-sdk/client-s3'
 import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
+import { FlightSchedulingModule } from '@backend/modules/flight-scheduling/flight-scheduling.module'
 import { FOUND_BAG_CLOCK, FOUND_BAG_RECORDED_LISTENERS, type FoundBagRecordedListener } from './common/found-bag.ports'
 import { BaggageDeskController } from './baggage-desk.controller'
 import { BaggageFlightController } from './baggage-flight.controller'
@@ -19,6 +20,7 @@ import { BagDeliveryService } from './bag-delivery.service'
 import { BagTrackingService } from './bag-tracking.service'
 import { FoundBagLifecycleService } from './found-bag-lifecycle.service'
 import { FoundBagUnclaimedRunner } from './found-bag-unclaimed.runner'
+import { FlightDiversionListener } from './flight-diversion.listener'
 import { FoundBagController } from './found-bag.controller'
 import { FoundBagService } from './found-bag.service'
 import { LOST_REPORT_PHOTO_S3_CLIENT, LostReportPhotoStorage } from './lost-report-photo.storage'
@@ -31,10 +33,10 @@ import { StaffLostReportService } from './staff-lost-report.service'
 /**
  * Feature 10 (Lost and Found Baggage).
  * `DbModule` is `@Global()`, so `DbService` needs no import here. `AuditModule` brings the audit writer (ownership checks
- * at handover) and the shared simulation clock.
+ * at handover) and the shared simulation clock. `FlightSchedulingModule` (Feature 2) exports the flight event bus.
  */
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, FlightSchedulingModule],
   controllers: [
     FoundBagController,
     StationContactController,
@@ -52,6 +54,8 @@ import { StaffLostReportService } from './staff-lost-report.service'
     FoundBagLifecycleService,
     // Marks held bags unclaimed after unclaimed_after_days without a staff request.
     FoundBagUnclaimedRunner,
+    // Adds the bags of a diverted flight when Feature 2 publishes flight.diverted.
+    FlightDiversionListener,
     StaffLostReportService,
     BagCostService,
     BagMatchingService,

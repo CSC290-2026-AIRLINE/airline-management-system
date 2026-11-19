@@ -53,6 +53,15 @@ export interface BookingCoupon {
   flightNumber: string
   flightDate: Date
   status: string
+  /** The flight has departed or landed, so a bag can be missing from it. Only these can have a case. */
+  flown: boolean
+}
+
+/** Feature 2 flight statuses after take-off. A flight still scheduled, delayed or holding cannot have a lost bag yet. */
+export const FLOWN_FLIGHT_STATUSES = ['departed', 'arrived', 'diverted'] as const
+
+export function hasFlown(status: string): boolean {
+  return FLOWN_FLIGHT_STATUSES.some((s) => s === status)
 }
 
 export interface BookingLookup {

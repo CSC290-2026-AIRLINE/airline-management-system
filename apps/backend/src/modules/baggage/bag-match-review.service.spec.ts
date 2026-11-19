@@ -72,7 +72,13 @@ function matchRow(data: Record<string, unknown> = {}) {
       found_airport: 'BKK',
       found_at: SIM_NOW,
       flight: { flight_number: 'FY117' },
-      checked_bag: { check_in: { booking_passenger_id: BOOKING_PASSENGER_ID } },
+      checked_bag: {
+        check_in: {
+          booking_passenger_id: BOOKING_PASSENGER_ID,
+          flight_id: FLIGHT_ID,
+          flight: { flight_number: 'FY117', service_date: SIM_NOW },
+        },
+      },
       bag_location_event: [{ airport_code: 'SIN' }],
     },
     ...data,
@@ -124,7 +130,12 @@ describe('BagMatchReviewService.getById', () => {
         flightNumber: 'FY117',
         hasPhoto: true,
       },
-      foundBag: { foundAirport: 'BKK', currentAirport: 'SIN', flightNumber: 'FY117' },
+      foundBag: {
+        foundAirport: 'BKK',
+        currentAirport: 'SIN',
+        flightNumber: 'FY117',
+        checkedFlight: { flightId: FLIGHT_ID, flightNumber: 'FY117', flightDate: SIM_NOW },
+      },
     })
     expect(match.reasons).toEqual(expect.arrayContaining(['same_tag', 'owner_tag', 'same_brand', 'similar_description']))
   })

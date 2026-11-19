@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { FLOWN_FLIGHT_STATUSES } from './common/lost-report.types'
 import type { BookingVerification, EligibleTraveller, VerifiedBookingPassenger, VerifiedReportFlight } from './common/report.ports'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i
@@ -51,7 +52,8 @@ export class PrismaBookingVerification implements BookingVerification {
       },
     })
 
-    if (!coupon) {
+    // A report is for a flight that has departed (or landed); before that no bag can be missing from it.
+    if (!coupon || (flightId && !(await this.hasFlown(flightId)))) {
       return null
     }
 
@@ -172,7 +174,7 @@ export class PrismaBookingVerification implements BookingVerification {
       select: { booking_passenger_id: true, passenger_id: true, flight_id: true },
     })
 
-    if (!coupon) return null
+    if (!coupon || !(await this.hasFlown(flightId))) return null
 
     return { bookingPassengerId: coupon.booking_passenger_id, passengerId: coupon.passenger_id, flightId: coupon.flight_id }
   }
@@ -223,9 +225,19 @@ export class PrismaBookingVerification implements BookingVerification {
     return coupon?.booking_passenger.booking_id ?? null
   }
 
+  private async hasFlown(flightId: string): Promise<boolean> {
+    const flight = await this.db.flight.findFirst({
+      where: { id: flightId, status: { in: [...FLOWN_FLIGHT_STATUSES] } },
+      select: { id: true },
+    })
+
+    return flight !== null
+  }
+
+  /** Only flights that have departed, landed or been diverted: a lost bag report is for a flight already flown. */
   private async loadFlights(flightIds: string[]): Promise<VerifiedReportFlight[]> {
     const flights = await this.db.flight.findMany({
-      where: { id: { in: flightIds } },
+      where: { id: { in: flightIds }, status: { in: [...FLOWN_FLIGHT_STATUSES] } },
       select: {
         id: true,
         flight_number: true,

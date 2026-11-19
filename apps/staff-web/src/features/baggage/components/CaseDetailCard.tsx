@@ -4,6 +4,7 @@ import type { FoundBag } from '../api/found-bags'
 import type { AddBagCostBody, BagCostSummary, LostReportCase } from '../api/lost-reports'
 import { REPORT_STATUS_LABELS, REPORT_STATUS_TONES, bagSummary, formatEventTime, formatFlightDate } from '../constants'
 import { displayPhone } from '../phone-number'
+import { CaseCancel } from './CaseCancel'
 import { CaseCosts } from './CaseCosts'
 import { CasePhoto } from './CasePhoto'
 import { CaseMatches } from './CaseMatches'
@@ -27,12 +28,14 @@ export function CaseDetailCard({
   matches,
   heldBags,
   onLink,
+  onCancel,
   costs,
 }: {
   report: LostReportCase
   matches: BagMatch[]
   heldBags: FoundBag[]
   onLink: (foundBagId: string) => Promise<unknown>
+  onCancel: (reason: string) => Promise<unknown>
   costs: {
     summary: BagCostSummary | null
     loading: boolean
@@ -41,6 +44,8 @@ export function CaseDetailCard({
     remove: (costId: string) => Promise<void>
   }
 }) {
+  // Same rule as the backend: open or lost, and no bag confirmed as the owner's yet.
+  const canCancel = (report.status === 'open' || report.status === 'lost') && !matches.some((m) => m.status === 'confirmed')
   const contact = (report.contactPhone && displayPhone(report.contactPhone)) ?? report.contactEmail ?? 'Not given'
 
   return (
@@ -89,6 +94,13 @@ export function CaseDetailCard({
         onAdd={costs.add}
         onRemove={costs.remove}
       />
+
+      {canCancel && (
+        <>
+          <Separator className="bg-[#d8dce6]" />
+          <CaseCancel key={`cancel-${report.id}`} caseNumber={report.caseNumber} onCancel={onCancel} />
+        </>
+      )}
     </F10Card>
   )
 }

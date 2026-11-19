@@ -97,7 +97,7 @@ describe('BaggageFlightService', () => {
     expect(db.flight.findUnique).toHaveBeenCalledTimes(1)
   })
 
-  it('lists diverted flights of the last few days that still have bags to add, newest first', async () => {
+  it('lists diverted flights that still have bags to add, however long ago they landed, newest first', async () => {
     const { svc, db } = makeSvc()
     db.flight.findMany.mockResolvedValue([row('CNX')])
 
@@ -106,7 +106,7 @@ describe('BaggageFlightService', () => {
     const query = db.flight.findMany.mock.calls[0][0]
     expect(query.where.status).toBe('diverted')
     expect(query.where.actual_destination).toEqual({ not: null })
-    expect(query.where.arr_at.gte).toEqual(new Date('2026-10-18T00:00:00Z'))
+    expect(query.where.arr_at).toEqual({ lte: new Date('2026-10-22T00:00:00Z') })
     expect(query.where.check_in.some.checked_bag.some).toMatchObject({
       status: 'tagged',
       found_bag: { none: { status: { not: 'continued_with_flight' } } },

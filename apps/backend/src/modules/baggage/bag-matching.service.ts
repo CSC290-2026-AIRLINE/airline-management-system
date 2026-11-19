@@ -4,7 +4,7 @@ import { DbService } from '@backend/db/db.service'
 import { MATCHABLE_REPORT_STATUSES, type MatchRunResult } from './common/bag-match.types'
 import { FOUND_BAG_CLOCK, type FoundBagClock, type FoundBagRecordedListener } from './common/found-bag.ports'
 import type { FoundBag } from './common/found-bag.types'
-import { scoreMatch, type MatchSide } from './common/match-score'
+import { ownerMatch, scoreMatch, type MatchSide } from './common/match-score'
 import { UUID_PATTERN } from './common/patterns'
 
 const REPORT_FIELDS = {
@@ -27,7 +27,7 @@ const BAG_FIELDS = {
   colour: true,
   brand: true,
   description: true,
-  checked_bag: { select: { check_in: { select: { booking_passenger_id: true } } } },
+  checked_bag: { select: { check_in: { select: { booking_passenger_id: true, flight_id: true } } } },
 } satisfies Prisma.found_bagSelect
 
 type ReportFields = Prisma.lost_bag_reportGetPayload<{ select: typeof REPORT_FIELDS }>
@@ -55,8 +55,7 @@ function ownerOf(bag: BagFields): string | null {
 }
 
 function suggestion(report: ReportFields, bag: BagFields): NewMatch[] {
-  const owner = ownerOf(bag)
-  const { level } = scoreMatch(side(report), side(bag), owner !== null && owner === report.booking_passenger_id)
+  const { level } = scoreMatch(side(report), side(bag), ownerMatch(report, bag.checked_bag?.check_in))
   return level ? [{ report_id: report.id, found_bag_id: bag.id, match_level: level }] : []
 }
 

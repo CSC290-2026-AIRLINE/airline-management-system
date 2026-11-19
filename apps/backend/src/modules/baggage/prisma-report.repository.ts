@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import type { lost_bag_report } from '@backend/db/generated/prisma/client'
+import type { Prisma, lost_bag_report } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { BAGGAGE_ERROR_CODES, BaggageError } from './common/baggage.errors'
 import type { DeliveryChoiceSnapshot, ReportRepository } from './common/report.ports'
@@ -412,6 +412,21 @@ export class PrismaReportRepository implements ReportRepository {
       where: { booking_passenger_id: bookingPassengerId },
       orderBy: { reported_at: 'desc' },
     })
+
+    return rows.map(toReport)
+  }
+
+  async listForRequester(bookingPassengerId: string, customerId: string | null): Promise<LostBagReport[]> {
+    const anyOf: Prisma.lost_bag_reportWhereInput[] = [{ booking_passenger_id: bookingPassengerId }]
+    if (customerId) {
+      // Filed by this customer for someone on the same booking as the requester.
+      anyOf.push({
+        reported_by_customer_id: customerId,
+        booking_coupon: { booking_passenger: { booking: { booking_passenger: { some: { id: bookingPassengerId } } } } },
+      })
+    }
+
+    const rows = await this.db.lost_bag_report.findMany({ where: { OR: anyOf }, orderBy: { reported_at: 'desc' } })
 
     return rows.map(toReport)
   }

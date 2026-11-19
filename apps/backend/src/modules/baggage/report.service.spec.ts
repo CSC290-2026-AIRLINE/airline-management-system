@@ -535,6 +535,8 @@ describe('ReportService case access for co-travellers (Stage 3)', () => {
   const anna = { bookingReference: 'K7QX2M', surname: 'Eriksson', passengerId: 'P001' }
   const erik = { bookingReference: 'K7QX2M', surname: 'Eriksson', passengerId: 'P002' }
   const tom = { bookingReference: 'K7QX2M', surname: 'Berg', passengerId: 'P004' }
+  /** Anna signed in as the customer who files Erik's case (reportedByCustomerId C-ANNA). */
+  const annaSignedIn = { ...anna, customerId: 'C-ANNA' }
   const outsider = { bookingReference: 'XYZ789', surname: 'Jones', passengerId: 'P009' }
   const bag = { bagType: 'suitcase' as const, colour: 'black' as const, contactEmail: 'anna@example.com', contactPhone: '+66 81 000 0000' }
 
@@ -567,26 +569,45 @@ describe('ReportService case access for co-travellers (Stage 3)', () => {
       const own = await service.create({ ...anna, ...bag, flightId: 'F001', reportedByCustomerId: 'C-ANNA' })
       const lookup = jest.spyOn(bookings, 'isOnRequesterBooking')
 
-      await expect(service.getByCaseNumber(own.caseNumber, anna)).resolves.toEqual(own)
-      await expect(service.getViewableReport(own.caseNumber, anna)).resolves.toEqual({ report: own, isBagOwner: true })
+      await expect(service.getByCaseNumber(own.caseNumber, anna)).resolves.toEqual({ ...own, viewerCanManage: true })
+      await expect(service.getViewableReport(own.caseNumber, anna)).resolves.toEqual({ report: own, isBagOwner: true, canManage: true })
       expect(lookup).not.toHaveBeenCalled()
     })
 
     it('the bag owner sees a report filed for them by a co-traveller, with contact details', async () => {
       const created = await reportForErik()
 
-      await expect(service.getByCaseNumber(created.caseNumber, erik)).resolves.toEqual(created)
+      await expect(service.getByCaseNumber(created.caseNumber, erik)).resolves.toEqual({ ...created, viewerCanManage: true })
     })
 
-    it('the reporter can open the co-traveller case they filed, without stored contact details', async () => {
+    it('a traveller on the booking who did not sign in as the reporter sees the case without stored contact details', async () => {
       const created = await reportForErik()
 
       await expect(service.getByCaseNumber(created.caseNumber, anna)).resolves.toEqual({
         ...created,
         contactEmail: null,
         contactPhone: null,
+        viewerCanManage: false,
       })
-      await expect(service.getViewableReport(created.caseNumber, anna)).resolves.toMatchObject({ isBagOwner: false })
+      await expect(service.getViewableReport(created.caseNumber, anna)).resolves.toMatchObject({ isBagOwner: false, canManage: false })
+    })
+
+    it('the signed-in customer who filed the co-traveller case sees it in full and may manage it', async () => {
+      const created = await reportForErik()
+
+      await expect(service.getByCaseNumber(created.caseNumber, annaSignedIn)).resolves.toEqual({ ...created, viewerCanManage: true })
+      await expect(service.getViewableReport(created.caseNumber, annaSignedIn)).resolves.toMatchObject({
+        isBagOwner: false,
+        canManage: true,
+      })
+    })
+
+    it('claiming the reporter customer ID from another booking does not give access', async () => {
+      const created = await reportForErik()
+
+      await expect(service.getByCaseNumber(created.caseNumber, { ...outsider, customerId: 'C-ANNA' })).rejects.toMatchObject({
+        code: 'REPORT_NOT_FOUND',
+      })
     })
 
     it('another verified traveller on the same booking (own surname) can view, without contact details', async () => {
@@ -618,7 +639,7 @@ describe('ReportService case access for co-travellers (Stage 3)', () => {
     })
   })
 
-  describe('actions stay owner-only (unchanged)', () => {
+  describe('actions: the bag owner, or the customer who filed the case', () => {
     it('a non-owner on the same booking cannot read or change the delivery choice', async () => {
       const created = await reportForErik()
 
@@ -633,16 +654,31 @@ describe('ReportService case access for co-travellers (Stage 3)', () => {
       await expect(service.cancel(created.caseNumber, erik)).resolves.toMatchObject({ status: 'cancelled' })
     })
 
+    it('the customer who filed the case for a co-traveller can choose the delivery and cancel', async () => {
+      const created = await reportForErik()
+
+      await expect(service.getDeliveryChoiceForCaseNumber(created.caseNumber, annaSignedIn)).resolves.toBeNull()
+      await expect(service.cancel(created.caseNumber, annaSignedIn)).resolves.toMatchObject({ status: 'cancelled' })
+    })
+
+    it('another signed-in traveller on the booking who did not file it cannot cancel', async () => {
+      const created = await reportForErik()
+
+      await expect(service.cancel(created.caseNumber, { ...tom, customerId: 'C-TOM' })).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+    })
+
     it('the owner keeps delivery-choice access', async () => {
       const created = await reportForErik()
 
       await expect(service.getDeliveryChoiceForCaseNumber(created.caseNumber, erik)).resolves.toBeNull()
     })
 
-    it('the /mine listing is not widened: the reporter does not see the co-traveller case', async () => {
+    it('the /mine listing adds the cases the signed-in customer filed for co-travellers, and nothing else', async () => {
       await reportForErik()
 
+      await expect(service.listMine(annaSignedIn)).resolves.toHaveLength(1)
       await expect(service.listMine(anna)).resolves.toHaveLength(0)
+      await expect(service.listMine({ ...tom, customerId: 'C-TOM' })).resolves.toHaveLength(0)
       await expect(service.listMine(erik)).resolves.toHaveLength(1)
     })
   })

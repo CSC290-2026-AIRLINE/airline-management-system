@@ -6,6 +6,7 @@ import { CasesListCard } from '../components/CasesListCard'
 import { NewCaseCard } from '../components/NewCaseCard'
 import { CASE_FILTERS, CASE_FILTER_LABELS, CASE_FILTER_STATUSES, isOpenMatch, type CaseFilter } from '../constants'
 import { useBagMatches, useHeldBags } from '../hooks/useBagMatches'
+import { useLostReportApi } from '../api/lost-reports'
 import { useCaseCosts, useLostReports } from '../hooks/useLostReports'
 import { filterLostReportCases, getFlightOriginOptions } from './lost-report-filters'
 
@@ -38,6 +39,7 @@ export function LostBagCasesPage({
   onFlightFromChange: (origin: string | undefined) => void
 }) {
   const [creating, setCreating] = useState(false)
+  const api = useLostReportApi()
   const list = useLostReports()
   const selected = list.cases.find((c) => c.id === selectedId)
   const costs = useCaseCosts(selected?.id)
@@ -139,6 +141,11 @@ export function LostBagCasesPage({
               heldBags={heldBags}
               onLink={async (foundBagId) => {
                 await matches.link(selected.id, foundBagId)
+              }}
+              onCancel={async (reason) => {
+                await api.cancel(selected.id, reason)
+                list.reload()
+                matches.reload()
               }}
               costs={costs}
             />

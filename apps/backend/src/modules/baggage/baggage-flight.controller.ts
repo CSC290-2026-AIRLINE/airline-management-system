@@ -32,7 +32,7 @@ export class BaggageFlightController {
     return this.flights.departuresFrom(query.from, query.to)
   }
 
-  /** Diverted flights of the last few days, for adding the bags in their hold. Declared before `:id`. */
+  /** Diverted flights that still have bags in their hold to add. Declared before `:id`. */
   @Get('diverted')
   diverted(): Promise<BaggageFlight[]> {
     return this.flights.divertedRecently()

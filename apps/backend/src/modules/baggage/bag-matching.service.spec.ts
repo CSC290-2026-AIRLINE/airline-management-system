@@ -21,7 +21,7 @@ function bagRow(data: Record<string, unknown> = {}) {
     colour: 'black',
     brand: null,
     description: null,
-    checked_bag: { check_in: { booking_passenger_id: BOOKING_PASSENGER_ID } },
+    checked_bag: { check_in: { booking_passenger_id: BOOKING_PASSENGER_ID, flight_id: FLIGHT_ID } },
     ...data,
   }
 }
@@ -87,6 +87,24 @@ describe('BagMatchingService.matchFoundBag', () => {
         }),
         expect.objectContaining({ report_id: OTHER_REPORT_ID, match_level: 'possible' }),
       ],
+      skipDuplicates: true,
+    })
+  })
+
+  it("keeps the owner's bag checked in on another flight as a possible match, as on a connecting trip", async () => {
+    const { svc, db } = makeSvc()
+    db.found_bag.findUnique.mockResolvedValue(
+      bagRow({
+        flight_id: OTHER_FLIGHT_ID,
+        colour: 'blue',
+        checked_bag: { check_in: { booking_passenger_id: BOOKING_PASSENGER_ID, flight_id: OTHER_FLIGHT_ID } },
+      }),
+    )
+    db.lost_bag_report.findMany.mockResolvedValue([reportRow()])
+
+    expect(await svc.matchFoundBag(FOUND_BAG_ID)).toEqual({ created: 1 })
+    expect(db.bag_match.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ report_id: REPORT_ID, match_level: 'possible' })],
       skipDuplicates: true,
     })
   })

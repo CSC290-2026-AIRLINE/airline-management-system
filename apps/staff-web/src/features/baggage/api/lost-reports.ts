@@ -54,7 +54,7 @@ export interface BagCostSummary {
   costs: BagCost[]
 }
 
-/** A ticketed passenger and flight on a booking (backend `BookingCoupon`). Only `confirmed` coupons can have a case. */
+/** A ticketed passenger and flight on a booking (backend `BookingCoupon`). Only `confirmed` coupons on a flown flight can have a case. */
 export interface BookingCoupon {
   bookingPassengerId: string
   passengerId: string
@@ -64,6 +64,8 @@ export interface BookingCoupon {
   flightNumber: string
   flightDate: string
   status: string
+  /** The flight has departed or landed. */
+  flown: boolean
 }
 
 export interface BookingLookup {
@@ -105,6 +107,8 @@ export function useLostReportApi() {
     createFromFoundBag: (foundBagId: string) =>
       send<LostReportCase>('/api/staff/lost-reports/from-found-bag', { method: 'POST', body: JSON.stringify({ foundBagId }) }),
     /** The bag photo the passenger attached to the case. */
+    cancel: (id: string, reason: string) =>
+      send<LostReportCase>(`/api/staff/lost-reports/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
     photo: (id: string) => fetchFile(`/api/staff/lost-reports/${id}/photo`),
     costs: (id: string) => send<BagCostSummary>(`/api/staff/lost-reports/${id}/costs`),
     addCost: (id: string, body: AddBagCostBody) =>

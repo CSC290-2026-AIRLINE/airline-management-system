@@ -46,6 +46,15 @@ export class InMemoryReportRepository implements ReportRepository {
     return Promise.resolve(reports)
   }
 
+  /** No bookings in memory: a case filed by customerId counts as on the requester's booking. */
+  listForRequester(bookingPassengerId: string, customerId: string | null): Promise<LostBagReport[]> {
+    const reports = this.reports
+      .filter((item) => item.bookingPassengerId === bookingPassengerId || (!!customerId && item.reportedByCustomerId === customerId))
+      .map((report) => ({ ...report }))
+
+    return Promise.resolve(reports)
+  }
+
   cancelIfNotDispatched(reportId: string, bookingPassengerId: string, closedAt: Date): Promise<LostBagReport | null> {
     const index = this.reports.findIndex(
       (report) => report.id === reportId && report.bookingPassengerId === bookingPassengerId && ['open', 'lost'].includes(report.status),

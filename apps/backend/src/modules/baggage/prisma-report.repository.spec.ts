@@ -564,3 +564,43 @@ describe('PrismaReportRepository cancellation', () => {
     expect(harness.transaction).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('PrismaReportRepository.listForRequester', () => {
+  const BOOKING_PASSENGER_ID = '00000000-0000-4000-8000-000000000002'
+  const CUSTOMER_ID = '00000000-0000-4000-8000-000000000009'
+
+  function make() {
+    const findMany = jest.fn().mockResolvedValue([reportRow({ reported_by_customer_id: CUSTOMER_ID })])
+    const repository = new PrismaReportRepository({ lost_bag_report: { findMany } } as unknown as DbService)
+    return { repository, findMany }
+  }
+
+  it("lists the requester's cases and the cases this customer filed for travellers on the same booking", async () => {
+    const { repository, findMany } = make()
+
+    await expect(repository.listForRequester(BOOKING_PASSENGER_ID, CUSTOMER_ID)).resolves.toHaveLength(1)
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { booking_passenger_id: BOOKING_PASSENGER_ID },
+          {
+            reported_by_customer_id: CUSTOMER_ID,
+            booking_coupon: { booking_passenger: { booking: { booking_passenger: { some: { id: BOOKING_PASSENGER_ID } } } } },
+          },
+        ],
+      },
+      orderBy: { reported_at: 'desc' },
+    })
+  })
+
+  it('lists only own cases when no customer is signed in', async () => {
+    const { repository, findMany } = make()
+
+    await repository.listForRequester(BOOKING_PASSENGER_ID, null)
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { OR: [{ booking_passenger_id: BOOKING_PASSENGER_ID }] },
+      orderBy: { reported_at: 'desc' },
+    })
+  })
+})

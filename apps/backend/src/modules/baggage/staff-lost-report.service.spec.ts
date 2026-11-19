@@ -54,7 +54,10 @@ function makeSvc() {
         booking_passenger: { booking },
       }),
     },
-    flight: { findMany: jest.fn().mockResolvedValue([{ id: FLIGHT_ID, flight_number: 'FT101', service_date: FLIGHT_DATE }]) },
+    flight: {
+      findMany: jest.fn().mockResolvedValue([{ id: FLIGHT_ID, flight_number: 'FT101', service_date: FLIGHT_DATE, status: 'arrived' }]),
+      findUnique: jest.fn().mockResolvedValue({ status: 'arrived' }),
+    },
     checked_bag: { findFirst: jest.fn().mockResolvedValue(null) },
     found_bag: { findUnique: jest.fn().mockResolvedValue(null) },
     lost_bag_report: {
@@ -62,6 +65,7 @@ function makeSvc() {
       findFirst: jest.fn().mockResolvedValue(null),
       findUnique: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockResolvedValue({}),
     },
     $queryRaw: jest.fn().mockResolvedValue([{ nextval: 42n }]),
     $transaction: jest.fn(),
@@ -178,6 +182,21 @@ describe('StaffLostReportService.createAtDesk', () => {
     })
 
     await expect(svc.createAtDesk(deskInput)).rejects.toMatchObject({ code: 'INVALID_REPORT', status: 400 })
+  })
+
+  it.each(['scheduled', 'delayed', 'holding', 'cancelled'])('rejects a flight that is still %s', async (status) => {
+    const { svc, db } = makeSvc()
+    db.flight.findUnique.mockResolvedValue({ status })
+
+    await expect(svc.createAtDesk(deskInput)).rejects.toMatchObject({ code: 'INVALID_REPORT', status: 400 })
+    expect(db.lost_bag_report.create).not.toHaveBeenCalled()
+  })
+
+  it.each(['departed', 'arrived', 'diverted'])('accepts a flight that has %s', async (status) => {
+    const { svc, db } = makeSvc()
+    db.flight.findUnique.mockResolvedValue({ status })
+
+    await expect(svc.createAtDesk(deskInput)).resolves.toMatchObject({ status: 'open' })
   })
 
   it('rejects bad input before touching the database', async () => {
@@ -365,12 +384,33 @@ describe('StaffLostReportService reads', () => {
           flightNumber: 'FT101',
           flightDate: FLIGHT_DATE,
           status: 'confirmed',
+          flown: true,
         },
       ],
     })
     expect(db.booking.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { booking_reference: 'ABC234' } }))
     // The contact details it returns make every lookup a sensitive view.
     expect(audit.recordSensitiveView).toHaveBeenCalledWith(ACTOR, expect.objectContaining({ entityType: 'booking', entityId: 'booking-1' }))
+  })
+
+  it('marks a flight that has not departed yet as not flown', async () => {
+    const { svc, db } = makeSvc()
+    db.booking.findUnique.mockResolvedValue({
+      id: 'booking-1',
+      booking_reference: 'ABC234',
+      ...booking,
+      booking_passenger: [
+        {
+          passenger: { id: PASSENGER_ID, first_name: 'Somchai', last_name: 'Jaidee' },
+          booking_coupon: [{ booking_passenger_id: BOOKING_PASSENGER_ID, flight_id: FLIGHT_ID, status: 'confirmed' }],
+        },
+      ],
+    })
+    db.flight.findMany.mockResolvedValue([{ id: FLIGHT_ID, flight_number: 'FT101', service_date: FLIGHT_DATE, status: 'scheduled' }])
+
+    const lookup = await svc.lookupBooking('ABC234', ACTOR)
+
+    expect(lookup.coupons[0]).toMatchObject({ flightId: FLIGHT_ID, flown: false })
   })
 
   it('reports an unknown or malformed booking reference', async () => {
@@ -448,5 +488,76 @@ describe('StaffLostReportService reads', () => {
     await expect(svc.list({ caseNumber: 'LB-26-1' })).resolves.toEqual([])
     await expect(svc.list({ flightId: 'nope' })).resolves.toEqual([])
     expect(db.lost_bag_report.findMany).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('StaffLostReportService.cancel', () => {
+  const cancelInput = { staffId: STAFF_ID, actor: ACTOR, reportId: REPORT_ID, reason: ' Filed for a traveller who has no account ' }
+
+  function withCase(
+    db: ReturnType<typeof makeSvc>['db'],
+    status: string,
+    recovery = { bag_delivery: null, bag_match: [] as { id: string }[] },
+  ) {
+    db.$queryRaw.mockResolvedValueOnce([{ id: REPORT_ID, status, case_number: 'LB-2026-000042' }])
+    db.lost_bag_report.findUnique
+      .mockResolvedValueOnce(recovery)
+      .mockResolvedValueOnce(reportRow({ case_number: 'LB-2026-000042', status: 'cancelled', closed_at: SIM_NOW }))
+  }
+
+  it.each(['open', 'lost'])('cancels a %s case and writes the reason to audit_log', async (status) => {
+    const { svc, db, audit } = makeSvc()
+    withCase(db, status)
+
+    const report = await svc.cancel(cancelInput)
+
+    expect(db.lost_bag_report.update).toHaveBeenCalledWith({
+      where: { id: REPORT_ID },
+      data: expect.objectContaining({ status: 'cancelled', closed_at: SIM_NOW }),
+    })
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'status_change',
+        entityType: 'lost_bag_report',
+        entityId: REPORT_ID,
+        reason: 'Filed for a traveller who has no account',
+        before: { status },
+        after: { status: 'cancelled', staffId: STAFF_ID },
+      }),
+      db,
+    )
+    expect(report).toMatchObject({ status: 'cancelled' })
+  })
+
+  it.each(['matched', 'delivering', 'closed', 'cancelled'])('refuses a %s case', async (status) => {
+    const { svc, db, audit } = makeSvc()
+    withCase(db, status)
+
+    await expect(svc.cancel(cancelInput)).rejects.toMatchObject({ code: 'INVALID_STATUS' })
+    expect(db.lost_bag_report.update).not.toHaveBeenCalled()
+    expect(audit.write).not.toHaveBeenCalled()
+  })
+
+  it('refuses a case whose bag was already confirmed, whatever its status says', async () => {
+    const { svc, db } = makeSvc()
+    withCase(db, 'open', { bag_delivery: null, bag_match: [{ id: 'match-1' }] })
+
+    await expect(svc.cancel(cancelInput)).rejects.toMatchObject({ code: 'INVALID_STATUS' })
+    expect(db.lost_bag_report.update).not.toHaveBeenCalled()
+  })
+
+  it('needs a reason', async () => {
+    const { svc, db } = makeSvc()
+
+    await expect(svc.cancel({ ...cancelInput, reason: '   ' })).rejects.toMatchObject({ code: 'INVALID_REPORT' })
+    expect(db.$transaction).not.toHaveBeenCalled()
+  })
+
+  it('answers not found for a missing or malformed case', async () => {
+    const { svc, db } = makeSvc()
+    db.$queryRaw.mockResolvedValueOnce([])
+
+    await expect(svc.cancel(cancelInput)).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+    await expect(svc.cancel({ ...cancelInput, reportId: 'nope' })).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
   })
 })

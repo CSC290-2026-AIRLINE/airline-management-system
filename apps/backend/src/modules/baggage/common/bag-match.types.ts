@@ -16,7 +16,8 @@ export const MATCHABLE_REPORT_STATUSES: ReportStatus[] = ['open', 'lost']
 
 /**
  * What a report and a found bag have in common. owner_tag: the found bag's Feature 6 bag belongs to the report's
- * booking passenger, so the tag names the owner even when the report has no tag.
+ * booking passenger, so the tag names the owner even when the report has no tag. It makes the match strong only when
+ * that bag was checked in on the report's flight; otherwise it is possible.
  */
 export const MATCH_REASONS = [
   'same_tag',
@@ -65,6 +66,8 @@ export interface MatchFoundBagSide {
   foundAirport: string
   foundAt: Date
   currentAirport: string
+  /** The flight the bag was checked in on, when its tag is a Feature 6 bag. On a connecting trip it can be an earlier leg. */
+  checkedFlight: { flightId: string; flightNumber: string; flightDate: Date } | null
 }
 
 export interface StaffName {

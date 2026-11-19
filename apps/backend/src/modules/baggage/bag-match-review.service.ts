@@ -16,7 +16,7 @@ import { lockFoundBag, lockLostReport } from './common/case-locks'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
 import type { FoundBagStatus } from './common/found-bag.types'
-import { scoreMatch } from './common/match-score'
+import { ownerMatch, scoreMatch } from './common/match-score'
 import { UUID_PATTERN, prismaErrorCode } from './common/patterns'
 
 /** Written on the other open matches of a report and a bag when one of their matches is confirmed. */
@@ -60,7 +60,13 @@ const MATCH_INCLUDE = {
   found_bag: {
     include: {
       flight: { select: { flight_number: true } },
-      checked_bag: { select: { check_in: { select: { booking_passenger_id: true } } } },
+      checked_bag: {
+        select: {
+          check_in: {
+            select: { booking_passenger_id: true, flight_id: true, flight: { select: { flight_number: true, service_date: true } } },
+          },
+        },
+      },
       bag_location_event: { select: { airport_code: true }, orderBy: [{ occurred_at: 'desc' }, { created_at: 'desc' }], take: 1 },
     },
   },
@@ -77,7 +83,7 @@ function toStaffName(row: { id: string; first_name: string; last_name: string } 
 export function toBagMatch(row: MatchRow): BagMatch {
   const report = row.lost_bag_report
   const bag = row.found_bag
-  const owner = bag.checked_bag?.check_in.booking_passenger_id ?? null
+  const checkIn = bag.checked_bag?.check_in ?? null
   const { score, reasons } = scoreMatch(
     {
       tagNumber: report.tag_number,
@@ -95,7 +101,7 @@ export function toBagMatch(row: MatchRow): BagMatch {
       brand: bag.brand,
       description: bag.description,
     },
-    owner !== null && owner === report.booking_passenger_id,
+    ownerMatch(report, checkIn),
   )
 
   return {
@@ -143,6 +149,9 @@ export function toBagMatch(row: MatchRow): BagMatch {
       foundAirport: bag.found_airport,
       foundAt: bag.found_at,
       currentAirport: bag.bag_location_event[0]?.airport_code ?? bag.found_airport,
+      checkedFlight: checkIn
+        ? { flightId: checkIn.flight_id, flightNumber: checkIn.flight.flight_number, flightDate: checkIn.flight.service_date }
+        : null,
     },
   }
 }

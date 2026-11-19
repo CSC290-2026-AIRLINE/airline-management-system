@@ -14,9 +14,10 @@ import {
 import { isValidBaggageTag } from './common/baggage-tag.util'
 import { MATCHABLE_REPORT_STATUSES, OPEN_MATCH_STATUSES } from './common/bag-match.types'
 import { CASE_NUMBER_PATTERN, formatCaseNumber } from './common/case-number.util'
+import { lockLostReport } from './common/case-locks'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { FOUND_BAG_CLOCK, type FoundBagClock } from './common/found-bag.ports'
-import type { BookingLookup, LostReportCase } from './common/lost-report.types'
+import { hasFlown, type BookingLookup, type LostReportCase } from './common/lost-report.types'
 import { UUID_PATTERN, prismaErrorCode } from './common/patterns'
 import { formatPhoneNumber, phoneNumberProblem } from './common/phone-number'
 
@@ -51,6 +52,20 @@ export interface FoundBagReportInput {
   contactEmail?: string | null
   contactPhone?: string | null
 }
+
+export interface CancelReportInput {
+  staffId: string
+  /** Who is signed in, for the audit row. */
+  actor: AuditActor
+  reportId: string
+  reason: string
+}
+
+/**
+ * Statuses staff can cancel a case from: the same as passenger self-service. Once a bag is confirmed as the owner's, the
+ * case goes on through delivery and handover instead.
+ */
+export const STAFF_CANCELLABLE_REPORT_STATUSES: ReportStatus[] = ['open', 'lost']
 
 export interface LostReportFilter {
   status?: ReportStatus
@@ -219,7 +234,10 @@ export class StaffLostReportService {
     // booking_coupon has no Prisma relation to Feature 2's flight, so flights are read in one extra query.
     const flightIds = [...new Set(booking.booking_passenger.flatMap((bp) => bp.booking_coupon.map((coupon) => coupon.flight_id)))]
     const flights = flightIds.length
-      ? await this.db.flight.findMany({ where: { id: { in: flightIds } }, select: { id: true, flight_number: true, service_date: true } })
+      ? await this.db.flight.findMany({
+          where: { id: { in: flightIds } },
+          select: { id: true, flight_number: true, service_date: true, status: true },
+        })
       : []
     const flightById = new Map(flights.map((flight) => [flight.id, flight]))
 
@@ -238,6 +256,7 @@ export class StaffLostReportService {
                 flightNumber: flight.flight_number,
                 flightDate: flight.service_date,
                 status: coupon.status,
+                flown: hasFlown(flight.status),
               },
             ]
           : []
@@ -296,6 +315,12 @@ export class StaffLostReportService {
     // A held, expired or cancelled coupon never flew, so it has no checked bags to lose.
     if (coupon.status !== 'confirmed') {
       throw invalid('Only a ticketed flight can have a lost bag report')
+    }
+
+    const flight = await this.db.flight.findUnique({ where: { id: flightId }, select: { status: true } })
+
+    if (!flight || !hasFlown(flight.status)) {
+      throw invalid('This flight has not departed yet, so it cannot have a lost bag report')
     }
 
     if (tagNumber) {
@@ -433,6 +458,72 @@ export class StaffLostReportService {
     }
 
     return toLostReportCase(row)
+  }
+
+  /**
+   * Staff cancel a case with a reason, for example one a customer filed for a traveller who cannot reach it. Allowed
+   * before a bag is confirmed as the owner's (open or lost), like passenger cancellation. Pending match suggestions stay
+   * as history and drop off Match review with the case. The reason goes to audit_log with the status change.
+   */
+  async cancel(input: CancelReportInput): Promise<LostReportCase> {
+    const reason = input.reason?.trim()
+
+    if (!UUID_PATTERN.test(input.reportId)) {
+      throw new FoundBagError(FOUND_BAG_ERROR_CODES.REPORT_NOT_FOUND, 'Lost bag report not found')
+    }
+
+    if (!reason) {
+      throw invalid('Give a reason for cancelling this case')
+    }
+
+    const closedAt = this.clock.now()
+
+    await this.db.$transaction(async (tx) => {
+      // The case lock first (see case-locks): a match confirmation or a passenger cancelling the same case either
+      // finished before this, and is seen below, or waits and then finds the case cancelled.
+      const locked = await lockLostReport(tx, input.reportId)
+
+      if (!locked) {
+        throw new FoundBagError(FOUND_BAG_ERROR_CODES.REPORT_NOT_FOUND, 'Lost bag report not found')
+      }
+
+      if (!STAFF_CANCELLABLE_REPORT_STATUSES.some((s) => s === locked.status)) {
+        throw new FoundBagError(FOUND_BAG_ERROR_CODES.INVALID_STATUS, 'Only an open or lost case can be cancelled')
+      }
+
+      // Fail closed if the status and the recovery rows ever disagree, as passenger cancellation does.
+      const recovery = await tx.lost_bag_report.findUnique({
+        where: { id: locked.id },
+        select: { bag_delivery: { select: { id: true } }, bag_match: { where: { status: 'confirmed' }, select: { id: true } } },
+      })
+
+      if (recovery?.bag_delivery || (recovery?.bag_match.length ?? 0) > 0) {
+        throw new FoundBagError(FOUND_BAG_ERROR_CODES.INVALID_STATUS, 'This case already has a confirmed bag, so it cannot be cancelled')
+      }
+
+      await tx.lost_bag_report.update({
+        where: { id: locked.id },
+        data: { status: 'cancelled', closed_at: closedAt, updated_at: new Date() },
+      })
+
+      await this.audit.write(
+        {
+          actor: input.actor,
+          sourceFeature: AUDIT_SOURCE_FEATURE,
+          action: 'status_change',
+          entityType: 'lost_bag_report',
+          entityId: locked.id,
+          summary: `Lost bag case ${locked.case_number} cancelled by baggage staff`,
+          reason,
+          before: { status: locked.status },
+          after: { status: 'cancelled', staffId: input.staffId },
+          occurredAt: closedAt,
+        },
+        tx,
+      )
+    })
+
+    return this.getById(input.reportId)
   }
 
   /** Every report, whoever filed it, newest first. */

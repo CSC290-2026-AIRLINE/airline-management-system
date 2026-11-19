@@ -1,4 +1,4 @@
-import { scoreMatch, type MatchSide } from './match-score'
+import { ownerMatch, scoreMatch, type MatchSide } from './match-score'
 
 const FLIGHT_ID = '22222222-2222-4222-8222-222222222222'
 const OTHER_FLIGHT_ID = '33333333-3333-4333-8333-333333333333'
@@ -21,12 +21,19 @@ describe('scoreMatch', () => {
     expect(result.score).toBe(95)
   })
 
-  it('is strong when the found bag belongs to the booking passenger, even without a tag on the report', () => {
-    const result = scoreMatch({ ...report, tagNumber: null }, { ...report, flightId: OTHER_FLIGHT_ID, colour: 'blue' }, true)
+  it('is strong when the found bag belongs to the booking passenger on this flight, even without a tag on the report', () => {
+    const result = scoreMatch({ ...report, tagNumber: null }, { ...report, flightId: OTHER_FLIGHT_ID, colour: 'blue' }, 'same_flight')
 
     expect(result.level).toBe('strong')
     expect(result.reasons).toContain('owner_tag')
     expect(result.reasons).not.toContain('same_tag')
+  })
+
+  it("is only possible when the passenger's bag was checked in on another flight", () => {
+    const result = scoreMatch({ ...report, tagNumber: null }, { ...report, flightId: OTHER_FLIGHT_ID, colour: 'blue' }, 'other_flight')
+
+    expect(result.level).toBe('possible')
+    expect(result.reasons).toContain('owner_tag')
   })
 
   it('is possible for the same flight, type and colour', () => {
@@ -59,6 +66,21 @@ describe('scoreMatch', () => {
   })
 
   it('caps the score at 100', () => {
-    expect(scoreMatch(report, report, true).score).toBe(100)
+    expect(scoreMatch(report, report, 'same_flight').score).toBe(100)
+  })
+})
+
+describe('ownerMatch', () => {
+  const PASSENGER_ID = '55555555-5555-4555-8555-555555555555'
+  const reportRow = { booking_passenger_id: PASSENGER_ID, flight_id: FLIGHT_ID }
+
+  it("tells the passenger's bag on this flight from one checked in on another leg", () => {
+    expect(ownerMatch(reportRow, { booking_passenger_id: PASSENGER_ID, flight_id: FLIGHT_ID })).toBe('same_flight')
+    expect(ownerMatch(reportRow, { booking_passenger_id: PASSENGER_ID, flight_id: OTHER_FLIGHT_ID })).toBe('other_flight')
+  })
+
+  it("is none for someone else's bag or a bag with no Feature 6 record", () => {
+    expect(ownerMatch(reportRow, { booking_passenger_id: '99999999-9999-4999-8999-999999999999', flight_id: FLIGHT_ID })).toBe('none')
+    expect(ownerMatch(reportRow, null)).toBe('none')
   })
 })

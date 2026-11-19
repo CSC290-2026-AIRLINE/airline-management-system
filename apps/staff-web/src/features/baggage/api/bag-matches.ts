@@ -54,6 +54,8 @@ export interface BagMatch {
     foundAirport: string
     foundAt: string
     currentAirport: string
+    /** The flight the bag was checked in on, when its tag is on file. On a connecting trip it can be an earlier leg. */
+    checkedFlight: { flightId: string; flightNumber: string; flightDate: string } | null
   }
 }
 

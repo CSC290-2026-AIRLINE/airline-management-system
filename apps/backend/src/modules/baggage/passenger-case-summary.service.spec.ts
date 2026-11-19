@@ -27,7 +27,7 @@ describe('PassengerCaseSummaryService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
-    reports.getViewableReport.mockResolvedValue({ report, isBagOwner: true })
+    reports.getViewableReport.mockResolvedValue({ report, isBagOwner: true, canManage: true })
     repository.findPassengerCaseSummaryByReportId.mockResolvedValue(summary)
   })
 
@@ -45,7 +45,7 @@ describe('PassengerCaseSummaryService', () => {
   })
 
   it('gives a same-booking traveller who is not the bag owner the delivery status but not the address', async () => {
-    reports.getViewableReport.mockResolvedValue({ report, isBagOwner: false })
+    reports.getViewableReport.mockResolvedValue({ report, isBagOwner: false, canManage: false })
 
     const result = await service.getByCaseNumber(report.caseNumber, access)
 
@@ -55,7 +55,7 @@ describe('PassengerCaseSummaryService', () => {
   })
 
   it('handles a case with no delivery yet for a non-owner viewer', async () => {
-    reports.getViewableReport.mockResolvedValue({ report, isBagOwner: false })
+    reports.getViewableReport.mockResolvedValue({ report, isBagOwner: false, canManage: false })
     repository.findPassengerCaseSummaryByReportId.mockResolvedValue({ ...summary, delivery: null })
 
     await expect(service.getByCaseNumber(report.caseNumber, access)).resolves.toMatchObject({ delivery: null })

@@ -19,7 +19,7 @@ import {
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import type { DeliveryChoiceResult } from './bag-delivery.service'
-import { ReportService } from './report.service'
+import { ReportService, type ViewedLostBagReport } from './report.service'
 import type { LostBagReport } from './common/report.types'
 import type { DeliveryChoiceSnapshot } from './common/report.ports'
 import { BaggageCustomerGuard, CurrentBaggageCustomer, type BaggageCustomer } from './guards/baggage-customer.guard'
@@ -90,6 +90,7 @@ export class PassengerLostReportController {
     return this.reports.listMine({
       ...query,
       passengerId: customer.passengerId,
+      customerId: customer.customerId,
     })
   }
 
@@ -98,10 +99,11 @@ export class PassengerLostReportController {
     @CurrentBaggageCustomer() customer: BaggageCustomer,
     @Param('caseNumber') caseNumber: string,
     @Query() query: PassengerReportAccessQuery,
-  ): Promise<LostBagReport> {
+  ): Promise<ViewedLostBagReport> {
     return this.reports.getByCaseNumber(caseNumber, {
       ...query,
       passengerId: customer.passengerId,
+      customerId: customer.customerId,
     })
   }
 
@@ -131,6 +133,7 @@ export class PassengerLostReportController {
     return this.caseSummaries.getByCaseNumber(caseNumber, {
       ...query,
       passengerId: customer.passengerId,
+      customerId: customer.customerId,
     })
   }
 
@@ -143,6 +146,7 @@ export class PassengerLostReportController {
     return this.deliveryChoices.getChoice(caseNumber, {
       ...query,
       passengerId: customer.passengerId,
+      customerId: customer.customerId,
     })
   }
 
@@ -158,6 +162,7 @@ export class PassengerLostReportController {
       {
         ...query,
         passengerId: customer.passengerId,
+        customerId: customer.customerId,
       },
       {
         customerId: customer.customerId,
@@ -176,6 +181,7 @@ export class PassengerLostReportController {
     return this.reports.cancel(caseNumber, {
       ...query,
       passengerId: customer.passengerId,
+      customerId: customer.customerId,
     })
   }
 }

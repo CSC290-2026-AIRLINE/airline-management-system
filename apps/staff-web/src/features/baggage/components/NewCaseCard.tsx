@@ -93,8 +93,9 @@ function CaseDetails({
   onBack: () => void
 }) {
   const api = useLostReportApi()
-  // A held, expired or cancelled coupon never flew, so it cannot have a lost bag.
-  const coupons = booking.coupons.filter((c) => c.status === 'confirmed')
+  // A held, expired or cancelled coupon, or a flight that has not departed yet, cannot have a lost bag.
+  const ticketed = booking.coupons.filter((c) => c.status === 'confirmed')
+  const coupons = ticketed.filter((c) => c.flown)
   const [picked, setPicked] = useState(coupons[0] ? couponKey(coupons[0]) : '')
   const [bagType, setBagType] = useState<BagType>('suitcase')
   const [colour, setColour] = useState<BagColour>('black')
@@ -170,7 +171,9 @@ function CaseDetails({
 
       {coupons.length === 0 ? (
         <p className="rounded-lg bg-[#fff4de] px-3.5 py-3 text-base text-[#94651c]">
-          This booking has no ticketed flight, so no lost bag case can be opened for it.
+          {ticketed.length === 0
+            ? 'This booking has no ticketed flight, so no lost bag case can be opened for it.'
+            : 'No flight on this booking has departed yet, so no lost bag case can be opened for it.'}
         </p>
       ) : (
         <>

@@ -37,6 +37,8 @@ interface LostBagReportDetail {
   caseNumber: string
   /** The bag owner's booking passenger; compared with the viewer's own to decide which controls to show. */
   bookingPassengerId?: string
+  /** The server's answer: the viewer owns the bag, or is the signed-in customer who filed the case for them. */
+  viewerCanManage?: boolean
   bagType: string
   colour: string
   brand: string | null
@@ -204,12 +206,23 @@ export function PassengerLostBagCasePage() {
   const [isEditingAccess, setIsEditingAccess] = useState(true)
   const [saveNotice, setSaveNotice] = useState('')
   const [error, setError] = useState('')
-  // true: bag owner; false: another traveller on the booking (read-only view); null: not known yet.
+  // true: bag owner, or the customer who filed the case for them; false: another traveller on the booking (read-only
+  // view); null: not known yet.
   const [viewerIsBagOwner, setViewerIsBagOwner] = useState<boolean | null>(null)
   const ownerActionsAllowed = canUseOwnerActions(viewerIsBagOwner)
 
-  async function loadOwnership(currentAccess: CaseAccess, reportBookingPassengerId: string | undefined, caseRequestId: number) {
+  async function loadOwnership(
+    currentAccess: CaseAccess,
+    reportBookingPassengerId: string | undefined,
+    caseRequestId: number,
+    viewerCanManage: boolean,
+  ) {
     const isCurrent = () => isCurrentCaseRequest(caseRequestId, caseRequestGeneration.current)
+    // The customer who filed this case for another traveller manages it like the owner. The backend checks again.
+    if (viewerCanManage) {
+      setViewerIsBagOwner(true)
+      return
+    }
     const result = await resolveViewerOwnership(
       () =>
         fetchWithAuth(
@@ -320,7 +333,7 @@ export function PassengerLostBagCasePage() {
       setRelatedCases(caseNumbers)
       setCaseListMessage(listMessage)
       void loadCaseSummary(normalizedAccess, requestId)
-      void loadOwnership(normalizedAccess, reportData.bookingPassengerId, requestId)
+      void loadOwnership(normalizedAccess, reportData.bookingPassengerId, requestId, reportData.viewerCanManage === true)
 
       try {
         const deliveryResponse = await fetchWithAuth(`${casePath}/delivery-choice?${query}`)

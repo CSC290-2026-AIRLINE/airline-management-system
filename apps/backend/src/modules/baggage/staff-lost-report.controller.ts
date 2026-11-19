@@ -21,6 +21,7 @@ import { BAGGAGE_ERROR_CODES, BaggageError } from './common/baggage.errors'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import type { BagCost, BagCostSummary, BookingLookup, LostReportCase } from './common/lost-report.types'
 import { AddBagCostDto } from './dto/add-bag-cost.dto'
+import { CancelStaffLostReportDto } from './dto/cancel-staff-lost-report.dto'
 import { CreateStaffLostReportDto } from './dto/create-staff-lost-report.dto'
 import { ListLostReportsQuery } from './dto/list-lost-reports.query'
 import { ReportFromFoundBagDto } from './dto/report-from-found-bag.dto'
@@ -109,6 +110,17 @@ export class StaffLostReportController {
   @Get(':id')
   getById(@Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string): Promise<LostReportCase> {
     return this.reports.getById(id)
+  }
+
+  /** Cancel a case that has no confirmed bag yet, with the reason staff give. */
+  @Post(':id/cancel')
+  @HttpCode(200)
+  cancel(
+    @CurrentBaggageStaff() staff: BaggageStaff,
+    @Param('id', new ParseUUIDPipe({ exceptionFactory: notFound })) id: string,
+    @Body() dto: CancelStaffLostReportDto,
+  ): Promise<LostReportCase> {
+    return this.reports.cancel({ reportId: id, reason: dto.reason, staffId: staff.staffId, actor: baggageAuditActor(staff) })
   }
 
   /** The bag photo the passenger attached to their report, for the desk to compare with found bags. */

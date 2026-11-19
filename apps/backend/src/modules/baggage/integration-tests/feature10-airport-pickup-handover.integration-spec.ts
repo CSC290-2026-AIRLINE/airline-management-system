@@ -310,7 +310,7 @@ async function createFixture(client: PrismaClient): Promise<Fixture> {
         dep_at: flightSchedule.scheduledDeparture,
         arr_at: flightSchedule.scheduledArrival,
         aircraft_id: reference.aircraft_id,
-        status: 'scheduled',
+        status: 'arrived',
       },
     })
     await tx.seat_inventory.create({ data: { flight_id: flight.id, cabin: 'economy', capacity: 1, sold_count: 1 } })

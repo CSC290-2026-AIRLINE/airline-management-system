@@ -131,9 +131,9 @@ export class BaggageFlightService {
   }
 
   /**
-   * Diverted flights that landed in the last few days and still have bags to add, newest first. A flight counts once
+   * Diverted flights that still have bags to add, newest first, however long ago they landed. A flight counts once
    * Feature 2 sets its status to diverted and names the airport it landed at, and drops off once every tagged bag in its
-   * hold has a found bag (the same bags `recordDiversion` would add).
+   * hold has a found bag (the same bags `recordDiversion` would add), so the list stays short without a date window.
    */
   async divertedRecently(): Promise<BaggageFlight[]> {
     const now = this.clock.now().getTime()
@@ -141,7 +141,7 @@ export class BaggageFlightService {
       where: {
         status: 'diverted',
         actual_destination: { not: null },
-        arr_at: { gte: new Date(now - ARRIVAL_WINDOW_DAYS * DAY_MS), lte: new Date(now + DAY_MS) },
+        arr_at: { lte: new Date(now + DAY_MS) },
         check_in: {
           some: {
             status: { in: FLOWN_CHECK_IN_STATUSES },

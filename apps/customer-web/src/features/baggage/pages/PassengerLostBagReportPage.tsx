@@ -520,7 +520,7 @@ function LostBagReportForm(props: ReportFormProps) {
               )}
               {pageState.flightState === 'loaded' && pageState.flights.length === 0 && (
                 <p className="passenger-report-message" role="status">
-                  No eligible flights were found for those booking details.
+                  No eligible flights were found for those booking details. A lost bag can be reported once the flight has departed.
                 </p>
               )}
               {pageState.flights.length > 0 && (

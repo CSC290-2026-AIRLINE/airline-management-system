@@ -45,7 +45,7 @@ describe('PrismaBookingVerification.listConfirmedFlights', () => {
     ])
     expect(Object.keys(flights[0])).toEqual(['flightId', 'flightNumber', 'serviceDate', 'origin', 'destination'])
     expect(findFlights).toHaveBeenCalledWith({
-      where: { id: { in: ['22222222-2222-4222-8222-222222222222'] } },
+      where: { id: { in: ['22222222-2222-4222-8222-222222222222'] }, status: { in: ['departed', 'arrived', 'diverted'] } },
       select: {
         id: true,
         flight_number: true,
@@ -217,6 +217,7 @@ describe('PrismaBookingVerification.listEligibleTravellers', () => {
 
 describe('PrismaBookingVerification.resolveTraveller', () => {
   let findFirstCoupon: jest.Mock
+  let findFlight: jest.Mock
   let verification: PrismaBookingVerification
   const input = {
     bookingReference: 'K7QX2M',
@@ -231,8 +232,19 @@ describe('PrismaBookingVerification.resolveTraveller', () => {
       .fn()
       .mockResolvedValueOnce({ booking_passenger: { booking_id: BOOKING_ID } })
       .mockResolvedValueOnce({ booking_passenger_id: CO_BP, passenger_id: CO_PASSENGER_ID, flight_id: FLIGHT_A })
-    const db = { booking_coupon: { findFirst: findFirstCoupon } } as unknown as DbService
+    findFlight = jest.fn().mockResolvedValue({ id: FLIGHT_A })
+    const db = { booking_coupon: { findFirst: findFirstCoupon }, flight: { findFirst: findFlight } } as unknown as DbService
     verification = new PrismaBookingVerification(db)
+  })
+
+  it('rejects a flight that has not departed yet', async () => {
+    findFlight.mockResolvedValue(null)
+
+    await expect(verification.resolveTraveller(input)).resolves.toBeNull()
+    expect(findFlight).toHaveBeenCalledWith({
+      where: { id: FLIGHT_A, status: { in: ['departed', 'arrived', 'diverted'] } },
+      select: { id: true },
+    })
   })
 
   it('resolves a traveller on the requester own booking with a confirmed coupon for the flight', async () => {
@@ -310,5 +322,43 @@ describe('PrismaBookingVerification.isOnRequesterBooking', () => {
   it('is false for a malformed booking passenger ID without querying', async () => {
     await expect(verification.isOnRequesterBooking(access, 'not-a-uuid')).resolves.toBe(false)
     expect(findFirstCoupon).not.toHaveBeenCalled()
+  })
+})
+
+describe('PrismaBookingVerification.verifyPassenger', () => {
+  const FLIGHT_ID = '22222222-2222-4222-8222-222222222222'
+  const coupon = { booking_passenger_id: CO_BP, passenger_id: PASSENGER_ID, flight_id: FLIGHT_ID }
+  const access = { bookingReference: 'K7QX2M', surname: 'Eriksson', passengerId: PASSENGER_ID }
+
+  function make(flight: { id: string } | null) {
+    const findFlight = jest.fn().mockResolvedValue(flight)
+    const db = {
+      booking_coupon: { findFirst: jest.fn().mockResolvedValue(coupon) },
+      flight: { findFirst: findFlight },
+    } as unknown as DbService
+    return { verification: new PrismaBookingVerification(db), findFlight }
+  }
+
+  it('accepts a report for a flight that has flown', async () => {
+    const { verification } = make({ id: FLIGHT_ID })
+
+    await expect(verification.verifyPassenger({ ...access, flightId: FLIGHT_ID })).resolves.toEqual({
+      bookingPassengerId: CO_BP,
+      passengerId: PASSENGER_ID,
+      flightId: FLIGHT_ID,
+    })
+  })
+
+  it('refuses a report for a flight that has not departed yet', async () => {
+    const { verification } = make(null)
+
+    await expect(verification.verifyPassenger({ ...access, flightId: FLIGHT_ID })).resolves.toBeNull()
+  })
+
+  it('does not check the flight status when only the booking is verified (case access)', async () => {
+    const { verification, findFlight } = make(null)
+
+    await expect(verification.verifyPassenger(access)).resolves.toMatchObject({ bookingPassengerId: CO_BP })
+    expect(findFlight).not.toHaveBeenCalled()
   })
 })

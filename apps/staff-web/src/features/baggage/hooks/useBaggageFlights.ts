@@ -79,7 +79,7 @@ export function useFlight(id: string | null | undefined) {
   return { flight: state.forId === id ? state.flight : null, loading: !!id && state.forId !== id }
 }
 
-/** Diverted flights of the last few days that still have bags in the hold to add. */
+/** Diverted flights that still have bags in the hold to add. */
 export function useDivertedFlights() {
   const api = useFoundBagApi()
   const [reloadKey, setReloadKey] = useState(0)

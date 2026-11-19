@@ -21,6 +21,12 @@ export interface ReportRepository {
 
   listByBookingPassengerId(bookingPassengerId: string): Promise<LostBagReport[]>
 
+  /**
+   * The requester's own cases, plus the cases customerId filed for other travellers on the requester's booking (the
+   * booking of bookingPassengerId). Newest first.
+   */
+  listForRequester(bookingPassengerId: string, customerId: string | null): Promise<LostBagReport[]>
+
   cancelIfNotDispatched(reportId: string, bookingPassengerId: string, closedAt: Date): Promise<LostBagReport | null>
 }
 

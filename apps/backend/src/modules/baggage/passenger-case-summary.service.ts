@@ -12,18 +12,18 @@ export class PassengerCaseSummaryService {
   ) {}
 
   /**
-   * Same-booking read access (spec §6). The bag owner gets the summary unchanged; another verified traveller on the
-   * booking sees the delivery status and type but not the delivery address, which is the owner's personal data.
+   * Same-booking read access (spec §6). The bag owner, and the customer who filed the case for them, get the summary
+   * unchanged; another verified traveller on the booking sees the delivery status and type but not the address.
    */
   async getByCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<PassengerCaseSummary> {
-    const { report, isBagOwner } = await this.reports.getViewableReport(caseNumber, access)
+    const { report, canManage } = await this.reports.getViewableReport(caseNumber, access)
     const summary = await this.repository.findPassengerCaseSummaryByReportId(report.id)
 
     if (!summary) {
       throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Lost baggage report not found')
     }
 
-    if (isBagOwner || !summary.delivery) return summary
+    if (canManage || !summary.delivery) return summary
 
     return { ...summary, delivery: { ...summary.delivery, address: null } }
   }

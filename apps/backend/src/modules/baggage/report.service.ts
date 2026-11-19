@@ -43,6 +43,21 @@ export interface ReportAccessInput {
   bookingReference: string
   surname: string
   passengerId: string
+  /**
+   * The signed-in customer. A customer who filed a case for another traveller on their booking can manage it (list,
+   * cancel, choose the delivery) like the bag owner, while they still verify on that booking.
+   */
+  customerId?: string | null
+}
+
+/** A case as a passenger sees it, with whether this viewer may act on it (cancel, choose the delivery). */
+export type ViewedLostBagReport = LostBagReport & { viewerCanManage: boolean }
+
+export interface ViewableReport {
+  report: LostBagReport
+  isBagOwner: boolean
+  /** The bag owner, or the customer who filed the case for them. */
+  canManage: boolean
 }
 
 /** The bag details a passenger fills in, shared by signed-in and guest reporting. */
@@ -201,14 +216,15 @@ export class ReportService {
    * before. Another verified traveller on the same booking can read it too, without the stored contact details, which
    * are not part of "report + delivery status". Unrelated bookings get REPORT_NOT_FOUND, as before.
    */
-  async getByCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {
-    const { report, isBagOwner } = await this.getViewableReport(caseNumber, access)
+  async getByCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<ViewedLostBagReport> {
+    const { report, canManage } = await this.getViewableReport(caseNumber, access)
 
-    return isBagOwner ? report : { ...report, contactEmail: null, contactPhone: null }
+    // The customer who filed the case typed its contact details, so they see them like the owner does.
+    return canManage ? { ...report, viewerCanManage: true } : { ...report, contactEmail: null, contactPhone: null, viewerCanManage: false }
   }
 
-  /** Read authorization only. Every action (photo, delivery choice, cancellation) keeps using findOwnedReport. */
-  async getViewableReport(caseNumber: string, access: ReportAccessInput): Promise<{ report: LostBagReport; isBagOwner: boolean }> {
+  /** Read authorization. Actions (delivery choice, cancellation) also need canManage, through findManageableReport. */
+  async getViewableReport(caseNumber: string, access: ReportAccessInput): Promise<ViewableReport> {
     const passenger = await this.bookings.verifyPassenger(access)
 
     if (!passenger) {
@@ -218,27 +234,25 @@ export class ReportService {
     const report = await this.repository.findByCaseNumber(caseNumber)
 
     if (report && report.bookingPassengerId === passenger.bookingPassengerId) {
-      return { report, isBagOwner: true }
+      return { report, isBagOwner: true, canManage: true }
     }
 
     if (report && (await this.bookings.isOnRequesterBooking(access, report.bookingPassengerId))) {
-      return { report, isBagOwner: false }
+      const filedByViewer = !!access.customerId && report.reportedByCustomerId === access.customerId
+      return { report, isBagOwner: false, canManage: filedByViewer }
     }
 
     throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Lost baggage report not found')
   }
 
-  /** Owner-only lookup (unchanged rule) for the photo and the delivery-choice paths. */
-  private async findOwnedReport(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {
-    const passenger = await this.bookings.verifyPassenger(access)
+  /**
+   * For the delivery-choice and cancellation paths: the bag owner, or the customer who filed the case for another
+   * traveller on the same booking. Anyone else gets REPORT_NOT_FOUND, as before.
+   */
+  private async findManageableReport(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {
+    const { report, canManage } = await this.getViewableReport(caseNumber, access)
 
-    if (!passenger) {
-      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Booking verification failed')
-    }
-
-    const report = await this.repository.findByCaseNumber(caseNumber)
-
-    if (!report || report.bookingPassengerId !== passenger.bookingPassengerId) {
+    if (!canManage) {
       throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Lost baggage report not found')
     }
 
@@ -258,13 +272,13 @@ export class ReportService {
   }
 
   async getDeliveryIdForCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<string | null> {
-    const report = await this.findOwnedReport(caseNumber, access)
+    const report = await this.findManageableReport(caseNumber, access)
 
     return this.repository.findDeliveryIdByReportId(report.id)
   }
 
   async getDeliveryChoiceForCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<DeliveryChoiceSnapshot | null> {
-    const report = await this.findOwnedReport(caseNumber, access)
+    const report = await this.findManageableReport(caseNumber, access)
 
     return this.repository.findDeliveryChoiceByReportId(report.id)
   }
@@ -276,7 +290,7 @@ export class ReportService {
       throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Booking verification failed')
     }
 
-    return this.repository.listByBookingPassengerId(passenger.bookingPassengerId)
+    return this.repository.listForRequester(passenger.bookingPassengerId, access.customerId ?? null)
   }
 
   listConfirmedFlights(access: ReportAccessInput): Promise<VerifiedReportFlight[]> {
@@ -298,19 +312,9 @@ export class ReportService {
   }
 
   async cancel(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {
-    const passenger = await this.bookings.verifyPassenger(access)
+    const report = await this.findManageableReport(caseNumber, access)
 
-    if (!passenger) {
-      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Booking verification failed')
-    }
-
-    const report = await this.repository.findByCaseNumber(caseNumber)
-
-    if (!report || report.bookingPassengerId !== passenger.bookingPassengerId) {
-      throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Lost baggage report not found')
-    }
-
-    const cancelled = await this.repository.cancelIfNotDispatched(report.id, passenger.bookingPassengerId, this.clock.now())
+    const cancelled = await this.repository.cancelIfNotDispatched(report.id, report.bookingPassengerId, this.clock.now())
 
     if (!cancelled) {
       throw new BaggageError(BAGGAGE_ERROR_CODES.CANCELLATION_NOT_ALLOWED, 'This report can no longer be cancelled')

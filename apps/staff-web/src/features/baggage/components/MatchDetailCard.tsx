@@ -15,6 +15,7 @@ import {
   caseShortNumber,
   colourLabel,
   formatEventTime,
+  formatFlightDate,
   isOpenMatch,
   matchLevelText,
   matchRef,
@@ -61,6 +62,8 @@ function Comparison({ match }: { match: BagMatch }) {
   const r = match.report
   const b = match.foundBag
   const sameFlight: Verdict = b.flightId ? (b.flightId === r.flightId ? 'same' : 'different') : 'none'
+  const checked = b.checkedFlight
+  const sameCheckedFlight: Verdict = checked ? (checked.flightId === r.flightId ? 'same' : 'different') : 'none'
 
   return (
     <div className="overflow-hidden rounded-lg border border-[#d8dce6]">
@@ -79,6 +82,12 @@ function Comparison({ match }: { match: BagMatch }) {
         <tbody>
           <Row label="Tag" report={r.tagNumber ?? 'No tag'} bag={b.tagNumber ?? 'No tag'} verdict={compare(r.tagNumber, b.tagNumber)} />
           <Row label="Flight" report={r.flightNumber} bag={b.flightNumber ?? 'Not known'} verdict={sameFlight} />
+          <Row
+            label="Booked flight"
+            report={`${r.flightNumber} · ${formatFlightDate(r.flightDate)}`}
+            bag={checked ? `${checked.flightNumber} · ${formatFlightDate(checked.flightDate)}` : 'Tag not on file'}
+            verdict={sameCheckedFlight}
+          />
           <Row
             label="Type"
             report={BAG_TYPE_LABELS[r.bagType]}

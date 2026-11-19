@@ -49,3 +49,21 @@ describe('StaffLostReportController photo', () => {
     expect(photos.retrieve).not.toHaveBeenCalled()
   })
 })
+
+describe('StaffLostReportController cancel', () => {
+  it('passes the reason and the signed-in staff member to the service', async () => {
+    const reports = { cancel: jest.fn().mockResolvedValue({ id: REPORT_ID, status: 'cancelled' }) }
+    const controller = new StaffLostReportController(
+      reports as unknown as StaffLostReportService,
+      {} as BagCostService,
+      {} as BagMatchingService,
+      {} as LostReportPhotoStorage,
+    )
+    const staff = { id: 'u-1', email: 'desk@example.com', staffId: '11111111-1111-4111-8111-111111111111', roleCode: 'baggage' }
+
+    await expect(controller.cancel(staff, REPORT_ID, { reason: 'Duplicate case' })).resolves.toMatchObject({ status: 'cancelled' })
+    expect(reports.cancel).toHaveBeenCalledWith(
+      expect.objectContaining({ reportId: REPORT_ID, reason: 'Duplicate case', staffId: staff.staffId }),
+    )
+  })
+})

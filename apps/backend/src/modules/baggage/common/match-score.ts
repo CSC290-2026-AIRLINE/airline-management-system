@@ -18,6 +18,26 @@ export interface MatchScore {
   reasons: MatchReason[]
 }
 
+/**
+ * Whether the found bag's Feature 6 bag belongs to the report's booking passenger. other_flight: it does, but it was
+ * checked in on another flight, as on a connecting trip where the bag is checked in on an earlier leg.
+ */
+export type OwnerMatch = 'none' | 'same_flight' | 'other_flight'
+
+/** The check-in a found bag's Feature 6 bag was checked in on. */
+export interface OwnerCheckIn {
+  booking_passenger_id: string
+  flight_id: string
+}
+
+export function ownerMatch(
+  report: { booking_passenger_id: string; flight_id: string },
+  checkIn: OwnerCheckIn | null | undefined,
+): OwnerMatch {
+  if (!checkIn || checkIn.booking_passenger_id !== report.booking_passenger_id) return 'none'
+  return checkIn.flight_id === report.flight_id ? 'same_flight' : 'other_flight'
+}
+
 const WEIGHTS: Record<MatchReason, number> = {
   same_tag: 45,
   owner_tag: 35,
@@ -40,14 +60,15 @@ function sameText(a: string | null, b: string | null): boolean {
 
 /**
  * Compares a lost bag report with a found bag, following the F10 rules on bag_match:
- * strong is the same tag, or a found bag whose Feature 6 bag belongs to the report's booking passenger (ownerMatches);
- * possible is the same flight, bag type and colour. Brand and description only raise the score.
+ * strong is the same tag, or a found bag whose Feature 6 bag belongs to the report's booking passenger and was checked in
+ * on the report's flight; possible is the owner's bag checked in on another flight, or the same flight, bag type and
+ * colour. Brand and description only raise the score.
  */
-export function scoreMatch(report: MatchSide, bag: MatchSide, ownerMatches = false): MatchScore {
+export function scoreMatch(report: MatchSide, bag: MatchSide, owner: OwnerMatch = 'none'): MatchScore {
   const reasons: MatchReason[] = []
 
   if (report.tagNumber && report.tagNumber === bag.tagNumber) reasons.push('same_tag')
-  if (ownerMatches) reasons.push('owner_tag')
+  if (owner !== 'none') reasons.push('owner_tag')
   if (report.flightId && report.flightId === bag.flightId) reasons.push('same_flight')
   if (report.bagType && report.bagType === bag.bagType) reasons.push('same_type')
   if (report.colour && report.colour === bag.colour) reasons.push('same_colour')
@@ -58,7 +79,11 @@ export function scoreMatch(report: MatchSide, bag: MatchSide, ownerMatches = fal
 
   const has = (r: MatchReason) => reasons.includes(r)
   const level =
-    has('same_tag') || has('owner_tag') ? 'strong' : has('same_flight') && has('same_type') && has('same_colour') ? 'possible' : null
+    has('same_tag') || owner === 'same_flight'
+      ? 'strong'
+      : owner === 'other_flight' || (has('same_flight') && has('same_type') && has('same_colour'))
+        ? 'possible'
+        : null
   const score = Math.min(
     100,
     reasons.reduce((sum, r) => sum + WEIGHTS[r], 0),
