@@ -7,6 +7,8 @@ import { CASE_DETAIL_INCLUDE, CASE_INCLUDE, toComplaintDetail, toComplaintView, 
 import type { CreateComplaintDto, CreateGuestComplaintDto } from './dto/create-complaint.dto'
 import type { DecideCompensationDto, UpdateNotificationTemplateDto } from './dto/staff-actions.dto'
 import { placeholdersFor, unknownPlaceholders } from './notification-placeholders'
+import { NotificationService } from './notification.service'
+import type { NotificationPreferenceView, UpdateNotificationPreferencesDto } from './dto/preferences.dto'
 
 /**
  * Statuses a staff member may move a case to through PATCH :id/status, from each status.
@@ -167,6 +169,7 @@ export class CustomerServiceService {
     private readonly db: DbService,
     private readonly clock: SimulationClock,
     @Optional() private readonly audit?: AuditService,
+    @Optional() private readonly notificationService?: NotificationService,
   ) {}
 
   // ── Customer (Signed-In Account) ─────────────────────────────────────────
@@ -205,9 +208,17 @@ export class CustomerServiceService {
     }
 
     const now = this.clock.now()
-    const caseNumber = await this.db.$transaction(async (tx) => {
+    const { caseNumber, caseId, eventId, passengerName, contactEmail } = await this.db.$transaction(async (tx) => {
       const [{ n }] = await tx.$queryRaw<{ n: bigint }[]>`SELECT nextval('complaint_case_seq') AS n`
       const case_number = `CS-${now.getUTCFullYear()}-${String(n).padStart(6, '0')}`
+      const p = tx.passenger
+        ? await tx.passenger.findUnique({
+            where: { id: customer.passenger_id },
+            select: { first_name: true, last_name: true },
+          })
+        : null
+      const passenger_name = p ? `${p.first_name} ${p.last_name}`.trim() : 'Customer'
+
       const row = await tx.complaint_case.create({
         data: {
           case_number,
@@ -228,9 +239,31 @@ export class CustomerServiceService {
       } else {
         await tx.food_complaint.create({ data: { case_id: row.id, flight_id: flightId!, issue: dto.issue!, details: dto.description } })
       }
-      await tx.case_event.create({ data: { case_id: row.id, event_type: 'created', actor_type: 'complainant', occurred_at: now } })
-      return case_number
+      const event = await tx.case_event.create({
+        data: { case_id: row.id, event_type: 'created', actor_type: 'complainant', occurred_at: now },
+      })
+      return { caseNumber: case_number, caseId: row.id, eventId: event?.id, passengerName: passenger_name, contactEmail: email }
     })
+
+    if (this.notificationService && eventId) {
+      await this.notificationService.handleEvent({
+        source: '13',
+        sourceEventId: eventId,
+        eventType: 'complaint_received',
+        caseId,
+        payload: {
+          case_number: caseNumber,
+          passenger_name: passengerName,
+        },
+        recipients: [
+          {
+            passengerName,
+            email: contactEmail,
+            customerId: customer.id,
+          },
+        ],
+      })
+    }
 
     return this.getForCustomer(userId, caseNumber)
   }
@@ -261,7 +294,15 @@ export class CustomerServiceService {
     const normalized = caseNumber.trim().toUpperCase()
     const row = await this.db.complaint_case.findFirst({
       where: { case_number: normalized, customer_id: customer.id },
-      select: { id: true, status: true, closed_at: true },
+      select: {
+        id: true,
+        status: true,
+        closed_at: true,
+        contact_email: true,
+        contact_phone: true,
+        customer_id: true,
+        passenger: { select: { first_name: true, last_name: true } },
+      },
     })
     if (!row) throw new NotFoundException(`Case ${caseNumber} not found`)
 
@@ -275,6 +316,7 @@ export class CustomerServiceService {
       throw new ConflictException('CANNOT_REOPEN_AFTER_7_DAYS')
     }
 
+    let reopenEventId: string | undefined
     await this.db.$transaction(async (tx) => {
       const { count } = await tx.complaint_case.updateMany({
         where: { id: row.id, status: row.status },
@@ -287,7 +329,7 @@ export class CustomerServiceService {
         },
       })
       if (count === 0) throw new ConflictException('The case changed while you were editing it.')
-      await tx.case_event.create({
+      const event = await tx.case_event.create({
         data: {
           case_id: row.id,
           event_type: 'reopened',
@@ -297,7 +339,31 @@ export class CustomerServiceService {
           occurred_at: now,
         },
       })
+      reopenEventId = event?.id
     })
+
+    if (this.notificationService && reopenEventId) {
+      const passengerName = row.passenger ? `${row.passenger.first_name} ${row.passenger.last_name}`.trim() : 'Customer'
+      await this.notificationService.handleEvent({
+        source: '13',
+        sourceEventId: reopenEventId,
+        eventType: 'complaint_updated',
+        caseId: row.id,
+        payload: {
+          case_number: caseNumber,
+          passenger_name: passengerName,
+          status: 'reopened',
+        },
+        recipients: [
+          {
+            passengerName,
+            email: row.contact_email,
+            phone: row.contact_phone,
+            customerId: row.customer_id,
+          },
+        ],
+      })
+    }
 
     return this.getForCustomer(userId, caseNumber)
   }
@@ -358,7 +424,8 @@ export class CustomerServiceService {
     }
 
     const now = this.clock.now()
-    const caseNumber = await this.db.$transaction(async (tx) => {
+    const passengerName = `${bp.passenger.first_name} ${bp.passenger.last_name}`.trim()
+    const { caseNumber, caseId, eventId } = await this.db.$transaction(async (tx) => {
       const [{ n }] = await tx.$queryRaw<{ n: bigint }[]>`SELECT nextval('complaint_case_seq') AS n`
       const case_number = `CS-${now.getUTCFullYear()}-${String(n).padStart(6, '0')}`
       const row = await tx.complaint_case.create({
@@ -383,9 +450,32 @@ export class CustomerServiceService {
       } else {
         await tx.food_complaint.create({ data: { case_id: row.id, flight_id: flightId!, issue: dto.issue!, details: dto.description } })
       }
-      await tx.case_event.create({ data: { case_id: row.id, event_type: 'created', actor_type: 'complainant', occurred_at: now } })
-      return case_number
+      const event = await tx.case_event.create({
+        data: { case_id: row.id, event_type: 'created', actor_type: 'complainant', occurred_at: now },
+      })
+      return { caseNumber: case_number, caseId: row.id, eventId: event.id }
     })
+
+    if (this.notificationService) {
+      await this.notificationService.handleEvent({
+        source: '13',
+        sourceEventId: eventId,
+        eventType: 'complaint_received',
+        caseId,
+        payload: {
+          case_number: caseNumber,
+          passenger_name: passengerName,
+        },
+        recipients: [
+          {
+            passengerName,
+            email: contactEmail,
+            phone: contactPhone,
+            customerId: null,
+          },
+        ],
+      })
+    }
 
     return this.getGuestCase(caseNumber, bookingReference, surname)
   }
@@ -490,7 +580,15 @@ export class CustomerServiceService {
 
     const current = await this.db.complaint_case.findUnique({
       where: { id },
-      select: { status: true, owner_staff_id: true, case_number: true },
+      select: {
+        status: true,
+        owner_staff_id: true,
+        case_number: true,
+        contact_email: true,
+        contact_phone: true,
+        customer_id: true,
+        passenger: { select: { first_name: true, last_name: true } },
+      },
     })
     if (!current) throw new NotFoundException(`Case ${id} not found`)
 
@@ -500,6 +598,7 @@ export class CustomerServiceService {
     }
 
     const now = this.clock.now()
+    let assignedEventId: string | undefined
     await this.db.$transaction(async (tx) => {
       const { count } = await tx.complaint_case.updateMany({
         where: { id, status: from },
@@ -507,7 +606,7 @@ export class CustomerServiceService {
       })
       if (count === 0) throw new ConflictException('The case changed while you were editing it.')
 
-      await tx.case_event.create({
+      const event = await tx.case_event.create({
         data: {
           case_id: id,
           event_type: 'assigned',
@@ -519,6 +618,7 @@ export class CustomerServiceService {
           occurred_at: now,
         },
       })
+      assignedEventId = event?.id
 
       if (this.audit) {
         const actor = await this.audit.resolveActor(userId)
@@ -536,6 +636,29 @@ export class CustomerServiceService {
       }
     })
 
+    if (this.notificationService && assignedEventId) {
+      const passengerName = current.passenger ? `${current.passenger.first_name} ${current.passenger.last_name}`.trim() : 'Customer'
+      await this.notificationService.handleEvent({
+        source: '13',
+        sourceEventId: assignedEventId,
+        eventType: 'complaint_updated',
+        caseId: id,
+        payload: {
+          case_number: current.case_number,
+          passenger_name: passengerName,
+          status: 'assigned',
+        },
+        recipients: [
+          {
+            passengerName,
+            email: current.contact_email,
+            phone: current.contact_phone,
+            customerId: current.customer_id,
+          },
+        ],
+      })
+    }
+
     return this.staffDetail(id)
   }
 
@@ -544,7 +667,15 @@ export class CustomerServiceService {
     const staffId = staff.id
     const current = await this.db.complaint_case.findUnique({
       where: { id },
-      select: { status: true, owner_staff_id: true, case_number: true },
+      select: {
+        status: true,
+        owner_staff_id: true,
+        case_number: true,
+        contact_email: true,
+        contact_phone: true,
+        customer_id: true,
+        passenger: { select: { first_name: true, last_name: true } },
+      },
     })
     if (!current) throw new NotFoundException(`Case ${id} not found`)
     // An agent works only the cases assigned to them; the supervisor may act on any case.
@@ -560,6 +691,7 @@ export class CustomerServiceService {
     const changes = status === 'resolved' ? { resolved_at: now } : { closed_at: now }
     const eventType = status === 'resolved' ? 'status_changed' : 'closed'
 
+    let statusEventId: string | undefined
     await this.db.$transaction(async (tx) => {
       const { count } = await tx.complaint_case.updateMany({
         // owner_staff_id in the filter so a reassignment between the read and this write is a conflict, not a stale-owner write
@@ -568,7 +700,7 @@ export class CustomerServiceService {
       })
       if (count === 0) throw new ConflictException('The case changed while you were editing it. Reload and try again.')
 
-      await tx.case_event.create({
+      const event = await tx.case_event.create({
         data: {
           case_id: id,
           event_type: eventType,
@@ -580,6 +712,7 @@ export class CustomerServiceService {
           occurred_at: now,
         },
       })
+      statusEventId = event?.id
 
       if (this.audit) {
         const actor = await this.audit.resolveActor(userId)
@@ -596,6 +729,29 @@ export class CustomerServiceService {
         )
       }
     })
+
+    if (this.notificationService && statusEventId) {
+      const passengerName = current.passenger ? `${current.passenger.first_name} ${current.passenger.last_name}`.trim() : 'Customer'
+      await this.notificationService.handleEvent({
+        source: '13',
+        sourceEventId: statusEventId,
+        eventType: 'complaint_updated',
+        caseId: id,
+        payload: {
+          case_number: current.case_number,
+          passenger_name: passengerName,
+          status,
+        },
+        recipients: [
+          {
+            passengerName,
+            email: current.contact_email,
+            phone: current.contact_phone,
+            customerId: current.customer_id,
+          },
+        ],
+      })
+    }
 
     return this.staffDetail(id)
   }
@@ -953,6 +1109,91 @@ export class CustomerServiceService {
     })
 
     return this.getTemplatesForStaff(userId)
+  }
+
+  // ── Customer Notification Preferences ───────────────────────────────────
+
+  async getPreferencesForCustomer(userId: string): Promise<NotificationPreferenceView[]> {
+    const customer = await this.customerFor(userId)
+    const types = await this.db.notification_type.findMany({
+      where: {
+        code: { notIn: ['security_alert', 'security_alert_withdrawn'] },
+      },
+      orderBy: { code: 'asc' },
+    })
+
+    const prefs = await this.db.notification_preference.findMany({
+      where: { customer_id: customer.id },
+    })
+    const prefMap = new Map(prefs.map((p) => [`${p.type_code}:${p.channel}`, p.is_enabled]))
+
+    return types.map((t) => ({
+      typeCode: t.code,
+      typeName: t.name,
+      sourceFeature: featureLabel(t.source_feature),
+      isMandatory: t.is_mandatory,
+      email: prefMap.get(`${t.code}:email`) ?? true,
+      sms: prefMap.get(`${t.code}:sms`) ?? false,
+      push: prefMap.get(`${t.code}:push`) ?? false,
+    }))
+  }
+
+  async updatePreferencesForCustomer(
+    userId: string,
+    dto: UpdateNotificationPreferencesDto,
+  ): Promise<NotificationPreferenceView[]> {
+    const customer = await this.customerFor(userId)
+    const list = Array.isArray(dto) ? dto : dto?.preferences ?? []
+
+    await this.db.$transaction(async (tx) => {
+      for (const item of list) {
+        for (const channel of ['email', 'sms', 'push'] as const) {
+          const val = (item as any)[channel]
+          if (typeof val === 'boolean') {
+            await tx.notification_preference.upsert({
+              where: {
+                customer_id_type_code_channel: {
+                  customer_id: customer.id,
+                  type_code: item.typeCode,
+                  channel,
+                },
+              },
+              update: {
+                is_enabled: val,
+                updated_at: new Date(),
+              },
+              create: {
+                customer_id: customer.id,
+                type_code: item.typeCode,
+                channel,
+                is_enabled: val,
+              },
+            })
+          }
+        }
+      }
+    })
+
+    return this.getPreferencesForCustomer(userId)
+  }
+
+  // ── Staff Notification Actions ──────────────────────────────────────────
+
+  async retryNotificationForStaff(userId: string, id: string) {
+    await this.staffIdFor(userId)
+    if (!this.notificationService) {
+      throw new BadRequestException('Notification service not available')
+    }
+    return this.notificationService.retryFailedNotification(id)
+  }
+
+  async setMockFailureForStaff(userId: string, fail: boolean) {
+    await this.staffIdFor(userId)
+    if (!this.notificationService) {
+      throw new BadRequestException('Notification service not available')
+    }
+    this.notificationService.setMockFailure(fail)
+    return { mockFailure: fail }
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────

@@ -1,11 +1,39 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CustomerNavbar } from './CustomerNavbar'
 import type { NotificationPreferenceRow } from './types'
-import { loadPreferences, savePreferences } from './types'
+import { DEFAULT_PREFERENCES } from './types'
+import { errorMessage, useComplaintsApi } from './api'
 
 export function NotificationPreferencesPage() {
-  const [preferences, setPreferences] = useState<NotificationPreferenceRow[]>(loadPreferences)
+  const api = useComplaintsApi()
+  const [preferences, setPreferences] = useState<NotificationPreferenceRow[]>(DEFAULT_PREFERENCES)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [isSaved, setIsSaved] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    api
+      .getNotificationPreferences()
+      .then((data) => {
+        if (active && Array.isArray(data) && data.length > 0) {
+          setPreferences(data)
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setError(errorMessage(err))
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   function handleToggle(typeCode: string, channel: 'email' | 'sms' | 'push') {
     setPreferences((prev) =>
@@ -33,12 +61,23 @@ export function NotificationPreferencesPage() {
     setIsSaved(false)
   }
 
-  function handleSave() {
-    savePreferences(preferences)
-    setIsSaved(true)
-    setTimeout(() => {
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    }, 50)
+  async function handleSave() {
+    try {
+      setIsSaving(true)
+      setError(null)
+      const updated = await api.updateNotificationPreferences(preferences)
+      if (Array.isArray(updated) && updated.length > 0) {
+        setPreferences(updated)
+      }
+      setIsSaved(true)
+      setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }, 50)
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -82,6 +121,32 @@ export function NotificationPreferencesPage() {
             <button
               onClick={() => setIsSaved(false)}
               style={{ background: 'none', border: 'none', color: '#166534', cursor: 'pointer', fontSize: '16px' }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Error Banner */}
+        {error && (
+          <div
+            style={{
+              backgroundColor: '#FEF2F2',
+              border: '1px solid #FECACA',
+              borderRadius: '12px',
+              padding: '16px 20px',
+              marginBottom: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              color: '#991B1B',
+              fontSize: '14px',
+            }}
+          >
+            <div>{error}</div>
+            <button
+              onClick={() => setError(null)}
+              style={{ background: 'none', border: 'none', color: '#991B1B', cursor: 'pointer', fontSize: '16px' }}
             >
               ✕
             </button>
@@ -203,19 +268,20 @@ export function NotificationPreferencesPage() {
             <div style={{ fontSize: '13px', color: '#677287' }}>All notifications are delivered via mocked channels in real time.</div>
             <button
               onClick={handleSave}
+              disabled={isSaving || isLoading}
               style={{
-                backgroundColor: '#102544',
+                backgroundColor: isSaving || isLoading ? '#94A3B8' : '#102544',
                 color: '#FFFFFF',
                 padding: '11px 24px',
                 borderRadius: '8px',
                 border: 'none',
                 fontSize: '14px',
                 fontWeight: 600,
-                cursor: 'pointer',
+                cursor: isSaving || isLoading ? 'not-allowed' : 'pointer',
                 boxShadow: '0 2px 4px rgba(10, 20, 36, 0.08)',
               }}
             >
-              Save preferences
+              {isSaving ? 'Saving...' : 'Save preferences'}
             </button>
           </div>
         </div>

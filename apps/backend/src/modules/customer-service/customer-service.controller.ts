@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
   UsePipes,
@@ -18,6 +19,7 @@ import { Public } from '@backend/auth/decorators/public.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CustomerServiceService } from './customer-service.service'
 import { CreateComplaintDto, CreateGuestComplaintDto } from './dto/create-complaint.dto'
+import { UpdateNotificationPreferencesDto } from './dto/preferences.dto'
 import {
   AddCaseNoteDto,
   AssignCaseOwnerDto,
@@ -157,5 +159,34 @@ export class StaffComplaintsController {
   @HttpCode(201)
   decideCompensation(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecideCompensationDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.decideCompensation(user.id, id, dto)
+  }
+
+  @Post('delivery-log/:id/retry')
+  @HttpCode(200)
+  retryNotification(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.retryNotificationForStaff(user.id, id)
+  }
+
+  @Post('delivery-log/mock-failure')
+  @HttpCode(200)
+  setMockFailure(@Body('fail') fail: boolean, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.setMockFailureForStaff(user.id, Boolean(fail))
+  }
+}
+
+/** Customer notification preferences controller: GET and PUT /customers/me/notification-preferences */
+@Controller('customers/me/notification-preferences')
+@UsePipes(validation)
+export class CustomerNotificationPreferencesController {
+  constructor(private readonly service: CustomerServiceService) {}
+
+  @Get()
+  getPreferences(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.getPreferencesForCustomer(user.id)
+  }
+
+  @Put()
+  updatePreferences(@Body() dto: UpdateNotificationPreferencesDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.updatePreferencesForCustomer(user.id, dto)
   }
 }

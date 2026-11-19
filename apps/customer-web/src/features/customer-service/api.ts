@@ -1,5 +1,5 @@
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
-import type { Complaint, NewComplaint } from './types'
+import type { Complaint, NewComplaint, NotificationPreferenceRow } from './types'
 
 export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : 'Something went wrong'
@@ -11,7 +11,8 @@ export function useComplaintsApi() {
   const { fetchWithAuth, user } = useAppAuth()
 
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetchWithAuth(`/api/complaints${path}`, {
+    const url = path.startsWith('/api/') ? path : `/api/complaints${path}`
+    const res = await fetchWithAuth(url, {
       ...init,
       headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
     })
@@ -65,5 +66,12 @@ export function useComplaintsApi() {
       return request<Complaint>(`/${encodeURIComponent(caseNumber.trim().toUpperCase())}`)
     },
     getGuest,
+    getNotificationPreferences: () =>
+      request<NotificationPreferenceRow[]>('/api/customers/me/notification-preferences'),
+    updateNotificationPreferences: (preferences: NotificationPreferenceRow[]) =>
+      request<NotificationPreferenceRow[]>('/api/customers/me/notification-preferences', {
+        method: 'PUT',
+        body: JSON.stringify({ preferences }),
+      }),
   }
 }

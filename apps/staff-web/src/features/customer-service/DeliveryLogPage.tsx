@@ -7,7 +7,7 @@ import { Label } from '@staff-web/components/ui/label'
 import { NativeSelect } from '@staff-web/components/ui/native-select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { cn } from '@staff-web/lib/utils'
-import { useComplaintsApi } from './api'
+import { useComplaintsApi, errorMessage } from './api'
 import { ToneBadge, type Tone } from './ComplaintBadges'
 import { PageFrame } from './components/PageFrame'
 import { StatCard } from './components/StatCard'
@@ -57,8 +57,18 @@ export function DeliveryLogPage() {
   const [channelFilter, setChannelFilter] = useState(ALL_CHANNELS)
   const [statusFilter, setStatusFilter] = useState(ALL_STATUSES)
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null)
+  const [retryingId, setRetryingId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [loadError, setLoadError] = useState<unknown>(null)
+
+  const reloadData = async () => {
+    try {
+      const res = await api.getDeliveryLog()
+      if (res) setData(res)
+    } catch (e) {
+      // non-fatal for background reload
+    }
+  }
 
   const fetchDeliveryLog = useEffectEvent(() => api.getDeliveryLog())
 
@@ -293,6 +303,28 @@ export function DeliveryLogPage() {
                           )}
                           {r.body && <div className="rounded-md border bg-card px-3 py-2">{r.body}</div>}
                           {r.error && <div className="font-semibold text-danger">Provider error: {r.error}</div>}
+                          {(r.status.toLowerCase().includes('failed') || r.error) && (
+                            <div className="pt-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={retryingId === r.id}
+                                onClick={async () => {
+                                  try {
+                                    setRetryingId(r.id)
+                                    await api.retryNotification(r.id)
+                                    await reloadData()
+                                  } catch (e) {
+                                    alert(errorMessage(e))
+                                  } finally {
+                                    setRetryingId(null)
+                                  }
+                                }}
+                              >
+                                {retryingId === r.id ? 'Retrying…' : 'Retry send'}
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
