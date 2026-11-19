@@ -3,17 +3,7 @@ import { Link, useLocation } from '@tanstack/react-router'
 import { useAppAuth } from '../../../auth/AuthProvider'
 import { DeliveryChoiceForm, type PassengerDeliveryChoice } from '../components/DeliveryChoiceForm'
 import { createPassengerCasePageState, isCurrentCaseRequest, passengerCasePageReducer, passengerDeliveryFormKey } from './case-page-state'
-import {
-  caseLookupMatchesOpenedCase,
-  caseRecoveryErrorMessage,
-  caseRecoveryReducer,
-  caseRecoveryDetailsMatchCase,
-  createCaseRecoveryState,
-  extractCaseNumbers,
-  normalizeCaseRecoveryAccess,
-  validateCaseRecoveryAccess,
-  type CaseRecoveryAccess,
-} from './case-page-recovery'
+import { caseLookupMatchesOpenedCase, caseRecoveryDetailsMatchCase } from './case-page-recovery'
 import {
   CANCELLATION_UNAVAILABLE_MESSAGE,
   canReportBagFoundByPassenger,
@@ -25,6 +15,14 @@ import {
 } from './case-page-presentation'
 import { canUseOwnerActions, resolveViewerOwnership } from './case-ownership'
 import { timelineEventLabel, type PassengerCaseTimelineEvent } from './passenger-case-summary-view'
+import {
+  ACCOUNT_CASES_PAGE_SIZE,
+  accountCaseListReducer,
+  createAccountCaseListState,
+  hasAccountCaseManagementCapability,
+  type AccountCaseListItem,
+  visibleAccountCaseSuggestions,
+} from './account-case-list'
 import './PassengerLostBagCasePage.css'
 
 interface CaseAccess {
@@ -51,13 +49,22 @@ interface LostBagReportDetail {
 }
 
 interface PassengerCaseSummary {
+  caseNumber: string
+  status: string
+  reportedAt: string
+  lostAt: string | null
+  closedAt: string | null
   passenger: { firstName: string; lastName: string }
   flight: { flightNumber: string; serviceDate: string; origin: string; destination: string }
+  bag: { type: string; colour: string; brand: string | null; tagNumber: string | null; description: string | null }
+  delivery: DeliveryChoiceState | null
   timeline: PassengerCaseTimelineEvent[]
 }
 
-interface LostBagReportListItem {
-  caseNumber: string
+interface AccountCaseDetail {
+  summary: PassengerCaseSummary
+  isBagOwner: boolean
+  canManage: boolean
 }
 
 type DeliveryType = PassengerDeliveryChoice['deliveryType'] | 'airport_pickup'
@@ -134,36 +141,6 @@ function deliveryDestination(delivery: DeliveryChoiceState): string | null {
   return delivery.address ? `${DELIVERY_TYPE_LABELS[delivery.deliveryType]}: ${delivery.address}` : null
 }
 
-function TryCaseChips({
-  cases,
-  currentCase,
-  onOpen,
-  onFindMyCases,
-}: {
-  cases: string[]
-  currentCase: string
-  onOpen: (caseNumber: string) => void
-  onFindMyCases?: () => void
-}) {
-  if (cases.length === 0 && !onFindMyCases) return null
-
-  return (
-    <div className="passenger-case-access__suggestions" role="group" aria-label="Find or open baggage cases">
-      <span>Try:</span>
-      {cases.map((caseItem) => (
-        <button aria-pressed={caseItem === currentCase} key={caseItem} type="button" onClick={() => onOpen(caseItem)}>
-          {caseItem}
-        </button>
-      ))}
-      {onFindMyCases && (
-        <button className="passenger-case-access__find-cases" type="button" onClick={onFindMyCases}>
-          Find my cases
-        </button>
-      )}
-    </div>
-  )
-}
-
 function toInitialChoice(delivery: DeliveryChoiceState): PassengerDeliveryChoice | undefined {
   if (delivery.deliveryType === 'airport_pickup') {
     return delivery.pickupAirport ? { deliveryType: 'airport_pickup', pickupAirport: delivery.pickupAirport } : undefined
@@ -181,8 +158,8 @@ export function PassengerLostBagCasePage() {
   const location = useLocation()
   const openedFromReport = useRef(false)
   const caseRequestGeneration = useRef(0)
-  const caseRecoveryRequest = useRef(0)
   const caseSummaryRequest = useRef(0)
+  const accountCaseRequest = useRef(0)
   const [caseNumber, setCaseNumber] = useState('')
   const [bookingReference, setBookingReference] = useState('')
   const [surname, setSurname] = useState('')
@@ -193,12 +170,12 @@ export function PassengerLostBagCasePage() {
   )
   const { report, delivery, deliveryUnavailable: isDeliveryUnavailable, deliveryError, deliveryFormRevision } = casePage
   const [caseSummary, setCaseSummary] = useState<PassengerCaseSummary | null>(null)
+  const [accountCaseList, dispatchAccountCaseList] = useReducer(accountCaseListReducer, undefined, createAccountCaseListState)
+  const [accountDetailReadOnly, setAccountDetailReadOnly] = useState(false)
+  const [accountCaseCanManage, setAccountCaseCanManage] = useState<boolean | null>(null)
   const [caseSummaryError, setCaseSummaryError] = useState('')
   const [caseSummaryLoading, setCaseSummaryLoading] = useState(false)
-  const [relatedCases, setRelatedCases] = useState<string[]>([])
-  const [caseListMessage, setCaseListMessage] = useState('')
-  const [caseRecovery, dispatchCaseRecovery] = useReducer(caseRecoveryReducer, undefined, createCaseRecoveryState)
-  const [caseRecoveryAccess, setCaseRecoveryAccess] = useState<CaseRecoveryAccess | null>(null)
+  const [visibleAccountCaseCount, setVisibleAccountCaseCount] = useState(ACCOUNT_CASES_PAGE_SIZE)
   const [isLookingUp, setIsLookingUp] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
@@ -209,7 +186,8 @@ export function PassengerLostBagCasePage() {
   // true: bag owner, or the customer who filed the case for them; false: another traveller on the booking (read-only
   // view); null: not known yet.
   const [viewerIsBagOwner, setViewerIsBagOwner] = useState<boolean | null>(null)
-  const ownerActionsAllowed = canUseOwnerActions(viewerIsBagOwner)
+  const ownerActionsAllowed = access !== null && canUseOwnerActions(viewerIsBagOwner)
+  const deliveryActionsAllowed = accountDetailReadOnly ? accountCaseCanManage === true : ownerActionsAllowed
 
   async function loadOwnership(
     currentAccess: CaseAccess,
@@ -267,9 +245,6 @@ export function PassengerLostBagCasePage() {
 
   async function loadCase(requestAccess: CaseAccess) {
     const requestId = ++caseRequestGeneration.current
-    caseRecoveryRequest.current += 1
-    dispatchCaseRecovery({ type: 'reset' })
-    setCaseRecoveryAccess(null)
     caseSummaryRequest.current += 1
     const isCurrent = () => isCurrentCaseRequest(requestId, caseRequestGeneration.current)
     const normalizedAccess = {
@@ -290,18 +265,21 @@ export function PassengerLostBagCasePage() {
     setCaseSummaryLoading(false)
     setAccess(null)
     setViewerIsBagOwner(null)
-    setRelatedCases([])
-    setCaseListMessage('')
+    setAccountDetailReadOnly(false)
+    setAccountCaseCanManage(null)
     setCaseNumber(normalizedAccess.caseNumber)
+    dispatchAccountCaseList({
+      type: 'selected',
+      caseNumber: accountCaseList.cases.some((item) => item.caseNumber === normalizedAccess.caseNumber)
+        ? normalizedAccess.caseNumber
+        : null,
+    })
     setBookingReference(normalizedAccess.bookingReference)
     setSurname(normalizedAccess.surname)
     try {
       const query = accessQuery(normalizedAccess)
       const casePath = `/api/customer/lost-reports/${encodeURIComponent(normalizedAccess.caseNumber)}`
-      const [reportResponse, listResponse] = await Promise.all([
-        fetchWithAuth(`${casePath}?${query}`),
-        fetchWithAuth(`/api/customer/lost-reports?${query}`),
-      ])
+      const reportResponse = await fetchWithAuth(`${casePath}?${query}`)
       if (!isCurrent()) return
 
       if (!reportResponse.ok) {
@@ -315,23 +293,9 @@ export function PassengerLostBagCasePage() {
 
       const reportData = (await reportResponse.json()) as LostBagReportDetail
       if (!isCurrent()) return
-      let caseNumbers: string[] = []
-      let listMessage = ''
-      if (listResponse.ok) {
-        const list = (await listResponse.json()) as LostBagReportListItem[]
-        if (!isCurrent()) return
-        caseNumbers = [...new Set(list.map((item) => item.caseNumber))]
-      } else {
-        listMessage = await responseError(listResponse, 'Other cases could not be loaded.')
-        if (!isCurrent()) return
-      }
-
-      if (!isCurrent()) return
       dispatchCasePage({ type: 'report-loaded', report: reportData })
       setAccess(normalizedAccess)
       setIsEditingAccess(false)
-      setRelatedCases(caseNumbers)
-      setCaseListMessage(listMessage)
       void loadCaseSummary(normalizedAccess, requestId)
       void loadOwnership(normalizedAccess, reportData.bookingPassengerId, requestId, reportData.viewerCanManage === true)
 
@@ -408,6 +372,133 @@ export function PassengerLostBagCasePage() {
     }
   }
 
+  async function loadAccountCases(): Promise<void> {
+    const requestId = ++accountCaseRequest.current
+    const isCurrent = () => requestId === accountCaseRequest.current
+    dispatchAccountCaseList({ type: 'loading' })
+
+    try {
+      const response = await fetchWithAuth('/api/customer/lost-reports/my-cases')
+      if (!isCurrent()) return
+      if (!response.ok) {
+        dispatchAccountCaseList({ type: 'failed', error: await responseError(response, 'Your cases could not be loaded.') })
+        return
+      }
+
+      const cases = (await response.json()) as AccountCaseListItem[]
+      if (!isCurrent()) return
+      if (!Array.isArray(cases)) throw new Error('The case list response was invalid.')
+      dispatchAccountCaseList({ type: 'loaded', cases })
+    } catch (cause) {
+      if (!isCurrent()) return
+      dispatchAccountCaseList({ type: 'failed', error: cause instanceof Error ? cause.message : 'Your cases could not be loaded.' })
+    }
+  }
+
+  async function loadAccountCase(caseNumberToOpen: string): Promise<void> {
+    const requestId = ++caseRequestGeneration.current
+    caseSummaryRequest.current += 1
+    const isCurrent = () => isCurrentCaseRequest(requestId, caseRequestGeneration.current)
+    setIsLookingUp(true)
+    setError('')
+    setSaveNotice('')
+    setIsSaving(false)
+    setIsCancelling(false)
+    setIsConfirmingSelfFound(false)
+    setAccess(null)
+    setAccountDetailReadOnly(true)
+    setAccountCaseCanManage(null)
+    setViewerIsBagOwner(null)
+    setCaseSummary(null)
+    setCaseSummaryError('')
+    setCaseSummaryLoading(false)
+    dispatchCasePage({ type: 'reset' })
+
+    try {
+      const response = await fetchWithAuth(`/api/customer/lost-reports/my-cases/${encodeURIComponent(caseNumberToOpen)}`)
+      if (!isCurrent()) return
+      if (!response.ok) {
+        throw new Error(await responseError(response, 'We could not open this case. Try again.'))
+      }
+
+      const detail = (await response.json()) as AccountCaseDetail
+      if (!isCurrent()) return
+      const summary = detail.summary
+      const reportData: LostBagReportDetail = {
+        caseNumber: summary.caseNumber,
+        bagType: summary.bag.type,
+        colour: summary.bag.colour,
+        brand: summary.bag.brand,
+        tagNumber: summary.bag.tagNumber,
+        description: summary.bag.description,
+        status: summary.status,
+        reportedAt: summary.reportedAt,
+        lostAt: summary.lostAt,
+        closedAt: summary.closedAt,
+      }
+
+      setCaseNumber(summary.caseNumber)
+      setCaseSummary(summary)
+      setViewerIsBagOwner(detail.isBagOwner)
+      setAccountCaseCanManage(hasAccountCaseManagementCapability(detail.canManage))
+      setIsEditingAccess(false)
+      dispatchCasePage({ type: 'report-loaded', report: reportData })
+      if (summary.delivery) dispatchCasePage({ type: 'delivery-loaded', delivery: summary.delivery })
+      else dispatchCasePage({ type: 'delivery-missing' })
+    } catch (cause) {
+      if (!isCurrent()) return
+      setError(cause instanceof Error ? cause.message : 'We could not open this case. Try again.')
+      setIsEditingAccess(true)
+    } finally {
+      if (isCurrent()) setIsLookingUp(false)
+    }
+  }
+
+  async function refreshAccountCaseState(caseNumberToRefresh: string, requestId: number): Promise<void> {
+    const isCurrent = () => isCurrentCaseRequest(requestId, caseRequestGeneration.current)
+    const response = await fetchWithAuth(`/api/customer/lost-reports/my-cases/${encodeURIComponent(caseNumberToRefresh)}`)
+    if (!isCurrent() || !response.ok) return
+
+    const detail = (await response.json()) as AccountCaseDetail
+    if (!isCurrent()) return
+    const summary = detail.summary
+    setCaseSummary(summary)
+    setViewerIsBagOwner(detail.isBagOwner)
+    setAccountCaseCanManage(hasAccountCaseManagementCapability(detail.canManage))
+    dispatchCasePage({
+      type: 'report-loaded',
+      report: {
+        caseNumber: summary.caseNumber,
+        bagType: summary.bag.type,
+        colour: summary.bag.colour,
+        brand: summary.bag.brand,
+        tagNumber: summary.bag.tagNumber,
+        description: summary.bag.description,
+        status: summary.status,
+        reportedAt: summary.reportedAt,
+        lostAt: summary.lostAt,
+        closedAt: summary.closedAt,
+      },
+    })
+    if (summary.delivery) dispatchCasePage({ type: 'delivery-loaded', delivery: summary.delivery })
+    else dispatchCasePage({ type: 'delivery-missing' })
+  }
+
+  function openAccountCase(nextCaseNumber: string): void {
+    if (!accountCaseList.cases.some((item) => item.caseNumber === nextCaseNumber)) return
+    dispatchAccountCaseList({ type: 'selected', caseNumber: nextCaseNumber })
+    void loadAccountCase(nextCaseNumber)
+  }
+
+  useEffect(() => {
+    void loadAccountCases()
+    return () => {
+      accountCaseRequest.current += 1
+    }
+    // fetchWithAuth is a render-scoped wrapper around stable auth refs; load only when this route mounts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     const caseAccess = location.state.passengerCaseAccess
     if (!caseAccess || openedFromReport.current) return
@@ -417,77 +508,11 @@ export function PassengerLostBagCasePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state.passengerCaseAccess])
 
-  function openRelatedCase(nextCaseNumber: string) {
-    if (!access) return
-    void loadCase({ ...access, caseNumber: nextCaseNumber })
-  }
-
-  async function findMyCases(): Promise<void> {
-    const recoveryAccess = normalizeCaseRecoveryAccess(bookingReference, surname)
-    const validationError = validateCaseRecoveryAccess(recoveryAccess)
-    const requestId = ++caseRecoveryRequest.current
-    const isCurrent = () => requestId === caseRecoveryRequest.current
-
-    dispatchCaseRecovery({ type: 'reset' })
-    setCaseRecoveryAccess(null)
-    setRelatedCases([])
-    setCaseListMessage('')
-
-    if (validationError) {
-      dispatchCaseRecovery({ type: 'failed', message: validationError })
-      return
-    }
-
-    setCaseRecoveryAccess(recoveryAccess)
-    dispatchCaseRecovery({ type: 'loading' })
-
-    try {
-      const query = new URLSearchParams({
-        bookingReference: recoveryAccess.bookingReference,
-        surname: recoveryAccess.surname,
-      }).toString()
-      const response = await fetchWithAuth(`/api/customer/lost-reports?${query}`)
-      if (!isCurrent()) return
-
-      if (!response.ok) {
-        const message = caseRecoveryErrorMessage(
-          response.status === 401
-            ? 'Your sign-in has expired. Sign in again, then find your cases.'
-            : response.status === 403
-              ? 'This customer account is not authorized to access reports for those booking details.'
-              : await responseError(response, 'Your cases could not be found. Check the booking details and try again.'),
-        )
-        if (!isCurrent()) return
-        dispatchCaseRecovery({ type: 'failed', message })
-        setCaseRecoveryAccess(null)
-        return
-      }
-
-      const reports = (await response.json()) as unknown
-      if (!isCurrent()) return
-      const cases = extractCaseNumbers(reports)
-      dispatchCaseRecovery({ type: 'loaded', caseNumbers: cases })
-    } catch (cause) {
-      if (!isCurrent()) return
-      dispatchCaseRecovery({
-        type: 'failed',
-        message: cause instanceof Error ? cause.message : 'Your cases could not be loaded. Try again.',
-      })
-      setCaseRecoveryAccess(null)
-    }
-  }
-
   function updateRecoveryDetails(field: 'bookingReference' | 'surname', value: string): void {
     const nextBookingReference = field === 'bookingReference' ? value : bookingReference
     const nextSurname = field === 'surname' ? value : surname
     if (access && !caseRecoveryDetailsMatchCase(access, nextBookingReference, nextSurname)) {
       clearOpenedCase()
-    } else {
-      caseRecoveryRequest.current += 1
-      dispatchCaseRecovery({ type: 'reset' })
-      setCaseRecoveryAccess(null)
-      setRelatedCases([])
-      setCaseListMessage('')
     }
 
     if (field === 'bookingReference') setBookingReference(value.toUpperCase())
@@ -496,20 +521,19 @@ export function PassengerLostBagCasePage() {
 
   function clearOpenedCase(): void {
     caseRequestGeneration.current += 1
-    caseRecoveryRequest.current += 1
     caseSummaryRequest.current += 1
     dispatchCasePage({ type: 'reset' })
-    dispatchCaseRecovery({ type: 'reset' })
-    setCaseRecoveryAccess(null)
     setCaseSummary(null)
     setCaseSummaryError('')
     setCaseSummaryLoading(false)
     setAccess(null)
     setViewerIsBagOwner(null)
+    setAccountDetailReadOnly(false)
+    setAccountCaseCanManage(null)
+    dispatchAccountCaseList({ type: 'selected', caseNumber: null })
     setIsEditingAccess(true)
     setCaseNumber('')
-    setRelatedCases([])
-    setCaseListMessage('')
+    setVisibleAccountCaseCount(ACCOUNT_CASES_PAGE_SIZE)
     setIsLookingUp(false)
     setIsSaving(false)
     setIsCancelling(false)
@@ -518,20 +542,9 @@ export function PassengerLostBagCasePage() {
     setSaveNotice('')
   }
 
-  function openRecoveredCase(nextCaseNumber: string): void {
-    if (!caseRecoveryAccess || !caseRecovery.caseNumbers.includes(nextCaseNumber)) return
-
-    setCaseNumber(nextCaseNumber)
-    void loadCase({ ...caseRecoveryAccess, caseNumber: nextCaseNumber })
-  }
-
-  function renderLookupForm(surface: 'desktop' | 'mobile') {
+  function renderLookupForm() {
     return (
-      <form
-        aria-label={surface === 'desktop' ? 'Open a baggage case' : 'Change baggage case'}
-        className="passenger-case-access__form"
-        onSubmit={(event) => void handleLookup(event)}
-      >
+      <form aria-label="Open a baggage case" className="passenger-case-access__form" onSubmit={(event) => void handleLookup(event)}>
         <label>
           <span>Case number</span>
           <input
@@ -575,46 +588,15 @@ export function PassengerLostBagCasePage() {
     )
   }
 
-  function openListedCase(caseNumber: string): void {
-    if (caseRecovery.status === 'results') openRecoveredCase(caseNumber)
-    else openRelatedCase(caseNumber)
-  }
-
-  function renderTryCaseChips() {
-    const cases = caseRecovery.status === 'results' ? caseRecovery.caseNumbers : relatedCases
-    const canFind = cases.length === 0 && !isLookingUp && caseRecovery.status !== 'loading'
-    const message = caseRecovery.status === 'empty' || caseRecovery.status === 'error' ? caseRecovery.message : ''
-
-    return (
-      <div className="passenger-case-recovery">
-        <TryCaseChips
-          cases={cases}
-          currentCase={report?.caseNumber ?? ''}
-          onOpen={openListedCase}
-          onFindMyCases={canFind ? () => void findMyCases() : undefined}
-        />
-        {caseRecovery.status === 'loading' && (
-          <p className="passenger-case-access__recovery-message" role="status">
-            Finding cases…
-          </p>
-        )}
-        {message && (
-          <p
-            className={`passenger-case-access__recovery-message${caseRecovery.status === 'error' ? ' passenger-case-access__recovery-message--error' : ''}`}
-            role={caseRecovery.status === 'error' ? 'alert' : 'status'}
-          >
-            {message}
-          </p>
-        )}
-      </div>
-    )
-  }
-
   async function saveChoice(choice: PassengerDeliveryChoice): Promise<void> {
-    if (!access) throw new Error('Case access is no longer available. Reopen the case and try again.')
-    if (!ownerActionsAllowed) throw new Error('Only the traveller whose bag this is can choose the delivery.')
+    const accountCaseNumber = accountDetailReadOnly && accountCaseCanManage === true ? report?.caseNumber : undefined
+    const caseNumberToSave = access?.caseNumber ?? accountCaseNumber
+    if (!caseNumberToSave) throw new Error('Case access is no longer available. Reopen the case and try again.')
+    if (access && !ownerActionsAllowed) throw new Error('Only an authorized case manager can choose the delivery.')
+    if (!access && !accountCaseNumber) throw new Error('Only an authorized case manager can choose the delivery.')
 
     const currentAccess = access
+    const accountSelectedCaseNumber = currentAccess ? null : (accountCaseNumber ?? null)
     const requestId = caseRequestGeneration.current
     const isCurrent = () => isCurrentCaseRequest(requestId, caseRequestGeneration.current)
     setIsSaving(true)
@@ -622,7 +604,9 @@ export function PassengerLostBagCasePage() {
     setSaveNotice('')
     try {
       const response = await fetchWithAuth(
-        `/api/customer/lost-reports/${encodeURIComponent(currentAccess.caseNumber)}/delivery-choice?${accessQuery(currentAccess)}`,
+        currentAccess
+          ? `/api/customer/lost-reports/${encodeURIComponent(currentAccess.caseNumber)}/delivery-choice?${accessQuery(currentAccess)}`
+          : `/api/customer/lost-reports/my-cases/${encodeURIComponent(caseNumberToSave)}/delivery-choice`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -631,7 +615,10 @@ export function PassengerLostBagCasePage() {
       )
       if (!isCurrent()) return
       if (!response.ok) {
-        if (response.status === 409) await refreshCaseState(currentAccess, requestId)
+        if (response.status === 409) {
+          if (currentAccess) await refreshCaseState(currentAccess, requestId)
+          else if (accountSelectedCaseNumber) await refreshAccountCaseState(accountSelectedCaseNumber, requestId)
+        }
         const message = await responseError(response, 'We could not save your delivery choice. Try again.')
         if (!isCurrent()) return
         throw new Error(message)
@@ -648,7 +635,8 @@ export function PassengerLostBagCasePage() {
           status: result.status,
         },
       })
-      void loadCaseSummary(currentAccess, requestId)
+      if (currentAccess) void loadCaseSummary(currentAccess, requestId)
+      else if (accountSelectedCaseNumber) void refreshAccountCaseState(accountSelectedCaseNumber, requestId)
       setSaveNotice('Your delivery choice was saved.')
     } catch (cause) {
       if (!isCurrent()) return
@@ -755,62 +743,91 @@ export function PassengerLostBagCasePage() {
   const progress = report ? caseProgressPresentation(report.status, delivery?.status ?? null) : { steps: [], activeStep: 0 }
   const displayedCaseStatus = report ? caseStatusLabel(report.status, delivery?.status ?? null) : ''
   const isTimedOutCase = progress.steps[0] === 'Reported'
+  const visibleCases = visibleAccountCaseSuggestions(accountCaseList.cases, visibleAccountCaseCount)
 
   return (
     <main className="passenger-case-page">
       <header className="passenger-case-page__intro">
-        <h1>My bag case</h1>
+        <h1>My bag cases</h1>
         <p>Enter your case number with your booking reference and surname. A case number alone does not open a case.</p>
       </header>
 
       <section className="passenger-case-access" aria-label="Open a baggage case">
-        <div className="passenger-case-access__desktop">{renderLookupForm('desktop')}</div>
-        <div className="passenger-case-access__mobile">
-          {report && !isEditingAccess ? (
-            <>
-              <div className="passenger-case-access__viewing">
-                <div>
-                  <span>Viewing case</span>
-                  <strong>
-                    {report.caseNumber} · {access?.surname}
-                  </strong>
-                </div>
-                <button type="button" onClick={() => setIsEditingAccess(true)}>
-                  Change
-                </button>
-              </div>
-            </>
-          ) : (
-            <>{renderLookupForm('mobile')}</>
+        {renderLookupForm()}
+        <div className="passenger-case-access__suggestions" role="group" aria-label="Cases linked to your account">
+          <span>Try:</span>
+          {accountCaseList.status === 'ready' &&
+            visibleCases.map((item) => (
+              <button
+                aria-pressed={accountCaseList.selectedCaseNumber === item.caseNumber}
+                disabled={isLookingUp}
+                key={item.caseNumber}
+                type="button"
+                onClick={() => openAccountCase(item.caseNumber)}
+              >
+                {item.caseNumber}
+              </button>
+            ))}
+          {accountCaseList.status === 'ready' && accountCaseList.cases.length > visibleCases.length && (
+            <button
+              className="passenger-case-access__more-cases"
+              type="button"
+              onClick={() => setVisibleAccountCaseCount((count) => count + ACCOUNT_CASES_PAGE_SIZE)}
+            >
+              Show more cases
+            </button>
+          )}
+          {accountCaseList.status === 'ready' && visibleAccountCaseCount > ACCOUNT_CASES_PAGE_SIZE && (
+            <button
+              className="passenger-case-access__more-cases"
+              type="button"
+              onClick={() => setVisibleAccountCaseCount(ACCOUNT_CASES_PAGE_SIZE)}
+            >
+              Show fewer
+            </button>
           )}
         </div>
-        {renderTryCaseChips()}
-        {error && (
-          <p className="passenger-case-page__error" role="alert">
-            {error}
+        {accountCaseList.status === 'loading' && (
+          <p className="passenger-case-access__recovery-message" role="status">
+            Loading your cases…
           </p>
+        )}
+        {accountCaseList.status === 'error' && (
+          <div>
+            <p className="passenger-case-page__error" role="alert">
+              {accountCaseList.error}
+            </p>
+            <button className="passenger-account-cases__retry" type="button" onClick={() => void loadAccountCases()}>
+              Try again
+            </button>
+          </div>
+        )}
+        {accountCaseList.status === 'ready' && accountCaseList.cases.length === 0 && (
+          <p className="passenger-account-cases__empty">No baggage cases are linked to your account yet.</p>
         )}
         {isLookingUp && (
           <p className="passenger-case-page__loading" role="status">
             Loading case details…
           </p>
         )}
-        {caseListMessage && (
-          <p className="passenger-case-page__loading" role="status">
-            {caseListMessage}
+        {error && (
+          <p className="passenger-case-page__error" role="alert">
+            {error}
           </p>
         )}
       </section>
 
-      {shouldShowNoOpenCase(Boolean(report), isLookingUp, Boolean(error)) && (
-        <section className="passenger-case-empty" aria-labelledby="passenger-case-empty-title">
-          <h2 id="passenger-case-empty-title">No case open yet</h2>
-          <p>Enter your case details above to follow a report. If you have not reported a bag yet, start here.</p>
-          <Link className="passenger-case-empty__link" to="/report-lost-bag">
-            Report a lost bag
-          </Link>
-        </section>
-      )}
+      {accountCaseList.status === 'ready' &&
+        accountCaseList.cases.length === 0 &&
+        shouldShowNoOpenCase(Boolean(report), isLookingUp, Boolean(error)) && (
+          <section className="passenger-case-empty" aria-labelledby="passenger-case-empty-title">
+            <h2 id="passenger-case-empty-title">No case open yet</h2>
+            <p>Enter your case details above to follow a report. If you have not reported a bag yet, start here.</p>
+            <Link className="passenger-case-empty__link" to="/report-lost-bag">
+              Report a lost bag
+            </Link>
+          </section>
+        )}
 
       {report && !isEditingAccess && (
         <div className="passenger-case-layout">
@@ -959,14 +976,25 @@ export function PassengerLostBagCasePage() {
           </section>
 
           <aside className="passenger-case-delivery">
-            {viewerIsBagOwner === false ? (
+            {accountDetailReadOnly && accountCaseCanManage !== true ? (
+              <section className="passenger-case-info" role="status">
+                <h2>Delivery</h2>
+                {delivery ? (
+                  <>
+                    <p>{deliveryStatusLabel(delivery.status)}</p>
+                    {deliveryDestination(delivery) && <p>{deliveryDestination(delivery)}</p>}
+                  </>
+                ) : (
+                  <p>No delivery choice has been recorded for this case.</p>
+                )}
+                <p>Only the bag owner or a verified reporter can choose or change delivery for this case.</p>
+              </section>
+            ) : !accountDetailReadOnly && viewerIsBagOwner === false ? (
               <section className="passenger-case-info" role="status">
                 <h2>Delivery</h2>
                 <p>
-                  {caseSummary
-                    ? `Only ${caseSummary.passenger.firstName} ${caseSummary.passenger.lastName}, whose bag this is, can choose where we send it or cancel this report.`
-                    : 'Only the traveller whose bag this is can choose where we send it or cancel this report.'}{' '}
-                  They open this case with the case number and their own booking details.
+                  Only the bag owner or a verified reporter can choose or change delivery for this case. The backend checks this again when
+                  saving.
                 </p>
               </section>
             ) : isDeliveryUnavailable ? (
@@ -995,7 +1023,7 @@ export function PassengerLostBagCasePage() {
                       : 'A delivery choice is available after staff confirms a found bag for this case.'}
                 </p>
               </section>
-            ) : !ownerActionsAllowed ? (
+            ) : !deliveryActionsAllowed ? (
               <section className="passenger-case-info" role="status">
                 <h2>Delivery</h2>
                 <p>Checking that this is your bag before showing delivery options. If they do not appear, reopen the case to try again.</p>

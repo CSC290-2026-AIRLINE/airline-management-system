@@ -21,13 +21,14 @@ describe('PassengerCaseSummaryService', () => {
     delivery: { deliveryType: 'hotel', address: 'Hotel address', pickupAirport: null, status: 'preparing' },
     timeline: [{ type: 'report_received', occurredAt: new Date('2026-10-20T10:00:00Z') }],
   }
-  const reports = { getViewableReport: jest.fn() }
+  const reports = { getViewableReport: jest.fn(), getCustomerVisibleReport: jest.fn() }
   const repository = { findPassengerCaseSummaryByReportId: jest.fn() }
   const service = new PassengerCaseSummaryService(reports as unknown as ReportService, repository as unknown as PrismaReportRepository)
 
   beforeEach(() => {
     jest.clearAllMocks()
     reports.getViewableReport.mockResolvedValue({ report, isBagOwner: true, canManage: true })
+    reports.getCustomerVisibleReport.mockResolvedValue({ report, isBagOwner: true })
     repository.findPassengerCaseSummaryByReportId.mockResolvedValue(summary)
   })
 
@@ -77,5 +78,35 @@ describe('PassengerCaseSummaryService', () => {
     await expect(service.getByCaseNumber(report.caseNumber, access)).rejects.toMatchObject({
       code: BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND,
     })
+  })
+
+  it('supports account-scoped read access and redacts delivery address for a visible non-owner case', async () => {
+    reports.getCustomerVisibleReport.mockResolvedValue({ report, isBagOwner: false, canManage: false })
+
+    await expect(service.getByCaseNumberForCustomer(report.caseNumber, 'customer-1', 'passenger-2')).resolves.toEqual({
+      summary: { ...summary, delivery: { ...summary.delivery, address: null } },
+      isBagOwner: false,
+      canManage: false,
+    })
+    expect(reports.getCustomerVisibleReport).toHaveBeenCalledWith(report.caseNumber, 'customer-1', 'passenger-2')
+  })
+
+  it('preserves the address for an account-authorized verified reporter who can manage delivery', async () => {
+    reports.getCustomerVisibleReport.mockResolvedValue({ report, isBagOwner: false, canManage: true })
+
+    await expect(service.getByCaseNumberForCustomer(report.caseNumber, 'customer-1', 'passenger-2')).resolves.toEqual({
+      summary,
+      isBagOwner: false,
+      canManage: true,
+    })
+  })
+
+  it('does not query case details when the account-scoped detail authorization fails', async () => {
+    reports.getCustomerVisibleReport.mockRejectedValue(new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Not found'))
+
+    await expect(service.getByCaseNumberForCustomer(report.caseNumber, 'unrelated-customer', 'passenger-2')).rejects.toMatchObject({
+      code: BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND,
+    })
+    expect(repository.findPassengerCaseSummaryByReportId).not.toHaveBeenCalled()
   })
 })

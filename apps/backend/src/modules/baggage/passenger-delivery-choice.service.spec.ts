@@ -14,13 +14,14 @@ describe('PassengerDeliveryChoiceService', () => {
   const actor = { customerId: 'customer-id', userId: 'user-id' }
   const deliveryId = 'delivery-id'
   const choice: PassengerDeliveryChoiceDto = { deliveryType: 'hotel', address: ' Marina Bay Sands ' }
-  let reports: { getDeliveryIdForCaseNumber: jest.Mock; getDeliveryChoiceForCaseNumber: jest.Mock }
+  let reports: { getDeliveryIdForCaseNumber: jest.Mock; getDeliveryIdForCustomerCase: jest.Mock; getDeliveryChoiceForCaseNumber: jest.Mock }
   let deliveries: { applyChoice: jest.Mock }
   let service: PassengerDeliveryChoiceService
 
   beforeEach(() => {
     reports = {
       getDeliveryIdForCaseNumber: jest.fn().mockResolvedValue(deliveryId),
+      getDeliveryIdForCustomerCase: jest.fn().mockResolvedValue(deliveryId),
       getDeliveryChoiceForCaseNumber: jest.fn().mockResolvedValue({
         deliveryType: 'hotel',
         address: 'Hotel Gracery',
@@ -118,6 +119,43 @@ describe('PassengerDeliveryChoiceService', () => {
       { deliveryId, deliveryType: 'hotel', address: ' Marina Bay Sands ', pickupAirport: undefined },
     )
     expect(result).toMatchObject({ id: deliveryId, status: 'preparing', deliveryType: 'hotel' })
+  })
+
+  it('uses guard-derived account identities and the shared mutation service for account-selected cases', async () => {
+    const customer = { id: 'guard-user', customerId: 'guard-customer', passengerId: 'guard-passenger' }
+    const spoofedChoice = {
+      ...choice,
+      customerId: 'attacker',
+      passengerId: 'attacker',
+      isBagOwner: true,
+    } as unknown as PassengerDeliveryChoiceDto
+
+    await service.saveChoiceForCustomerCase(caseNumber, customer, spoofedChoice)
+
+    expect(reports.getDeliveryIdForCustomerCase).toHaveBeenCalledWith(caseNumber, 'guard-customer', 'guard-passenger')
+    expect(deliveries.applyChoice).toHaveBeenCalledWith(
+      { type: 'passenger', id: 'guard-customer', userId: 'guard-user' },
+      { deliveryId, deliveryType: 'hotel', address: ' Marina Bay Sands ', pickupAirport: undefined },
+    )
+  })
+
+  it('rejects account-visible but non-manageable cases before applying a delivery change', async () => {
+    reports.getDeliveryIdForCustomerCase.mockRejectedValue(new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Not found'))
+
+    await expect(service.saveChoiceForCustomerCase(caseNumber, actor as never, choice)).rejects.toMatchObject({
+      code: 'REPORT_NOT_FOUND',
+    })
+    expect(deliveries.applyChoice).not.toHaveBeenCalled()
+  })
+
+  it('keeps account-selected changes locked after dispatch', async () => {
+    deliveries.applyChoice.mockRejectedValue(new FoundBagError(FOUND_BAG_ERROR_CODES.ALREADY_SENT, 'The bag is already on its way'))
+
+    await expect(
+      service.saveChoiceForCustomerCase(caseNumber, { id: 'user-id', customerId: 'customer-id', passengerId: 'passenger-id' }, choice),
+    ).rejects.toMatchObject({
+      code: 'ALREADY_SENT',
+    })
   })
 
   it('rejects a case the passenger does not own before calling the delivery service', async () => {

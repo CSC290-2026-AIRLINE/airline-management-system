@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import type { Prisma, lost_bag_report } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { BAGGAGE_ERROR_CODES, BaggageError } from './common/baggage.errors'
-import type { DeliveryChoiceSnapshot, ReportRepository } from './common/report.ports'
+import type { CustomerCaseListItem, DeliveryChoiceSnapshot, ReportRepository } from './common/report.ports'
 import type { LostBagReport } from './common/report.types'
 import type { PassengerCaseSummary, PassengerCaseTimelineEvent } from './common/passenger-case-summary.types'
 import type { BagType, BagColour, ReportStatus } from './common/baggage.constants'
@@ -429,6 +429,69 @@ export class PrismaReportRepository implements ReportRepository {
     const rows = await this.db.lost_bag_report.findMany({ where: { OR: anyOf }, orderBy: { reported_at: 'desc' } })
 
     return rows.map(toReport)
+  }
+
+  async listByCustomerId(customerId: string): Promise<CustomerCaseListItem[]> {
+    const rows = await this.db.lost_bag_report.findMany({
+      where: {
+        OR: [
+          { reported_by_customer_id: customerId },
+          {
+            booking_coupon: {
+              is: {
+                booking_passenger: {
+                  is: { booking: { is: { customer_id: customerId } } },
+                },
+              },
+            },
+          },
+        ],
+      },
+      orderBy: { reported_at: 'desc' },
+      select: {
+        case_number: true,
+        bag_type: true,
+        colour: true,
+        brand: true,
+        status: true,
+        reported_at: true,
+        passenger: { select: { first_name: true, last_name: true } },
+      },
+    })
+
+    const uniqueRows = new Map(rows.map((row) => [row.case_number, row]))
+    return [...uniqueRows.values()].map((row) => ({
+      caseNumber: row.case_number,
+      passengerFirstName: row.passenger.first_name,
+      passengerLastName: row.passenger.last_name,
+      bagType: row.bag_type,
+      colour: row.colour,
+      brand: row.brand,
+      status: row.status,
+      reportedAt: row.reported_at,
+    }))
+  }
+
+  async findByCaseNumberForCustomer(caseNumber: string, customerId: string): Promise<LostBagReport | null> {
+    const row = await this.db.lost_bag_report.findFirst({
+      where: {
+        case_number: caseNumber,
+        OR: [
+          { reported_by_customer_id: customerId },
+          {
+            booking_coupon: {
+              is: {
+                booking_passenger: {
+                  is: { booking: { is: { customer_id: customerId } } },
+                },
+              },
+            },
+          },
+        ],
+      },
+    })
+
+    return row ? toReport(row) : null
   }
 
   /**

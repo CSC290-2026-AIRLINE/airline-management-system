@@ -136,3 +136,34 @@ describe('PassengerLostReportController.create for another traveller', () => {
     )
   })
 })
+
+describe('PassengerLostReportController account case reads', () => {
+  const customer = { id: 'user-id', customerId: 'customer-from-guard', passengerId: 'passenger-from-guard' } as BaggageCustomer
+
+  it('lists cases using the customer identity supplied by the guard', async () => {
+    const reports = { listForCustomer: jest.fn().mockResolvedValue([]) }
+    const controller = new PassengerLostReportController(reports as unknown as ReportService, {} as never, {} as never, {} as never)
+
+    await expect(controller.listForCustomer(customer)).resolves.toEqual([])
+    expect(reports.listForCustomer).toHaveBeenCalledWith('customer-from-guard')
+  })
+
+  it('passes only guard-derived account and passenger identity to account detail authorization', async () => {
+    const detail = { summary: {}, isBagOwner: false, canManage: false }
+    const summaries = { getByCaseNumberForCustomer: jest.fn().mockResolvedValue(detail) }
+    const controller = new PassengerLostReportController({} as never, {} as never, summaries as never, {} as never)
+
+    await expect(controller.getCustomerCase(customer, 'LB-2026-000001')).resolves.toBe(detail)
+    expect(summaries.getByCaseNumberForCustomer).toHaveBeenCalledWith('LB-2026-000001', 'customer-from-guard', 'passenger-from-guard')
+  })
+
+  it('passes guard-derived identity and DTO separately to the account delivery mutation', async () => {
+    const choice = { deliveryType: 'hotel', address: 'Hotel address', customerId: 'spoofed', passengerId: 'spoofed' }
+    const deliveryChoices = { saveChoiceForCustomerCase: jest.fn().mockResolvedValue({ status: 'preparing' }) }
+    const controller = new PassengerLostReportController({} as never, deliveryChoices as never, {} as never, {} as never)
+
+    await controller.saveAccountCaseDeliveryChoice(customer, 'LB-2026-000001', choice as never)
+
+    expect(deliveryChoices.saveChoiceForCustomerCase).toHaveBeenCalledWith('LB-2026-000001', customer, choice)
+  })
+})

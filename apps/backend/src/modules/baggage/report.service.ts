@@ -10,6 +10,7 @@ import type {
   BookingVerification,
   CheckedBagLookup,
   DeliveryChoiceSnapshot,
+  CustomerCaseListItem,
   EligibleTraveller,
   VerifiedBookingPassenger,
   VerifiedReportFlight,
@@ -223,7 +224,39 @@ export class ReportService {
     return canManage ? { ...report, viewerCanManage: true } : { ...report, contactEmail: null, contactPhone: null, viewerCanManage: false }
   }
 
-  /** Read authorization. Actions (delivery choice, cancellation) also need canManage, through findManageableReport. */
+  async getCustomerVisibleReport(
+    caseNumber: string,
+    customerId: string,
+    passengerId: string,
+  ): Promise<{ report: LostBagReport; isBagOwner: boolean; canManage: boolean }> {
+    const report = await this.repository.findByCaseNumberForCustomer(caseNumber, customerId)
+    if (!report) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Lost baggage report not found')
+    }
+
+    const isBagOwner = report.passengerId === passengerId
+    const isVerifiedReporter =
+      report.reportedByCustomerId === customerId &&
+      (await this.bookings.isPassengerOnBookingPassenger(passengerId, report.bookingPassengerId))
+
+    return { report, isBagOwner, canManage: isBagOwner || isVerifiedReporter }
+  }
+
+  async getManageableCustomerReport(caseNumber: string, customerId: string, passengerId: string): Promise<LostBagReport> {
+    const { report, canManage } = await this.getCustomerVisibleReport(caseNumber, customerId, passengerId)
+    return this.requireManageableReport(report, canManage)
+  }
+
+  async getDeliveryIdForCustomerCase(caseNumber: string, customerId: string, passengerId: string): Promise<string | null> {
+    const report = await this.getManageableCustomerReport(caseNumber, customerId, passengerId)
+    return this.repository.findDeliveryIdByReportId(report.id)
+  }
+
+  listForCustomer(customerId: string): Promise<CustomerCaseListItem[]> {
+    return this.repository.listByCustomerId(customerId)
+  }
+
+  /** Read authorization. Actions also require canManage through findManageableReport. */
   async getViewableReport(caseNumber: string, access: ReportAccessInput): Promise<ViewableReport> {
     const passenger = await this.bookings.verifyPassenger(access)
 
@@ -252,6 +285,10 @@ export class ReportService {
   private async findManageableReport(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {
     const { report, canManage } = await this.getViewableReport(caseNumber, access)
 
+    return this.requireManageableReport(report, canManage)
+  }
+
+  private requireManageableReport(report: LostBagReport, canManage: boolean): LostBagReport {
     if (!canManage) {
       throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Lost baggage report not found')
     }

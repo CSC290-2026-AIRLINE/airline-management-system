@@ -248,26 +248,29 @@ describe('BagDeliveryService', () => {
   describe('applyChoice (shared with the passenger side)', () => {
     const passenger = { type: 'passenger' as const, id: CUSTOMER_ID, userId: CUSTOMER_USER_ID }
 
-    it('records the passenger as the actor, without a staff id', async () => {
-      const { svc, db, audit } = makeSvc({ status: 'preparing' }, 'matched')
-      audit.resolveActor.mockResolvedValue({ type: 'customer', id: CUSTOMER_USER_ID, role: null })
+    it.each(['waiting_choice', 'preparing'] as const)(
+      'records the passenger choice from %s and audits the passenger as actor, without a staff id',
+      async (deliveryStatus) => {
+        const { svc, db, audit } = makeSvc({ status: deliveryStatus }, 'matched')
+        audit.resolveActor.mockResolvedValue({ type: 'customer', id: CUSTOMER_USER_ID, role: null })
 
-      const result = await svc.applyChoice(passenger, { deliveryId: DELIVERY_ID, deliveryType: 'hotel', address: ' Hotel Gracery ' })
+        const result = await svc.applyChoice(passenger, { deliveryId: DELIVERY_ID, deliveryType: 'hotel', address: ' Hotel Gracery ' })
 
-      expect(result).toMatchObject({
-        id: DELIVERY_ID,
-        reportId: REPORT_ID,
-        status: 'preparing',
-        deliveryType: 'hotel',
-        address: 'Hotel Gracery',
-      })
-      expect(audit.resolveActor).toHaveBeenCalledWith(CUSTOMER_USER_ID)
-      const entry = audit.write.mock.calls[0][0]
-      expect(entry.actor).toEqual({ type: 'customer', id: CUSTOMER_USER_ID, role: null })
-      expect(entry.after).toMatchObject({ chosenBy: 'passenger', customerId: CUSTOMER_ID })
-      expect(entry.after).not.toHaveProperty('staffId')
-      expect(db.bag_delivery.update).toHaveBeenCalledTimes(1)
-    })
+        expect(result).toMatchObject({
+          id: DELIVERY_ID,
+          reportId: REPORT_ID,
+          status: 'preparing',
+          deliveryType: 'hotel',
+          address: 'Hotel Gracery',
+        })
+        expect(audit.resolveActor).toHaveBeenCalledWith(CUSTOMER_USER_ID)
+        const entry = audit.write.mock.calls[0][0]
+        expect(entry.actor).toEqual({ type: 'customer', id: CUSTOMER_USER_ID, role: null })
+        expect(entry.after).toMatchObject({ chosenBy: 'passenger', customerId: CUSTOMER_ID })
+        expect(entry.after).not.toHaveProperty('staffId')
+        expect(db.bag_delivery.update).toHaveBeenCalledTimes(1)
+      },
+    )
 
     it('needs to know who made the choice', async () => {
       const { svc, db } = makeSvc({ status: 'preparing' })

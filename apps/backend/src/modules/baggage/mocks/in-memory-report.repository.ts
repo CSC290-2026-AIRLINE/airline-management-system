@@ -4,6 +4,7 @@ import { BAGGAGE_ERROR_CODES, BaggageError } from '../common/baggage.errors'
 
 export class InMemoryReportRepository implements ReportRepository {
   private readonly reports: LostBagReport[] = []
+  private readonly bookingPassengerOwners = new Map<string, Set<string>>()
 
   async create(report: LostBagReport): Promise<LostBagReport> {
     if (report.tagNumber) {
@@ -53,6 +54,45 @@ export class InMemoryReportRepository implements ReportRepository {
       .map((report) => ({ ...report }))
 
     return Promise.resolve(reports)
+  }
+
+  listByCustomerId(customerId: string): Promise<import('../common/report.ports').CustomerCaseListItem[]> {
+    const ownedBookingPassengers = this.bookingPassengerOwners.get(customerId) ?? new Set<string>()
+    const visibleReports = this.reports.filter(
+      (item) => item.reportedByCustomerId === customerId || ownedBookingPassengers.has(item.bookingPassengerId),
+    )
+    const uniqueReports = new Map(visibleReports.map((report) => [report.caseNumber, report]))
+
+    return Promise.resolve(
+      [...uniqueReports.values()].map((report) => ({
+        caseNumber: report.caseNumber,
+        passengerFirstName: '',
+        passengerLastName: '',
+        bagType: report.bagType,
+        colour: report.colour,
+        brand: report.brand,
+        status: report.status,
+        reportedAt: report.reportedAt,
+      })),
+    )
+  }
+
+  findByCaseNumberForCustomer(caseNumber: string, customerId: string): Promise<LostBagReport | null> {
+    const report = this.reports.find((item) => {
+      if (item.caseNumber !== caseNumber) return false
+      return (
+        item.reportedByCustomerId === customerId || (this.bookingPassengerOwners.get(customerId)?.has(item.bookingPassengerId) ?? false)
+      )
+    })
+
+    return Promise.resolve(report ? { ...report } : null)
+  }
+
+  /** Test helper for the account-owned booking relation used by account-scoped case tests. */
+  setBookingPassengerOwner(customerId: string, bookingPassengerId: string): void {
+    const owners = this.bookingPassengerOwners.get(customerId) ?? new Set<string>()
+    owners.add(bookingPassengerId)
+    this.bookingPassengerOwners.set(customerId, owners)
   }
 
   cancelIfNotDispatched(reportId: string, bookingPassengerId: string, closedAt: Date): Promise<LostBagReport | null> {

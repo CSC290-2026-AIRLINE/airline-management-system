@@ -4,6 +4,7 @@ import { BAGGAGE_ERROR_CODES, BaggageError } from './common/baggage.errors'
 import type { DeliveryChoiceSnapshot } from './common/report.ports'
 import type { PassengerDeliveryChoiceDto } from './dto/passenger-delivery-choice.dto'
 import { ReportService, type ReportAccessInput } from './report.service'
+import type { BaggageCustomer } from './guards/baggage-customer.guard'
 
 interface PassengerDeliveryActor {
   customerId: string
@@ -45,6 +46,27 @@ export class PassengerDeliveryChoiceService {
 
     return this.deliveries.applyChoice(
       { type: 'passenger', id: actor.customerId, userId: actor.userId },
+      {
+        deliveryId,
+        deliveryType: choice.deliveryType,
+        address: choice.address,
+        pickupAirport: choice.pickupAirport,
+      },
+    )
+  }
+
+  async saveChoiceForCustomerCase(
+    caseNumber: string,
+    customer: Pick<BaggageCustomer, 'customerId' | 'passengerId' | 'id'>,
+    choice: PassengerDeliveryChoiceDto,
+  ): Promise<DeliveryChoiceResult> {
+    const deliveryId = await this.reports.getDeliveryIdForCustomerCase(caseNumber, customer.customerId, customer.passengerId)
+    if (!deliveryId) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.DELIVERY_NOT_FOUND, 'No delivery is available for this lost baggage case')
+    }
+
+    return this.deliveries.applyChoice(
+      { type: 'passenger', id: customer.customerId, userId: customer.id },
       {
         deliveryId,
         deliveryType: choice.deliveryType,

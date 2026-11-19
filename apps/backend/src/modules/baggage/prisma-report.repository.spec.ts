@@ -604,3 +604,76 @@ describe('PrismaReportRepository.listForRequester', () => {
     })
   })
 })
+
+describe('PrismaReportRepository account-scoped case reads', () => {
+  const caseRow = {
+    case_number: 'LB-2026-000001',
+    bag_type: 'suitcase',
+    colour: 'black',
+    brand: 'Samsonite',
+    status: 'open',
+    reported_at: new Date('2026-10-29T10:00:00Z'),
+    passenger: { first_name: 'Lina', last_name: 'Haddad' },
+  }
+
+  it('uses the authenticated customer OR conditions and returns each case once with an allowlisted summary', async () => {
+    const findMany = jest.fn().mockResolvedValue([caseRow, caseRow])
+    const repository = new PrismaReportRepository({
+      lost_bag_report: { findMany },
+    } as unknown as DbService)
+
+    const result = await repository.listByCustomerId('customer-1')
+
+    expect(result).toEqual([
+      {
+        caseNumber: caseRow.case_number,
+        passengerFirstName: 'Lina',
+        passengerLastName: 'Haddad',
+        bagType: 'suitcase',
+        colour: 'black',
+        brand: 'Samsonite',
+        status: 'open',
+        reportedAt: caseRow.reported_at,
+      },
+    ])
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { reported_by_customer_id: 'customer-1' },
+          { booking_coupon: { is: { booking_passenger: { is: { booking: { is: { customer_id: 'customer-1' } } } } } } },
+        ],
+      },
+      orderBy: { reported_at: 'desc' },
+      select: {
+        case_number: true,
+        bag_type: true,
+        colour: true,
+        brand: true,
+        status: true,
+        reported_at: true,
+        passenger: { select: { first_name: true, last_name: true } },
+      },
+    })
+  })
+
+  it('checks account membership again for every case-detail read and hides unrelated cases', async () => {
+    const findFirst = jest.fn().mockResolvedValueOnce(reportRow()).mockResolvedValueOnce(null)
+    const repository = new PrismaReportRepository({
+      lost_bag_report: { findFirst },
+    } as unknown as DbService)
+
+    await expect(repository.findByCaseNumberForCustomer('LB-2026-000001', 'customer-1')).resolves.toMatchObject({
+      caseNumber: 'LB-2026-000001',
+    })
+    await expect(repository.findByCaseNumberForCustomer('LB-2026-000002', 'customer-1')).resolves.toBeNull()
+    expect(findFirst).toHaveBeenNthCalledWith(1, {
+      where: {
+        case_number: 'LB-2026-000001',
+        OR: [
+          { reported_by_customer_id: 'customer-1' },
+          { booking_coupon: { is: { booking_passenger: { is: { booking: { is: { customer_id: 'customer-1' } } } } } } },
+        ],
+      },
+    })
+  })
+})

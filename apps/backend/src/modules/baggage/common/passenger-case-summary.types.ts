@@ -30,3 +30,9 @@ export interface PassengerCaseSummary {
   } | null
   timeline: PassengerCaseTimelineEvent[]
 }
+
+export interface CustomerPassengerCaseDetail {
+  summary: PassengerCaseSummary
+  isBagOwner: boolean
+  canManage: boolean
+}

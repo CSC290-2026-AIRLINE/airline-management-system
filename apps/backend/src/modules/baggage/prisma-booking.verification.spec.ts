@@ -325,6 +325,55 @@ describe('PrismaBookingVerification.isOnRequesterBooking', () => {
   })
 })
 
+describe('PrismaBookingVerification.isPassengerOnBookingPassenger', () => {
+  const targetBookingPassenger = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+  let findTarget: jest.Mock
+  let findConfirmedCoupon: jest.Mock
+  let verification: PrismaBookingVerification
+
+  beforeEach(() => {
+    findTarget = jest.fn().mockResolvedValue({ booking_id: BOOKING_ID })
+    findConfirmedCoupon = jest.fn().mockResolvedValue({ id: 'confirmed-coupon' })
+    verification = new PrismaBookingVerification({
+      booking_passenger: { findFirst: findTarget },
+      booking_coupon: { findFirst: findConfirmedCoupon },
+    } as unknown as DbService)
+  })
+
+  it('requires a confirmed coupon for the guard passenger on the report passenger booking', async () => {
+    await expect(verification.isPassengerOnBookingPassenger(PASSENGER_ID, targetBookingPassenger)).resolves.toBe(true)
+    expect(findTarget).toHaveBeenCalledWith({ where: { id: targetBookingPassenger }, select: { booking_id: true } })
+    expect(findConfirmedCoupon).toHaveBeenCalledWith({
+      where: {
+        status: 'confirmed',
+        passenger_id: PASSENGER_ID,
+        booking_passenger: { booking_id: BOOKING_ID, passenger: { deleted_at: null } },
+      },
+      select: { id: true },
+    })
+  })
+
+  it('returns false when the guard passenger has no confirmed coupon on that booking', async () => {
+    findConfirmedCoupon.mockResolvedValue(null)
+
+    await expect(verification.isPassengerOnBookingPassenger(PASSENGER_ID, targetBookingPassenger)).resolves.toBe(false)
+  })
+
+  it('fails closed for malformed passenger or booking-passenger IDs without querying', async () => {
+    await expect(verification.isPassengerOnBookingPassenger('spoofed', targetBookingPassenger)).resolves.toBe(false)
+    await expect(verification.isPassengerOnBookingPassenger(PASSENGER_ID, 'spoofed')).resolves.toBe(false)
+    expect(findTarget).not.toHaveBeenCalled()
+    expect(findConfirmedCoupon).not.toHaveBeenCalled()
+  })
+
+  it('does not check the requester coupon when the case passenger is absent', async () => {
+    findTarget.mockResolvedValue(null)
+
+    await expect(verification.isPassengerOnBookingPassenger(PASSENGER_ID, targetBookingPassenger)).resolves.toBe(false)
+    expect(findConfirmedCoupon).not.toHaveBeenCalled()
+  })
+})
+
 describe('PrismaBookingVerification.verifyPassenger', () => {
   const FLIGHT_ID = '22222222-2222-4222-8222-222222222222'
   const coupon = { booking_passenger_id: CO_BP, passenger_id: PASSENGER_ID, flight_id: FLIGHT_ID }

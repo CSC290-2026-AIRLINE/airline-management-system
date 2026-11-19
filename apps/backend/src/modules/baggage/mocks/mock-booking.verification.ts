@@ -57,6 +57,13 @@ export class MockBookingVerification implements BookingVerification {
     )
   }
 
+  async isPassengerOnBookingPassenger(passengerId: string, bookingPassengerId: string): Promise<boolean> {
+    const target = this.bookings.find((item) => item.bookingPassengerId === bookingPassengerId)
+    return !!target && this.bookings.some(
+      (item) => item.bookingReference.toUpperCase() === target.bookingReference.toUpperCase() && item.passengerId === passengerId,
+    )
+  }
+
   /**
    * Same rules as the Prisma adapter: the requester verifies on the booking on any flight (no flightId), and the chosen
    * traveller must share that booking reference with a coupon for the requested flight.

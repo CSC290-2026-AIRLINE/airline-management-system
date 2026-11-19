@@ -443,8 +443,8 @@ function LostBagReportForm(props: ReportFormProps) {
             ) : (
               bagOwnerName && (
                 <p className="passenger-report-success__note">
-                  Save this case number. Cases you report for another traveller are not listed under your own cases, so you open it with the
-                  case number, your booking reference and your surname.
+                  Save this case number. Your account's My bag cases list includes cases you report and cases linked to your bookings. For
+                  the full details, open it with the case number, your booking reference and your surname.
                 </p>
               )
             )}

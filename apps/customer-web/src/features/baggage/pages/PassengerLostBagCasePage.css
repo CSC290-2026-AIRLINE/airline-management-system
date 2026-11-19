@@ -46,6 +46,29 @@
   line-height: 1.4;
 }
 
+.passenger-account-cases__retry:focus-visible,
+.passenger-case-access__suggestions button:focus-visible {
+  outline: 2px solid #ff9f0a;
+  outline-offset: 2px;
+}
+
+.passenger-account-cases__empty {
+  margin: 0.45rem 0 0;
+  color: #68758f;
+}
+
+.passenger-account-cases__retry {
+  min-height: 2.4rem;
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid #d5ddea;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #17233f;
+  font: inherit;
+  cursor: pointer;
+}
+
 .passenger-case-access,
 .passenger-case-card,
 .passenger-case-info {
@@ -86,14 +109,12 @@
 }
 
 .passenger-case-access__form input:focus-visible,
-.passenger-case-access__form button:focus-visible,
-.passenger-case-access__viewing button:focus-visible {
+.passenger-case-access__form button:focus-visible {
   outline: 2px solid #ff9f0a;
   outline-offset: 2px;
 }
 
-.passenger-case-access__form button,
-.passenger-case-access__viewing button {
+.passenger-case-access__form button {
   min-height: 2.75rem;
   padding: 0.55rem 1rem;
   border: 0;
@@ -110,7 +131,7 @@
   opacity: 0.7;
 }
 
-.passenger-case-access__find-cases {
+.passenger-case-access__more-cases {
   min-height: 1.9rem;
   padding: 0.2rem 0.75rem;
   border: 1px solid #d5ddea;
@@ -123,12 +144,7 @@
   cursor: pointer;
 }
 
-.passenger-case-access__find-cases:focus-visible {
-  outline: 2px solid #ff9f0a;
-  outline-offset: 3px;
-}
-
-.passenger-case-access__find-cases:disabled {
+.passenger-case-access__suggestions button:disabled {
   cursor: wait;
   opacity: 0.7;
 }
@@ -138,18 +154,6 @@
   color: #68758f;
   font-size: 0.78rem;
   line-height: 1.4;
-}
-
-.passenger-case-access__recovery-message--error {
-  color: #b42318;
-}
-
-.passenger-case-access__desktop {
-  display: block;
-}
-
-.passenger-case-access__mobile {
-  display: none;
 }
 
 .passenger-case-access__suggestions {
@@ -184,28 +188,6 @@
 .passenger-case-access__suggestions button:focus-visible {
   outline: 2px solid #ff9f0a;
   outline-offset: 2px;
-}
-
-.passenger-case-access__viewing {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.passenger-case-access__viewing div {
-  display: grid;
-  gap: 0.15rem;
-}
-
-.passenger-case-access__viewing span {
-  color: #68758f;
-  font-size: 0.82rem;
-}
-
-.passenger-case-access__viewing strong {
-  color: #17233f;
-  font-weight: 650;
 }
 
 .passenger-case-page__error {
@@ -560,14 +542,6 @@
 
   .passenger-case-access__form {
     grid-template-columns: 1fr;
-  }
-
-  .passenger-case-access__desktop {
-    display: none;
-  }
-
-  .passenger-case-access__mobile {
-    display: block;
   }
 
   .passenger-case-access__form button {

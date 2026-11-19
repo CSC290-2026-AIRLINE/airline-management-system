@@ -26,6 +26,14 @@ describe('ReportService', () => {
     flightId: 'F001',
   }
 
+  const reportForErik = () =>
+    service.create({
+      ...validInput,
+      bookingPassengerId: 'BP-ERIK',
+      reportedByCustomerId: 'C-ANNA',
+      tagNumber: null,
+    })
+
   beforeEach(() => {
     repository = new InMemoryReportRepository()
     photos = { upload: jest.fn(), remove: jest.fn(), retrieve: jest.fn() }
@@ -35,6 +43,13 @@ describe('ReportService', () => {
         {
           ...access,
           bookingPassengerId: 'BP001',
+          flightId: 'F001',
+        },
+        {
+          bookingReference: 'ABC123',
+          surname: 'Smith',
+          passengerId: 'P002',
+          bookingPassengerId: 'BP-ERIK',
           flightId: 'F001',
         },
         {
@@ -286,6 +301,109 @@ describe('ReportService', () => {
 
     expect(reports).toHaveLength(1)
     expect(reports[0].bookingPassengerId).toBe('BP001')
+  })
+
+  it('lists cases reported by the customer or tied to their bookings without duplicates or unrelated cases', async () => {
+    const reported = await service.create({ ...validInput, reportedByCustomerId: 'CUSTOMER-1' })
+    const bookingOwned = await repository.create({
+      ...reported,
+      id: 'report-booking-owned',
+      caseNumber: 'LB-2026-000002',
+      bookingPassengerId: 'BP002',
+      passengerId: 'P002',
+      tagNumber: null,
+      reportedByCustomerId: 'CUSTOMER-2',
+    })
+    const personallyReported = await repository.create({
+      ...reported,
+      id: 'report-personal',
+      caseNumber: 'LB-2026-000003',
+      bookingPassengerId: 'BP009',
+      passengerId: 'P009',
+      tagNumber: null,
+      reportedByCustomerId: 'CUSTOMER-1',
+    })
+    await repository.create({
+      ...reported,
+      id: 'report-unrelated',
+      caseNumber: 'LB-2026-000004',
+      bookingPassengerId: 'BP009',
+      passengerId: 'P009',
+      tagNumber: null,
+      reportedByCustomerId: 'CUSTOMER-2',
+    })
+    repository.setBookingPassengerOwner('CUSTOMER-1', 'BP001')
+    repository.setBookingPassengerOwner('CUSTOMER-1', bookingOwned.bookingPassengerId)
+
+    const cases = await service.listForCustomer('CUSTOMER-1')
+
+    expect(cases.map((item) => item.caseNumber)).toEqual([reported.caseNumber, bookingOwned.caseNumber, personallyReported.caseNumber])
+    expect(cases.filter((item) => item.caseNumber === reported.caseNumber)).toHaveLength(1)
+    expect(cases.some((item) => item.caseNumber === 'LB-2026-000004')).toBe(false)
+  })
+
+  it('authorizes account case detail by the authenticated customer relation and does not widen owner actions', async () => {
+    const report = await service.create({ ...validInput, reportedByCustomerId: 'CUSTOMER-1' })
+    repository.setBookingPassengerOwner('CUSTOMER-1', report.bookingPassengerId)
+
+    await expect(service.getCustomerVisibleReport(report.caseNumber, 'CUSTOMER-1', 'P001')).resolves.toMatchObject({
+      report: { caseNumber: report.caseNumber },
+      isBagOwner: true,
+      canManage: true,
+    })
+    await expect(service.getCustomerVisibleReport(report.caseNumber, 'CUSTOMER-OTHER', 'P002')).rejects.toMatchObject({
+      code: 'REPORT_NOT_FOUND',
+    })
+    await expect(service.getDeliveryChoiceForCaseNumber(report.caseNumber, { ...access, passengerId: 'P002' })).rejects.toMatchObject({
+      code: 'REPORT_NOT_FOUND',
+    })
+  })
+
+  it('allows the verified reporter to manage a co-traveller case through account access', async () => {
+    const report = await reportForErik()
+
+    await expect(service.getCustomerVisibleReport(report.caseNumber, 'C-ANNA', 'P001')).resolves.toMatchObject({
+      report: { caseNumber: report.caseNumber },
+      isBagOwner: false,
+      canManage: true,
+    })
+    await expect(service.getManageableCustomerReport(report.caseNumber, 'C-ANNA', 'P001')).resolves.toMatchObject({
+      caseNumber: report.caseNumber,
+    })
+  })
+
+  it('keeps booking-owner-only viewers read-only and requires a same-booking confirmed passenger for reporter management', async () => {
+    const report = await reportForErik()
+    repository.setBookingPassengerOwner('C-BOOKING-OWNER', report.bookingPassengerId)
+
+    await expect(service.getCustomerVisibleReport(report.caseNumber, 'C-BOOKING-OWNER', 'P009')).resolves.toMatchObject({
+      report: { caseNumber: report.caseNumber },
+      isBagOwner: false,
+      canManage: false,
+    })
+    await expect(service.getManageableCustomerReport(report.caseNumber, 'C-BOOKING-OWNER', 'P009')).rejects.toMatchObject({
+      code: 'REPORT_NOT_FOUND',
+    })
+    await expect(service.getManageableCustomerReport(report.caseNumber, 'C-ANNA', 'P009')).rejects.toMatchObject({
+      code: 'REPORT_NOT_FOUND',
+    })
+  })
+
+  it('uses server-verified account and passenger identities for account delivery access', async () => {
+    const report = await reportForErik()
+    repository.setBookingPassengerOwner('C-ERIK', report.bookingPassengerId)
+    const findDelivery = jest.spyOn(repository, 'findDeliveryIdByReportId')
+
+    await service.getDeliveryIdForCustomerCase(report.caseNumber, 'C-ERIK', 'P002')
+    await service.getDeliveryIdForCustomerCase(report.caseNumber, 'C-ANNA', 'P001')
+    await expect(service.getDeliveryIdForCustomerCase(report.caseNumber, 'C-BOOKING-OWNER', 'P009')).rejects.toMatchObject({
+      code: 'REPORT_NOT_FOUND',
+    })
+    await expect(service.getDeliveryIdForCustomerCase(report.caseNumber, 'CUSTOMER-OTHER', 'P099')).rejects.toMatchObject({
+      code: 'REPORT_NOT_FOUND',
+    })
+    expect(findDelivery).toHaveBeenCalledTimes(2)
+    expect(findDelivery).toHaveBeenCalledWith(report.id)
   })
 
   it('allows the owner to cancel an open report', async () => {
@@ -640,6 +758,22 @@ describe('ReportService case access for co-travellers (Stage 3)', () => {
   })
 
   describe('actions: the bag owner, or the customer who filed the case', () => {
+    it('allows booking-owner account reads without granting bag-owner actions or reporter-only photo access', async () => {
+      const report = await reportForErik(true)
+      repository.setBookingPassengerOwner('C-ERIK', report.bookingPassengerId)
+
+      await expect(service.getCustomerVisibleReport(report.caseNumber, 'C-ERIK', 'P001')).resolves.toMatchObject({
+        report: { caseNumber: report.caseNumber },
+        isBagOwner: false,
+      })
+      await expect(service.getDeliveryChoiceForCaseNumber(report.caseNumber, anna)).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+      await expect(service.cancel(report.caseNumber, anna)).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+      await expect(service.getPhotoForCaseNumber(report.caseNumber, anna, 'C-ERIK')).rejects.toMatchObject({
+        code: 'REPORT_NOT_FOUND',
+      })
+      expect(photos.retrieve).not.toHaveBeenCalled()
+    })
+
     it('a non-owner on the same booking cannot read or change the delivery choice', async () => {
       const created = await reportForErik()
 

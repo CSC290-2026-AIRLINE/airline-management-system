@@ -201,6 +201,33 @@ export class PrismaBookingVerification implements BookingVerification {
     return bookingPassenger !== null
   }
 
+  /** Account-session equivalent of isOnRequesterBooking, using the passenger identity supplied by the customer guard. */
+  async isPassengerOnBookingPassenger(passengerId: string, bookingPassengerId: string): Promise<boolean> {
+    const passenger = passengerId?.trim()
+    const target = bookingPassengerId?.trim()
+    if (!passenger || !target || !UUID_PATTERN.test(passenger) || !UUID_PATTERN.test(target)) return false
+
+    const targetBookingPassenger = await this.db.booking_passenger.findFirst({
+      where: { id: target },
+      select: { booking_id: true },
+    })
+    if (!targetBookingPassenger) return false
+
+    const confirmedCoupon = await this.db.booking_coupon.findFirst({
+      where: {
+        status: 'confirmed',
+        passenger_id: passenger,
+        booking_passenger: {
+          booking_id: targetBookingPassenger.booking_id,
+          passenger: { deleted_at: null },
+        },
+      },
+      select: { id: true },
+    })
+
+    return confirmedCoupon !== null
+  }
+
   /** The booking the requester belongs to, using the same checks as verifyPassenger (any flight). */
   private async findRequesterBookingId(input: { bookingReference: string; surname: string; passengerId: string }): Promise<string | null> {
     const reference = input.bookingReference?.trim().toUpperCase()

@@ -28,7 +28,8 @@ import { PassengerDeliveryChoiceDto } from './dto/passenger-delivery-choice.dto'
 import { BaggageErrorFilter } from './common/baggage-error.filter'
 import { PassengerDeliveryChoiceService } from './passenger-delivery-choice.service'
 import { PassengerCaseSummaryService } from './passenger-case-summary.service'
-import type { PassengerCaseSummary } from './common/passenger-case-summary.types'
+import type { CustomerPassengerCaseDetail, PassengerCaseSummary } from './common/passenger-case-summary.types'
+import type { CustomerCaseListItem } from './common/report.ports'
 import { BagMatchingService } from './bag-matching.service'
 import { LOST_REPORT_PHOTO_MAX_BYTES, type UploadedLostReportPhoto } from './lost-report-photo.storage'
 
@@ -92,6 +93,19 @@ export class PassengerLostReportController {
       passengerId: customer.passengerId,
       customerId: customer.customerId,
     })
+  }
+
+  @Get('my-cases')
+  listForCustomer(@CurrentBaggageCustomer() customer: BaggageCustomer): Promise<CustomerCaseListItem[]> {
+    return this.reports.listForCustomer(customer.customerId)
+  }
+
+  @Get('my-cases/:caseNumber')
+  getCustomerCase(
+    @CurrentBaggageCustomer() customer: BaggageCustomer,
+    @Param('caseNumber') caseNumber: string,
+  ): Promise<CustomerPassengerCaseDetail> {
+    return this.caseSummaries.getByCaseNumberForCustomer(caseNumber, customer.customerId, customer.passengerId)
   }
 
   @Get(':caseNumber')
@@ -170,6 +184,15 @@ export class PassengerLostReportController {
       },
       dto,
     )
+  }
+
+  @Patch('my-cases/:caseNumber/delivery-choice')
+  saveAccountCaseDeliveryChoice(
+    @CurrentBaggageCustomer() customer: BaggageCustomer,
+    @Param('caseNumber') caseNumber: string,
+    @Body() dto: PassengerDeliveryChoiceDto,
+  ): Promise<DeliveryChoiceResult> {
+    return this.deliveryChoices.saveChoiceForCustomerCase(caseNumber, customer, dto)
   }
 
   @Patch(':caseNumber/cancel')

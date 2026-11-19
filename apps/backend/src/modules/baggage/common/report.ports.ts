@@ -8,6 +8,17 @@ export interface DeliveryChoiceSnapshot {
   status: DeliveryStatus
 }
 
+export interface CustomerCaseListItem {
+  caseNumber: string
+  passengerFirstName: string
+  passengerLastName: string
+  bagType: string
+  colour: string
+  brand: string | null
+  status: string
+  reportedAt: Date
+}
+
 export interface ReportRepository {
   create(report: LostBagReport): Promise<LostBagReport>
 
@@ -26,6 +37,10 @@ export interface ReportRepository {
    * booking of bookingPassengerId). Newest first.
    */
   listForRequester(bookingPassengerId: string, customerId: string | null): Promise<LostBagReport[]>
+
+  listByCustomerId(customerId: string): Promise<CustomerCaseListItem[]>
+
+  findByCaseNumberForCustomer(caseNumber: string, customerId: string): Promise<LostBagReport | null>
 
   cancelIfNotDispatched(reportId: string, bookingPassengerId: string, closedAt: Date): Promise<LostBagReport | null>
 }
@@ -95,6 +110,9 @@ export interface BookingVerification {
     input: { bookingReference: string; surname: string; passengerId: string },
     bookingPassengerId: string,
   ): Promise<boolean>
+
+  /** A guard-authenticated passenger has a confirmed coupon on the same booking as this report traveller. */
+  isPassengerOnBookingPassenger(passengerId: string, bookingPassengerId: string): Promise<boolean>
 }
 
 export interface CheckedBagOwnership {
