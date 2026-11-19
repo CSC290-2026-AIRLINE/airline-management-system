@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CheckInApi } from '../api/client.ts'
 import type { CheckInView, SeatLock, SeatMap as SeatMapModel, SeatType } from '../api/types.ts'
 import { formatBaht } from '../format.ts'
@@ -78,12 +78,19 @@ export function SeatStep({
     void api.releaseSeat(lock.id)
   }, [lock, remaining, api])
 
-  // Leaving the step gives the seat back, otherwise the hold blocks it for the rest of the five minutes.
+  // Leaving the step gives the seat back, otherwise the hold blocks it for the rest of the five minutes. Only the
+  // unmount does it: the refs keep the cleanup from running on a re-render, which used to free a seat still being held.
+  const lockRef = useRef<SeatLock | null>(null)
+  const apiRef = useRef(api)
+  useEffect(() => {
+    lockRef.current = lock
+    apiRef.current = api
+  }, [lock, api])
   useEffect(() => {
     return () => {
-      if (lock) void api.releaseSeat(lock.id)
+      if (lockRef.current) void apiRef.current.releaseSeat(lockRef.current.id)
     }
-  }, [lock, api])
+  }, [])
 
   async function pick(seatCode: string) {
     if (holding) return
@@ -134,6 +141,7 @@ export function SeatStep({
       {map ? (
         <SeatMap
           map={map}
+          cabin={checkIn.passenger.cabin}
           selected={activeLock?.seatCode ?? chosen}
           onPick={pick}
           frontFee={frontFee}

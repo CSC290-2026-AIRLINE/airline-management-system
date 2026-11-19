@@ -12,6 +12,7 @@ const TITLES: Record<string, string> = {
   DUPLICATE_DOCUMENT: 'That document is already used',
   SEAT_TAKEN: 'That seat is taken',
   LOCK_EXPIRED: 'Your seat hold expired',
+  HOLD_ENDED: 'Your seat hold ended',
   NOT_FOUND: 'We could not find that booking',
   NOT_ELIGIBLE: 'This booking cannot be checked in',
   FORBIDDEN: 'Not allowed',

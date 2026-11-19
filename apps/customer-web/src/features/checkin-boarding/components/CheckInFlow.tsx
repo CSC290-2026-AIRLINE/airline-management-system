@@ -64,6 +64,7 @@ export function CheckInFlow({ api, now = () => new Date() }: { api: CheckInApi; 
   const [pass, setPass] = useState<BoardingPassView | null>(null)
   const [error, setError] = useState<FlowError | null>(null)
   const [busy, setBusy] = useState(false)
+  const [seatRound, setSeatRound] = useState(0)
 
   async function start(pnr: string, lastName: string, firstName?: string) {
     setBusy(true)
@@ -107,7 +108,15 @@ export function CheckInFlow({ api, now = () => new Date() }: { api: CheckInApi; 
       setCheckIn(view)
       setStep(4)
     } catch (failure) {
-      setError(toFlowError(failure))
+      const flowError = toFlowError(failure)
+      // The check-in was just read, so a hold that is missing or ran out is the reason: the passenger picks again.
+      if (flowError.code === 'NOT_FOUND' || flowError.code === 'LOCK_EXPIRED') {
+        setError({ code: 'HOLD_ENDED', message: 'Your seat hold ended, please pick a seat again.' })
+        // A new key mounts a fresh seat step: the old hold is dropped and the seat map is loaded again.
+        setSeatRound((round) => round + 1)
+      } else {
+        setError(flowError)
+      }
     } finally {
       setBusy(false)
     }
@@ -157,6 +166,7 @@ export function CheckInFlow({ api, now = () => new Date() }: { api: CheckInApi; 
 
       {step === 3 && checkIn ? (
         <SeatStep
+          key={seatRound}
           api={api}
           checkIn={checkIn}
           busy={busy}
