@@ -10,6 +10,8 @@ import type {
   GateList,
   Headcount,
   ScanResult,
+  SeatLock,
+  SeatMap,
   StaffCheckInRow,
   StaffCheckInView,
 } from './types.ts'
@@ -30,6 +32,14 @@ export interface StaffSearchQuery {
 export interface StaffApi {
   search(q: StaffSearchQuery): Promise<StaffCheckInRow[]>
   detail(id: string): Promise<StaffCheckInView>
+  /** Starts the check-in of a booked passenger who has not started one online. */
+  start(input: { bookingPassengerId: string; flightId: string }): Promise<StaffCheckInView>
+  /** The passenger steps, done by the agent. Each one answers with the counter's view of the passenger. */
+  submitDocument(id: string, input: { mrzLine1: string; mrzLine2: string; visaNumber?: string }): Promise<StaffCheckInView>
+  seatMap(flightId: string): Promise<SeatMap>
+  /** Holds the seat and confirms it; a paid seat is charged to the booking. */
+  chooseSeat(id: string, flightId: string, seatCode: string): Promise<StaffCheckInView>
+  complete(id: string): Promise<StaffCheckInView>
   weighBag(id: string, input: BagInput): Promise<StaffCheckInView>
   removeBag(bagId: string): Promise<StaffCheckInView>
   /** Charges every unpaid excess fee of the check-in; the tags come after. */
@@ -82,6 +92,8 @@ export function createHttpStaffApi(fetchWithAuth: (path: string, init?: RequestI
   const put = (body: unknown): RequestInit => ({ method: 'PUT', body: JSON.stringify(body) })
   const patch = (body: unknown): RequestInit => ({ method: 'PATCH', body: JSON.stringify(body) })
 
+  const detail = (id: string) => request<StaffCheckInView>(`/api/staff/check-ins/${id}`)
+
   return {
     search: (q) => {
       const params = new URLSearchParams()
@@ -91,7 +103,23 @@ export function createHttpStaffApi(fetchWithAuth: (path: string, init?: RequestI
       const query = params.toString()
       return request<StaffCheckInRow[]>(`/api/staff/check-ins${query ? `?${query}` : ''}`)
     },
-    detail: (id) => request<StaffCheckInView>(`/api/staff/check-ins/${id}`),
+    detail,
+    start: (input) => request<StaffCheckInView>('/api/staff/check-ins', post(input)),
+    // The passenger routes answer with the passenger's view; the counter reads its own view after each step.
+    submitDocument: async (id, input) => {
+      await request(`/api/check-ins/${id}/document`, put(input))
+      return detail(id)
+    },
+    seatMap: (flightId) => request<SeatMap>(`/api/flights/${flightId}/seat-map`),
+    chooseSeat: async (id, flightId, seatCode) => {
+      const lock = await request<SeatLock>(`/api/flights/${flightId}/seat-locks`, post({ checkInId: id, seatCode }))
+      await request(`/api/check-ins/${id}/seat`, put({ lockId: lock.id }))
+      return detail(id)
+    },
+    complete: async (id) => {
+      await request(`/api/check-ins/${id}/complete`, post())
+      return detail(id)
+    },
     weighBag: (id, input) => request<StaffCheckInView>(`/api/staff/check-ins/${id}/bags`, post(input)),
     removeBag: (bagId) => request<StaffCheckInView>(`/api/staff/bags/${bagId}`, { method: 'DELETE' }),
     payExcess: (id) => request<StaffCheckInView>(`/api/staff/check-ins/${id}/bags/pay`, post()),

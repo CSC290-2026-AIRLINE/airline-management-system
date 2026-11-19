@@ -11,7 +11,8 @@ const ISSUE_LABELS: Record<IssueCode, string> = {
   PROFILE_DIFFERS: 'Profile differs',
 }
 
-const STATUS_LABELS: Record<CheckInStatus, string> = {
+const STATUS_LABELS: Record<CheckInStatus | 'not_started', string> = {
+  not_started: 'Not started',
   started: 'Started',
   on_hold: 'On hold',
   denied: 'Denied',
@@ -71,7 +72,7 @@ export function IssuePills({ issues }: { issues: IssueCode[] }) {
   )
 }
 
-export function StatusPill({ status }: { status: CheckInStatus }) {
+export function StatusPill({ status }: { status: CheckInStatus | 'not_started' }) {
   const tone: PillTone =
     status === 'boarded' ? 'good' : status === 'no_show' || status === 'on_hold' || status === 'denied' ? 'bad' : 'neutral'
   return <Pill tone={tone}>{STATUS_LABELS[status]}</Pill>

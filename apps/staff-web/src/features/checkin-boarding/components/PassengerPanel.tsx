@@ -8,6 +8,7 @@ import type { StaffApi } from '../api/index.ts'
 import type { StaffCheckInView } from '../api/types.ts'
 import { BagDrop } from './BagDrop.tsx'
 import { CarryOnForm } from './CarryOnForm.tsx'
+import { CheckInSteps } from './CheckInSteps.tsx'
 import { ErrorBanner } from './ErrorBanner.tsx'
 import { IssuePills, Pill, StatusPill } from './pills.tsx'
 import { messageOf } from './errors.ts'
@@ -190,6 +191,8 @@ export function PassengerPanel({ api, view, onUpdated }: Props) {
           </Button>
         </Card>
       ) : null}
+
+      <CheckInSteps api={api} view={view} onUpdated={onUpdated} />
 
       <div className="flex flex-col gap-6 print:hidden">
         <BagDrop api={api} view={view} onUpdated={onUpdated} />

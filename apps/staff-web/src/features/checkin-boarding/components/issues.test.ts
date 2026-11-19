@@ -6,6 +6,9 @@ import { bagLabel, bookingName, dueBags, groupIssues } from './issues.ts'
 
 const row = (over: Partial<StaffCheckInRow>): StaffCheckInRow => ({
   id: 'r',
+  bookingPassengerId: 'bp',
+  flightId: 'f1',
+  seat: null,
   pnr: 'K7QX2M',
   passengerName: 'Narong Sukjai',
   flightNumber: 'FY 204',

@@ -4,7 +4,7 @@ import { Card } from '@staff-web/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
 import { type StaffApi } from '../api/index.ts'
-import type { StaffCheckInRow, StaffCheckInView } from '../api/types.ts'
+import type { StaffCheckInRow, StaffCheckInView, StartedRow } from '../api/types.ts'
 import { ErrorBanner } from './ErrorBanner.tsx'
 import { Message } from './pills.tsx'
 import { messageOf } from './errors.ts'
@@ -31,8 +31,11 @@ const TAB_TRIGGER =
   'h-[34px] flex-none rounded-[6px] border border-[#cbd5e1] bg-white px-3 text-sm font-semibold text-foreground hover:border-[#9aa6b8] hover:bg-muted hover:text-foreground data-[state=active]:border-primary! data-[state=active]:bg-[#eaf0fb]! data-[state=active]:text-[#1f408c]!'
 const TAB_HEAD = 'h-auto px-3 py-2 text-xs font-normal uppercase tracking-wide text-muted-foreground'
 
+/** The issue list reads every check-in; a booked passenger without one has no issue to show. */
+const hasCheckIn = (row: StaffCheckInRow): row is StartedRow => row.id !== null
+
 export function IssueListPage({ api, agentName, onOpenPassenger }: IssueListPageProps) {
-  const [rows, setRows] = useState<StaffCheckInRow[]>([])
+  const [rows, setRows] = useState<StartedRow[]>([])
   const [details, setDetails] = useState<Record<string, StaffCheckInView>>({})
   const [tab, setTab] = useState<IssueTab>('mismatches')
   const [cleared, setCleared] = useState<string | null>(null)
@@ -45,7 +48,7 @@ export function IssueListPage({ api, agentName, onOpenPassenger }: IssueListPage
 
   const loadRows = useCallback(async () => {
     try {
-      setRows(await api.search({}))
+      setRows((await api.search({})).filter(hasCheckIn))
     } catch (err) {
       setError(messageOf(err))
     }
@@ -56,7 +59,7 @@ export function IssueListPage({ api, agentName, onOpenPassenger }: IssueListPage
     api
       .search({})
       .then((found) => {
-        if (!cancelled) setRows(found)
+        if (!cancelled) setRows(found.filter(hasCheckIn))
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(messageOf(err))
@@ -87,7 +90,7 @@ export function IssueListPage({ api, agentName, onOpenPassenger }: IssueListPage
     }
   }, [api, openIds])
 
-  const clearMismatch = async (row: StaffCheckInRow) => {
+  const clearMismatch = async (row: StartedRow) => {
     const documentId = details[row.id]?.checkIn.document?.id
     if (!documentId) return
     setError(null)

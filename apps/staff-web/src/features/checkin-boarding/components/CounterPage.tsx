@@ -10,7 +10,7 @@ import { ErrorBanner } from './ErrorBanner.tsx'
 import { PassengerPanel } from './PassengerPanel.tsx'
 import { IssuePills, StatusPill } from './pills.tsx'
 import { messageOf } from './errors.ts'
-import { applyFilter, fallbackQuery, parseSearch, type CounterFilter } from './counter-search.ts'
+import { applyFilter, fallbackQuery, notCheckedIn, parseSearch, rowAction, type CounterFilter } from './counter-search.ts'
 import { formatTime } from '../domain/format.ts'
 import {
   CHIP_ACTIVE,
@@ -120,10 +120,16 @@ export function CounterPage({ api }: { api: StaffApi }) {
     }
   }, [api])
 
-  const open = async (id: string) => {
+  /** Opens the passenger; a booked passenger nobody checked in yet gets their check-in started first. */
+  const open = async (row: StaffCheckInRow) => {
     setError(null)
     try {
-      setView(await api.detail(id))
+      if (row.id) {
+        setView(await api.detail(row.id))
+      } else {
+        setView(await api.start({ bookingPassengerId: row.bookingPassengerId, flightId: row.flightId }))
+        void runSearch(text)
+      }
     } catch (err) {
       setError(messageOf(err))
     }
@@ -144,7 +150,7 @@ export function CounterPage({ api }: { api: StaffApi }) {
   const visible = applyFilter(rows, filter)
   const counts = {
     all: rows.length,
-    not_started: rows.filter((row) => row.status === 'started').length,
+    not_started: rows.filter(notCheckedIn).length,
     on_hold: rows.filter((row) => row.status === 'on_hold').length,
     issues: rows.filter((row) => row.issues.length > 0).length,
   }
@@ -217,7 +223,7 @@ export function CounterPage({ api }: { api: StaffApi }) {
               {(
                 [
                   ['all', 'All'],
-                  ['not_started', 'Not started'],
+                  ['not_started', 'Not checked in'],
                   ['on_hold', 'On hold'],
                   ['issues', 'Issues'],
                 ] as Array<[CounterFilter, string]>
@@ -266,7 +272,7 @@ export function CounterPage({ api }: { api: StaffApi }) {
                 </TableHeader>
                 <TableBody>
                   {visible.map((row) => (
-                    <TableRow key={row.id} className="border-[#eef1f6] hover:bg-[#f7f9fc]">
+                    <TableRow key={row.id ?? `${row.bookingPassengerId}:${row.flightId}`} className="border-[#eef1f6] hover:bg-[#f7f9fc]">
                       <TableCell className="px-3 py-3">
                         <span className="flex items-center gap-2">
                           <span className="text-sm font-medium text-foreground">{row.passengerName}</span>
@@ -274,15 +280,15 @@ export function CounterPage({ api }: { api: StaffApi }) {
                         </span>
                       </TableCell>
                       <TableCell className="px-3 py-3 text-sm text-muted-foreground">{row.pnr}</TableCell>
-                      {/* The search row carries no seat and no bag counts; the passenger panel shows both. */}
-                      <TableCell className="px-3 py-3 text-sm text-foreground">—</TableCell>
+                      <TableCell className="px-3 py-3 text-sm text-foreground">{row.seat ?? '—'}</TableCell>
+                      {/* The search row carries no bag counts; the passenger panel shows them. */}
                       <TableCell className="px-3 py-3 text-sm text-foreground">—</TableCell>
                       <TableCell className="px-3 py-3">
                         <StatusPill status={row.status} />
                       </TableCell>
                       <TableCell className="px-3 py-3 text-right">
-                        <Button type="button" variant="outline" size="sm" className={ROW_BUTTON} onClick={() => void open(row.id)}>
-                          {row.status === 'started' ? 'Start' : 'Open'}
+                        <Button type="button" variant="outline" size="sm" className={ROW_BUTTON} onClick={() => void open(row)}>
+                          {rowAction(row)}
                         </Button>
                       </TableCell>
                     </TableRow>

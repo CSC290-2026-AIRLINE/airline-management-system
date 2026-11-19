@@ -20,11 +20,22 @@ export function parseSearch(text: string, flights: FlightSummary[]): CounterSear
   return { name: trimmed }
 }
 
-/** The chips above the table: all passengers, the ones not started, the ones on hold and the ones with an issue. */
+/** A booked passenger with no boarding pass yet: nobody started the check-in, or it is not finished. */
+export function notCheckedIn(row: StaffCheckInRow): boolean {
+  return row.status === 'not_started' || row.status === 'started'
+}
+
+/** The button of a row: start a check-in nobody started, continue an open one, open the rest. */
+export function rowAction(row: StaffCheckInRow): 'Start' | 'Continue' | 'Open' {
+  if (row.status === 'not_started') return 'Start'
+  return row.status === 'started' ? 'Continue' : 'Open'
+}
+
+/** The chips above the table: all passengers, the ones not checked in, the ones on hold and the ones with an issue. */
 export function applyFilter(rows: StaffCheckInRow[], filter: CounterFilter): StaffCheckInRow[] {
   switch (filter) {
     case 'not_started':
-      return rows.filter((row) => row.status === 'started')
+      return rows.filter(notCheckedIn)
     case 'on_hold':
       return rows.filter((row) => row.status === 'on_hold')
     case 'issues':

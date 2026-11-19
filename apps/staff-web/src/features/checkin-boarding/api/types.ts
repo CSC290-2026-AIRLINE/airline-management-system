@@ -143,14 +143,20 @@ export interface StaffCheckInView {
   boardingPass: BoardingPassView | null
   isPolice: boolean
 }
+/** A booked passenger on the counter's list. `id` is the check-in; it is null until one is started. */
 export interface StaffCheckInRow {
-  id: string
+  id: string | null
+  bookingPassengerId: string
+  flightId: string
   pnr: string
   passengerName: string
   flightNumber: string
-  status: CheckInStatus
+  seat: string | null
+  status: CheckInStatus | 'not_started'
   issues: IssueCode[]
 }
+/** A row that has a check-in: the issue list only shows these. */
+export type StartedRow = StaffCheckInRow & { id: string }
 export interface BagLookup {
   bag: CheckedBagView
   passengerName: string

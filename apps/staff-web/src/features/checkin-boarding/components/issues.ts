@@ -1,13 +1,13 @@
 // The rules of the issue list: which check-in belongs to which tab and how a row reads.
 import type { CheckedBagView, StaffCheckInRow } from '../api/types.ts'
 
-export interface IssueGroups {
-  mismatches: StaffCheckInRow[]
-  unpaid: StaffCheckInRow[]
+export interface IssueGroups<Row extends StaffCheckInRow = StaffCheckInRow> {
+  mismatches: Row[]
+  unpaid: Row[]
 }
 
 /** The two tabs of the issue list. A check-in with both issues shows in both tabs. */
-export function groupIssues(rows: StaffCheckInRow[]): IssueGroups {
+export function groupIssues<Row extends StaffCheckInRow>(rows: Row[]): IssueGroups<Row> {
   return {
     mismatches: rows.filter((row) => row.issues.includes('NAME_MISMATCH')),
     unpaid: rows.filter((row) => row.issues.includes('EXCESS_UNPAID')),
