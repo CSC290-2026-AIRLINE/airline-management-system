@@ -190,11 +190,12 @@ export type UpdatePassPatch = Partial<Omit<BoardingPassRecord, 'id' | 'check_in_
  * boarded count and a head-count; an open one has none of the first two.
  */
 function closedRule(row: FlightBoardingRecord): FlightBoardingRecord {
-  const closed = row.closed_at !== null
-  if (closed !== (row.closed_by !== null) || closed !== (row.boarded_count !== null)) {
+  // `!= null`: a field that was not given is a field the database leaves empty.
+  const closed = row.closed_at != null
+  if (closed !== (row.closed_by != null) || closed !== (row.boarded_count != null)) {
     throw new Error('flight_boarding: closed_at, closed_by and boarded_count are set together')
   }
-  if (closed && row.sensor_count === null && row.manual_count === null) throw new Error('flight_boarding: a closed gate has a head-count')
+  if (closed && row.sensor_count == null && row.manual_count == null) throw new Error('flight_boarding: a closed gate has a head-count')
   return row
 }
 
@@ -395,13 +396,17 @@ export class CheckInStore implements CheckInRepository {
     const next = { ...record, ...patch, updated_at: this.now() }
     // The database refuses it too (checked_bag_check2): only a bag with a tag number leaves `weighed`.
     if (next.status !== 'weighed' && next.tag_number === null) throw new Error('A bag with no tag number stays weighed')
+    // Its two neighbours: no tag before the fee is paid, and only a weighed bag is ever removed.
+    if (next.status !== 'weighed' && next.excess_fee !== 0 && !next.excess_payment_id)
+      throw new Error('A bag with an unpaid fee stays weighed')
+    if (next.deleted_at && next.status !== 'weighed') throw new Error('Only a weighed bag is removed')
     this.bags.set(id, next)
     return next
   }
 
   async tagBagOnce(id: string, tagNumber: string): Promise<CheckedBagRecord> {
     const record = this.bags.get(id)
-    if (!record) throw new CheckInError(404, 'NOT_FOUND', 'Bag not found')
+    if (!record || record.deleted_at) throw new CheckInError(404, 'NOT_FOUND', 'Bag not found')
     return record.tag_number ? record : this.updateBag(id, { tag_number: tagNumber, status: 'tagged' })
   }
 

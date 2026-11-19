@@ -445,7 +445,9 @@ export class CounterService {
   private issuesOf(record: CheckInRecord, document: TravelDocumentRecord | null, bags: CheckedBagRecord[]): IssueCode[] {
     const issues: IssueCode[] = []
     if (record.status === 'on_hold' || record.status === 'denied') issues.push('ON_HOLD')
-    if (bags.some((b) => b.excess_fee > 0 && !b.excess_payment_id)) issues.push('EXCESS_UNPAID')
+    // Once the check-in is over nobody can pay the fee or remove the bag: it is no longer something to act on.
+    const over = record.status === 'cancelled' || record.status === 'no_show'
+    if (!over && bags.some((b) => b.excess_fee > 0 && !b.excess_payment_id)) issues.push('EXCESS_UNPAID')
     if (document?.name_mismatch && !document.name_mismatch_cleared_at) issues.push('NAME_MISMATCH')
     if (document?.visa_number && !document.visa_checked_at) issues.push('VISA_CHECK')
     if (document && document.profile_differences.length > 0 && !document.profile_differences_cleared_at) {

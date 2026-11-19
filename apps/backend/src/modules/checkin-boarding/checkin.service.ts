@@ -623,8 +623,9 @@ export class CheckInService {
     for (const leg of legs) {
       if (!isWindowOpen(now, await this.windowOf(leg.flight))) continue
       const checkIn = await this.store.findActiveCheckInByBookingPassenger(leg.booking.bookingPassengerId, leg.booking.flightId)
-      if (!checkIn || !['checked_in', 'boarded', 'no_show'].includes(checkIn.status)) return leg
-      done ??= leg
+      if (checkIn && ['checked_in', 'boarded', 'no_show'].includes(checkIn.status)) done ??= leg
+      // A gate closed early takes nobody any more, like a closed window: the next flight is tried.
+      else if (!(await this.store.flightBoarding(leg.flight.id))?.closed_at) return leg
     }
     return done ?? legs.find((leg) => leg.flight.depAt.getTime() >= now.getTime()) ?? legs[legs.length - 1]
   }

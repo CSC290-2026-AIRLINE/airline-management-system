@@ -656,6 +656,22 @@ describe('CounterService and a cancelled booking', () => {
     expect((await store.getCheckIn(id))?.status).toBe('cancelled')
   })
 
+  it('an unpaid excess fee is no open issue once the check-in is cancelled: nobody can pay it or remove the bag', async () => {
+    const { counter, store } = build()
+    const id = await pimId(store)
+    const pim = BOOKINGS.find((b) => b.pnr === 'EC224G')!
+    await counter.weighBag(staff, id, bag(30))
+    expect((await counter.detail(staff, id)).issues).toContain('EXCESS_UNPAID')
+    pim.cancelled = true
+    try {
+      const view = await counter.detail(staff, id)
+      expect(view.checkIn.status).toBe('cancelled')
+      expect(view.issues).not.toContain('EXCESS_UNPAID')
+    } finally {
+      pim.cancelled = false
+    }
+  })
+
   it('removing a bag, clearing a flag and checking a visa are refused on a cancelled check-in too', async () => {
     const { counter, store } = build()
     const id = await pimId(store)

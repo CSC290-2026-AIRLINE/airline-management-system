@@ -185,7 +185,7 @@ describe('PrismaCheckInRepository', () => {
     const bag = await repo.tagBagOnce('bag-1', '0402000002')
     expect(db.checked_bag.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'bag-1', tag_number: null },
+        where: { id: 'bag-1', tag_number: null, deleted_at: null },
         data: expect.objectContaining({ tag_number: '0402000002', status: 'tagged' }),
       }),
     )

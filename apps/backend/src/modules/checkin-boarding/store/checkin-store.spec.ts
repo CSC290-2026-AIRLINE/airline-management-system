@@ -191,6 +191,43 @@ describe('CheckInStore', () => {
     expect((await s.openFlightBoardings()).map((b) => b.flight_id)).toEqual(['flt-fy318'])
   })
 
+  it('refuses what the checks of the database refuse: an untagged bag that leaves weighed, a half-closed gate', async () => {
+    const s = store()
+    const checkIn = await s.createCheckIn({ booking_passenger_id: 'bp-x', passenger_id: 'pax-x', flight_id: 'flt-fy204' })
+    const bag = await s.createBag({
+      check_in_id: checkIn.id,
+      weight_kg: 15,
+      excess_kg: 0,
+      rate_per_kg: 500,
+      excess_fee: 0,
+      weighed_by: 'staff-demo',
+    })
+    await expect(s.updateBag(bag.id, { status: 'offloaded' })).rejects.toThrow()
+    const closed = { closed_at: new Date(), closed_by: 'staff-demo', manual_count: 0 }
+    await expect(s.updateFlightBoarding('flt-fy204', closed)).rejects.toThrow()
+    // A count that is not given is a count that is missing.
+    await expect(s.updateFlightBoarding('flt-fy204', { ...closed, boarded_count: undefined })).rejects.toThrow()
+    await expect(
+      s.updateFlightBoarding('flt-fy204', { closed_at: new Date(), closed_by: 'staff-demo', boarded_count: 0 }),
+    ).rejects.toThrow()
+    expect((await s.flightBoarding('flt-fy204'))?.closed_at).toBeNull()
+  })
+
+  it('a bag that was removed is not tagged', async () => {
+    const s = store()
+    const checkIn = await s.createCheckIn({ booking_passenger_id: 'bp-x', passenger_id: 'pax-x', flight_id: 'flt-fy204' })
+    const bag = await s.createBag({
+      check_in_id: checkIn.id,
+      weight_kg: 15,
+      excess_kg: 0,
+      rate_per_kg: 500,
+      excess_fee: 0,
+      weighed_by: 'staff-demo',
+    })
+    await s.deleteBag(bag.id)
+    await expect(s.tagBagOnce(bag.id, '0402000009')).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+
   it('implements the repository asynchronously', async () => {
     const clock = new FixtureClock()
     const repo: CheckInRepository = new CheckInStore(clock)

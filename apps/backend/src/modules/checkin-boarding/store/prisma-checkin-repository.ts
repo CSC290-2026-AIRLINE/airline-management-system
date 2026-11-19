@@ -232,7 +232,7 @@ export class PrismaCheckInRepository implements CheckInRepository {
   /** One statement decides: of two requests at the same moment only the first finds the bag without a tag. */
   async tagBagOnce(id: string, tagNumber: string): Promise<CheckedBagRecord> {
     const data = { tag_number: tagNumber, status: 'tagged', updated_at: this.clock.now() }
-    await this.write('Bag', () => this.db.checked_bag.updateMany({ where: { id, tag_number: null }, data }))
+    await this.write('Bag', () => this.db.checked_bag.updateMany({ where: { id, tag_number: null, deleted_at: null }, data }))
     const bag = await this.getBag(id)
     if (!bag) throw notFound('Bag')
     return bag
