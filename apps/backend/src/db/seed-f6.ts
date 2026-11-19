@@ -310,6 +310,7 @@ async function seedFlight(
   if (existing) {
     // A flight that already left is yesterday's demo: it is moved to today, so the check-in window is open again.
     if (!override && existing.dep_at > new Date()) return existing
+    await clearCheckIns(prisma, existing.id, flight.flightNumber)
     return prisma.flight.update({
       where: { id: existing.id },
       data: {
@@ -335,6 +336,33 @@ async function seedFlight(
       status: 'scheduled',
     },
   })
+}
+
+/**
+ * The feature 6 rows of a demo flight that moves to a new day: the check-ins, passes, boardings, bags and seats of the
+ * old departure, and its gate close. Left in place, the passengers stay no-shows who cannot check in again and the
+ * closed gate keeps the flight from boarding. A bag that feature 10 has found keeps the rows, so its record holds.
+ */
+async function clearCheckIns(prisma: PrismaClient, flightId: string, flightNumber: string): Promise<void> {
+  const checkInIds = (await prisma.check_in.findMany({ where: { flight_id: flightId }, select: { id: true } })).map((row) => row.id)
+  const ofCheckIn = { check_in_id: { in: checkInIds } }
+  if ((await prisma.found_bag.count({ where: { checked_bag: ofCheckIn } })) > 0) {
+    console.warn(`seed: ${flightNumber} keeps its check-ins, feature 10 has found one of its bags`)
+    return
+  }
+  await prisma.$transaction([
+    prisma.boarding_event.deleteMany({ where: { flight_id: flightId } }),
+    prisma.boarding_pass.deleteMany({ where: ofCheckIn }),
+    prisma.checked_bag.deleteMany({ where: ofCheckIn }),
+    prisma.carry_on_check.deleteMany({ where: ofCheckIn }),
+    prisma.travel_document.deleteMany({ where: ofCheckIn }),
+    prisma.check_in.deleteMany({ where: { id: { in: checkInIds } } }),
+    prisma.seat_assignment.deleteMany({ where: { flight_id: flightId } }),
+    prisma.flight_boarding.updateMany({
+      where: { flight_id: flightId },
+      data: { sensor_count: null, manual_count: null, boarded_count: null, closed_at: null, closed_by: null, updated_at: new Date() },
+    }),
+  ])
 }
 
 /** The gate of the flight: the gate screen needs the flight to be at a gate before it can be boarded. */
