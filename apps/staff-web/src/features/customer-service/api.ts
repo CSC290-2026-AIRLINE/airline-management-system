@@ -42,8 +42,7 @@ export function useComplaintsApi() {
       request<Complaint>(`/${id}/compensation`, { method: 'POST', body: JSON.stringify(comp) }),
     getCharts: () => request<StaffChartsResponse>('/charts'),
     getDeliveryLog: () => request<StaffDeliveryLogResponse>('/delivery-log'),
-    retryNotification: (id: string) =>
-      request<{ id: string; status: string }>(`/delivery-log/${id}/retry`, { method: 'POST' }),
+    retryNotification: (id: string) => request<{ id: string; status: string }>(`/delivery-log/${id}/retry`, { method: 'POST' }),
     setMockFailure: (fail: boolean) =>
       request<{ mockFailure: boolean }>('/delivery-log/mock-failure', { method: 'POST', body: JSON.stringify({ fail }) }),
     getTemplates: () => request<StaffTemplateItemView[]>('/templates'),

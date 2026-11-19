@@ -97,7 +97,7 @@ export class NotificationService implements OnModuleInit {
       for (const bp of b.booking_passenger) {
         const p = bp.passenger
         const name = `${p.first_name} ${p.last_name}`.trim()
-        const customerId = p.customer?.id ?? (p.id === b.customer?.id ? b.customer_id : b.customer_id ?? null)
+        const customerId = p.customer?.id ?? (p.id === b.customer?.id ? b.customer_id : (b.customer_id ?? null))
         const phone = p.customer?.phone ?? b.contact_phone ?? null
         const email = b.contact_email ?? null
 
@@ -132,11 +132,7 @@ export class NotificationService implements OnModuleInit {
     const payload: Record<string, any> = {
       flight_number: event.flight_number,
       service_date: event.service_date,
-      new_departure: event.new_dep_at
-        ? formatTime(event.new_dep_at)
-        : event.delay_minutes
-          ? `+${event.delay_minutes} min`
-          : '',
+      new_departure: event.new_dep_at ? formatTime(event.new_dep_at) : event.delay_minutes ? `+${event.delay_minutes} min` : '',
       diverted_to: event.new_destination ?? '',
       flight_id: event.flight_id,
     }

@@ -65,7 +65,7 @@ export function DeliveryLogPage() {
     try {
       const res = await api.getDeliveryLog()
       if (res) setData(res)
-    } catch (e) {
+    } catch {
       // non-fatal for background reload
     }
   }

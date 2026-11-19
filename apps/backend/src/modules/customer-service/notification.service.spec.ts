@@ -1,4 +1,3 @@
-import type { DbService } from '@backend/db/db.service'
 import type { SimulationClock } from '../admin-console/simulation-clock'
 import { SECURITY_AUTHORITY_EMAIL } from './notification-events'
 import { NotificationService } from './notification.service'
@@ -40,7 +39,7 @@ describe('NotificationService', () => {
         findMany: jest.fn(),
       },
     }
-    service = new NotificationService(db as unknown as DbService, clock as unknown as SimulationClock)
+    service = new NotificationService(db, clock as unknown as SimulationClock)
   })
 
   describe('Core sender (handleEvent)', () => {

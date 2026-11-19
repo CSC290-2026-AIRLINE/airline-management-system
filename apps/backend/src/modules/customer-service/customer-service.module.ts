@@ -16,11 +16,7 @@ import { NotificationService } from './notification.service'
 /** Feature 13: complaints from customers, worked by staff. Built by G16. */
 @Module({
   imports: [AdminConsoleModule, AuditModule, FlightSchedulingModule],
-  controllers: [
-    CustomerComplaintsController,
-    CustomerNotificationPreferencesController,
-    StaffComplaintsController,
-  ],
+  controllers: [CustomerComplaintsController, CustomerNotificationPreferencesController, StaffComplaintsController],
   providers: [CustomerServiceService, NotificationService, CustomerServiceStaffGuard],
   exports: [CustomerServiceService, NotificationService],
 })

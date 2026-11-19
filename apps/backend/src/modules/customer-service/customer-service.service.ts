@@ -1138,17 +1138,14 @@ export class CustomerServiceService {
     }))
   }
 
-  async updatePreferencesForCustomer(
-    userId: string,
-    dto: UpdateNotificationPreferencesDto,
-  ): Promise<NotificationPreferenceView[]> {
+  async updatePreferencesForCustomer(userId: string, dto: UpdateNotificationPreferencesDto): Promise<NotificationPreferenceView[]> {
     const customer = await this.customerFor(userId)
-    const list = Array.isArray(dto) ? dto : dto?.preferences ?? []
+    const list = Array.isArray(dto) ? dto : (dto?.preferences ?? [])
 
     await this.db.$transaction(async (tx) => {
       for (const item of list) {
         for (const channel of ['email', 'sms', 'push'] as const) {
-          const val = (item as any)[channel]
+          const val = item[channel]
           if (typeof val === 'boolean') {
             await tx.notification_preference.upsert({
               where: {

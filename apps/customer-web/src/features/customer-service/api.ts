@@ -66,8 +66,7 @@ export function useComplaintsApi() {
       return request<Complaint>(`/${encodeURIComponent(caseNumber.trim().toUpperCase())}`)
     },
     getGuest,
-    getNotificationPreferences: () =>
-      request<NotificationPreferenceRow[]>('/api/customers/me/notification-preferences'),
+    getNotificationPreferences: () => request<NotificationPreferenceRow[]>('/api/customers/me/notification-preferences'),
     updateNotificationPreferences: (preferences: NotificationPreferenceRow[]) =>
       request<NotificationPreferenceRow[]>('/api/customers/me/notification-preferences', {
         method: 'PUT',
