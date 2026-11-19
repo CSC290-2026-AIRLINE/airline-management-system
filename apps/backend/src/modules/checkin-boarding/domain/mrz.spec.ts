@@ -112,12 +112,20 @@ describe('passport validity and names', () => {
     expect(compareNames({ surname: 'ERIKSSON', givenNames: ['ANNA', 'MARIA'] }, { firstName: 'Sara', lastName: 'Lopez' })).toBe(true)
     expect(compareNames({ surname: "O'BRIEN", givenNames: ['ANNA'] }, { firstName: 'Anna', lastName: 'OBrien' })).toBe(false)
   })
+
+  it('compareNames reads a hyphenated first name as the given names joined', () => {
+    expect(compareNames({ surname: 'PARK', givenNames: ['JI', 'WOO'] }, { firstName: 'Ji-woo', lastName: 'Park' })).toBe(false)
+    expect(compareNames({ surname: 'PARK', givenNames: ['JI', 'WOO'] }, { firstName: 'Jiwoo', lastName: 'Park' })).toBe(false)
+    expect(compareNames({ surname: 'PARK', givenNames: ['JI', 'WOO'] }, { firstName: 'Ji-hoon', lastName: 'Park' })).toBe(true)
+  })
 })
 
 describe('country codes', () => {
   it('toAlpha2 maps 3-letter codes, D, UTO and unknowns', () => {
     expect(toAlpha2('THA')).toBe('th')
     expect(toAlpha2('D')).toBe('de')
+    expect(toAlpha2('D<<')).toBe('de')
+    expect(toAlpha2('POL')).toBe('pl')
     expect(toAlpha2('UTO')).toBe('ut')
     expect(toAlpha2('XXA')).toBeNull()
     expect(toAlpha2('ZZZ')).toBeNull()

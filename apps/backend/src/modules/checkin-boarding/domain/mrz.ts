@@ -125,12 +125,18 @@ export function isPassportValidForTravel(expiryDate: string, travelDate: string)
 
 export const stripNonLetters = (s: string): string => s.toUpperCase().replace(/[^A-Z]/g, '')
 
-/** True when the MRZ name and the booking name disagree (a flag for staff, never a hard block). */
+/**
+ * True when the MRZ name and the booking name disagree (a flag for staff, never a hard block). The booking's first
+ * name matches one given name of the passport ("John" in JOHN<MICHAEL) or all of them together: the MRZ writes a
+ * hyphen or a space as a filler, so "Ji-woo" is JI<WOO and is compared as JIWOO.
+ */
 export function compareNames(mrz: { surname: string; givenNames: string[] }, booking: { firstName: string; lastName: string }): boolean {
   if (stripNonLetters(mrz.surname) !== stripNonLetters(booking.lastName)) {
     return true
   }
-  return !mrz.givenNames.map(stripNonLetters).includes(stripNonLetters(booking.firstName))
+  const firstName = stripNonLetters(booking.firstName)
+  const givenNames = mrz.givenNames.map(stripNonLetters)
+  return !givenNames.includes(firstName) && givenNames.join('') !== firstName
 }
 
 /** Fills empty profile fields from the MRZ and names the fields that differ; nothing is ever overwritten. */

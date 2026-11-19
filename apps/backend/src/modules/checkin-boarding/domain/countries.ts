@@ -16,13 +16,17 @@ const ALPHA2 = new Map<string, string>([
   ['AUS', 'au'],
   ['CAN', 'ca'],
   ['NLD', 'nl'],
+  ['POL', 'pl'],
   ['ITA', 'it'],
   ['ESP', 'es'],
   ['RUS', 'ru'],
   ['UTO', 'ut'], // ICAO specimen passport, not a real country
 ])
 
-/** Maps an ISO 3166-1 alpha-3 (or the ICAO 'D' shortcut) to the team's lower-case alpha-2 code. */
+/**
+ * Maps an ISO 3166-1 alpha-3 (or the ICAO 'D' shortcut) to the team's lower-case alpha-2 code. The MRZ field is three
+ * characters wide, so a shorter code arrives padded with '<' ('D<<'); the filler is dropped before the lookup.
+ */
 export function toAlpha2(code3: string): string | null {
-  return ALPHA2.get(code3.toUpperCase()) ?? null
+  return ALPHA2.get(code3.replace(/</g, '').toUpperCase()) ?? null
 }
