@@ -57,7 +57,8 @@ export function RosterTable({ assignments, openBreaks, updated, onSickCall, onFi
             {updated ? ' · updated' : ''}
           </h2>
           <p className="mt-1.5 hidden text-sm leading-relaxed text-primary-text/60 lg:block">
-            This roster is live. Later changes (sick calls, flight delays or cancellations) are re-checked against every rule.
+            This roster is live. A sick call or a swap is re-checked against every rule. Flight delays and cancellations from Flight
+            Scheduling do not reach it yet.
           </p>
           <p className="mt-1 text-xs text-primary-text/55 lg:hidden">Use Sick call on a leg to remove someone from it.</p>
         </>

@@ -128,10 +128,12 @@ export function daysInRange(dateFrom: LocalDate, dateTo: LocalDate): number {
   return Math.round((to - from) / 86_400_000) + 1
 }
 
-/** `15–19 Sep 2026`, the roster run badge and the modal range copy. */
+/** `15–19 Sep 2026`, the roster run badge and the modal range copy. `—` when either date is empty or invalid. */
 export function formatDateRange(dateFrom: LocalDate, dateTo: LocalDate): string {
   const from = new Date(`${dateFrom}T00:00:00.000Z`)
   const to = new Date(`${dateTo}T00:00:00.000Z`)
+  // An empty or mistyped date (a half-typed field, a hand-edited URL) must not throw while the page renders.
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return '—'
   if (dateFrom === dateTo) return clean(longDayFormatter.format(from))
   const sameMonth = from.getUTCMonth() === to.getUTCMonth() && from.getUTCFullYear() === to.getUTCFullYear()
   const startDay = new Intl.DateTimeFormat('en-GB', { day: '2-digit', timeZone: 'UTC' }).format(from)

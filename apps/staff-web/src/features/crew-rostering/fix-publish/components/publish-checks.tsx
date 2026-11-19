@@ -20,7 +20,7 @@ interface PublishChecksProps {
 }
 
 const PUBLICATION_RULE =
-  'Publishing closes the run to automatic crewing. Later changes — a sick call, a delay, a cancellation — are re-checked against the same rules. Notifying the crew is Feature 13 and is not connected yet.'
+  'Publishing closes the run to automatic crewing. A sick call or a swap is re-checked against the same rules. Flight changes from Flight Scheduling (Feature 2) do not reach this roster yet, and notifying the crew is Feature 13, which is not connected yet.'
 
 /** `0 open breaks`, `1 leg not covered`, `1 open break (POLICE_NO_SEAT)` — what is still in the way. */
 function remainingLabel(openBreaks: readonly FixBreak[], isPublished: boolean): string {
