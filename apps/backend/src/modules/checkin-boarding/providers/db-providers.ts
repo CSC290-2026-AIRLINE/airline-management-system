@@ -74,6 +74,11 @@ export class DbFlights implements FlightProvider {
     return row ? toFlightRecord(row) : null
   }
 
+  async byIds(ids: string[]): Promise<FlightRecord[]> {
+    const rows = await this.db.flight.findMany({ where: { id: { in: ids } }, include: { route: { include: ROUTE_AIRPORTS } } })
+    return rows.map(toFlightRecord)
+  }
+
   async list(): Promise<FlightRecord[]> {
     const rows = await this.db.flight.findMany({ include: { route: { include: ROUTE_AIRPORTS } }, orderBy: { dep_at: 'asc' } })
     return rows.map(toFlightRecord)

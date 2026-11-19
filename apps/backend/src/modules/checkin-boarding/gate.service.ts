@@ -12,6 +12,7 @@ import type {
   ScanResult,
 } from './api-types'
 import { cancelCheckIn } from './cancel-check-in'
+import { CheckInService } from './checkin.service'
 import { decideScan } from './domain/boarding'
 import { computeWindow } from './domain/window'
 import { CheckInError, conflict, invalidState, notFound, validation } from './errors'
@@ -66,6 +67,7 @@ export class GateService {
     @Inject(NOTIFY) private readonly notify: NotifyProvider,
     @Inject(AUDIT) private readonly audit: AuditProvider,
     @Inject(SETTINGS) private readonly settings: SettingsProvider,
+    private readonly checkins: CheckInService,
     @Inject(CHECKIN_REPOSITORY) private readonly store: CheckInRepository,
   ) {}
 
@@ -284,13 +286,14 @@ export class GateService {
       }
     }
 
-    // Feature 3 does not call us when it cancels a booking: the pass of a cancelled booking is cancelled here.
-    if (booking?.cancelled && record.status !== 'cancelled') {
-      const flightNumber = record.flight_id === scanned.id ? scanned.flightNumber : (await this.flightOf(record.flight_id)).flightNumber
-      record = await cancelCheckIn(this.cancelDeps(), actor, record, { flightNumber, why: 'the booking was cancelled' })
-    }
-    // A hold can come after the pass was issued (feature 7 re-screens): the gate asks where the passenger stands now.
-    if (record.status === 'checked_in') {
+    // Features 2 and 3 do not call us when they cancel: the pass of a cancelled flight or booking is cancelled here.
+    // A passenger who boarded or was closed out keeps that status.
+    record = await this.checkins.refreshCancelled(actor, record)
+    // A hold can come after the pass was issued (feature 7 re-screens) and security can lift one at any time: the
+    // gate asks where the passenger stands now.
+    if (record.status === 'on_hold') {
+      record = await this.checkins.refreshHold(actor, record)
+    } else if (record.status === 'checked_in') {
       const standing = await this.screening.status({ passengerId: record.passenger_id, flightId: record.flight_id })
       if (standing === 'held' || standing === 'denied') {
         record = await this.store.updateCheckIn(record.id, { status: standing === 'held' ? 'on_hold' : 'denied' })
@@ -469,6 +472,8 @@ export class GateService {
       if (pass) {
         // Only a passenger who could still board is a no-show; a cancelled or denied check-in keeps its status.
         if (record.status !== 'checked_in' && record.status !== 'on_hold') continue
+        // A hold nobody cleared before the close gives the seat back.
+        if (record.status === 'on_hold') await this.seats.releaseAssigned(record.booking_passenger_id, record.flight_id)
         const written = await this.store.appendEvent({
           flight_id: flightId,
           gate_id: boarding.gate_id,
@@ -547,12 +552,17 @@ export class GateService {
     return gate?.code ?? null
   }
 
-  /** The open flights of every gate, by gate id: a closed gate is done, and a cancelled flight frees its gate. */
+  /**
+   * The flights that still board, by gate id. A closed gate is done, and a flight that was cancelled, departed or
+   * arrived frees its gate even when nobody closed it.
+   */
   private async openFlightsByGate(): Promise<Map<string, NonNullable<GateInfo['flight']>>> {
+    const boardings = await this.store.openFlightBoardings()
+    const byId = new Map((await this.flightProvider.byIds(boardings.map((b) => b.flight_id))).map((flight) => [flight.id, flight]))
     const flights = new Map<string, NonNullable<GateInfo['flight']>>()
-    for (const boarding of await this.store.openFlightBoardings()) {
-      const flight = await this.flightProvider.byId(boarding.flight_id)
-      if (!flight || flight.status === 'cancelled') continue
+    for (const boarding of boardings) {
+      const flight = byId.get(boarding.flight_id)
+      if (!flight || (flight.status !== 'scheduled' && flight.status !== 'delayed')) continue
       flights.set(boarding.gate_id, { id: flight.id, flightNumber: flight.flightNumber, depAt: flight.depAt.toISOString() })
     }
     return flights

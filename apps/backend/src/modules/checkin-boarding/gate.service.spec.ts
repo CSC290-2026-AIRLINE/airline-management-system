@@ -3,7 +3,7 @@ import { CheckInService } from './checkin.service'
 import { CounterService } from './counter.service'
 import { GateService } from './gate.service'
 import { CheckInError } from './errors'
-import { BOOKINGS } from './providers/fixtures'
+import { BOOKINGS, FLIGHTS } from './providers/fixtures'
 import {
   FixtureBookings,
   FixtureClock,
@@ -65,8 +65,21 @@ function build() {
     checkins,
     store,
   )
-  const gate = new GateService(clock, flights, bookings, new FixturePolice(), seats, screening, sensor, notify, audit, settings, store)
-  return { gate, checkins, counter, store, clock, notify, audit, sensor, screening, flights }
+  const gate = new GateService(
+    clock,
+    flights,
+    bookings,
+    new FixturePolice(),
+    seats,
+    screening,
+    sensor,
+    notify,
+    audit,
+    settings,
+    checkins,
+    store,
+  )
+  return { gate, checkins, counter, store, clock, notify, audit, sensor, screening, flights, seats }
 }
 
 async function idOf(store: CheckInStore, pnr: string): Promise<string> {
@@ -151,6 +164,32 @@ describe('GateService.scan', () => {
       booking.cancelled = false
     }
     expect((await store.getCheckIn(await idOf(store, 'SA224B')))?.status).toBe('cancelled')
+  })
+
+  it('a held passenger security has since cleared boards at the gate', async () => {
+    const { gate, store, screening } = build()
+    jest.spyOn(screening, 'status').mockResolvedValue('clear')
+    expect(await gate.scan(staff, 'gate-a1', { flightId: 'flt-fy204', reference: 'H3VN8PLA' })).toMatchObject({ event: 'boarded' })
+    expect((await store.getCheckIn(await idOf(store, 'HD224H')))?.status).toBe('boarded')
+  })
+
+  it('a rescan after the booking was cancelled leaves a boarded passenger boarded, bags on board', async () => {
+    const { gate, counter, store } = build()
+    const id = await idOf(store, 'SA224B')
+    const weighed = await counter.weighBag(staff, id, { weightKg: 10, lengthCm: 60, widthCm: 40, heightCm: 20 })
+    const tagged = await counter.tagBag(staff, weighed.bags[0].id)
+    await gate.scan(staff, 'gate-a1', { flightId: 'flt-fy204', reference: 'R8KD2WQN' })
+    const booking = BOOKINGS.find((b) => b.pnr === 'SA224B')!
+    booking.cancelled = true
+    try {
+      expect(await gate.scan(staff, 'gate-a1', { flightId: 'flt-fy204', reference: 'R8KD2WQN' })).toMatchObject({
+        reason: 'ALREADY_BOARDED',
+      })
+    } finally {
+      booking.cancelled = false
+    }
+    expect((await store.getCheckIn(id))?.status).toBe('boarded')
+    expect((await store.getBag(tagged.bag.id))?.status).toBe('tagged')
   })
 
   it('a pass of another flight that boards at this gate is the wrong flight', async () => {
@@ -402,17 +441,26 @@ describe('GateService.setGateActive', () => {
     expect(await gate.setGateActive(staff, 'gate-a1', true)).toMatchObject({ isActive: true })
   })
 
-  it('a cancelled flight frees its gate: it can be turned off and take another flight', async () => {
+  it.each(['cancelled', 'departed', 'arrived'])('a flight that is %s and was never closed frees its gate', async (status) => {
+    const { gate } = build()
+    const flight = FLIGHTS.find((f) => f.id === 'flt-fy204')!
+    flight.status = status as typeof flight.status
+    try {
+      expect((await gate.gates('BKK')).find((g) => g.id === 'gate-a1')?.flight).toBeNull()
+      expect(await gate.setGateActive(staff, 'gate-a1', false)).toMatchObject({ isActive: false })
+      await gate.setGateActive(staff, 'gate-a1', true)
+      expect(await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a1' })).toMatchObject({ gate: { code: 'A1' } })
+    } finally {
+      flight.status = 'scheduled'
+    }
+  })
+
+  it('the open flights of the gates are read in one go, not one flight at a time', async () => {
     const { gate, flights } = build()
-    const original = flights.byId.bind(flights)
-    jest.spyOn(flights, 'byId').mockImplementation(async (id: string) => {
-      const flight = await original(id)
-      return flight && id === 'flt-fy204' ? { ...flight, status: 'cancelled' } : flight
-    })
-    expect((await gate.gates('BKK')).find((g) => g.id === 'gate-a1')?.flight).toBeNull()
-    expect(await gate.setGateActive(staff, 'gate-a1', false)).toMatchObject({ isActive: false })
-    await gate.setGateActive(staff, 'gate-a1', true)
-    expect(await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a1' })).toMatchObject({ gate: { code: 'A1' } })
+    const one = jest.spyOn(flights, 'byId')
+    const gates = await gate.gates('BKK')
+    expect(gates.find((g) => g.id === 'gate-a1')?.flight).toMatchObject({ id: 'flt-fy204' })
+    expect(one).not.toHaveBeenCalled()
   })
 
   it('a gate whose flight is closed can take another flight', async () => {
@@ -509,6 +557,16 @@ describe('GateService head-count and close', () => {
     await gate.closeGate(staff, 'flt-fy204', {})
     expect((await store.getBag(tagged.bag.id))?.status).toBe('offloaded')
     await expect(counter.removeBag(staff, tagged.bag.id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+  })
+
+  it('closing the gate frees the seat of a held passenger with a pass', async () => {
+    const { gate, store, seats } = build()
+    const dana = BOOKINGS.find((b) => b.pnr === 'HD224H')!
+    expect(await seats.assigned(dana.bookingPassengerId, 'flt-fy204')).toMatchObject({ seatCode: '11D' })
+    await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
+    await gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })
+    expect((await store.getCheckIn(await idOf(store, 'HD224H')))?.status).toBe('no_show')
+    expect(await seats.assigned(dana.bookingPassengerId, 'flt-fy204')).toBeNull()
   })
 
   it('a pass that boarded while the gate closed is not a no-show', async () => {

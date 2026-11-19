@@ -50,6 +50,8 @@ export interface FlightRecord {
 
 export interface FlightProvider {
   byId(id: string): Promise<FlightRecord | null>
+  /** Several flights in one read; an id that is not a flight is left out. */
+  byIds(ids: string[]): Promise<FlightRecord[]>
   list(): Promise<FlightRecord[]>
   /** Every airport of the airline, sorted by code. */
   airports(): Promise<AirportRecord[]>

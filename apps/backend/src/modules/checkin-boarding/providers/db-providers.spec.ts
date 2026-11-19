@@ -139,6 +139,14 @@ describe('DbFlights', () => {
     },
   }
 
+  it('reads several flights in one query', async () => {
+    const db = { flight: { findMany: jest.fn().mockResolvedValue([flightRow]) } }
+    const out = await new DbFlights(db as unknown as DbService).byIds(['flt-fy204', 'flt-fy318'])
+    expect(out.map((flight) => flight.flightNumber)).toEqual(['FY 204'])
+    expect(db.flight.findMany).toHaveBeenCalledTimes(1)
+    expect(db.flight.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['flt-fy204', 'flt-fy318'] } } }))
+  })
+
   it('reads the flight, its route and both airports', async () => {
     const db = { flight: { findUnique: jest.fn().mockResolvedValue(flightRow), findMany: jest.fn().mockResolvedValue([flightRow]) } }
     const flights = new DbFlights(db as unknown as DbService)

@@ -64,6 +64,10 @@ export class FixtureFlights implements FlightProvider {
     return FLIGHTS.find((f) => f.id === id) ?? null
   }
 
+  async byIds(ids: string[]): Promise<FlightRecord[]> {
+    return FLIGHTS.filter((f) => ids.includes(f.id))
+  }
+
   async list(): Promise<FlightRecord[]> {
     return FLIGHTS
   }
