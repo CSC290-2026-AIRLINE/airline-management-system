@@ -190,8 +190,7 @@ export function useBiApi() {
     getSeries: (filters: BiFilters) => getJson<BiPeriodRow[]>(`/api/bi/series?${filterQuery(filters)}`),
     getCabins: (filters: BiFilters) => getJson<BiCabinRow[]>(`/api/bi/cabins?${filterQuery(filters)}`),
     getBookingsSeries: (filters: BiFilters) => getJson<BiPeriodBookings[]>(`/api/bi/bookings-series?${filterQuery(filters)}`),
-    getBookingsByRoute: (filters: BiFilters) =>
-      getJson<BiBookingRouteRow[]>(`/api/bi/bookings?${filterQuery(filters)}`),
+    getBookingsByRoute: (filters: BiFilters) => getJson<BiBookingRouteRow[]>(`/api/bi/bookings?${filterQuery(filters)}`),
     getDelayCauses: (filters: BiFilters) => getJson<BiDelayCause[]>(`/api/bi/delay-causes?${filterQuery(filters)}`),
     getFlights: (filters: BiFilters) => getJson<BiFlight[]>(`/api/bi/flights?${filterQuery(filters)}`),
     getFinance: (month: string | null) => getJson<BiFinanceResponse>(`/api/bi/finance${month ? `?month=${month}` : ''}`),
