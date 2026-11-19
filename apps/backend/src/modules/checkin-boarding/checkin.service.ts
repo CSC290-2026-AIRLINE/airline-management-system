@@ -123,9 +123,11 @@ export class CheckInService {
       throw new CheckInError(409, 'NOT_ELIGIBLE', 'The flight is cancelled', { reason: 'flight_cancelled' })
     }
     if (!booking.paid) throw new CheckInError(409, 'NOT_ELIGIBLE', 'The booking is not paid', { reason: 'unpaid' })
-    this.assertWindowOpen(flight, await this.windowOf(flight))
-
     const existing = await this.store.findActiveCheckInByBookingPassenger(booking.bookingPassengerId, booking.flightId)
+    // The window guards starting and the steps. A check-in that got past them is reopened at any time: the boarding
+    // pass is needed most in the last hour, after the window has closed.
+    if (!existing || existing.status === 'started') this.assertWindowOpen(flight, await this.windowOf(flight))
+
     if (existing) {
       // The PNR and the surname proved the booking: the caller resumes the check-in of that booking.
       await this.record(actor, 'check_in.start', 'check_in', existing.id, 'resumed')
@@ -621,11 +623,14 @@ export class CheckInService {
     // still needs check-in. When every open flight is done, the passenger sees the pass of the first.
     let done: (typeof legs)[number] | undefined
     for (const leg of legs) {
-      if (!isWindowOpen(now, await this.windowOf(leg.flight))) continue
+      if (leg.flight.depAt.getTime() < now.getTime()) continue
       const checkIn = await this.store.findActiveCheckInByBookingPassenger(leg.booking.bookingPassengerId, leg.booking.flightId)
+      // A pass counts until the flight leaves, also in the last hour, when its window has closed.
       if (checkIn && ['checked_in', 'boarded', 'no_show'].includes(checkIn.status)) done ??= leg
       // A gate closed early takes nobody any more, like a closed window: the next flight is tried.
-      else if (!(await this.store.flightBoarding(leg.flight.id))?.closed_at) return leg
+      else if (isWindowOpen(now, await this.windowOf(leg.flight)) && !(await this.store.flightBoarding(leg.flight.id))?.closed_at) {
+        return leg
+      }
     }
     return done ?? legs.find((leg) => leg.flight.depAt.getTime() >= now.getTime()) ?? legs[legs.length - 1]
   }

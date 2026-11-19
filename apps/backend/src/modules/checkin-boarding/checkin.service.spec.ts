@@ -1044,6 +1044,37 @@ describe('a closed gate', () => {
 })
 
 describe('the check-in window', () => {
+  it('a boarding pass is reopened by booking reference after the window closed: it is needed in the last hour', async () => {
+    const { svc, clock } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    await svc.complete(cust, c.id)
+    clock.set(new Date(new Date(c.flight.depAt).getTime() - 30 * 60_000))
+    await expect(svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })).resolves.toMatchObject({ id: c.id, status: 'checked_in' })
+  })
+
+  it('a check-in that was started and never finished is not reopened after the window closed', async () => {
+    const { svc, clock } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    clock.set(new Date(new Date(c.flight.depAt).getTime() - 30 * 60_000))
+    await expect(svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })).rejects.toMatchObject({ code: 'WINDOW_CLOSED' })
+  })
+
+  it('two flights, both with a pass: in the last hour before the first, its pass is the one that opens', async () => {
+    const { svc, clock } = build()
+    const anna = BOOKINGS.find((b) => b.pnr === 'ER224F')!
+    addBooking({ ...anna, flightId: 'flt-fy318' })
+    const first = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, first.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    await svc.complete(cust, first.id)
+    const second = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, second.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2(), visaNumber: 'V1234567' })
+    await svc.complete(cust, second.id)
+    // The first flight closed its window five minutes ago, the second (15 minutes later) is still open.
+    clock.set(new Date(new Date(first.flight.depAt).getTime() - 55 * 60_000))
+    await expect(svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })).resolves.toMatchObject({ id: first.id })
+  })
+
   it('holdSeat answers WINDOW_CLOSED once the window closed', async () => {
     const { svc, clock } = build()
     const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
