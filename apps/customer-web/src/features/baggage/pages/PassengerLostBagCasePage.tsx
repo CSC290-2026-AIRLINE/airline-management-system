@@ -23,6 +23,7 @@ import {
   type AccountCaseListItem,
   visibleAccountCaseSuggestions,
 } from './account-case-list'
+import { readBaggageApiError } from '../api-error'
 import './PassengerLostBagCasePage.css'
 
 interface CaseAccess {
@@ -83,11 +84,6 @@ interface DeliveryChoiceUpdate extends DeliveryChoiceState {
   pickupAirport: string | null
 }
 
-interface ApiErrorBody {
-  message?: string | string[]
-  code?: string
-}
-
 const EDITABLE_DELIVERY_STATUSES: DeliveryStatus[] = ['waiting_choice', 'preparing']
 const RECOVERY_REPORT_STATUSES = ['matched', 'delivering', 'lost']
 const CASE_NUMBER_PATTERN = /^LB-\d{4}-\d{6}$/i
@@ -104,12 +100,11 @@ function accessQuery(access: CaseAccess): string {
 }
 
 async function responseError(response: Response, fallback: string): Promise<string> {
-  const body = (await response.json().catch(() => null)) as ApiErrorBody | null
+  const body: unknown = await response.json().catch(() => null)
 
   if (response.status === 401) return 'Your sign-in has expired. Sign in again, then reopen this case.'
   if (response.status === 403) return 'This customer account is not authorized to open this case.'
-  if (Array.isArray(body?.message)) return body.message.join(' ')
-  return body?.message || fallback
+  return readBaggageApiError(body).message ?? fallback
 }
 
 function formatDate(value: string): string {
@@ -727,7 +722,7 @@ export function PassengerLostBagCasePage() {
       if (!isCurrent()) return
       dispatchCasePage({ type: 'report-loaded', report: cancelledReport })
       setIsConfirmingSelfFound(false)
-      setSaveNotice('This report was cancelled because you found your bag yourself.')
+      setSaveNotice('This report was cancelled because the bag was found.')
       void loadCaseSummary(currentAccess, requestId)
     } catch (cause) {
       if (!isCurrent()) return
@@ -951,11 +946,11 @@ export function PassengerLostBagCasePage() {
                     disabled={isCancelling}
                     onClick={() => setIsConfirmingSelfFound(true)}
                   >
-                    I found it myself
+                    The bag has been found
                   </button>
                 ) : (
                   <div className="passenger-case-self-found__confirmation" role="group" aria-label="Confirm found bag cancellation">
-                    <p>Cancel this report because you found your bag yourself?</p>
+                    <p>Cancel this report because the bag was found?</p>
                     <div>
                       <button type="button" disabled={isCancelling} onClick={() => void reportBagFoundByPassenger()}>
                         {isCancelling ? 'Cancelling…' : 'Yes, cancel report'}

@@ -2,6 +2,8 @@ import { InternalServerErrorException } from '@nestjs/common'
 jest.mock('@backend/db/db.service', () => ({ DbService: class DbService {} }))
 import { DbService } from '@backend/db/db.service'
 import { MockSimulationClock } from './mocks/mock-simulation.clock'
+import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import type { BaggageCaseNotices } from './baggage-case-notices'
 import { LostReportLifecycleService } from './lost-report-lifecycle.service'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -19,7 +21,7 @@ function makeService(reports: TestReport[], initialTime: Date) {
   const clock = new MockSimulationClock(initialTime)
   const updateMany = jest.fn(({ where, data }: any) => {
     const eligibleIds = new Set(where.id.in as string[])
-    let count = 0
+    const changed: { id: string }[] = []
 
     for (const report of reports) {
       if (
@@ -31,11 +33,11 @@ function makeService(reports: TestReport[], initialTime: Date) {
       ) {
         report.status = data.status
         report.lost_at = data.lost_at
-        count += 1
+        changed.push({ id: report.id })
       }
     }
 
-    return Promise.resolve({ count })
+    return Promise.resolve(changed)
   })
 
   // The threshold is read inside the transaction with the FOR SHARE row lock; reports are then locked FOR UPDATE.
@@ -52,7 +54,7 @@ function makeService(reports: TestReport[], initialTime: Date) {
     )
   })
   const transaction = jest.fn(async (callback: (tx: any) => Promise<unknown>) =>
-    callback({ $queryRaw: queryRaw, lost_bag_report: { updateMany } }),
+    callback({ $queryRaw: queryRaw, lost_bag_report: { updateManyAndReturn: updateMany } }),
   )
 
   // No baggage_setting delegate outside the transaction: a pre-transaction read would throw here.
@@ -60,8 +62,13 @@ function makeService(reports: TestReport[], initialTime: Date) {
     $transaction: transaction,
   } as unknown as DbService
 
+  const audit = { write: jest.fn().mockResolvedValue({ id: 'audit', seq: '1' }) }
+  const notices = { notify: jest.fn() }
+
   return {
-    service: new LostReportLifecycleService(db, clock),
+    service: new LostReportLifecycleService(db, clock, audit as unknown as AuditService, notices as unknown as BaggageCaseNotices),
+    audit,
+    notices,
     clock,
     db,
     setting,
@@ -228,10 +235,43 @@ describe('LostReportLifecycleService', () => {
     // An admin raised the threshold to 30, committing just before this sweep's transaction took its lock.
     transaction.mockImplementationOnce(async (callback: (tx: any) => Promise<unknown>) => {
       setting.value = '30'
-      return callback({ $queryRaw: queryRaw, lost_bag_report: { updateMany } })
+      return callback({ $queryRaw: queryRaw, lost_bag_report: { updateManyAndReturn: updateMany } })
     })
 
     await expect(service.markTimedOutReports()).resolves.toMatchObject({ lostAfterDays: 30, marked: 0 })
     expect(reports[0].status).toBe('open')
+  })
+
+  it('writes one audit row for the cases it marked, then sends each a lost notice', async () => {
+    const reports = [report('due-1'), report('due-2'), report('confirmed', 'open', reportedAt, null, true)]
+    const { service, audit, notices } = makeService(reports, threshold)
+
+    await expect(service.markTimedOutReports()).resolves.toMatchObject({ marked: 2 })
+
+    expect(audit.write).toHaveBeenCalledTimes(1)
+    expect(audit.write.mock.calls[0][0]).toMatchObject({
+      actor: { type: 'system', id: null, role: null },
+      sourceFeature: '10',
+      action: 'status_change',
+      entityType: 'lost_bag_report',
+      summary: `2 lost bag case(s) marked lost after ${TIMEOUT_DAYS} days`,
+      before: { status: 'open' },
+      after: { status: 'lost', reportIds: ['due-1', 'due-2'] },
+      occurredAt: threshold,
+    })
+    expect(audit.write.mock.calls[0][1]).toBeDefined()
+    expect(notices.notify).toHaveBeenCalledWith([
+      { event: 'lost', reportId: 'due-1' },
+      { event: 'lost', reportId: 'due-2' },
+    ])
+  })
+
+  it('writes no audit row and sends no notice when nothing was marked', async () => {
+    const { service, audit, notices } = makeService([report('confirmed', 'open', reportedAt, null, true)], threshold)
+
+    await expect(service.markTimedOutReports()).resolves.toMatchObject({ marked: 0 })
+
+    expect(audit.write).not.toHaveBeenCalled()
+    expect(notices.notify).toHaveBeenCalledWith([])
   })
 })

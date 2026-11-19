@@ -61,8 +61,8 @@ export interface ViewableReport {
   canManage: boolean
 }
 
-/** The bag details a passenger fills in, shared by signed-in and guest reporting. */
-export type ReportDetailsInput = Pick<
+/** The bag details a passenger fills in. */
+type ReportDetailsInput = Pick<
   CreateReportInput,
   'tagNumber' | 'bagType' | 'colour' | 'brand' | 'description' | 'contactEmail' | 'contactPhone'
 >
@@ -112,22 +112,6 @@ export class ReportService {
     }
 
     return this.persistVerifiedReport(passenger, input, details, input.reportedByCustomerId ?? null, photo)
-  }
-
-  /**
-   * Creates a report for a bag owner the caller has ALREADY verified on the server (guest reporting resolves the
-   * traveller from booking reference + surname + flight; it never trusts client ids). Same field validation, tag
-   * ownership check, duplicate handling, case number, photo upload and cleanup as `create`.
-   */
-  async createForVerifiedPassenger(
-    passenger: VerifiedBookingPassenger,
-    input: ReportDetailsInput,
-    reportedByCustomerId: string | null,
-    photo?: UploadedLostReportPhoto,
-  ): Promise<LostBagReport> {
-    const details = this.validateReportDetails(input)
-
-    return this.persistVerifiedReport(passenger, input, details, reportedByCustomerId, photo)
   }
 
   private validateReportDetails(input: ReportDetailsInput): ValidatedReportDetails {

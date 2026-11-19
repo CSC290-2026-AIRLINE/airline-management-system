@@ -133,7 +133,7 @@ export interface BaggageDesk {
 /** Shown while the backend cannot be reached (not started yet, restarting, or the network is down). */
 export const SERVER_UNREACHABLE_MESSAGE = "Can't reach the baggage server. Trying again…"
 
-/** Any non-2xx answer from `/api/staff/*`, or status 0 when no answer came. The baggage endpoints answer `{ code, message }`. */
+/** Any non-2xx answer from `/api/staff/*`, or status 0 when no answer came. The baggage endpoints answer `{ error: { code, message } }`. */
 export class BaggageApiError extends Error {
   readonly status: number
   readonly code: string
@@ -153,9 +153,9 @@ async function readError(res: Response): Promise<BaggageApiError> {
   } catch {
     // Not JSON: fall back to the status line.
   }
-  const flat = body as { code?: unknown; message?: unknown; error?: { code?: string; message?: string } } | null
-  const code = typeof flat?.code === 'string' ? flat.code : (flat?.error?.code ?? `HTTP_${res.status}`)
-  const rawMessage = typeof flat?.message === 'string' ? flat.message : flat?.error?.message
+  const error = (body as { error?: { code?: unknown; message?: unknown } } | null)?.error
+  const code = typeof error?.code === 'string' && error.code ? error.code : `HTTP_${res.status}`
+  const rawMessage = typeof error?.message === 'string' ? error.message : null
   return new BaggageApiError(res.status, code, rawMessage || res.statusText || 'Request failed')
 }
 

@@ -14,8 +14,6 @@ import { PassengerLostReportFlightsController } from './passenger-lost-report-fl
 import { PassengerLostReportTravellersController } from './passenger-lost-report-travellers.controller'
 import { PassengerCaseSummaryService } from './passenger-case-summary.service'
 import { LostReportPhotoStorage } from './lost-report-photo.storage'
-import { GuestBookingLookupService } from './guest-booking-lookup.service'
-import { GuestCaseLookupService } from './guest-case-lookup.service'
 
 /** The photo storage comes from BaggageModule, which the staff desk shares. */
 @Module({
@@ -23,8 +21,6 @@ import { GuestCaseLookupService } from './guest-case-lookup.service'
   controllers: [PassengerLostReportController, PassengerLostReportFlightsController, PassengerLostReportTravellersController],
   providers: [
     BaggageCustomerGuard,
-    GuestBookingLookupService,
-    GuestCaseLookupService,
     PassengerDeliveryChoiceService,
     PassengerCaseSummaryService,
     PrismaReportRepository,

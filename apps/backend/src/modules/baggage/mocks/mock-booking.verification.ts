@@ -57,10 +57,13 @@ export class MockBookingVerification implements BookingVerification {
     )
   }
 
-  async isPassengerOnBookingPassenger(passengerId: string, bookingPassengerId: string): Promise<boolean> {
+  isPassengerOnBookingPassenger(passengerId: string, bookingPassengerId: string): Promise<boolean> {
     const target = this.bookings.find((item) => item.bookingPassengerId === bookingPassengerId)
-    return !!target && this.bookings.some(
-      (item) => item.bookingReference.toUpperCase() === target.bookingReference.toUpperCase() && item.passengerId === passengerId,
+    return Promise.resolve(
+      !!target &&
+        this.bookings.some(
+          (item) => item.bookingReference.toUpperCase() === target.bookingReference.toUpperCase() && item.passengerId === passengerId,
+        ),
     )
   }
 

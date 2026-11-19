@@ -28,7 +28,7 @@ export function timelineEventLabel(event: PassengerCaseTimelineEvent): string {
     case 'case_marked_lost':
       return 'Case marked lost'
     case 'match_confirmed':
-      return 'Staff confirmed a found bag is yours'
+      return 'Staff confirmed the found bag'
     case 'choice_saved':
       if (event.chosenBy === 'passenger') {
         if (event.deliveryType === 'home') return 'You chose delivery to your home'

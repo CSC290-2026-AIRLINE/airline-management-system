@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Put, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
+import { Body, Controller, Get, Param, Put, UseFilters, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
 import type { ValidationError } from '@nestjs/common'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
 import { SaveStationContactDto } from './dto/save-station-contact.dto'
 import { BaggageStaffGuard, CurrentBaggageStaff, baggageAuditActor, type BaggageStaff } from './guards/baggage-staff.guard'
 import { StationContactService, type StationContact } from './station-contact.service'
+import { BaggageErrorFilter } from './common/baggage-error.filter'
 
 function toValidationError(errors: ValidationError[]): FoundBagError {
   const messages = errors.flatMap((e) => Object.values(e.constraints ?? {}))
@@ -14,6 +15,7 @@ function toValidationError(errors: ValidationError[]): FoundBagError {
 /** `/api/staff/station-contacts`: the baggage desk phone and email at each airport. Baggage staff and admins only. */
 @Controller('staff/station-contacts')
 @UseGuards(BaggageStaffGuard)
+@UseFilters(BaggageErrorFilter)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, exceptionFactory: toValidationError }))
 export class StationContactController {
   constructor(private readonly service: StationContactService) {}

@@ -140,7 +140,7 @@ function makeWorld() {
         },
       },
       lost_bag_report: {
-        updateMany: ({
+        updateManyAndReturn: ({
           where,
           data,
         }: {
@@ -149,7 +149,7 @@ function makeWorld() {
         }) => {
           const hits = reports.filter((r) => where.id.in.includes(r.id) && r.status === 'open' && r.reported_at <= where.reported_at.lte)
           writes.push(() => hits.forEach((r) => Object.assign(r, { status: data.status, lost_at: data.lost_at })))
-          return Promise.resolve({ count: hits.length })
+          return Promise.resolve(hits.map(({ id }) => ({ id })))
         },
       },
     }
@@ -192,7 +192,7 @@ function makeWorld() {
     gates,
     settingsApi: new BaggageSettingsService(asDb, asAudit),
     foundSweep: new FoundBagLifecycleService(asDb, asAudit, { now: () => NOW }),
-    lostSweep: new LostReportLifecycleService(asDb, { now: () => NOW }),
+    lostSweep: new LostReportLifecycleService(asDb, { now: () => NOW }, asAudit),
   }
 }
 

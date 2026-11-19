@@ -84,11 +84,11 @@ test('delivery-unavailable messages are accurate for cancelled cases and unchang
   assert.equal(deliveryUnavailableMessage('cancelled'), 'Nothing to choose for this case.')
   assert.equal(
     deliveryUnavailableMessage('open'),
-    'Once staff confirm a found bag is yours, you can choose home, hotel, another address, or airport pickup here.',
+    'Once staff confirm they have found the bag, you can choose home, hotel, another address, or airport pickup here.',
   )
   assert.equal(
     deliveryUnavailableMessage('matched'),
-    'Once staff confirm a found bag is yours, you can choose home, hotel, another address, or airport pickup here.',
+    'Once staff confirm they have found the bag, you can choose home, hotel, another address, or airport pickup here.',
   )
   assert.equal(
     deliveryUnavailableMessage('lost'),

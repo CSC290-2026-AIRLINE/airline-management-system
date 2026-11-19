@@ -19,7 +19,7 @@ test('maps persisted passenger timeline entries to safe case-page labels', () =>
   assert.deepEqual(events.map(timelineEventLabel), [
     'Report received',
     'Case marked lost',
-    'Staff confirmed a found bag is yours',
+    'Staff confirmed the found bag',
     'You chose delivery to your hotel',
     'Bag sent from BKK to NRT',
     'Bag arrived at NRT',

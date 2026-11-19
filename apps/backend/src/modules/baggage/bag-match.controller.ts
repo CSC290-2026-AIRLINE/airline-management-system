@@ -1,4 +1,17 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UseFilters,
+  UseGuards,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common'
 import type { ValidationError } from '@nestjs/common'
 import type { BagMatch } from './common/bag-match.types'
 import { FOUND_BAG_ERROR_CODES, FoundBagError } from './common/found-bag.errors'
@@ -7,6 +20,7 @@ import { LinkBagMatchDto } from './dto/link-bag-match.dto'
 import { ConfirmBagMatchDto, RejectBagMatchDto } from './dto/review-bag-match.dto'
 import { BaggageStaffGuard, CurrentBaggageStaff, baggageAuditActor, type BaggageStaff } from './guards/baggage-staff.guard'
 import { BagMatchReviewService } from './bag-match-review.service'
+import { BaggageErrorFilter } from './common/baggage-error.filter'
 
 function toValidationError(errors: ValidationError[]): FoundBagError {
   return new FoundBagError(FOUND_BAG_ERROR_CODES.INVALID_MATCH, errors.flatMap((e) => Object.values(e.constraints ?? {})).join('; '))
@@ -19,6 +33,7 @@ function notFound(): FoundBagError {
 /** `/api/staff/bag-matches`: Match review. Staff check suggested matches, link bags by hand, and confirm or reject. Staff only. */
 @Controller('staff/bag-matches')
 @UseGuards(BaggageStaffGuard)
+@UseFilters(BaggageErrorFilter)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, exceptionFactory: toValidationError }))
 export class BagMatchController {
   constructor(private readonly review: BagMatchReviewService) {}

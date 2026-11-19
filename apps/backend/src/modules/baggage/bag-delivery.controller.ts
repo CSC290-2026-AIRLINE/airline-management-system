@@ -8,6 +8,7 @@ import {
   Post,
   Put,
   Query,
+  UseFilters,
   UseGuards,
   UsePipes,
   ValidationPipe,
@@ -19,6 +20,7 @@ import { HandOverBagDto, RecordDeliveryChoiceDto, SetDeliveryStatusDto } from '.
 import { ListBagDeliveriesQuery } from './dto/list-bag-deliveries.query'
 import { BaggageStaffGuard, CurrentBaggageStaff, type BaggageStaff } from './guards/baggage-staff.guard'
 import { BagDeliveryService } from './bag-delivery.service'
+import { BaggageErrorFilter } from './common/baggage-error.filter'
 
 function toValidationError(errors: ValidationError[]): FoundBagError {
   return new FoundBagError(FOUND_BAG_ERROR_CODES.INVALID_DELIVERY, errors.flatMap((e) => Object.values(e.constraints ?? {})).join('; '))
@@ -34,6 +36,7 @@ function notFound(): FoundBagError {
  */
 @Controller('staff/bag-deliveries')
 @UseGuards(BaggageStaffGuard)
+@UseFilters(BaggageErrorFilter)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, exceptionFactory: toValidationError }))
 export class BagDeliveryController {
   constructor(private readonly deliveries: BagDeliveryService) {}

@@ -6,15 +6,9 @@ import {
   buildCreateLostReportFormData,
   buildBookingFlightSummary,
   bookingPassengerIdForSubmit,
-  buildGuestLostReportFormData,
-  caseAccessActionsFor,
   createLostReportPageState,
-  GUEST_CONFIRMATION_NOTE,
-  GUEST_SUCCESS_MESSAGE,
   createPhotoPreview,
-  defaultGuestTravellerId,
   flightsForSelection,
-  guestFlightsForSelection,
   lostReportPageReducer,
   PASSENGER_BAG_COLOURS,
   PASSENGER_BAG_TYPES,
@@ -23,25 +17,15 @@ import {
   selectedTravellerName,
   showTravellerSelector,
   usableTravellers,
-  validateGuestLostReportForm,
   validateLostReportForm,
   validateLostReportPhoto,
   type EligibleFlight,
   type EligibleTraveller,
-  type GuestReportResult,
   type LostBagFormValues,
   type PhotoPreview,
 } from './lost-report-form'
-import { defaultGuestApiOptions, lookUpGuestBooking, submitGuestLostReport, type GuestApiOptions } from './guest-report-api'
+import { readBaggageApiError } from '../api-error'
 import './PassengerLostBagReportPage.css'
-
-type ReportFormProps =
-  | { mode: 'customer'; fetchWithAuth: (path: string, init?: RequestInit) => Promise<Response> }
-  | { mode: 'guest'; guestApi: GuestApiOptions }
-
-interface ApiErrorBody {
-  message?: string | string[]
-}
 
 interface CreatedReport {
   caseNumber: string
@@ -77,11 +61,10 @@ const BAG_COLOUR_SWATCH: Record<(typeof PASSENGER_BAG_COLOURS)[number][0], strin
 }
 
 async function getResponseMessage(response: Response, fallback: string): Promise<string> {
-  const body = (await response.json().catch(() => null)) as ApiErrorBody | null
+  const body: unknown = await response.json().catch(() => null)
   if (response.status === 401) return 'Your sign-in has expired. Sign in again and retry.'
   if (response.status === 403) return 'This customer account is not authorized to use those booking details.'
-  if (Array.isArray(body?.message)) return body.message.join(' ')
-  return body?.message || fallback
+  return readBaggageApiError(body).message ?? fallback
 }
 
 function formatFlightDate(value: string): string {
@@ -89,27 +72,10 @@ function formatFlightDate(value: string): string {
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date)
 }
 
-/** Signed-in reporting (inside AppAuthProvider): the authenticated customer requests, unchanged. */
+/** Signed-in reporting (inside AppAuthProvider): the authenticated customer requests. */
 export function PassengerLostBagReportPage() {
   const { fetchWithAuth } = useAppAuth()
-  return <LostBagReportForm mode="customer" fetchWithAuth={fetchWithAuth} />
-}
-
-/** Guest reporting (signed out): the public guest endpoints only, with no session, token or cookies. */
-export function GuestLostBagReportPage({ guestApi = defaultGuestApiOptions() }: { guestApi?: GuestApiOptions }) {
-  return <LostBagReportForm mode="guest" guestApi={guestApi} />
-}
-
-function LostBagReportForm(props: ReportFormProps) {
-  const isGuest = props.mode === 'guest'
-  const caseAccess = caseAccessActionsFor(props.mode)
-  /** The signed-in customer's authenticated fetch; guest mode never reaches it. */
-  function customerFetch(path: string, init?: RequestInit): Promise<Response> {
-    if (props.mode !== 'customer') throw new Error('Guest reporting cannot use the signed-in session.')
-    return props.fetchWithAuth(path, init)
-  }
   const navigate = useNavigate()
-  const [guestResult, setGuestResult] = useState<GuestReportResult | null>(null)
   const [values, setValues] = useState<LostBagFormValues>(EMPTY_VALUES)
   const [pageState, dispatch] = useReducer(lostReportPageReducer, undefined, createLostReportPageState)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -160,17 +126,15 @@ function LostBagReportForm(props: ReportFormProps) {
   const submissionPending = useRef(false)
   const flightLookupRequest = useRef(0)
   const flightLookupAccess = useRef({ bookingReference: '', surname: '' })
-  // Signed in: own bag (or no traveller list) uses the original flights and request; another traveller, their flights +
-  // bookingPassengerId. Guest: always the chosen traveller's own flights (none until a traveller is chosen).
+  // Own bag (or no traveller list) uses the original flights and request; another traveller, their flights +
+  // bookingPassengerId.
   function flightsFor(travellerId: string): EligibleFlight[] {
-    return isGuest
-      ? guestFlightsForSelection(pageState.travellers, travellerId)
-      : flightsForSelection(pageState.flights, pageState.travellers, travellerId)
+    return flightsForSelection(pageState.flights, pageState.travellers, travellerId)
   }
   const availableFlights = flightsFor(pageState.selectedTravellerId)
-  const coTravellerId = isGuest ? undefined : bookingPassengerIdForSubmit(pageState.travellers, pageState.selectedTravellerId)
-  const bagOwnerName = isGuest || coTravellerId ? selectedTravellerName(pageState.travellers, pageState.selectedTravellerId) : null
-  const showWhoseBag = isGuest ? pageState.travellers.length > 0 : showTravellerSelector(pageState.travellers)
+  const coTravellerId = bookingPassengerIdForSubmit(pageState.travellers, pageState.selectedTravellerId)
+  const bagOwnerName = coTravellerId ? selectedTravellerName(pageState.travellers, pageState.selectedTravellerId) : null
+  const showWhoseBag = showTravellerSelector(pageState.travellers)
 
   function selectTraveller(bookingPassengerId: string) {
     dispatch({ type: 'traveller-selected', bookingPassengerId })
@@ -224,28 +188,13 @@ function LostBagReportForm(props: ReportFormProps) {
     }
     setValues((current) => ({ ...current, bookingReference: reference, surname }))
 
-    if (props.mode === 'guest') {
-      const result = await lookUpGuestBooking({ bookingReference: reference, surname }, props.guestApi)
-      if (!isCurrent()) return
-      if (!result.ok) {
-        dispatch({ type: 'flights-failed', message: result.message })
-        return
-      }
-      dispatch({ type: 'flights-loaded', flights: result.flights })
-      dispatch({ type: 'travellers-loaded', travellers: result.travellers })
-      const onlyTraveller = defaultGuestTravellerId(result.travellers)
-      if (onlyTraveller) dispatch({ type: 'traveller-selected', bookingPassengerId: onlyTraveller })
-      setValues((current) => ({ ...current, flightId: '' }))
-      return
-    }
-
     try {
       const query = `bookingReference=${encodeURIComponent(reference)}&surname=${encodeURIComponent(surname)}`
       // "Whose bag is it?" is optional: if the traveller list cannot be loaded, the original own-bag flow carries on.
-      const travellersRequest: Promise<EligibleTraveller[]> = customerFetch(`/api/customer/lost-report-travellers?${query}`)
+      const travellersRequest: Promise<EligibleTraveller[]> = fetchWithAuth(`/api/customer/lost-report-travellers?${query}`)
         .then(async (travellersResponse) => (travellersResponse.ok ? usableTravellers(await travellersResponse.json()) : []))
         .catch(() => [])
-      const [response, travellers] = await Promise.all([customerFetch(`/api/customer/lost-report-flights?${query}`), travellersRequest])
+      const [response, travellers] = await Promise.all([fetchWithAuth(`/api/customer/lost-report-flights?${query}`), travellersRequest])
       if (!isCurrent()) return
       if (!response.ok) {
         const message = await getResponseMessage(response, 'Eligible flights could not be loaded. Try again.')
@@ -273,9 +222,7 @@ function LostBagReportForm(props: ReportFormProps) {
   async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (submissionPending.current || pageState.submitState === 'submitting') return
-    const errors = isGuest
-      ? validateGuestLostReportForm(values, pageState.travellers, pageState.selectedTravellerId)
-      : validateLostReportForm(values, availableFlights)
+    const errors = validateLostReportForm(values, availableFlights)
     setFieldErrors(errors)
     const fileError = validateLostReportPhoto(photo)
     if (fileError) setPhotoError(fileError)
@@ -283,27 +230,12 @@ function LostBagReportForm(props: ReportFormProps) {
 
     submissionPending.current = true
     dispatch({ type: 'submit-started' })
-    setGuestResult(null)
     try {
-      if (props.mode === 'guest') {
-        // Multipart with the guest DTO's field names: the chosen traveller and that traveller's flight (number + date).
-        const formData = buildGuestLostReportFormData(values, pageState.travellers, pageState.selectedTravellerId, photo)
-        const outcome = await submitGuestLostReport(formData, props.guestApi)
-        if (!outcome.ok) {
-          dispatch({ type: 'submit-failed', message: outcome.message })
-          return
-        }
-        setGuestResult(outcome.result)
-        dispatch({ type: 'submit-succeeded', caseNumber: outcome.result.caseNumber })
-        showPhotoPreview(null)
-        return
-      }
-
       const payload = buildCreateLostReportPayload(values, availableFlights, coTravellerId)
       const requestInit: RequestInit = photo
         ? { method: 'POST', body: buildCreateLostReportFormData(values, availableFlights, photo, coTravellerId) }
         : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
-      const response = await customerFetch('/api/customer/lost-reports', {
+      const response = await fetchWithAuth('/api/customer/lost-reports', {
         ...requestInit,
       })
       if (!response.ok) {
@@ -351,7 +283,6 @@ function LostBagReportForm(props: ReportFormProps) {
   }
 
   function reportAnotherBag() {
-    setGuestResult(null)
     setValues(EMPTY_VALUES)
     setFieldErrors({})
     setPhoto(null)
@@ -389,23 +320,13 @@ function LostBagReportForm(props: ReportFormProps) {
     <main className="passenger-report-page">
       <header className="passenger-report-page__intro">
         <h1>Report a lost bag</h1>
-        {isGuest ? (
-          <p>Tell us about the bag. Staff at every airport search for it. Keep your case number and contact airline staff for updates.</p>
-        ) : (
-          <p>Tell us about the bag. Staff at every airport search for it, and you can follow the case online.</p>
-        )}
+        <p>Tell us about the bag. Staff at every airport search for it, and you can follow the case online.</p>
       </header>
 
       {pageState.submitState === 'success' ? (
         <div className="passenger-report-success-layout">
           <section className="passenger-report-card passenger-report-success" aria-labelledby="report-success-title">
-            {isGuest ? (
-              <div className="passenger-report-success__banner" role="status">
-                {GUEST_SUCCESS_MESSAGE}
-              </div>
-            ) : (
-              <p className="passenger-report-success__eyebrow">Report sent</p>
-            )}
+            <p className="passenger-report-success__eyebrow">Report sent</p>
             <h2 id="report-success-title">You’re all set</h2>
             <p>We’ve opened a case for your bag. Keep your case number to follow the search.</p>
             <div className="passenger-report-success__case-number" aria-label={`Case number ${pageState.caseNumber}`}>
@@ -420,56 +341,38 @@ function LostBagReportForm(props: ReportFormProps) {
               )}
               <dt>Flight</dt>
               <dd>
-                {guestResult
-                  ? `${guestResult.flightNumber}${selectedFlight ? ` · ${selectedFlight.origin} to ${selectedFlight.destination}` : ''} · ${formatFlightDate(guestResult.serviceDate)}`
-                  : selectedFlight
-                    ? `${selectedFlight.flightNumber} · ${selectedFlight.origin} to ${selectedFlight.destination} · ${formatFlightDate(selectedFlight.serviceDate)}`
-                    : 'Selected flight'}
+                {selectedFlight
+                  ? `${selectedFlight.flightNumber} · ${selectedFlight.origin} to ${selectedFlight.destination} · ${formatFlightDate(selectedFlight.serviceDate)}`
+                  : 'Selected flight'}
               </dd>
               <dt>Bag</dt>
               <dd>
-                {PASSENGER_BAG_TYPES.find(([type]) => type === (guestResult?.bagType ?? values.bagType))?.[1]} ·{' '}
-                {PASSENGER_BAG_COLOURS.find(([colour]) => colour === (guestResult?.colour ?? values.colour))?.[1]}
+                {PASSENGER_BAG_TYPES.find(([type]) => type === values.bagType)?.[1]} ·{' '}
+                {PASSENGER_BAG_COLOURS.find(([colour]) => colour === values.colour)?.[1]}
               </dd>
-              {(guestResult ? guestResult.tagNumber : values.tagNumber.trim()) && (
+              {values.tagNumber.trim() && (
                 <>
                   <dt>Tag</dt>
-                  <dd>{guestResult ? guestResult.tagNumber : values.tagNumber.trim()}</dd>
+                  <dd>{values.tagNumber.trim()}</dd>
                 </>
               )}
             </dl>
-            {isGuest ? (
-              <p className="passenger-report-success__note">{GUEST_CONFIRMATION_NOTE}</p>
-            ) : (
-              bagOwnerName && (
-                <p className="passenger-report-success__note">
-                  Save this case number. Your account's My bag cases list includes cases you report and cases linked to your bookings. For
-                  the full details, open it with the case number, your booking reference and your surname.
-                </p>
-              )
+            {bagOwnerName && (
+              <p className="passenger-report-success__note">
+                Save this case number. Your account's My bag cases list includes cases you report and cases linked to your bookings. For the
+                full details, open it with the case number, your booking reference and your surname.
+              </p>
             )}
             <div className="passenger-report-success__actions">
-              {/* Signed in: the authenticated My bag case. Guests: the public read-only tracking page, case number only. */}
-              {caseAccess.openCreatedCase && (
-                <button className="passenger-report-button" type="button" onClick={openCreatedCase}>
-                  {bagOwnerName ? 'Open the case' : 'Open my case'}
-                </button>
-              )}
-              {caseAccess.guestCaseTracking && (
-                <button
-                  className="passenger-report-button"
-                  type="button"
-                  onClick={() => void navigate({ to: '/track-lost-bag', search: { case: pageState.caseNumber } })}
-                >
-                  Check my case
-                </button>
-              )}
+              <button className="passenger-report-button" type="button" onClick={openCreatedCase}>
+                {bagOwnerName ? 'Open the case' : 'Open my case'}
+              </button>
               <button className="passenger-report-button passenger-report-button--secondary" type="button" onClick={reportAnotherBag}>
                 Report another bag
               </button>
             </div>
           </section>
-          <WhatHappensNext isGuest={isGuest} />
+          <WhatHappensNext />
         </div>
       ) : (
         <div className="passenger-report-layout">
@@ -796,16 +699,11 @@ function LostBagReportForm(props: ReportFormProps) {
             </section>
           </form>
           <aside className="passenger-report-sidebar">
-            <WhatHappensNext isGuest={isGuest} />
-            {/* Guests reopen a case through public tracking; signed-in customers keep My bag case. */}
+            <WhatHappensNext />
             <section className="passenger-report-card passenger-report-existing">
               <h2>Already reported?</h2>
-              <p>
-                {isGuest
-                  ? 'Open your case with the case number you were given.'
-                  : 'Open My bag case with your case number, booking reference and surname.'}
-              </p>
-              {caseAccess.checkMyCase ? <Link to="/lost-bag-case">Check my case</Link> : <Link to="/track-lost-bag">Check my case</Link>}
+              <p>Open My bag case with your case number, booking reference and surname.</p>
+              <Link to="/lost-bag-case">Check my case</Link>
             </section>
           </aside>
         </div>
@@ -846,7 +744,7 @@ function Field({ label, error, className, children }: { label: string; error?: s
   )
 }
 
-function WhatHappensNext({ isGuest }: { isGuest: boolean }) {
+function WhatHappensNext() {
   return (
     <section className="passenger-report-card passenger-report-next">
       <h2>What happens next</h2>
@@ -861,11 +759,7 @@ function WhatHappensNext({ isGuest }: { isGuest: boolean }) {
         </li>
         <li>
           <span>3</span>
-          {isGuest ? (
-            <p>If staff find your bag, contact airline staff with your case number for updates and to arrange its collection.</p>
-          ) : (
-            <p>Once staff confirm it is your bag, you choose home, hotel, another address or airport pickup.</p>
-          )}
+          <p>Once staff confirm the bag, you choose home, hotel, another address or airport pickup.</p>
         </li>
         <li>
           <span>4</span>

@@ -24,6 +24,7 @@ import {
 } from '../constants'
 import { useDepartures, useFlight } from '../hooks/useBaggageFlights'
 import { errorMessage, type Airport } from '../hooks/useFoundBags'
+import { useLiveCaseForTag } from '../hooks/useLostReports'
 import { F10Card, FIELD_BOX, Field, FormError, Pill, SelectBox } from './primitives'
 
 const H4 = 'm-0 font-[family-name:Inter,system-ui,sans-serif] text-[22px] font-semibold text-[#14213d]'
@@ -335,6 +336,7 @@ export function FoundBagDetailCard({
   onOpenOwnerCase: () => Promise<void>
 }) {
   const cameOff = useFlight(bag?.flightId)
+  const liveCase = useLiveCaseForTag(bag?.status === 'held' ? bag.tagNumber : null)
 
   if (loading) {
     return (
@@ -402,9 +404,14 @@ export function FoundBagDetailCard({
         </>
       )}
 
-      {canOpenCase && (
+      {/* Offered only once the tag is known to have no live case: an owner who already reported it has one. */}
+      {canOpenCase && liveCase.checked && (
         <>
-          <OpenOwnerCase key={bag.id} onOpen={onOpenOwnerCase} />
+          {liveCase.caseNumber ? (
+            <p className="text-base text-[#677287]">The owner already reported this bag: case {liveCase.caseNumber}.</p>
+          ) : (
+            <OpenOwnerCase key={bag.id} onOpen={onOpenOwnerCase} />
+          )}
           <Separator className="bg-[#d8dce6]" />
         </>
       )}
