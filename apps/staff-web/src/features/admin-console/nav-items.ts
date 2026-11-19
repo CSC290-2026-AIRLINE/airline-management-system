@@ -7,8 +7,10 @@ import {
   ChartColumn,
   ClipboardCheck,
   CreditCard,
+  DoorOpen,
   FileText,
   KeyRound,
+  ListChecks,
   Luggage,
   MessageSquare,
   Monitor,
@@ -76,7 +78,6 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Airport & Onboard',
     items: [
-      { label: 'Check-in & Boarding', icon: UserCheck },
       { label: 'Gate Counter & Devices', icon: Monitor },
       { label: 'Baggage Tracking', icon: Luggage },
       { label: 'Onboard Products', icon: Utensils },
@@ -98,6 +99,13 @@ export const PRICING_ITEMS = [
   { to: '/pricing/taxes-promos', code: 'f04.taxes_promos', label: 'Taxes, Currency & Promos', icon: Percent },
   { to: '/pricing/expenses-payments', code: 'f04.expenses_payments', label: 'Expenses & Payments', icon: Receipt },
   { to: '/pricing/monthly-report', code: 'f04.monthly_report', label: 'Monthly Report', icon: FileText },
+] as const
+
+/** The check-in and gate screens of the Check-in & Boarding feature (F6). */
+export const CHECKIN_ITEMS = [
+  { to: '/check-in/counter', code: 'f06.counter', label: 'Check-in counter', icon: UserCheck },
+  { to: '/check-in/issues', code: 'f06.issues', label: 'Issue list', icon: ListChecks },
+  { to: '/check-in/gate', code: 'f06.gate', label: 'Gate', icon: DoorOpen },
 ] as const
 
 /** The Feature 2 (flight scheduling and network operations) pages. `ownsPrefixes` keeps an item lit on its sub-pages, such as a flight's detail. */
