@@ -119,7 +119,14 @@ const eventInput = {
 const fakeDb = () => ({
   check_in: { create: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() },
   travel_document: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
-  checked_bag: { create: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() },
+  checked_bag: {
+    create: jest.fn(),
+    findUnique: jest.fn(),
+    findFirst: jest.fn(),
+    findMany: jest.fn(),
+    update: jest.fn(),
+    updateMany: jest.fn(),
+  },
   carry_on_check: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
   flight_boarding: { findUnique: jest.fn(), findMany: jest.fn(), upsert: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   boarding_pass: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
@@ -169,6 +176,20 @@ describe('PrismaCheckInRepository', () => {
     db.checked_bag.findFirst.mockResolvedValue({ ...bagRow, tag_number: '0402000001', status: 'tagged' })
     await expect(repo.deleteBag('bag-1')).rejects.toMatchObject({ code: 'INVALID_STATE' })
     expect(db.checked_bag.update).not.toHaveBeenCalled()
+  })
+
+  it('tags a bag only while it has no tag number, and answers the number that is stored', async () => {
+    const { db, repo } = build()
+    db.checked_bag.updateMany.mockResolvedValue({ count: 0 })
+    db.checked_bag.findFirst.mockResolvedValue({ ...bagRow, tag_number: '0402000001', status: 'tagged' })
+    const bag = await repo.tagBagOnce('bag-1', '0402000002')
+    expect(db.checked_bag.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'bag-1', tag_number: null },
+        data: expect.objectContaining({ tag_number: '0402000002', status: 'tagged' }),
+      }),
+    )
+    expect(bag.tag_number).toBe('0402000001')
   })
 
   it('does not find a bag that was removed', async () => {

@@ -231,6 +231,16 @@ describe('CounterService.tagBag', () => {
     const again = await counter.tagBag(staff, v.bags[0].id)
     expect(again.bag.tagNumber).toBe(first.bag.tagNumber)
   })
+
+  it('two tag requests at the same moment print one tag number, the one the bag keeps', async () => {
+    const { counter, store } = build()
+    const id = await pimId(store)
+    const v = await weigh(counter, id, 15)
+    const [a, b] = await Promise.all([counter.tagBag(staff, v.bags[0].id), counter.tagBag(staff, v.bags[0].id)])
+    const stored = (await store.getBag(v.bags[0].id))!.tag_number
+    expect(a.bag.tagNumber).toBe(stored)
+    expect(b.bag.tagNumber).toBe(stored)
+  })
 })
 
 describe('CounterService.removeBag', () => {

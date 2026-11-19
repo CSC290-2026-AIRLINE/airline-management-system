@@ -386,6 +386,12 @@ export class CheckInStore implements CheckInRepository {
     return next
   }
 
+  async tagBagOnce(id: string, tagNumber: string): Promise<CheckedBagRecord> {
+    const record = this.bags.get(id)
+    if (!record) throw new CheckInError(404, 'NOT_FOUND', 'Bag not found')
+    return record.tag_number ? record : this.updateBag(id, { tag_number: tagNumber, status: 'tagged' })
+  }
+
   /** Soft delete: a tagged bag is never removed, the row stays for the audit. */
   async deleteBag(id: string): Promise<CheckedBagRecord> {
     const record = this.bags.get(id)

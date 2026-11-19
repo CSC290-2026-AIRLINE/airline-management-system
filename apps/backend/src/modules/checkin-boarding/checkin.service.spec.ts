@@ -116,6 +116,26 @@ describe('CheckInService.start', () => {
     expect(back.id).not.toBe(out.id)
   })
 
+  it('two flights open at once: once the first has its boarding pass, the second is the one to check in', async () => {
+    const { svc } = build()
+    const anna = BOOKINGS.find((b) => b.pnr === 'ER224F')!
+    addBooking({ ...anna, flightId: 'flt-fy318' })
+    const first = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    expect(first.flight.id).toBe('flt-fy204')
+    // Not finished yet: coming back resumes the same check-in.
+    expect((await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })).id).toBe(first.id)
+    await svc.submitDocument(cust, first.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    await svc.complete(cust, first.id)
+    const second = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    expect(second.flight.id).toBe('flt-fy318')
+    expect(second.status).toBe('started')
+    // The fixture asks a visa for Korea.
+    await svc.submitDocument(cust, second.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2(), visaNumber: 'V1234567' })
+    await svc.complete(cust, second.id)
+    // Both done: the passenger gets the pass of the flight that leaves first.
+    expect((await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })).id).toBe(first.id)
+  })
+
   it('a family on one PNR is told apart by the first name', async () => {
     const { svc } = build()
     const anna = BOOKINGS.find((b) => b.pnr === 'ER224F')!
@@ -981,6 +1001,23 @@ describe('CheckInService.complete', () => {
     const { svc } = build()
     const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
     await expect(svc.complete(cust, c.id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+  })
+})
+
+describe('a closed gate', () => {
+  it('no check-in starts and no boarding pass is issued once the gate of the flight is closed', async () => {
+    const { svc, store, clock } = build()
+    const anna = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, anna.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    // The agent closed the gate early: the window is still open.
+    await store.updateFlightBoarding('flt-fy204', { closed_at: clock.now(), closed_by: 'staff-demo', boarded_count: 0 })
+    const refused = { code: 'NOT_ELIGIBLE', details: { reason: 'gate_closed' } }
+    await expect(svc.complete(cust, anna.id)).rejects.toMatchObject(refused)
+    const booked = BOOKINGS.find((b) => b.pnr === 'ER224F')!
+    addBooking({ ...booked, pnr: 'NW224N', bookingPassengerId: 'bp-nw224n', passengerId: 'pax-nw224n', lastName: 'Nilsson' })
+    await expect(svc.start(cust, { pnr: 'NW224N', lastName: 'Nilsson' })).rejects.toMatchObject(refused)
+    // She can still open what she started.
+    await expect(svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })).resolves.toMatchObject({ id: anna.id })
   })
 })
 

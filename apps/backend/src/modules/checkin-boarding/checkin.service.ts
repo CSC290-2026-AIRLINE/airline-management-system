@@ -134,6 +134,7 @@ export class CheckInService {
       }
       return this.viewOf(await this.refreshHold(actor, existing))
     }
+    await this.assertGateOpen(flight.id)
 
     const record = await this.store.createCheckIn({
       booking_passenger_id: booking.bookingPassengerId,
@@ -352,6 +353,7 @@ export class CheckInService {
     }
     const flight = await this.flightOf(record.flight_id)
     this.assertWindowOpen(flight, await this.windowOf(flight))
+    await this.assertGateOpen(flight.id)
 
     const booking = await this.bookingOf(record)
     const seat =
@@ -443,6 +445,15 @@ export class CheckInService {
       throw new CheckInError(409, 'ON_HOLD', 'Security is holding this check-in')
     }
     if (record.status !== 'started' && record.status !== 'checked_in') throw invalidState(message)
+  }
+
+  /**
+   * Nothing stops an agent from closing a gate early. A pass issued after that could never board, and its passenger
+   * would stay "checked in" for good: the no-shows are written once, at the close.
+   */
+  private async assertGateOpen(flightId: string): Promise<void> {
+    if (!(await this.store.flightBoarding(flightId))?.closed_at) return
+    throw new CheckInError(409, 'NOT_ELIGIBLE', 'The gate of this flight is closed', { reason: 'gate_closed' })
   }
 
   private assertWindowOpen(flight: FlightRecord, window: Window): void {
@@ -596,8 +607,8 @@ export class CheckInService {
   }
 
   /**
-   * Of a passenger's legs, the flight that is open for check-in now; else the next one to depart. A cancelled
-   * flight is only picked when no other leg flies.
+   * Of a passenger's legs, the flight that is open for check-in now and not checked in yet; else the next one to
+   * depart. A cancelled flight is only picked when no other leg flies.
    */
   private async legToCheckIn(
     all: Array<{ booking: BookingPassenger; flight: FlightRecord }>,
@@ -606,8 +617,16 @@ export class CheckInService {
     const flying = all.filter((leg) => leg.flight.status !== 'cancelled')
     const legs = flying.length > 0 ? flying : all
     legs.sort((a, b) => a.flight.depAt.getTime() - b.flight.depAt.getTime())
-    for (const leg of legs) if (isWindowOpen(now, await this.windowOf(leg.flight))) return leg
-    return legs.find((leg) => leg.flight.depAt.getTime() >= now.getTime()) ?? legs[legs.length - 1]
+    // Two flights within a day are open together: one that already has its boarding pass gives way to the one that
+    // still needs check-in. When every open flight is done, the passenger sees the pass of the first.
+    let done: (typeof legs)[number] | undefined
+    for (const leg of legs) {
+      if (!isWindowOpen(now, await this.windowOf(leg.flight))) continue
+      const checkIn = await this.store.findActiveCheckInByBookingPassenger(leg.booking.bookingPassengerId, leg.booking.flightId)
+      if (!checkIn || !['checked_in', 'boarded', 'no_show'].includes(checkIn.status)) return leg
+      done ??= leg
+    }
+    return done ?? legs.find((leg) => leg.flight.depAt.getTime() >= now.getTime()) ?? legs[legs.length - 1]
   }
 
   private async bookingOf(record: CheckInRecord): Promise<BookingPassenger> {

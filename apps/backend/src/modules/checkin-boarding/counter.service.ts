@@ -254,10 +254,7 @@ export class CounterService {
     }
 
     const airlineNumber = await this.settings.bagTagAirlineNumber()
-    const tagged = await this.store.updateBag(bagId, {
-      tag_number: bagTagNumber(airlineNumber, await this.store.nextBagTagSeq()),
-      status: 'tagged',
-    })
+    const tagged = await this.store.tagBagOnce(bagId, bagTagNumber(airlineNumber, await this.store.nextBagTagSeq()))
     await this.record(actor, 'checked_bag.tag', 'checked_bag', bagId, `bag tagged ${tagged.tag_number}`)
     return { bag: toBagView(tagged), view: await this.detail(actor, record.id) }
   }

@@ -53,6 +53,8 @@ export interface CheckInRepository {
   /** Feature 10 looks a bag up by the number on its tag. */
   findBagByTag(tagNumber: string): Promise<CheckedBagRecord | null>
   updateBag(id: string, patch: UpdateBagPatch): Promise<CheckedBagRecord>
+  /** Tags a bag that has no tag number yet and answers the bag as it is stored: a second request keeps the first number. */
+  tagBagOnce(id: string, tagNumber: string): Promise<CheckedBagRecord>
   /** Soft delete: a tagged bag is never removed, the row stays for the audit. */
   deleteBag(id: string): Promise<CheckedBagRecord>
   nextBagTagSeq(): Promise<number>
