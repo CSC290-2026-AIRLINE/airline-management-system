@@ -75,7 +75,7 @@ export class GateService {
   async gates(airportCode: string, all = false): Promise<GateInfo[]> {
     const code = airportCode.trim().toUpperCase()
     const gates = (await this.store.listGates()).filter((gate) => gate.airport_code.toUpperCase() === code && (all || gate.is_active))
-    const flights = await this.openFlightsByGate()
+    const flights = await this.openFlightsByGate(true)
     return gates
       .sort((a, b) => a.code.localeCompare(b.code, 'en', { numeric: true }))
       .map((gate) => toGateInfo(gate, flights.get(gate.id) ?? null))
@@ -143,7 +143,7 @@ export class GateService {
       before: { code: gate.code, isActive: gate.is_active },
       after: { code: updated.code, isActive },
     })
-    const flights = await this.openFlightsByGate()
+    const flights = await this.openFlightsByGate(true)
     return toGateInfo(updated, flights.get(updated.id) ?? null)
   }
 
@@ -561,19 +561,25 @@ export class GateService {
   }
 
   /**
-   * The flights that still board, by gate id. A closed gate is done, and a flight that was cancelled, departed or
-   * arrived frees its gate even when nobody closed it.
+   * The flights that still board, by gate id: these hold their gate. A closed gate is done, and a flight that was
+   * cancelled, departed or arrived frees its gate even when nobody closed it.
+   *
+   * With `withLeft` (what the gate screens show) a gate with no boarding flight shows the flight that left it and was
+   * never closed, so the agent can still open that flight and close it: the no-shows and the offloads are written then.
    */
-  private async openFlightsByGate(): Promise<Map<string, NonNullable<GateInfo['flight']>>> {
+  private async openFlightsByGate(withLeft = false): Promise<Map<string, NonNullable<GateInfo['flight']>>> {
     const boardings = await this.store.openFlightBoardings()
     const byId = new Map((await this.flightProvider.byIds(boardings.map((b) => b.flight_id))).map((flight) => [flight.id, flight]))
-    const flights = new Map<string, NonNullable<GateInfo['flight']>>()
-    for (const boarding of boardings) {
-      const flight = byId.get(boarding.flight_id)
-      if (!flight || !this.stillBoards(flight)) continue
-      flights.set(boarding.gate_id, { id: flight.id, flightNumber: flight.flightNumber, depAt: flight.depAt.toISOString() })
+    const boarding = new Map<string, NonNullable<GateInfo['flight']>>()
+    const left = new Map<string, NonNullable<GateInfo['flight']>>()
+    for (const row of boardings) {
+      const flight = byId.get(row.flight_id)
+      // A cancelled flight has no gate to close and nobody on it is a no-show.
+      if (!flight || flight.status === 'cancelled') continue
+      const at = this.stillBoards(flight) ? boarding : left
+      at.set(row.gate_id, { id: flight.id, flightNumber: flight.flightNumber, depAt: flight.depAt.toISOString() })
     }
-    return flights
+    return withLeft ? new Map([...left, ...boarding]) : boarding
   }
 
   /** The flight that boards at the gate now, if any. */

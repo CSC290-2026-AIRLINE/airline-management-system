@@ -645,4 +645,25 @@ describe('CounterService and a cancelled booking', () => {
     expect(payments.charges).toHaveLength(0)
     expect((await store.getCheckIn(id))?.status).toBe('cancelled')
   })
+
+  it('removing a bag, clearing a flag and checking a visa are refused on a cancelled check-in too', async () => {
+    const { counter, store } = build()
+    const id = await pimId(store)
+    const pim = BOOKINGS.find((b) => b.pnr === 'EC224G')!
+    const weighed = await counter.weighBag(staff, id, bag(10))
+    const document = await store.getDocumentByCheckIn(id)
+    if (!document) throw new Error('the seeded document is missing')
+    await store.updateDocument(document.id, { name_mismatch: true })
+    pim.cancelled = true
+    try {
+      await expect(counter.removeBag(staff, weighed.bags[0].id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+      await expect(counter.checkVisa(staff, document.id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+      await expect(counter.clearMismatch(staff, document.id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+    } finally {
+      pim.cancelled = false
+    }
+    expect((await store.getBag(weighed.bags[0].id))?.deleted_at ?? null).toBeNull()
+    expect((await store.getDocument(document.id))?.visa_checked_at ?? null).toBeNull()
+    expect((await store.getDocument(document.id))?.name_mismatch_cleared_at ?? null).toBeNull()
+  })
 })

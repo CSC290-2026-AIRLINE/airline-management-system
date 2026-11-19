@@ -215,6 +215,7 @@ export class CounterService {
     if (bag.tag_number !== null || bag.status !== 'weighed') throw invalidState('A tagged bag cannot be removed')
     if (bag.excess_payment_id) throw invalidState('A paid bag cannot be removed; refund through Feature 5')
     const record = await this.requireCheckIn(actor, bag.check_in_id)
+    this.assertNotCancelled(record)
     await this.store.deleteBag(bagId)
 
     const booking = await this.bookingOf(record)
@@ -344,6 +345,7 @@ export class CounterService {
     const staffId = this.staffIdOf(actor)
     const document = await this.store.getDocument(documentId)
     if (!document) throw notFound('Travel document')
+    this.assertNotCancelled(await this.requireCheckIn(actor, document.check_in_id))
     const nameUncleared = document.name_mismatch && !document.name_mismatch_cleared_at
     const differencesUncleared = document.profile_differences.length > 0 && !document.profile_differences_cleared_at
     if (!nameUncleared && !differencesUncleared) throw invalidState('There is nothing to clear on this document')
@@ -367,6 +369,7 @@ export class CounterService {
     const staffId = this.staffIdOf(actor)
     const document = await this.store.getDocument(documentId)
     if (!document) throw notFound('Travel document')
+    this.assertNotCancelled(await this.requireCheckIn(actor, document.check_in_id))
     await this.store.updateDocument(documentId, { visa_checked_by: staffId, visa_checked_at: this.clock.now() })
     await this.record(actor, 'travel_document.check_visa', 'travel_document', documentId, 'visa checked')
     return this.detail(actor, document.check_in_id)

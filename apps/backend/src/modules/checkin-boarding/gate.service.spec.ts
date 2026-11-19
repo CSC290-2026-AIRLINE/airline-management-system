@@ -447,7 +447,6 @@ describe('GateService.setGateActive', () => {
     const flight = FLIGHTS.find((f) => f.id === 'flt-fy204')!
     flight.status = status as typeof flight.status
     try {
-      expect((await gate.gates('BKK')).find((g) => g.id === 'gate-a1')?.flight).toBeNull()
       expect(await gate.setGateActive(staff, 'gate-a1', false)).toMatchObject({ isActive: false })
       await gate.setGateActive(staff, 'gate-a1', true)
       expect(await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a1' })).toMatchObject({ gate: { code: 'A1' } })
@@ -460,10 +459,36 @@ describe('GateService.setGateActive', () => {
     const { gate, clock } = build()
     // FY 204 left at 03:25Z; no job has written "departed" yet and nobody closed gate A1.
     clock.set(new Date('2026-11-11T03:30:00.000Z'))
-    expect((await gate.gates('BKK')).find((g) => g.id === 'gate-a1')?.flight).toBeNull()
     expect(await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a1' })).toMatchObject({ gate: { code: 'A1' } })
     await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a2' })
     expect(await gate.setGateActive(staff, 'gate-a1', false)).toMatchObject({ isActive: false })
+  })
+
+  it('a flight that left and was never closed still shows at its gate, so the agent can open it and close it', async () => {
+    const { gate, store, clock } = build()
+    clock.set(new Date('2026-11-11T03:30:00.000Z'))
+    const a1 = async () => (await gate.gates('BKK')).find((g) => g.id === 'gate-a1')?.flight ?? null
+    expect(await a1()).toMatchObject({ id: 'flt-fy204' })
+    // A flight that still boards wins the gate; the one that left comes back once that flight moved on.
+    await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a1' })
+    expect(await a1()).toMatchObject({ id: 'flt-fy318' })
+    await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a2' })
+    expect(await a1()).toMatchObject({ id: 'flt-fy204' })
+    await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
+    await gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })
+    expect((await store.getCheckIn(await idOf(store, 'SA224B')))?.status).toBe('no_show')
+    expect(await a1()).toBeNull()
+  })
+
+  it('a cancelled flight never shows at its gate: there is nothing to close', async () => {
+    const { gate } = build()
+    const flight = FLIGHTS.find((f) => f.id === 'flt-fy204')!
+    flight.status = 'cancelled'
+    try {
+      expect((await gate.gates('BKK')).find((g) => g.id === 'gate-a1')?.flight).toBeNull()
+    } finally {
+      flight.status = 'scheduled'
+    }
   })
 
   it('the open flights of the gates are read in one go, not one flight at a time', async () => {

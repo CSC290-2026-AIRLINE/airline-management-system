@@ -260,6 +260,31 @@ describe('CheckInService.start', () => {
     expect(out.flight.id).toBe('flt-fy318')
   })
 
+  it('a check-in started on a leg that was cancelled since is cancelled when the passenger comes back', async () => {
+    const { svc, store } = build()
+    const outbound = leg('XX100F', 'flt-fy204')
+    addBooking(outbound)
+    addBooking(leg('XX100F', 'flt-fy318'))
+    const first = await svc.start(cust, { pnr: 'XX100F', lastName: 'Legs' })
+    expect(first.flight.id).toBe('flt-fy204')
+    // Feature 3 cancels the outbound leg; nobody tells feature 6.
+    outbound.cancelled = true
+    outbound.paid = false
+    const second = await svc.start(cust, { pnr: 'XX100F', lastName: 'Legs' })
+    expect(second.flight.id).toBe('flt-fy318')
+    expect((await store.getCheckIn(first.id))?.status).toBe('cancelled')
+  })
+
+  it('a refused cancelled booking leaves no open check-in behind', async () => {
+    const { svc, store } = build()
+    const only = leg('XX100G', 'flt-fy204')
+    addBooking(only)
+    const first = await svc.start(cust, { pnr: 'XX100G', lastName: 'Legs' })
+    only.cancelled = true
+    await expect(svc.start(cust, { pnr: 'XX100G', lastName: 'Legs' })).rejects.toMatchObject({ details: { reason: 'booking_cancelled' } })
+    expect((await store.getCheckIn(first.id))?.status).toBe('cancelled')
+  })
+
   it('the payment is checked on the flight that is checked in, not on another leg', async () => {
     const { svc } = build()
     addBooking(leg('XX100D', 'flt-fy204', { paid: false }))

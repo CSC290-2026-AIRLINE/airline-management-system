@@ -92,10 +92,19 @@ export class CheckInService {
     if (!passenger) throw notFound('Booking')
     this.assertBookingOwner(actor, passenger, 'Booking')
 
+    const mine = coupons.filter((b) => b.passengerId === passenger.passengerId)
+    const legs = await Promise.all(mine.map(async (booking) => ({ booking, flight: await this.flightOf(booking.flightId) })))
+    // Features 2 and 3 do not call us when they cancel: a check-in that was started on a leg cancelled since is
+    // cancelled here, where the passenger meets it again.
+    for (const leg of legs) {
+      if (!leg.booking.cancelled && leg.flight.status !== 'cancelled') continue
+      const stale = await this.store.findActiveCheckInByBookingPassenger(leg.booking.bookingPassengerId, leg.booking.flightId)
+      if (stale) await this.refreshCancelled(actor, stale)
+    }
     // A cancelled leg is never checked in, and the payment is the one of the leg that is.
-    const legs = coupons.filter((b) => b.passengerId === passenger.passengerId && !b.cancelled)
-    if (legs.length === 0) throw bookingCancelled()
-    const { booking, flight } = await this.flightToCheckIn(legs)
+    const live = legs.filter((leg) => !leg.booking.cancelled)
+    if (live.length === 0) throw bookingCancelled()
+    const { booking, flight } = await this.legToCheckIn(live)
     return this.open(actor, booking, flight)
   }
 
@@ -583,12 +592,13 @@ export class CheckInService {
   }
 
   /**
-   * Of a passenger's coupons, the flight that is open for check-in now; else the next one to depart. A cancelled
+   * Of a passenger's legs, the flight that is open for check-in now; else the next one to depart. A cancelled
    * flight is only picked when no other leg flies.
    */
-  private async flightToCheckIn(coupons: BookingPassenger[]): Promise<{ booking: BookingPassenger; flight: FlightRecord }> {
+  private async legToCheckIn(
+    all: Array<{ booking: BookingPassenger; flight: FlightRecord }>,
+  ): Promise<{ booking: BookingPassenger; flight: FlightRecord }> {
     const now = this.clock.now()
-    const all = await Promise.all(coupons.map(async (booking) => ({ booking, flight: await this.flightOf(booking.flightId) })))
     const flying = all.filter((leg) => leg.flight.status !== 'cancelled')
     const legs = flying.length > 0 ? flying : all
     legs.sort((a, b) => a.flight.depAt.getTime() - b.flight.depAt.getTime())
