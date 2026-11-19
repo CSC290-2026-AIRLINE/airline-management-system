@@ -350,8 +350,13 @@ async function clearCheckIns(prisma: PrismaClient, flightId: string, flightNumbe
     console.warn(`seed: ${flightNumber} keeps its check-ins, feature 10 has found one of its bags`)
     return
   }
+  // boarding_event is append-only (a trigger refuses UPDATE and DELETE) and its rows point at the passes, so a flight
+  // that was scanned at the gate keeps its check-ins too.
+  if ((await prisma.boarding_event.count({ where: { flight_id: flightId } })) > 0) {
+    console.warn(`seed: ${flightNumber} keeps its check-ins, it has boarding events, which cannot be deleted`)
+    return
+  }
   await prisma.$transaction([
-    prisma.boarding_event.deleteMany({ where: { flight_id: flightId } }),
     prisma.boarding_pass.deleteMany({ where: ofCheckIn }),
     prisma.checked_bag.deleteMany({ where: ofCheckIn }),
     prisma.carry_on_check.deleteMany({ where: ofCheckIn }),
