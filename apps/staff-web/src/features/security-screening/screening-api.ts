@@ -151,6 +151,7 @@ export function mapCounts(queue: ApiQueue): Record<Filter, number> {
     'Decided today': queue.counts.decided,
   }
 }
+const sameText = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.toUpperCase() === b.toUpperCase()
 function comparison(passenger: ApiIdentity, entry: ApiIdentity | null): Comparison[] {
   const text = (value: string | null | undefined) => value || 'Not recorded'
   const gender = (value: string | null | undefined) =>
@@ -193,12 +194,13 @@ export function mapDetail(detail: ApiDetail): ScreeningRecord {
   return {
     ...mapQueueItem(detail, detail.now),
     comparison: comparison(detail.snapshot.passenger, detail.snapshot.entry),
+    // Names, nationalities and passport numbers are compared without case: the watchlist stores them upper case.
     comparisonMatches: [
-      detail.snapshot.passenger.firstName === detail.snapshot.entry?.firstName &&
-        detail.snapshot.passenger.lastName === detail.snapshot.entry?.lastName,
+      sameText(detail.snapshot.passenger.firstName, detail.snapshot.entry?.firstName) &&
+        sameText(detail.snapshot.passenger.lastName, detail.snapshot.entry?.lastName),
       !!detail.snapshot.passenger.dateOfBirth && detail.snapshot.passenger.dateOfBirth === detail.snapshot.entry?.dateOfBirth,
-      !!detail.snapshot.passenger.nationality && detail.snapshot.passenger.nationality === detail.snapshot.entry?.nationality,
-      !!detail.snapshot.passenger.passportNumber && detail.snapshot.passenger.passportNumber === detail.snapshot.entry?.passportNumber,
+      sameText(detail.snapshot.passenger.nationality, detail.snapshot.entry?.nationality),
+      sameText(detail.snapshot.passenger.passportNumber, detail.snapshot.entry?.passportNumber),
       !!detail.snapshot.passenger.gender && detail.snapshot.passenger.gender === detail.snapshot.entry?.gender,
     ],
     booking: detail.booking.reference ?? 'Not connected',
