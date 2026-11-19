@@ -603,7 +603,8 @@ export class GateService {
 
   private async offloadBags(checkInId: string): Promise<void> {
     for (const bag of await this.store.listBags(checkInId)) {
-      if (bag.status !== 'offloaded') await this.store.updateBag(bag.id, { status: 'offloaded' })
+      // A bag that was weighed and never tagged was not accepted for the flight: nothing to offload.
+      if (bag.status === 'tagged') await this.store.updateBag(bag.id, { status: 'offloaded' })
     }
   }
 

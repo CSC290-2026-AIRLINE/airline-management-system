@@ -605,6 +605,17 @@ describe('GateService head-count and close', () => {
     await expect(counter.removeBag(staff, tagged.bag.id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
   })
 
+  it('a no-show with a weighed bag that never got a tag does not stop the gate close', async () => {
+    const { gate, counter, store } = build()
+    const pim = await idOf(store, 'EC224G')
+    const weighed = await counter.weighBag(staff, pim, { weightKg: 30, lengthCm: 60, widthCm: 40, heightCm: 20 })
+    await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
+    await expect(gate.closeGate(staff, 'flt-fy204', {})).resolves.toMatchObject({ closedAt: expect.any(String) })
+    expect((await store.getCheckIn(pim))?.status).toBe('no_show')
+    // It was never accepted for the flight, so there is nothing to offload.
+    expect((await store.getBag(weighed.bags[0].id))?.status).toBe('weighed')
+  })
+
   it('closing the gate frees the seat of a held passenger with a pass', async () => {
     const { gate, store, seats } = build()
     const dana = BOOKINGS.find((b) => b.pnr === 'HD224H')!

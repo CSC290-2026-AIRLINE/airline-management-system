@@ -380,6 +380,8 @@ export class CheckInStore implements CheckInRepository {
     const record = this.bags.get(id)
     if (!record) throw new CheckInError(404, 'NOT_FOUND', 'Bag not found')
     const next = { ...record, ...patch, updated_at: this.now() }
+    // The database refuses it too (checked_bag_check2): only a bag with a tag number leaves `weighed`.
+    if (next.status !== 'weighed' && next.tag_number === null) throw new Error('A bag with no tag number stays weighed')
     this.bags.set(id, next)
     return next
   }

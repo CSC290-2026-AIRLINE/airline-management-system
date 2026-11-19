@@ -160,7 +160,7 @@ describe('CheckInStore', () => {
       excess_fee: 0,
       weighed_by: 'staff-demo',
     })
-    await s.updateBag(offloaded.id, { status: 'offloaded' })
+    await s.updateBag(offloaded.id, { tag_number: '0402000002', status: 'offloaded' })
     expect(await failureOf(() => s.deleteBag(offloaded.id))).toMatchObject({ code: 'INVALID_STATE', status: 409 })
     expect(await s.listBags(checkIn.id)).toHaveLength(2)
   })

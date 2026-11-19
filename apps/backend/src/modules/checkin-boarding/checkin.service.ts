@@ -372,7 +372,11 @@ export class CheckInService {
       boarding_group: group,
     })
     // A concurrent complete may have issued the pass first: read it back so both callers see the same one.
-    const pass = (await this.store.passesForCheckIn(record.id))[0]
+    let pass = (await this.store.passesForCheckIn(record.id))[0]
+    // Each of the two may also have picked a seat. The seat row is what the flight sells, so the pass follows it;
+    // a pass left on the released seat would share it with the next passenger.
+    const held = await this.seats.assigned(record.booking_passenger_id, record.flight_id)
+    if (held && held.seatCode !== pass.seat_code) pass = await this.store.updatePass(pass.id, { seat_code: held.seatCode })
     const updated = await this.store.updateCheckIn(record.id, { status: 'checked_in', checked_in_at: this.clock.now() })
     await this.notify.send('boarding_pass_issued', { checkInId: record.id, reference: pass.reference, flightNumber: flight.flightNumber })
     await this.notify.send('check_in_completed', { checkInId: record.id, reference: pass.reference, flightNumber: flight.flightNumber })

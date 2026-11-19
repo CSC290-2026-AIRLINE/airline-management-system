@@ -402,6 +402,29 @@ describe('CheckInService cancellation', () => {
     expect((await store.getCheckIn(pim.id))?.status).toBe('cancelled')
   })
 
+  it('a cancelled flight leaves a weighed bag with no tag as it is, and still tells the passenger', async () => {
+    const { svc, store, notify } = build()
+    const pim = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.booking_passenger_id === 'bp-ec224g')!
+    const bag = await store.createBag({
+      check_in_id: pim.id,
+      weight_kg: 30,
+      excess_kg: 10,
+      rate_per_kg: 500,
+      excess_fee: 5000,
+      weighed_by: 'staff-demo',
+    })
+    const sent = jest.spyOn(notify, 'send')
+    const flight = FLIGHTS.find((f) => f.id === 'flt-fy204')!
+    flight.status = 'cancelled'
+    try {
+      expect((await svc.get(staff, pim.id)).status).toBe('cancelled')
+    } finally {
+      flight.status = 'scheduled'
+    }
+    expect((await store.getBag(bag.id))?.status).toBe('weighed')
+    expect(sent).toHaveBeenCalledWith('check_in_cancelled', expect.objectContaining({ checkInId: pim.id }))
+  })
+
   it('a cancelled booking cancels the check-in on its next read', async () => {
     const { svc, store } = build()
     const nok = (await store.listCheckInsByFlight('flt-fy204')).find((c) => c.booking_passenger_id === 'bp-pl224a')!
@@ -888,6 +911,21 @@ describe('CheckInService.complete', () => {
     expect(p.qrPayload).toBe(p.reference)
     expect((await svc.get(cust, c.id)).status).toBe('checked_in')
     expect((await store.getCheckIn(c.id))!.checked_in_at).toEqual(new Date(DEMO_NOW))
+  })
+
+  it('two completes at the same moment leave one pass, and it shows the seat the passenger really holds', async () => {
+    const { svc, store, seats } = build()
+    const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+    const [a, b] = await Promise.all([svc.complete(cust, c.id), svc.complete(cust, c.id)])
+    expect(a.reference).toBe(b.reference)
+    const record = (await store.getCheckIn(c.id))!
+    const held = await seats.assigned(record.booking_passenger_id, record.flight_id)
+    const passes = await store.passesForCheckIn(c.id)
+    expect(passes).toHaveLength(1)
+    // Otherwise the seat on the pass is free again and goes to the next passenger as well.
+    expect(passes[0].seat_code).toBe(held!.seatCode)
+    expect((await svc.boardingPass(cust, c.id)).seat).toBe(held!.seatCode)
   })
 
   it('a premium economy passenger who picks no seat gets a free one in their cabin', async () => {

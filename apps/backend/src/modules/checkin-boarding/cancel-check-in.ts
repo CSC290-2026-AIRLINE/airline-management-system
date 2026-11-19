@@ -16,7 +16,7 @@ export async function cancelCheckIn(
 ): Promise<CheckInRecord> {
   const cancelled = await deps.store.cancelCheckIn(record.id)
   for (const bag of await deps.store.listBags(record.id)) {
-    if (bag.status !== 'offloaded') await deps.store.updateBag(bag.id, { status: 'offloaded' })
+    if (bag.status === 'tagged') await deps.store.updateBag(bag.id, { status: 'offloaded' })
   }
   await deps.notify.send('check_in_cancelled', { checkInId: record.id, flightNumber: input.flightNumber, reason: input.why })
   await deps.audit.record({
