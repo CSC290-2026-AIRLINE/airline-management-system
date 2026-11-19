@@ -18,11 +18,11 @@ interface ScreenMock {
 }
 
 interface TxMock {
-  role: { create: jest.Mock; delete: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }
+  role: { create: jest.Mock; delete: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock; upsert: jest.Mock }
   role_screen: { deleteMany: jest.Mock; createMany: jest.Mock; findMany: jest.Mock }
   audit_log: { create: jest.Mock }
   screen: ScreenMock
-  staff: { count: jest.Mock }
+  staff: { count: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock }
 }
 
 interface DbMock {
@@ -41,11 +41,18 @@ function screenMock(): ScreenMock {
 
 function makeDb(): { db: DbMock; svc: AdminConsoleService; tx: TxMock; clock: SimulationClock } {
   const tx: TxMock = {
-    role: { create: jest.fn(), delete: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn() },
+    role: {
+      create: jest.fn(),
+      delete: jest.fn(),
+      findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      upsert: jest.fn().mockResolvedValue({ id: 'r-no-access', code: 'system.no_access', name: 'No access' }),
+    },
     role_screen: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn() },
     audit_log: { create: jest.fn().mockResolvedValue({ id: 'a1', seq: 42n }) },
     screen: screenMock(),
-    staff: { count: jest.fn() },
+    // No deleted account points at the role unless a test says so.
+    staff: { count: jest.fn(), findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
   }
   const db: DbMock = {
     screen: screenMock(),
@@ -53,7 +60,7 @@ function makeDb(): { db: DbMock; svc: AdminConsoleService; tx: TxMock; clock: Si
     role_screen: { findMany: jest.fn() },
     staff: { groupBy: jest.fn(), count: jest.fn(), findFirst: jest.fn() },
     audit_log: {
-      findMany: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn(),
       create: jest.fn().mockResolvedValue({ id: 'audit-2', seq: 43n }),
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -185,6 +192,36 @@ describe('AdminConsoleService.registerSelfScreens (startup sync)', () => {
     expect(rows[1].summary).toMatch(/Turned off screen Old report/)
     expect(rows[1].after).toMatchObject({ is_active: false })
   })
+
+  it('leaves a screen an admin added by hand alone', async () => {
+    const { db, svc } = makeDb()
+    // The admin added `f15.extra_report` through POST /admin/screens — the audit log says an admin owns it.
+    db.audit_log.findMany.mockResolvedValue([{ entity_id: 's-admin', action: 'create' }])
+    db.screen.findUnique.mockResolvedValue(null)
+    db.screen.create.mockResolvedValue(SCREEN({ id: 's-new', code: 'f15.role_access', name: 'Role access', kind: 'admin' }))
+    db.screen.findMany.mockResolvedValue([SCREEN({ id: 's-admin', code: 'f15.extra_report', name: 'Extra report' })])
+
+    await svc.registerSelfScreens([{ code: 'f15.role_access', name: 'Role access', kind: 'admin', feature_no: '15' }])
+
+    // The feature never listed it, so it is not the feature's to turn off.
+    expect(db.screen.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 's-admin' }, data: expect.objectContaining({ is_active: false }) }),
+    )
+  })
+
+  it('keeps the name an admin gave a screen', async () => {
+    const { db, svc } = makeDb()
+    // The admin renamed `f15.audit_log` — the audit log says so.
+    db.audit_log.findMany.mockResolvedValue([{ entity_id: 's2', action: 'update' }])
+    db.screen.findUnique.mockResolvedValue(SCREEN({ id: 's2', code: 'f15.audit_log', name: 'Audit trail' }))
+    db.screen.findMany.mockResolvedValue([])
+    db.screen.update.mockResolvedValue(SCREEN({ id: 's2', code: 'f15.audit_log', name: 'Audit trail' }))
+
+    await svc.registerSelfScreens([{ code: 'f15.audit_log', name: 'Audit log', kind: 'admin', feature_no: '15' }])
+
+    // The code registration must not write the name back over the admin's.
+    expect(db.screen.update).not.toHaveBeenCalled()
+  })
 })
 
 describe('AdminConsoleService.registerScreenByAdmin (POST /admin/screens)', () => {
@@ -196,7 +233,7 @@ describe('AdminConsoleService.registerScreenByAdmin (POST /admin/screens)', () =
     tx.screen.create.mockResolvedValue(SCREEN({ id: 's9', code: 'f05.refunds', name: 'Refunds', feature_no: '05', kind: 'assignable' }))
     const res = await svc.registerScreenByAdmin(ADMIN, BODY)
     expect(db.$transaction).toHaveBeenCalledTimes(1)
-    expect(tx.screen.create.mock.calls[0][0].data).toEqual({ code: 'f05.refunds', name: 'Refunds', kind: 'assignable', feature_no: '05' })
+    expect(tx.screen.create.mock.calls[0][0].data).toEqual({ code: 'f05.refunds', name: 'Refunds', kind: 'assignable', feature_no: '5' })
     expect(tx.audit_log.create.mock.calls[0][0].data).toMatchObject({
       action: 'create',
       actor_id: 'user-1',
@@ -205,6 +242,18 @@ describe('AdminConsoleService.registerScreenByAdmin (POST /admin/screens)', () =
       reason: BODY.reason,
     })
     expect(res).toMatchObject({ ok: true, changed: true, audit_seq: '42' })
+  })
+
+  it('keeps the feature number an existing screen is in, when the admin does not send one', async () => {
+    const { svc, tx } = makeDb()
+    // `f04.fare_setup` is in the '4' group — deriving the number from the code would put it in '04' and split the
+    // feature in the matrix.
+    tx.screen.findUnique.mockResolvedValue({ kind: 'assignable', feature_no: '4' })
+    tx.screen.update.mockResolvedValue(SCREEN({ id: 's1', code: 'f04.fare_setup', name: 'Fare setup', feature_no: '4' }))
+
+    await svc.registerScreenByAdmin(ADMIN, { code: 'f04.fare_setup', name: 'Fare setup', reason: 'Rename the fare setup screen' })
+
+    expect(tx.screen.update.mock.calls[0][0].data.feature_no).toBe('4')
   })
 
   it('refuses to touch a core or admin screen', async () => {
@@ -277,9 +326,32 @@ describe('AdminConsoleService.listRoles', () => {
     ])
     const roles = await svc.listRoles()
     expect(roles).toEqual([
-      { id: 'r1', code: 'admin', name: 'Admin', is_admin: true, staff_count: 1 },
-      { id: 'r2', code: 'check-in', name: 'Check-in Agent', is_admin: false, staff_count: 0 },
+      { id: 'r1', code: 'admin', name: 'Admin', is_admin: true, staff_count: 1, is_system: false },
+      { id: 'r2', code: 'check-in', name: 'Check-in Agent', is_admin: false, staff_count: 0, is_system: false },
     ])
+  })
+
+  it('marks the No access role as a system role, so it is never offered for deletion', async () => {
+    const { db, svc } = makeDb()
+    db.role.findMany.mockResolvedValue([{ id: 'r3', code: 'system.no_access', name: 'No access', is_admin: false }])
+    db.staff.groupBy.mockResolvedValue([])
+
+    const roles = await svc.listRoles()
+
+    expect(roles[0]).toMatchObject({ code: 'system.no_access', is_system: true })
+  })
+
+  it('counts only the accounts that can sign in', async () => {
+    const { db, svc } = makeDb()
+    db.role.findMany.mockResolvedValue([])
+    db.staff.groupBy.mockResolvedValue([])
+
+    await svc.listRoles()
+
+    // A switched-off or deleted account does not use the role, so it is not counted.
+    expect(db.staff.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { deleted_at: null, user: { disabled_at: null, deleted_at: null } } }),
+    )
   })
 
   it('sorts by is_admin desc then code asc', async () => {
@@ -767,7 +839,9 @@ describe('AdminConsoleService.replaceRoleScreens (PUT /admin/roles/:id/screens)'
     const res = await svc.replaceRoleScreens(ADMIN, 'r-1', ['s-new-1', 's-new-2'], REASON)
 
     expect(db.$transaction).toHaveBeenCalledTimes(1)
-    expect(tx.role_screen.deleteMany).toHaveBeenCalledWith({ where: { role_id: 'r-1' } })
+    expect(tx.role_screen.deleteMany).toHaveBeenCalledWith({
+      where: { role_id: 'r-1', screen: { is_active: true }, screen_id: { notIn: ['s-new-1', 's-new-2'] } },
+    })
     expect(tx.role_screen.createMany).toHaveBeenCalledWith({
       data: [
         { role_id: 'r-1', screen_id: 's-new-1', screen_kind: 'assignable' },
@@ -871,7 +945,7 @@ describe('AdminConsoleService.replaceRoleScreens (PUT /admin/roles/:id/screens)'
     const res = await svc.replaceRoleScreens(ADMIN, 'r-1', [], REASON)
 
     expect(db.screen.findMany).not.toHaveBeenCalled()
-    expect(tx.role_screen.deleteMany).toHaveBeenCalledWith({ where: { role_id: 'r-1' } })
+    expect(tx.role_screen.deleteMany).toHaveBeenCalledWith({ where: { role_id: 'r-1', screen: { is_active: true } } })
     expect(tx.role_screen.createMany).not.toHaveBeenCalled()
     expect(tx.audit_log.create.mock.calls[0][0].data.after).toEqual({ screen_ids: [] })
     expect(res.screen_ids).toEqual([])
@@ -1013,7 +1087,14 @@ describe('AdminConsoleService.createRole (POST /admin/roles)', () => {
       skipDuplicates: true,
     })
     expect(tx.audit_log.create).toHaveBeenCalledTimes(1)
-    expect(created).toEqual({ id: 'r-new', code: 'finance_staff', name: 'Finance Staff', is_admin: false, staff_count: 0 })
+    expect(created).toEqual({
+      id: 'r-new',
+      code: 'finance_staff',
+      name: 'Finance Staff',
+      is_admin: false,
+      staff_count: 0,
+      is_system: false,
+    })
   })
 
   it('derives the machine-readable code from the name the admin typed', async () => {
@@ -1134,7 +1215,69 @@ describe('AdminConsoleService.deleteRole (DELETE /admin/roles/:id)', () => {
     expect(tx.role.delete).not.toHaveBeenCalled()
   })
 
-  it('refuses to delete a role that staff still hold', async () => {
+  it('refuses to delete the No access role, which is where the accounts that cannot sign in are kept', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx, { id: 'r-park', code: 'system.no_access', name: 'No access', is_admin: false })
+
+    await expect(svc.deleteRole(ADMIN, 'r-park', REASON)).rejects.toMatchObject({ code: 'ROLE_NOT_DELETABLE' })
+    expect(db.$transaction).not.toHaveBeenCalled()
+    expect(tx.role.delete).not.toHaveBeenCalled()
+  })
+
+  it('moves the accounts that cannot sign in to the No access role, so the role they held can go', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+    // One account was deleted and still points at the role: the foreign key would refuse the delete.
+    tx.staff.findMany.mockResolvedValue([{ id: 'st-9', staff_code: 'ST-0009' }])
+
+    await svc.deleteRole(ADMIN, 'r-1', REASON)
+
+    expect(tx.role.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { code: 'system.no_access' }, create: expect.objectContaining({ is_admin: false }) }),
+    )
+    expect(tx.staff.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['st-9'] } },
+      data: { role_id: 'r-no-access', updated_at: expect.any(Date) },
+    })
+    // The move is audited on its own, next to the delete.
+    expect(tx.audit_log.create).toHaveBeenCalledTimes(2)
+    const move = tx.audit_log.create.mock.calls[0][0].data
+    expect(move.action).toBe('role_change')
+    expect(move.entity_type).toBe('staff')
+    expect(move.entity_id).toBe('st-9')
+    expect(move.before).toEqual({ role_code: 'finance_staff' })
+    expect(move.after).toEqual({ role_code: 'system.no_access' })
+    expect(tx.role.delete).toHaveBeenCalledWith({ where: { id: 'r-1' } })
+  })
+
+  it('looks for the accounts that cannot sign in — switched off or deleted — when it parks them', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+    tx.staff.findMany.mockResolvedValue([])
+
+    await svc.deleteRole(ADMIN, 'r-1', REASON)
+
+    expect(tx.staff.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          role_id: 'r-1',
+          OR: [{ deleted_at: { not: null } }, { user: { disabled_at: { not: null } } }, { user: { deleted_at: { not: null } } }],
+        },
+      }),
+    )
+  })
+
+  it('leaves the No access role without any screens, so it opens nothing', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+    tx.staff.findMany.mockResolvedValue([{ id: 'st-9', staff_code: 'ST-0009' }])
+
+    await svc.deleteRole(ADMIN, 'r-1', REASON)
+
+    expect(tx.role_screen.deleteMany).toHaveBeenCalledWith({ where: { role_id: 'r-no-access' } })
+  })
+
+  it('refuses to delete a role that staff who can sign in still hold', async () => {
     const { db, svc, tx } = makeDb()
     prime(db, tx)
     db.staff.count.mockResolvedValue(2)

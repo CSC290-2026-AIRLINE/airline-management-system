@@ -34,6 +34,22 @@ const SOURCE_FEATURE = '15'
 const MIN_REASON_LENGTH = 10
 
 /**
+ * The role a staff account is parked in when the role it held is deleted.
+ *
+ * `staff.role_id` is NOT NULL and the foreign key refuses to let a role go while an account still points at it, so an
+ * account that cannot sign in cannot simply be left pointing at a role that is being removed. The No access role grants
+ * no screens at all, so the account keeps nothing: it cannot sign in, and if it is ever switched back on it opens no
+ * page until an admin gives it a real role.
+ */
+const NO_ACCESS_ROLE_CODE = 'system.no_access'
+const NO_ACCESS_ROLE_NAME = 'No access'
+
+/** The roles the system owns. They are never offered for deletion. */
+function isSystemRole(code: string): boolean {
+  return code === NO_ACCESS_ROLE_CODE
+}
+
+/**
  * A plain date in the audit filters (`to=2026-11-01`) means a whole day in Thailand, where the airline runs. Thailand
  * has no daylight saving time, so a fixed UTC+7 is exact. The staff web sends instants for the viewer's own day instead.
  */
@@ -64,10 +80,14 @@ function codePrefix(code: string): string {
 /**
  * Fallback `feature_no` for a screen registered without one. The code convention is `f<feature_no>.<snake_name>`; the
  * prefix is used, or `'1'` (platform) when there is none.
+ *
+ * The leading zero is dropped, because features register their screens as `'4'`, not `'04'` — and the matrix groups by
+ * the raw string, so `'04'` and `'4'` would be two different groups of the same feature.
  */
 export function deriveFeatureNo(code: string): string {
   const m = /^f(\d+[a-z]?)\./.exec(code)
-  return m && m[1] ? m[1] : '1'
+  if (!m || !m[1]) return '1'
+  return m[1].replace(/^0+(?=\d)/, '')
 }
 
 /** Order-insensitive set comparison — the caller's ordering carries no meaning, only membership does. */
@@ -151,6 +171,7 @@ export class AdminConsoleService {
   private async syncScreen(
     dto: RegisterScreenDto & { feature_no: string },
     tx: Prisma.TransactionClient | DbService = this.db,
+    adminOwned: Set<string> = new Set(),
   ): Promise<{ screen: ScreenDto; before: ScreenDto | null; changed: boolean }> {
     const name = dto.name.trim()
     const existing = await tx.screen.findUnique({ where: { code: dto.code }, select: SCREEN_SELECT })
@@ -164,13 +185,18 @@ export class AdminConsoleService {
     if (dto.kind && dto.kind !== existing.kind) {
       this.logger.warn(`Screen ${dto.code} is registered as ${dto.kind} but stored as ${existing.kind}; kind is left unchanged`)
     }
+    // A screen an admin has created or renamed is theirs: the code registration only makes sure it is active. Without
+    // this, a rename made in the console would silently be undone by the next boot.
+    const adminEdited = adminOwned.has(existing.id)
+    const nextName = adminEdited ? existing.name : name
+    const nextFeatureNo = adminEdited ? existing.feature_no : dto.feature_no
     const before = toScreenDto(existing)
-    if (existing.name === name && existing.feature_no === dto.feature_no && existing.is_active) {
+    if (existing.name === nextName && existing.feature_no === nextFeatureNo && existing.is_active) {
       return { screen: before, before, changed: false }
     }
     const updated = await tx.screen.update({
       where: { id: existing.id },
-      data: { name, feature_no: dto.feature_no, is_active: true, updated_at: new Date() },
+      data: { name: nextName, feature_no: nextFeatureNo, is_active: true, updated_at: new Date() },
       select: SCREEN_SELECT,
     })
     return { screen: toScreenDto(updated), before, changed: true }
@@ -188,9 +214,15 @@ export class AdminConsoleService {
    */
   async registerSelfScreens(screens: SelfRegisterScreen[]): Promise<void> {
     const listed = new Set(screens.map((s) => s.code))
+    // Screens an admin owns are left alone: the boot sync neither turns them off nor writes their name back.
+    const adminOwned = await this.adminOwnedScreens()
     const changes: { before: ScreenDto | null; after: ScreenDto }[] = []
     for (const s of screens) {
-      const result = await this.syncScreen({ code: s.code, name: s.name, kind: s.kind, feature_no: s.feature_no })
+      const result = await this.syncScreen(
+        { code: s.code, name: s.name, kind: s.kind, feature_no: s.feature_no },
+        this.db,
+        adminOwned.touched,
+      )
       if (result.changed) changes.push({ before: result.before, after: result.screen })
     }
 
@@ -200,7 +232,9 @@ export class AdminConsoleService {
         where: { is_active: true, OR: prefixes.map((p) => ({ code: { startsWith: `${p}.` } })) },
         select: SCREEN_SELECT,
       })
-      for (const row of stale.filter((r) => !listed.has(r.code))) {
+      // A screen the admin added by hand is not the feature's to turn off — it is not on the feature's list at all, and
+      // the feature never knew about it.
+      for (const row of stale.filter((r) => !listed.has(r.code) && !adminOwned.created.has(r.id))) {
         const after = await this.db.screen.update({
           where: { id: row.id },
           data: { is_active: false, updated_at: new Date() },
@@ -233,6 +267,32 @@ export class AdminConsoleService {
   }
 
   /**
+   * The screens an admin owns, read from the audit log: `POST /admin/screens` writes a row for every screen it
+   * creates or renames, with the admin as the actor.
+   *
+   * `created` is the screens the admin added by hand — the boot sync must not turn those off, because the feature
+   * they were added under never listed them. `touched` also includes the ones the admin renamed: their name is the
+   * admin's, so the code registration must not write it back.
+   *
+   * The audit log is the record of who changed what, so it is the right place to ask. A `screen.source` column would
+   * say the same thing more directly; that is a Database Team change and not ours to make.
+   */
+  private async adminOwnedScreens(): Promise<{ created: Set<string>; touched: Set<string> }> {
+    const rows = await this.db.audit_log.findMany({
+      where: { entity_type: 'screen', actor_type: 'staff' },
+      select: { entity_id: true, action: true },
+    })
+    const created = new Set<string>()
+    const touched = new Set<string>()
+    for (const row of rows) {
+      if (!row.entity_id) continue
+      touched.add(row.entity_id)
+      if (row.action === 'create') created.add(row.entity_id)
+    }
+    return { created, touched }
+  }
+
+  /**
    * `POST /admin/screens`: an admin adds or renames one assignable screen. A `core` or `admin` screen with the same code
    * is refused (`SCREEN_KIND_CONFLICT`) — those belong to code, not to a request. The change and its audit row commit
    * together; a request that changes nothing writes nothing.
@@ -245,10 +305,9 @@ export class AdminConsoleService {
         fields: { name: ['name should not be empty'] },
       })
     }
-    const feature_no = dto.feature_no ?? deriveFeatureNo(dto.code)
 
     return this.db.$transaction(async (tx) => {
-      const existing = await tx.screen.findUnique({ where: { code: dto.code }, select: { kind: true } })
+      const existing = await tx.screen.findUnique({ where: { code: dto.code }, select: { kind: true, feature_no: true } })
       if (existing && existing.kind !== 'assignable') {
         throw new AdminError(
           HttpStatus.CONFLICT,
@@ -256,6 +315,9 @@ export class AdminConsoleService {
           `${dto.code} is a ${existing.kind} screen. Only assignable screens can be changed here.`,
         )
       }
+      // The feature number is the admin's only way to move a screen to another group. Without one, an existing screen
+      // keeps the group it was in — deriving it from the code would move it out of its feature's group.
+      const feature_no = dto.feature_no ?? existing?.feature_no ?? deriveFeatureNo(dto.code)
       const result = await this.syncScreen({ code: dto.code, name, kind: 'assignable', feature_no }, tx)
       if (!result.changed) return { ok: true, changed: false, screen: result.screen }
 
@@ -340,6 +402,16 @@ export class AdminConsoleService {
   /*  Role listing (for the role <select> in Role access, plus the staff count) */
   /* ──────────────────────────────────────────────────────────────────────────── */
 
+  /**
+   * The staff accounts that can still sign in: not deleted, and their user account neither deleted nor switched off.
+   *
+   * This is the same definition `deleteRole` uses, so the count the Role access list shows and the rule the delete
+   * follows always agree.
+   */
+  private static liveStaffWhere(roleId: string): Prisma.staffWhereInput {
+    return { role_id: roleId, deleted_at: null, user: { disabled_at: null, deleted_at: null } }
+  }
+
   async listRoles(): Promise<RoleSummary[]> {
     // Two queries instead of Prisma `include` + `_count` so the SQL is predictable; the staff table is small.
     const [roles, counts] = await Promise.all([
@@ -349,7 +421,7 @@ export class AdminConsoleService {
       }),
       this.db.staff.groupBy({
         by: ['role_id'],
-        where: { deleted_at: null },
+        where: { deleted_at: null, user: { disabled_at: null, deleted_at: null } },
         _count: { _all: true },
       }),
     ])
@@ -365,6 +437,7 @@ export class AdminConsoleService {
       name: r.name,
       is_admin: r.is_admin,
       staff_count: staffCountByRole.get(r.id) ?? 0,
+      is_system: isSystemRole(r.code),
     }))
   }
 
@@ -452,7 +525,15 @@ export class AdminConsoleService {
 
     const occurredAt = this.clock.now()
     const inserted = await this.db.$transaction(async (tx) => {
-      await tx.role_screen.deleteMany({ where: { role_id: roleId } })
+      // Only the grants on screens that are still active are replaced. A grant on a screen that was turned off is left
+      // alone, so it comes back with the screen — which is what `getRoleScreens` promises.
+      await tx.role_screen.deleteMany({
+        where: {
+          role_id: roleId,
+          screen: { is_active: true },
+          ...(wanted.length > 0 ? { screen_id: { notIn: wanted } } : {}),
+        },
+      })
       if (wanted.length > 0) {
         await tx.role_screen.createMany({
           data: wanted.map((screenId) => ({ role_id: roleId, screen_id: screenId, screen_kind: 'assignable' })),
@@ -569,7 +650,7 @@ export class AdminConsoleService {
           },
           tx,
         )
-        return { id: created.id, code: created.code, name: created.name, is_admin: created.is_admin, staff_count: 0 }
+        return { id: created.id, code: created.code, name: created.name, is_admin: created.is_admin, staff_count: 0, is_system: false }
       })
     } catch (e) {
       if (!isUniqueViolation(e)) throw e
@@ -591,12 +672,16 @@ export class AdminConsoleService {
   }
 
   /**
-   * Deletes a role that nobody holds, and records the deletion in the audit log — one transaction, so the log and the
-   * role table agree.
+   * Deletes a role that nobody who can sign in holds, and records the deletion in the audit log — one transaction, so
+   * the log and the role table agree.
    *
    * A role can only go when it is unused: the `staff.role_id` foreign key already refuses to delete a role that people
    * hold, but checking first turns that into a clear 409 instead of a database error. Admin roles can never be
    * deleted — they are what gives people access to the console in the first place.
+   *
+   * Accounts that **cannot sign in** — switched off, or deleted — are the exception: they do not use the role, but the
+   * foreign key still counts them, so the role could never be removed. They are moved to the No access role instead, and
+   * each move is written to the audit log.
    *
    * The `role` table has no `deleted_at`, so this is a real delete. History survives it: `audit_log.actor_role` stores
    * the role **code** as a snapshot, and `audit_log.entity_id` is free text.
@@ -621,12 +706,19 @@ export class AdminConsoleService {
         'An Admin role cannot be deleted. It is what gives people access to the admin console.',
       )
     }
-    const staffCount = await this.db.staff.count({ where: { role_id: roleId, deleted_at: null } })
+    if (isSystemRole(role.code)) {
+      throw new AdminError(
+        HttpStatus.CONFLICT,
+        'ROLE_NOT_DELETABLE',
+        'The No access role cannot be deleted. It is where the accounts that cannot sign in are kept.',
+      )
+    }
+    const staffCount = await this.db.staff.count({ where: AdminConsoleService.liveStaffWhere(roleId) })
     if (staffCount > 0) {
       throw new AdminError(
         HttpStatus.CONFLICT,
         'ROLE_IN_USE',
-        `${staffCount} staff member${staffCount === 1 ? '' : 's'} still hold this role. Move them to another role first.`,
+        `${staffCount} staff member${staffCount === 1 ? '' : 's'} who can sign in still hold this role. Move them to another role first.`,
       )
     }
 
@@ -636,16 +728,54 @@ export class AdminConsoleService {
         // Counted again on the transaction's own client, so the number is the one the delete sees. A staff row created
         // for this role in another tab between the check above and the delete would otherwise fail on the foreign key
         // and answer 500 instead of a clean 409.
-        const stillHeld = await tx.staff.count({ where: { role_id: roleId, deleted_at: null } })
+        const stillHeld = await tx.staff.count({ where: AdminConsoleService.liveStaffWhere(roleId) })
         if (stillHeld > 0) {
           throw new AdminError(
             HttpStatus.CONFLICT,
             'ROLE_IN_USE',
-            `${stillHeld} staff member${stillHeld === 1 ? '' : 's'} still hold this role. Move them to another role first.`,
+            `${stillHeld} staff member${stillHeld === 1 ? '' : 's'} who can sign in still hold this role. Move them to another role first.`,
           )
         }
 
         const grants = await tx.role_screen.findMany({ where: { role_id: roleId }, select: { screen_id: true } })
+
+        // Accounts that cannot sign in — switched off, or deleted — still point at this role, and the foreign key
+        // refuses to let the role go while they do. They are moved to the No access role, which opens nothing, and every
+        // move is written to the audit log.
+        const parkedHolders = await tx.staff.findMany({
+          where: {
+            role_id: roleId,
+            OR: [{ deleted_at: { not: null } }, { user: { disabled_at: { not: null } } }, { user: { deleted_at: { not: null } } }],
+          },
+          select: { id: true, staff_code: true },
+          orderBy: { staff_code: 'asc' },
+        })
+        if (parkedHolders.length > 0) {
+          const parking = await this.ensureNoAccessRole(tx)
+          await tx.staff.updateMany({
+            where: { id: { in: parkedHolders.map((h) => h.id) } },
+            data: { role_id: parking.id, updated_at: new Date() },
+          })
+          for (const holder of parkedHolders) {
+            await this.audit.write(
+              {
+                actor: AuditService.staffActor(admin),
+                sourceFeature: SOURCE_FEATURE,
+                action: 'role_change',
+                entityType: 'staff',
+                entityId: holder.id,
+                summary: `Moved ${holder.staff_code} to the ${parking.name} role so the ${role.name} role could be deleted`,
+                reason: trimmedReason,
+                before: { role_code: role.code },
+                after: { role_code: parking.code },
+                occurredAt,
+                sensitive: false,
+              },
+              tx,
+            )
+          }
+        }
+
         await tx.role_screen.deleteMany({ where: { role_id: roleId } })
         await tx.role.delete({ where: { id: roleId } })
         await this.audit.write(
@@ -680,6 +810,24 @@ export class AdminConsoleService {
       }
       throw e
     }
+  }
+
+  /**
+   * The No access role, created the first time an account has to be parked in it.
+   *
+   * It is created here rather than in the seed so that this module needs no change to the database team's files: the
+   * role only has to exist when a role is deleted, and by then somebody is already asking for it. Its grants are
+   * cleared on the way in, so it always opens nothing.
+   */
+  private async ensureNoAccessRole(tx: Prisma.TransactionClient): Promise<{ id: string; code: string; name: string }> {
+    const role = await tx.role.upsert({
+      where: { code: NO_ACCESS_ROLE_CODE },
+      update: {},
+      create: { code: NO_ACCESS_ROLE_CODE, name: NO_ACCESS_ROLE_NAME, is_admin: false },
+      select: { id: true, code: true, name: true },
+    })
+    await tx.role_screen.deleteMany({ where: { role_id: role.id } })
+    return role
   }
 
   /**

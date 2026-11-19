@@ -19,13 +19,19 @@ export interface ScreenGroup {
   screens: ScreenDto[]
 }
 
-/** One row in the `GET /admin/roles` response. `staff_count` is the live count (non-deleted, role-only). */
+/**
+ * One row in the `GET /admin/roles` response. `staff_count` is the live count (non-deleted, role-only).
+ *
+ * `is_system` marks the roles the system owns — the No access role, where the accounts of deleted staff are kept.
+ * They are never offered for deletion.
+ */
 export interface RoleSummary {
   id: string
   code: string
   name: string
   is_admin: boolean
   staff_count: number
+  is_system: boolean
 }
 
 /** Response of `POST /admin/screens`. `changed: false` means the screen was already like this: nothing was written. */

@@ -228,6 +228,8 @@ export function RoleAccessPage() {
 
   /** The person's own menu when the server answered, the role's screens otherwise. */
   const previewSees = previewMenu.data?.screens ?? roleScreens
+  /** A switched-off account cannot sign in, so it opens nothing — the server says so in `active`. */
+  const previewDisabled = previewMenu.data !== null && !previewMenu.data.active
 
   /* Save — the whole grant set goes to the server; there is no per-screen PATCH. */
   async function save() {
@@ -260,10 +262,20 @@ export function RoleAccessPage() {
   /* Create a role — the dialog owns the form; this does the request and puts the new role in the list. */
   async function createRole(body: CreateRoleBody) {
     const created = await roleApi.create(body)
-    await registry.reloadRoles()
+    // The role is saved. The dialog closes before the list is refreshed, so a failed reload cannot make a successful
+    // create look like a failure — pressing Create again would only produce "that name already exists".
     setCreateOpen(false)
     selectRole(created.id)
-    setNotice({ tone: 'success', title: 'Role created', body: `${created.name} is ready to be given to staff.` })
+    try {
+      await registry.reloadRoles()
+      setNotice({ tone: 'success', title: 'Role created', body: `${created.name} is ready to be given to staff.` })
+    } catch {
+      setNotice({
+        tone: 'error',
+        title: 'Role created, but the list did not refresh',
+        body: `${created.name} was saved. Reload the page to see it in the list.`,
+      })
+    }
   }
 
   /* Delete a role — only offered for a role nobody holds. */
@@ -271,12 +283,22 @@ export function RoleAccessPage() {
     const target = deleteTarget
     if (!target) return
     await roleApi.remove(target.id, { reason: deleteReason })
-    await registry.reloadRoles()
+    // The role is gone. The dialog closes before the list is refreshed, so a failed reload cannot make a successful
+    // delete look like a failure — deleting again would only produce "role not found".
     setDeleteTarget(null)
     // Move the selection to the next role in the list.
     const next = roles.find((r) => r.id !== target.id)
     selectRole(next?.id ?? null)
-    setNotice({ tone: 'success', title: 'Role deleted', body: `${target.name} was removed.` })
+    try {
+      await registry.reloadRoles()
+      setNotice({ tone: 'success', title: 'Role deleted', body: `${target.name} was removed.` })
+    } catch {
+      setNotice({
+        tone: 'error',
+        title: 'Role deleted, but the list did not refresh',
+        body: `${target.name} was removed. Reload the page to see the new list.`,
+      })
+    }
   }
 
   /* Render ------------------------------------------------------------ */
@@ -311,6 +333,8 @@ export function RoleAccessPage() {
 
   const previewCandidates = previewStaff.filter((s) => s.role.id === currentRole?.id)
   const previewPerson = previewCandidates.find((s) => s.id === previewStaffId) ?? null
+  /** Whose menu is on show — the chosen person, or the role when nobody is chosen. */
+  const previewName = previewPerson ? `${previewPerson.first_name} ${previewPerson.last_name}` : (currentRole?.name ?? 'This role')
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -386,7 +410,8 @@ export function RoleAccessPage() {
               <div>
                 <h3 className="m-0 text-xl font-bold text-foreground">Screens for {currentRole?.name ?? '—'}</h3>
                 <p className="mt-1 mb-0 text-sm font-medium text-warning tabular-nums" aria-live="polite">
-                  {currentRole?.staff_count ?? 0} staff with this role · {changeCount} unsaved change{changeCount === 1 ? '' : 's'}
+                  {currentRole?.staff_count ?? 0} staff who can sign in have this role · {changeCount} unsaved change
+                  {changeCount === 1 ? '' : 's'}
                 </p>
               </div>
               <ScreenMatrix
@@ -411,7 +436,7 @@ export function RoleAccessPage() {
               {reasonMissing ? 'Add a reason before saving access.' : 'Save changes'}
             </h3>
             <p className="mt-2 text-sm text-foreground">
-              Applies to {currentRole?.staff_count ?? 0} staff with the {currentRole?.name} role.
+              Applies to {currentRole?.staff_count ?? 0} staff who can sign in with the {currentRole?.name} role.
             </p>
             <div className="mt-3 grid grid-cols-2 gap-4 max-phone:grid-cols-1" aria-label="Screens changing">
               <div>
@@ -548,12 +573,17 @@ export function RoleAccessPage() {
           </div>
 
           <p className="text-xs font-semibold text-muted-foreground uppercase">
-            {previewPerson ? `${previewPerson.first_name} ${previewPerson.last_name}` : (currentRole?.name ?? 'This role')} sees
+            {previewDisabled ? `${previewName} is switched off` : `${previewName} sees`}
           </p>
           {previewMenu.error ? (
             <p className="text-sm text-danger">Could not load that person’s menu — {previewMenu.error}</p>
           ) : previewMenu.loading ? (
             <p className="text-sm text-muted-foreground">Working out their menu…</p>
+          ) : previewDisabled ? (
+            <>
+              <p className="text-sm text-foreground">This account is switched off — it cannot sign in, so it opens nothing.</p>
+              <SidebarPreview screens={[]} roleName={currentRole?.name ?? 'This role'} />
+            </>
           ) : (
             <SidebarPreview screens={previewSees} roleName={currentRole?.name ?? 'This role'} />
           )}

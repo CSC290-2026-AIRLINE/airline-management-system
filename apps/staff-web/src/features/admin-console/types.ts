@@ -25,6 +25,8 @@ export interface RoleSummary {
   name: string
   is_admin: boolean
   staff_count: number
+  /** `true` for the roles the system owns — they are never offered for deletion. */
+  is_system: boolean
 }
 
 export interface RoleScreensResponse {

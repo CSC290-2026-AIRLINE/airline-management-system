@@ -80,8 +80,9 @@ export class AdminConsoleController {
   }
 
   /**
-   * Delete a role that nobody holds. Admin roles and roles with staff are refused with a 409 and an error code the
-   * page can show.
+   * Delete a role that nobody who can sign in holds. Admin roles, the system's own No access role, and roles with
+   * staff are refused with a 409 and an error code the page can show. Accounts that were deleted but still point at the
+   * role are moved to the No access role, so the role can go.
    */
   @Delete('roles/:id')
   @HttpCode(204)

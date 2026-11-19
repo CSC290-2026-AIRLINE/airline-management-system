@@ -9,7 +9,8 @@ import type { RoleSummary } from '../types'
  *
  * Roles are listed A–Z with the number of staff that hold them. The Admin role carries an "All screens" badge, because
  * an admin role sees every screen whatever its grants say. A role that nobody holds can be deleted from here; a role
- * that staff still hold has no delete button at all, so the rule is visible before anyone clicks.
+ * that staff who can sign in still hold has no delete button at all, so the rule is visible before anyone clicks. The
+ * system's own role — the No access role, where the accounts that cannot sign in are kept — has no delete button either.
  */
 export function RoleList({
   roles,
@@ -38,7 +39,7 @@ export function RoleList({
         <ul className="flex flex-col gap-0.5" aria-label="Roles">
           {roles.map((role) => {
             const selected = role.id === selectedId
-            const canDelete = role.staff_count === 0 && !role.is_admin
+            const canDelete = role.staff_count === 0 && !role.is_admin && !role.is_system
             return (
               <li key={role.id} className="flex items-center gap-1">
                 <button
@@ -59,6 +60,14 @@ export function RoleList({
                       className={cn('shrink-0 text-xs', selected ? 'bg-white/20 text-white' : 'text-muted-foreground')}
                     >
                       All screens
+                    </Badge>
+                  )}
+                  {role.is_system && (
+                    <Badge
+                      variant="secondary"
+                      className={cn('shrink-0 text-xs', selected ? 'bg-white/20 text-white' : 'text-muted-foreground')}
+                    >
+                      System
                     </Badge>
                   )}
                   <span className={cn('shrink-0 text-xs tabular-nums', selected ? 'text-white/80' : 'text-muted-foreground')}>

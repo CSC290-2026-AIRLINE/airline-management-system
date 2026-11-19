@@ -18,7 +18,7 @@ const BOX_TITLES: Record<string, string> = {
 }
 
 /**
- * The delete confirmation for a role that nobody holds.
+ * The delete confirmation for a role that nobody who can sign in holds.
  *
  * A delete is an audited admin change like any other, so it asks for a reason. The role is gone for good — the `role`
  * table has no `deleted_at` — but the audit row keeps its name and code, so the history survives.
@@ -78,8 +78,11 @@ export function DeleteRoleDialog({
               Delete role
             </h2>
             <p className="mt-2 mb-0 text-sm leading-snug text-muted-foreground">
-              The <strong className="font-semibold text-foreground">{role.name}</strong> role will be removed. Nobody holds it, so nobody
-              loses access.
+              The <strong className="font-semibold text-foreground">{role.name}</strong> role will be removed. Nobody who can sign in holds
+              it, so nobody loses access.
+            </p>
+            <p className="mt-1 mb-0 text-sm leading-snug text-muted-foreground">
+              Any account that cannot sign in and still points at this role is moved to the No access role.
             </p>
           </div>
           <Button
