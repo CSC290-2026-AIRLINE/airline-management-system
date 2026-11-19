@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, redirect } from '@tanstack/react-router'
+import { createFileRoute, Outlet, redirect, useLocation } from '@tanstack/react-router'
 import { AppAuthProvider } from '../auth/AuthProvider'
 import AccountProvider from '@customer-web/features/passenger-profiles/AccountProvider'
 
@@ -15,11 +15,17 @@ export const Route = createFileRoute('/_authenticated')({
 })
 
 function AuthenticatedLayout() {
+  const isBaggageCase = useLocation({ select: (location) => location.pathname.replace(/\/+$/, '') === '/lost-bag-case' })
+
   return (
     <AppAuthProvider>
-      <AccountProvider>
+      {isBaggageCase ? (
         <Outlet />
-      </AccountProvider>
+      ) : (
+        <AccountProvider>
+          <Outlet />
+        </AccountProvider>
+      )}
     </AppAuthProvider>
   )
 }

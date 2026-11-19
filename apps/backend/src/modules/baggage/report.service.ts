@@ -1,0 +1,313 @@
+import { Logger } from '@nestjs/common'
+import { randomUUID } from 'node:crypto'
+import { BAG_TYPES, BAG_COLOURS, type BagType, type BagColour } from './common/baggage.constants'
+import { BAGGAGE_ERROR_CODES, BaggageError } from './common/baggage.errors'
+import { isValidBaggageTag } from './common/baggage-tag.util'
+import { formatCaseNumber } from './common/case-number.util'
+import type { LostBagReport } from './common/report.types'
+import type { LostReportPhotoObject, ReportPhotoStorage, UploadedLostReportPhoto } from './lost-report-photo.storage'
+import type {
+  BookingVerification,
+  CheckedBagLookup,
+  DeliveryChoiceSnapshot,
+  EligibleTraveller,
+  VerifiedBookingPassenger,
+  VerifiedReportFlight,
+  ReportRepository,
+  CaseNumberSequence,
+  SimulationClock,
+} from './common/report.ports'
+
+export interface CreateReportInput {
+  reportedByCustomerId?: string
+  flightId: string
+  bookingReference: string
+  surname: string
+  passengerId: string
+  /**
+   * "Whose bag is it?": the booking passenger whose bag is lost, when it is not the signed-in customer's own. Omitted or
+   * null means the reporter's own bag (the original flow). Never trusted on its own: it must resolve on the reporter's
+   * verified booking with a confirmed coupon for flightId.
+   */
+  bookingPassengerId?: string | null
+  tagNumber?: string | null
+  bagType: BagType
+  colour: BagColour
+  brand?: string | null
+  description?: string | null
+  contactEmail?: string | null
+  contactPhone?: string | null
+}
+
+export interface ReportAccessInput {
+  bookingReference: string
+  surname: string
+  passengerId: string
+  /**
+   * The signed-in customer. A customer who filed a case for another traveller on their booking can manage it (list,
+   * cancel, choose the delivery) like the bag owner, while they still verify on that booking.
+   */
+  customerId?: string | null
+}
+
+/** A case as a passenger sees it, with whether this viewer may act on it (cancel, choose the delivery). */
+export type ViewedLostBagReport = LostBagReport & { viewerCanManage: boolean }
+
+export interface ViewableReport {
+  report: LostBagReport
+  isBagOwner: boolean
+  /** The bag owner, or the customer who filed the case for them. */
+  canManage: boolean
+}
+
+/** The bag details a passenger fills in. */
+type ReportDetailsInput = Pick<
+  CreateReportInput,
+  'tagNumber' | 'bagType' | 'colour' | 'brand' | 'description' | 'contactEmail' | 'contactPhone'
+>
+
+interface ValidatedReportDetails {
+  contactEmail: string | null
+  contactPhone: string | null
+  tagNumber: string | null
+}
+
+export class ReportService {
+  private readonly logger = new Logger(ReportService.name)
+
+  constructor(
+    private readonly repository: ReportRepository,
+    private readonly bookings: BookingVerification,
+    private readonly checkedBags: CheckedBagLookup,
+    private readonly sequence: CaseNumberSequence,
+    private readonly clock: SimulationClock,
+    private readonly photos: ReportPhotoStorage,
+  ) {}
+
+  async create(input: CreateReportInput, photo?: UploadedLostReportPhoto): Promise<LostBagReport> {
+    const details = this.validateReportDetails(input)
+
+    // The bag owner. Own bag: the reporter, verified as before. Another traveller: resolved only on the reporter's own
+    // verified booking. Either way a failure gets the same generic error, and the tag/duplicate checks below apply to
+    // the bag owner.
+    const passenger =
+      input.bookingPassengerId == null
+        ? await this.bookings.verifyPassenger({
+            bookingReference: input.bookingReference,
+            surname: input.surname,
+            passengerId: input.passengerId,
+            flightId: input.flightId,
+          })
+        : await this.bookings.resolveTraveller({
+            bookingReference: input.bookingReference,
+            surname: input.surname,
+            passengerId: input.passengerId,
+            bookingPassengerId: input.bookingPassengerId,
+            flightId: input.flightId,
+          })
+
+    if (!passenger) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Booking verification failed')
+    }
+
+    return this.persistVerifiedReport(passenger, input, details, input.reportedByCustomerId ?? null, photo)
+  }
+
+  private validateReportDetails(input: ReportDetailsInput): ValidatedReportDetails {
+    const contactEmail = input.contactEmail?.trim() || null
+    const contactPhone = input.contactPhone?.trim() || null
+    const tagNumber = input.tagNumber?.trim() || null
+
+    if (!contactEmail || !contactPhone) {
+      // At least one contact method is required.
+      if (!contactEmail && !contactPhone) {
+        throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Email or phone is required')
+      }
+    }
+
+    if (!BAG_TYPES.some((type) => type === input.bagType) || !BAG_COLOURS.some((colour) => colour === input.colour)) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Invalid bag type or colour')
+    }
+
+    if (tagNumber && !isValidBaggageTag(tagNumber)) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_TAG, 'Invalid baggage tag number')
+    }
+
+    return { contactEmail, contactPhone, tagNumber }
+  }
+
+  private async persistVerifiedReport(
+    passenger: VerifiedBookingPassenger,
+    input: ReportDetailsInput,
+    { contactEmail, contactPhone, tagNumber }: ValidatedReportDetails,
+    reportedByCustomerId: string | null,
+    photo?: UploadedLostReportPhoto,
+  ): Promise<LostBagReport> {
+    if (tagNumber) {
+      const checkedBag = await this.checkedBags.findByTag(tagNumber)
+
+      if (!checkedBag || checkedBag.bookingPassengerId !== passenger.bookingPassengerId || checkedBag.flightId !== passenger.flightId) {
+        throw new BaggageError(BAGGAGE_ERROR_CODES.TAG_NOT_ON_BOOKING, 'Baggage tag does not belong to this passenger and flight')
+      }
+    }
+
+    const reportedAt = this.clock.now()
+    const nextNumber = await this.sequence.next()
+    const caseNumber = formatCaseNumber(reportedAt, nextNumber)
+
+    const report: LostBagReport = {
+      id: randomUUID(),
+      caseNumber,
+      bookingPassengerId: passenger.bookingPassengerId,
+      passengerId: passenger.passengerId,
+      flightId: passenger.flightId,
+      reportedByCustomerId,
+      reportedByStaffId: null,
+      tagNumber,
+      bagType: input.bagType,
+      colour: input.colour,
+      brand: input.brand?.trim() || null,
+      description: input.description?.trim() || null,
+      photoUrl: photo ? this.photoPath(caseNumber) : null,
+      contactEmail,
+      contactPhone,
+      status: 'open',
+      reportedAt,
+      lostAt: null,
+      closedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+
+    if (photo) await this.photos.upload(report.id, photo)
+
+    try {
+      return await this.repository.create(report)
+    } catch (error) {
+      if (photo) {
+        try {
+          await this.photos.remove(report.id)
+        } catch {
+          this.logger.error(`Failed to clean up lost-baggage photo for report ${report.id}`)
+        }
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Read access (spec §6: a case is visible to the same booking). The bag owner gets the report unchanged, exactly as
+   * before. Another verified traveller on the same booking can read it too, without the stored contact details, which
+   * are not part of "report + delivery status". Unrelated bookings get REPORT_NOT_FOUND, as before.
+   */
+  async getByCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<ViewedLostBagReport> {
+    const { report, canManage } = await this.getViewableReport(caseNumber, access)
+
+    // The customer who filed the case typed its contact details, so they see them like the owner does.
+    return canManage ? { ...report, viewerCanManage: true } : { ...report, contactEmail: null, contactPhone: null, viewerCanManage: false }
+  }
+
+  /** Read authorization. Actions (delivery choice, cancellation) also need canManage, through findManageableReport. */
+  async getViewableReport(caseNumber: string, access: ReportAccessInput): Promise<ViewableReport> {
+    const passenger = await this.bookings.verifyPassenger(access)
+
+    if (!passenger) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Booking verification failed')
+    }
+
+    const report = await this.repository.findByCaseNumber(caseNumber)
+
+    if (report && report.bookingPassengerId === passenger.bookingPassengerId) {
+      return { report, isBagOwner: true, canManage: true }
+    }
+
+    if (report && (await this.bookings.isOnRequesterBooking(access, report.bookingPassengerId))) {
+      const filedByViewer = !!access.customerId && report.reportedByCustomerId === access.customerId
+      return { report, isBagOwner: false, canManage: filedByViewer }
+    }
+
+    throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Lost baggage report not found')
+  }
+
+  /**
+   * For the delivery-choice and cancellation paths: the bag owner, or the customer who filed the case for another
+   * traveller on the same booking. Anyone else gets REPORT_NOT_FOUND, as before.
+   */
+  private async findManageableReport(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {
+    const { report, canManage } = await this.getViewableReport(caseNumber, access)
+
+    if (!canManage) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Lost baggage report not found')
+    }
+
+    return report
+  }
+
+  async getPhotoForCaseNumber(caseNumber: string, access: ReportAccessInput, customerId: string): Promise<LostReportPhotoObject> {
+    // Photo policy: only the customer who submitted the report, and only while they pass the same-booking read check.
+    // Sharing the booking, or owning the bag, is not enough on its own. Own-bag cases (owner = reporter) are unchanged.
+    const { report } = await this.getViewableReport(caseNumber, access)
+
+    if (!customerId || report.reportedByCustomerId !== customerId || !report.photoUrl) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.REPORT_NOT_FOUND, 'Lost baggage report not found')
+    }
+
+    return this.photos.retrieve(report.id)
+  }
+
+  async getDeliveryIdForCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<string | null> {
+    const report = await this.findManageableReport(caseNumber, access)
+
+    return this.repository.findDeliveryIdByReportId(report.id)
+  }
+
+  async getDeliveryChoiceForCaseNumber(caseNumber: string, access: ReportAccessInput): Promise<DeliveryChoiceSnapshot | null> {
+    const report = await this.findManageableReport(caseNumber, access)
+
+    return this.repository.findDeliveryChoiceByReportId(report.id)
+  }
+
+  async listMine(access: ReportAccessInput): Promise<LostBagReport[]> {
+    const passenger = await this.bookings.verifyPassenger(access)
+
+    if (!passenger) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Booking verification failed')
+    }
+
+    return this.repository.listForRequester(passenger.bookingPassengerId, access.customerId ?? null)
+  }
+
+  listConfirmedFlights(access: ReportAccessInput): Promise<VerifiedReportFlight[]> {
+    return this.bookings.listConfirmedFlights(access)
+  }
+
+  /**
+   * "Whose bag is it?": the travellers on the requester's booking. A verified requester always sees at least themselves,
+   * so an empty result means verification failed; it gets the same error as every other passenger call.
+   */
+  async listEligibleTravellers(access: ReportAccessInput): Promise<EligibleTraveller[]> {
+    const travellers = await this.bookings.listEligibleTravellers(access)
+
+    if (travellers.length === 0) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Booking verification failed')
+    }
+
+    return travellers
+  }
+
+  async cancel(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {
+    const report = await this.findManageableReport(caseNumber, access)
+
+    const cancelled = await this.repository.cancelIfNotDispatched(report.id, report.bookingPassengerId, this.clock.now())
+
+    if (!cancelled) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.CANCELLATION_NOT_ALLOWED, 'This report can no longer be cancelled')
+    }
+
+    return cancelled
+  }
+
+  private photoPath(caseNumber: string): string {
+    return `/api/customer/lost-reports/${caseNumber}/photo`
+  }
+}
