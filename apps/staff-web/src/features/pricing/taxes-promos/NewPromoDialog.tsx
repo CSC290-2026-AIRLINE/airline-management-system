@@ -138,7 +138,7 @@ export function NewPromoDialog({ currency, onClose, onCreated }: NewPromoDialogP
           <FormField htmlFor="promo-kind" label="Kind">
             <NativeSelect
               id="promo-kind"
-              className="w-full [&_select]:h-[42px]"
+              className="w-full h-[42px]"
               value={form.kind}
               disabled={saving}
               onChange={(e) => set('kind', e.target.value as PromoKind)}
@@ -153,7 +153,7 @@ export function NewPromoDialog({ currency, onClose, onCreated }: NewPromoDialogP
           <FormField htmlFor="promo-type" label="Discount type">
             <NativeSelect
               id="promo-type"
-              className="w-full [&_select]:h-[42px]"
+              className="w-full h-[42px]"
               value={form.discountType}
               disabled={saving}
               onChange={(e) => set('discountType', e.target.value as DiscountType)}
