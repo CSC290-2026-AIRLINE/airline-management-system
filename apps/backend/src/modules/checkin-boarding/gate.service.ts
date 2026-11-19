@@ -75,7 +75,7 @@ export class GateService {
   async gates(airportCode: string, all = false): Promise<GateInfo[]> {
     const code = airportCode.trim().toUpperCase()
     const gates = (await this.store.listGates()).filter((gate) => gate.airport_code.toUpperCase() === code && (all || gate.is_active))
-    const flights = await this.openFlightsByGate(true)
+    const flights = await this.openFlightsByGate()
     return gates
       .sort((a, b) => a.code.localeCompare(b.code, 'en', { numeric: true }))
       .map((gate) => toGateInfo(gate, flights.get(gate.id) ?? null))
@@ -143,7 +143,7 @@ export class GateService {
       before: { code: gate.code, isActive: gate.is_active },
       after: { code: updated.code, isActive },
     })
-    const flights = await this.openFlightsByGate(true)
+    const flights = await this.openFlightsByGate()
     return toGateInfo(updated, flights.get(updated.id) ?? null)
   }
 
@@ -453,55 +453,61 @@ export class GateService {
     }
 
     const closedAt = this.clock.now()
-    let noShow = 0
-    const records = await this.store.listCheckInsByFlight(flightId)
-    const passes = await this.store.passesForCheckIns(records.map((record) => record.id))
-    const final = finalPassIds(await this.store.listEvents(flightId))
-    const cancelledBookings = new Set(
-      (await this.bookings.listByFlight(flightId)).filter((b) => b.cancelled).map((b) => b.bookingPassengerId),
-    )
-    for (const record of records) {
-      const pass = passes.find((p) => p.check_in_id === record.id)
-      if (pass && final.has(pass.id)) continue
-      // Feature 3 does not call us when it cancels a booking: a check-in nobody read or scanned since is cancelled here.
-      const open = record.status === 'checked_in' || record.status === 'on_hold' || record.status === 'started'
-      if (open && cancelledBookings.has(record.booking_passenger_id)) {
-        await cancelCheckIn(this.cancelDeps(), actor, record, { flightNumber: flight.flightNumber, why: 'the booking was cancelled' })
-        continue
-      }
-      if (pass) {
-        // Only a passenger who could still board is a no-show; a cancelled or denied check-in keeps its status.
-        if (record.status !== 'checked_in' && record.status !== 'on_hold') continue
-        const written = await this.store.appendEvent({
-          flight_id: flightId,
-          gate_id: boarding.gate_id,
-          boarding_pass_id: pass.id,
-          scanned_reference: null,
-          event: 'no_show',
-          reason: null,
-          staff_id: null,
-          occurred_at: closedAt,
-        })
-        // The pass boarded while the gate was closing: it is not a no-show and its bags stay on board.
-        if (written.event !== 'no_show') continue
-        // A hold nobody cleared before the close gives the seat back.
-        if (record.status === 'on_hold') await this.seats.releaseAssigned(record.booking_passenger_id, record.flight_id)
-      } else if (record.status === 'started' || record.status === 'on_hold') {
-        // Never checked in, so the seat goes back to the pool.
-        await this.seats.releaseAssigned(record.booking_passenger_id, record.flight_id)
-      } else {
-        continue
-      }
-      await this.store.updateCheckIn(record.id, { status: 'no_show' })
-      await this.offloadBags(record.id)
-      noShow += 1
+    // The close is claimed first: of two closes at the same moment only one gets past here, the other is told the gate
+    // is already closed. A close that dies halfway opens the gate again, so it can simply be run again.
+    if (!(await this.store.claimFlightBoardingClose(flightId, closedAt, staffId))) {
+      throw invalidState('The gate of this flight is already closed')
     }
-    // Closed last, so a close that died halfway can simply be run again; the count is the one frozen at that moment.
-    await this.store.updateFlightBoarding(flightId, {
-      boarded_count: await this.boardedCountOf(flightId),
-      closed_at: closedAt,
-      closed_by: staffId,
-    })
+    let noShow = 0
+    try {
+      const records = await this.store.listCheckInsByFlight(flightId)
+      const passes = await this.store.passesForCheckIns(records.map((record) => record.id))
+      const final = finalPassIds(await this.store.listEvents(flightId))
+      const cancelledBookings = new Set(
+        (await this.bookings.listByFlight(flightId)).filter((b) => b.cancelled).map((b) => b.bookingPassengerId),
+      )
+      for (const record of records) {
+        const pass = passes.find((p) => p.check_in_id === record.id)
+        if (pass && final.has(pass.id)) continue
+        // Feature 3 does not call us when it cancels a booking: a check-in nobody read or scanned since is cancelled here.
+        const open = record.status === 'checked_in' || record.status === 'on_hold' || record.status === 'started'
+        if (open && cancelledBookings.has(record.booking_passenger_id)) {
+          await cancelCheckIn(this.cancelDeps(), actor, record, { flightNumber: flight.flightNumber, why: 'the booking was cancelled' })
+          continue
+        }
+        if (pass) {
+          // Only a passenger who could still board is a no-show; a cancelled or denied check-in keeps its status.
+          if (record.status !== 'checked_in' && record.status !== 'on_hold') continue
+          const written = await this.store.appendEvent({
+            flight_id: flightId,
+            gate_id: boarding.gate_id,
+            boarding_pass_id: pass.id,
+            scanned_reference: null,
+            event: 'no_show',
+            reason: null,
+            staff_id: null,
+            occurred_at: closedAt,
+          })
+          // The pass boarded while the gate was closing: it is not a no-show and its bags stay on board.
+          if (written.event !== 'no_show') continue
+          // A hold nobody cleared before the close gives the seat back.
+          if (record.status === 'on_hold') await this.seats.releaseAssigned(record.booking_passenger_id, record.flight_id)
+        } else if (record.status === 'started' || record.status === 'on_hold') {
+          // Never checked in, so the seat goes back to the pool.
+          await this.seats.releaseAssigned(record.booking_passenger_id, record.flight_id)
+        } else {
+          continue
+        }
+        await this.store.updateCheckIn(record.id, { status: 'no_show' })
+        await this.offloadBags(record.id)
+        noShow += 1
+      }
+      // The count is the one frozen at the moment the gate closed.
+      await this.store.updateFlightBoarding(flightId, { boarded_count: await this.boardedCountOf(flightId) })
+    } catch (error) {
+      await this.store.updateFlightBoarding(flightId, { closed_at: null, closed_by: null })
+      throw error
+    }
 
     await this.notify.send('boarding_call', {
       flightId,
@@ -561,13 +567,12 @@ export class GateService {
   }
 
   /**
-   * The flights that still board, by gate id: these hold their gate. A closed gate is done, and a flight that was
-   * cancelled, departed or arrived frees its gate even when nobody closed it.
-   *
-   * With `withLeft` (what the gate screens show) a gate with no boarding flight shows the flight that left it and was
-   * never closed, so the agent can still open that flight and close it: the no-shows and the offloads are written then.
+   * The flights that hold a gate, by gate id: the ones that still board, and the ones that left without their gate
+   * being closed. A closed gate is done and a cancelled flight frees its gate. A flight that left keeps its gate until
+   * an agent closes it, so it can still be opened there and the no-shows and the offloads are written then; the gate
+   * screens, turning a gate off and moving a flight all read this one rule.
    */
-  private async openFlightsByGate(withLeft = false): Promise<Map<string, NonNullable<GateInfo['flight']>>> {
+  private async openFlightsByGate(): Promise<Map<string, NonNullable<GateInfo['flight']>>> {
     const boardings = await this.store.openFlightBoardings()
     const byId = new Map((await this.flightProvider.byIds(boardings.map((b) => b.flight_id))).map((flight) => [flight.id, flight]))
     const boarding = new Map<string, NonNullable<GateInfo['flight']>>()
@@ -579,10 +584,11 @@ export class GateService {
       const at = this.stillBoards(flight) ? boarding : left
       at.set(row.gate_id, { id: flight.id, flightNumber: flight.flightNumber, depAt: flight.depAt.toISOString() })
     }
-    return withLeft ? new Map([...left, ...boarding]) : boarding
+    // A gate given to a new flight before this rule keeps showing that flight.
+    return new Map([...left, ...boarding])
   }
 
-  /** The flight that boards at the gate now, if any. */
+  /** The flight that holds the gate now, if any. */
   private async openFlightOf(gateId: string): Promise<NonNullable<GateInfo['flight']> | null> {
     return (await this.openFlightsByGate()).get(gateId) ?? null
   }

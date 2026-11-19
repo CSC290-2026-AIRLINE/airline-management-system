@@ -482,6 +482,13 @@ export class CheckInStore implements CheckInRepository {
     return next
   }
 
+  async claimFlightBoardingClose(flightId: string, closedAt: Date, closedBy: string): Promise<boolean> {
+    const record = this.boardingRows.get(flightId)
+    if (!record || record.closed_at !== null) return false
+    this.boardingRows.set(flightId, { ...record, closed_at: closedAt, closed_by: closedBy, updated_at: this.now() })
+    return true
+  }
+
   async createPass(input: CreatePassInput): Promise<BoardingPassRecord> {
     return this.insertPass(input)
   }

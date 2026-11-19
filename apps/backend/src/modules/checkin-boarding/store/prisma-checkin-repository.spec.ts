@@ -121,7 +121,7 @@ const fakeDb = () => ({
   travel_document: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
   checked_bag: { create: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() },
   carry_on_check: { create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
-  flight_boarding: { findUnique: jest.fn(), findMany: jest.fn(), upsert: jest.fn(), update: jest.fn() },
+  flight_boarding: { findUnique: jest.fn(), findMany: jest.fn(), upsert: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   boarding_pass: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
   boarding_event: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
   gate: { findUnique: jest.fn(), findMany: jest.fn(), createManyAndReturn: jest.fn(), update: jest.fn() },
@@ -271,6 +271,12 @@ describe('PrismaCheckInRepository', () => {
     })
   })
 
+  it('refuses a flight id that is not a UUID before it reaches the database', async () => {
+    const { db, repo } = build()
+    await expect(repo.searchCheckIns({ flightId: 'e' })).rejects.toMatchObject({ code: 'VALIDATION' })
+    expect(db.check_in.findMany).not.toHaveBeenCalled()
+  })
+
   it('searches a full name word by word', async () => {
     const { db, repo } = build()
     db.check_in.findMany.mockResolvedValue([checkInRow])
@@ -330,5 +336,16 @@ describe('PrismaCheckInRepository', () => {
     const open = await repo.openFlightBoardings()
     expect(open.map((b) => b.flight_id)).toEqual(['flt-fy204'])
     expect(db.flight_boarding.findMany).toHaveBeenCalledWith({ where: { closed_at: null } })
+  })
+
+  it('claims a gate close only while the gate is still open', async () => {
+    const { db, repo } = build()
+    db.flight_boarding.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 })
+    expect(await repo.claimFlightBoardingClose('flt-fy204', NOW, 'staff-1')).toBe(true)
+    expect(await repo.claimFlightBoardingClose('flt-fy204', NOW, 'staff-1')).toBe(false)
+    expect(db.flight_boarding.updateMany).toHaveBeenCalledWith({
+      where: { flight_id: 'flt-fy204', closed_at: null },
+      data: { closed_at: NOW, closed_by: 'staff-1', updated_at: expect.any(Date) },
+    })
   })
 })

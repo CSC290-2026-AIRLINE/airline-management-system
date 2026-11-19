@@ -71,6 +71,8 @@ export interface CheckInRepository {
   openFlightBoardings(): Promise<FlightBoardingRecord[]>
   upsertFlightBoarding(flightId: string, gateId: string): Promise<FlightBoardingRecord>
   updateFlightBoarding(flightId: string, patch: UpdateFlightBoardingPatch): Promise<FlightBoardingRecord>
+  /** Marks the gate closed only when it is still open; false when another close got there first. */
+  claimFlightBoardingClose(flightId: string, closedAt: Date, closedBy: string): Promise<boolean>
 
   createPass(input: CreatePassInput): Promise<BoardingPassRecord>
   getPass(id: string): Promise<BoardingPassRecord | null>

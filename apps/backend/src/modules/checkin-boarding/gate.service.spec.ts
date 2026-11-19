@@ -442,10 +442,10 @@ describe('GateService.setGateActive', () => {
     expect(await gate.setGateActive(staff, 'gate-a1', true)).toMatchObject({ isActive: true })
   })
 
-  it.each(['cancelled', 'departed', 'arrived'])('a flight that is %s and was never closed frees its gate', async (status) => {
+  it('a cancelled flight that was never closed frees its gate', async () => {
     const { gate } = build()
     const flight = FLIGHTS.find((f) => f.id === 'flt-fy204')!
-    flight.status = status as typeof flight.status
+    flight.status = 'cancelled'
     try {
       expect(await gate.setGateActive(staff, 'gate-a1', false)).toMatchObject({ isActive: false })
       await gate.setGateActive(staff, 'gate-a1', true)
@@ -455,12 +455,27 @@ describe('GateService.setGateActive', () => {
     }
   })
 
-  it('a flight past its departure time that nobody closed frees its gate, whatever its status says', async () => {
+  it.each(['departed', 'arrived'])('a flight that is %s and was never closed keeps its gate until it is closed', async (status) => {
+    const { gate } = build()
+    const flight = FLIGHTS.find((f) => f.id === 'flt-fy204')!
+    flight.status = status as typeof flight.status
+    try {
+      await expect(gate.setGateActive(staff, 'gate-a1', false)).rejects.toMatchObject({ code: 'GATE_IN_USE' })
+      await expect(gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a1' })).rejects.toMatchObject({ code: 'GATE_TAKEN' })
+    } finally {
+      flight.status = 'scheduled'
+    }
+  })
+
+  it('a flight past its departure time that nobody closed still holds its gate, whatever its status says', async () => {
     const { gate, clock } = build()
     // FY 204 left at 03:25Z; no job has written "departed" yet and nobody closed gate A1.
     clock.set(new Date('2026-11-11T03:30:00.000Z'))
-    expect(await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a1' })).toMatchObject({ gate: { code: 'A1' } })
-    await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a2' })
+    await expect(gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a1' })).rejects.toMatchObject({ code: 'GATE_TAKEN' })
+    await expect(gate.setGateActive(staff, 'gate-a1', false)).rejects.toMatchObject({ code: 'GATE_IN_USE' })
+    // Once the agent closes it, the gate is free again.
+    await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
+    await gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })
     expect(await gate.setGateActive(staff, 'gate-a1', false)).toMatchObject({ isActive: false })
   })
 
@@ -468,11 +483,6 @@ describe('GateService.setGateActive', () => {
     const { gate, store, clock } = build()
     clock.set(new Date('2026-11-11T03:30:00.000Z'))
     const a1 = async () => (await gate.gates('BKK')).find((g) => g.id === 'gate-a1')?.flight ?? null
-    expect(await a1()).toMatchObject({ id: 'flt-fy204' })
-    // A flight that still boards wins the gate; the one that left comes back once that flight moved on.
-    await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a1' })
-    expect(await a1()).toMatchObject({ id: 'flt-fy318' })
-    await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a2' })
     expect(await a1()).toMatchObject({ id: 'flt-fy204' })
     await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
     await gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })
@@ -693,6 +703,31 @@ describe('GateService head-count and close', () => {
     expect((await store.getCheckIn(await idOf(store, 'SA224B')))?.status).toBe('boarded')
     expect((await store.listEvents('flt-fy204')).filter((e) => e.event === 'no_show')).toHaveLength(7)
     expect((await store.getBag(tagged.bag.id))?.status).toBe('offloaded')
+  })
+
+  it('of two closes at the same moment only one runs: one audit and one boarding call', async () => {
+    const { gate, notify, audit } = build()
+    await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
+    const notifySpy = jest.spyOn(notify, 'send')
+    const auditSpy = jest.spyOn(audit, 'record')
+    const results = await Promise.allSettled([
+      gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true }),
+      gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true }),
+    ])
+    expect(results.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected'])
+    expect(results.find((result) => result.status === 'rejected')).toMatchObject({ reason: { code: 'INVALID_STATE' } })
+    expect(notifySpy.mock.calls.filter(([type]) => type === 'boarding_call')).toHaveLength(1)
+    expect(auditSpy.mock.calls.filter(([entry]) => entry.action === 'gate.close')).toHaveLength(1)
+  })
+
+  it('a close that fails halfway opens the gate again, so it can be run again', async () => {
+    const { gate, store } = build()
+    await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
+    jest.spyOn(store, 'listCheckInsByFlight').mockRejectedValueOnce(new Error('database down'))
+    await expect(gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })).rejects.toThrow('database down')
+    expect((await store.flightBoarding('flt-fy204'))?.closed_at).toBeNull()
+    await gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })
+    expect((await store.flightBoarding('flt-fy204'))?.closed_at).not.toBeNull()
   })
 
   it('a closed gate cannot be closed twice and cannot take a new head-count', async () => {

@@ -6,7 +6,7 @@ import type {
   flight_boardingUncheckedUpdateInput,
   travel_documentUncheckedUpdateInput,
 } from '../../../db/generated/prisma/models'
-import { invalidState, notFound } from '../errors'
+import { invalidState, notFound, validation } from '../errors'
 import { CLOCK } from '../providers/providers'
 import type { ClockProvider } from '../providers/providers'
 import type { CheckInRepository } from './checkin-repository'
@@ -43,6 +43,9 @@ import {
   toGateRecord,
   toPassRecord,
 } from './prisma-mappers'
+
+/** The shape of every id of the database. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Prisma's error codes: a unique constraint and a row that is not there. */
 const isUniqueViolation = (error: unknown): boolean => (error as { code?: string } | null)?.code === 'P2002'
@@ -119,6 +122,8 @@ export class PrismaCheckInRepository implements CheckInRepository {
    * through the relations: the coupon of the check-in carries the booking, the check-in carries the passenger.
    */
   async searchCheckIns(query: { flightId?: string; pnr?: string; name?: string }): Promise<CheckInRecord[]> {
+    // The flight ids of the database are UUIDs: anything else would fail inside Postgres and answer 500.
+    if (query.flightId && !UUID.test(query.flightId)) throw validation('flightId must be a flight id', { field: 'flightId' })
     return (await this.db.check_in.findMany({ where: this.searchWhere(query), orderBy: { created_at: 'asc' } })).map(toCheckInRecord)
   }
 
@@ -313,6 +318,14 @@ export class PrismaCheckInRepository implements CheckInRepository {
     const data: flight_boardingUncheckedUpdateInput = { ...patch, updated_at: this.clock.now() }
     const row = await this.write('Flight boarding', () => this.db.flight_boarding.update({ where: { flight_id: flightId }, data }))
     return toFlightBoardingRecord(row)
+  }
+
+  async claimFlightBoardingClose(flightId: string, closedAt: Date, closedBy: string): Promise<boolean> {
+    const updated = await this.db.flight_boarding.updateMany({
+      where: { flight_id: flightId, closed_at: null },
+      data: { closed_at: closedAt, closed_by: closedBy, updated_at: this.clock.now() },
+    })
+    return updated.count === 1
   }
 
   async createPass(input: CreatePassInput): Promise<BoardingPassRecord> {
