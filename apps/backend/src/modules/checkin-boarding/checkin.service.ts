@@ -48,6 +48,8 @@ import type { BoardingPassRecord, CheckInRecord, TravelDocumentRecord } from './
 import { CHECKIN_REPOSITORY } from './store/checkin-repository'
 import type { CheckInRepository } from './store/checkin-repository'
 
+const bookingCancelled = () => new CheckInError(409, 'NOT_ELIGIBLE', 'The booking is cancelled', { reason: 'booking_cancelled' })
+
 /** Feature 3 holds a seat for five minutes. */
 const SEAT_HOLD_TTL_MS = 300_000
 
@@ -92,10 +94,22 @@ export class CheckInService {
 
     // A cancelled leg is never checked in, and the payment is the one of the leg that is.
     const legs = coupons.filter((b) => b.passengerId === passenger.passengerId && !b.cancelled)
-    if (legs.length === 0) {
-      throw new CheckInError(409, 'NOT_ELIGIBLE', 'The booking is cancelled', { reason: 'booking_cancelled' })
-    }
+    if (legs.length === 0) throw bookingCancelled()
     const { booking, flight } = await this.flightToCheckIn(legs)
+    return this.open(actor, booking, flight)
+  }
+
+  /** The counter starts the check-in of the booked passenger the agent picked, on the flight of that row. */
+  async startCoupon(actor: Actor, bookingPassengerId: string, flightId: string): Promise<CheckInView> {
+    const booking = await this.bookings.byBookingPassengerId(bookingPassengerId, flightId)
+    if (!booking) throw notFound('Booking')
+    this.assertBookingOwner(actor, booking, 'Booking')
+    if (booking.cancelled) throw bookingCancelled()
+    return this.open(actor, booking, await this.flightOf(flightId))
+  }
+
+  /** Opens the check-in of one leg: the one that is there is resumed, else a new one is started. */
+  private async open(actor: Actor, booking: BookingPassenger, flight: FlightRecord): Promise<CheckInView> {
     if (flight.status === 'cancelled') {
       throw new CheckInError(409, 'NOT_ELIGIBLE', 'The flight is cancelled', { reason: 'flight_cancelled' })
     }

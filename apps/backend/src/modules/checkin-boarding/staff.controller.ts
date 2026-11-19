@@ -46,6 +46,14 @@ export class StaffController {
     })
   }
 
+  @Post('check-ins')
+  async start(@CurrentActor() actor: Actor | null, @Body() body: unknown): Promise<StaffCheckInView> {
+    return this.counter.start(requireActor(actor), {
+      bookingPassengerId: requireString(body, 'bookingPassengerId', { max: 64 }),
+      flightId: requireString(body, 'flightId', { max: 64 }),
+    })
+  }
+
   @Get('check-ins/:id')
   async detail(@CurrentActor() actor: Actor | null, @Param('id') id: string): Promise<StaffCheckInView> {
     return this.counter.detail(requireActor(actor), id)

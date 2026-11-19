@@ -31,6 +31,7 @@ passenger their own seat and hides the other cabins.
 | Method | Path                                                | Body / query                                            | Service                                                                     |
 | ------ | --------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------- |
 | GET    | `/staff/check-ins`                                  | `?flightId&pnr&name`                                    | `CounterService.search`                                                     |
+| POST   | `/staff/check-ins`                                  | `{ bookingPassengerId, flightId }`                      | `CounterService.start` (a booked passenger who has not started)             |
 | GET    | `/staff/check-ins/:id`                              |                                                         | `CounterService.detail`                                                     |
 | POST   | `/staff/check-ins/:id/bags`                         | `{ weightKg, lengthCm, widthCm, heightCm }`             | `CounterService.weighBag`                                                   |
 | DELETE | `/staff/bags/:id`                                   |                                                         | `CounterService.removeBag`                                                  |

@@ -57,6 +57,7 @@ function build() {
     clock,
     flights,
     bookings,
+    seats,
     new FixturePricing(),
     new FixtureTiers(),
     settings,

@@ -157,6 +157,28 @@ export class DbBookings implements BookingProvider {
     })
     return rows.map(toBookingPassenger)
   }
+
+  async search(query: { flightId?: string; pnr?: string; name?: string }): Promise<BookingPassenger[]> {
+    const pnr = query.pnr?.trim()
+    const words = (query.name ?? '').split(/\s+/).filter(Boolean)
+    const rows = await this.db.booking_coupon.findMany({
+      where: {
+        ...(query.flightId ? { flight_id: query.flightId } : {}),
+        booking_passenger: {
+          ...(pnr ? { booking: { booking_reference: { contains: pnr, mode: 'insensitive' } } } : {}),
+          // Every word of the name has to be in the passenger, like the check-in search of the repository.
+          AND: words.map((word) => ({
+            passenger: {
+              OR: [{ first_name: { contains: word, mode: 'insensitive' } }, { last_name: { contains: word, mode: 'insensitive' } }],
+            },
+          })),
+        },
+      },
+      include: COUPON_INCLUDE,
+      orderBy: { created_at: 'asc' },
+    })
+    return rows.map(toBookingPassenger)
+  }
 }
 
 const toBookingPassenger = (row: CouponRow): BookingPassenger => {

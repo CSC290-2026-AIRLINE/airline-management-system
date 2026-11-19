@@ -68,6 +68,18 @@ describe('DbBookings', () => {
     expect(booking).toMatchObject({ paid: false, cancelled: true })
   })
 
+  it('the counter search reads the coupons of a flight, a booking ref and every word of a name', async () => {
+    const db = { booking_coupon: { findMany: jest.fn().mockResolvedValue([couponRow()]), findFirst: jest.fn() } }
+    const found = await new DbBookings(db as unknown as DbService).search({ flightId: 'flt-fy204', pnr: ' pl224 ', name: 'narong  suk' })
+    expect(found.map((booking) => booking.pnr)).toEqual(['PL224A'])
+    const where = (db.booking_coupon.findMany.mock.calls[0] as [{ where: Record<string, unknown> }])[0].where
+    expect(where).toMatchObject({
+      flight_id: 'flt-fy204',
+      booking_passenger: { booking: { booking_reference: { contains: 'pl224', mode: 'insensitive' } } },
+    })
+    expect((where.booking_passenger as { AND: unknown[] }).AND).toHaveLength(2)
+  })
+
   it('a booking passenger is read for one flight of the trip', async () => {
     const db = { booking_coupon: { findMany: jest.fn(), findFirst: jest.fn().mockResolvedValue(couponRow()) } }
     const booking = await new DbBookings(db as unknown as DbService).byBookingPassengerId('bp-1', 'flt-fy204')

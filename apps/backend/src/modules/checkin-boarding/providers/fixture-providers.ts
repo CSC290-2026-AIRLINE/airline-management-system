@@ -93,6 +93,17 @@ export class FixtureBookings implements BookingProvider {
   async listByFlight(flightId: string): Promise<BookingPassenger[]> {
     return BOOKINGS.filter((b) => b.flightId === flightId)
   }
+
+  async search(query: { flightId?: string; pnr?: string; name?: string }): Promise<BookingPassenger[]> {
+    const pnr = query.pnr?.trim().toUpperCase()
+    const words = (query.name ?? '').toUpperCase().split(/\s+/).filter(Boolean)
+    return BOOKINGS.filter(
+      (b) =>
+        (!query.flightId || b.flightId === query.flightId) &&
+        (!pnr || b.pnr.toUpperCase().includes(pnr)) &&
+        words.every((word) => b.firstName.toUpperCase().includes(word) || b.lastName.toUpperCase().includes(word)),
+    )
+  }
 }
 
 @Injectable()
@@ -256,6 +267,14 @@ export class FixtureSeats implements SeatProvider {
 
   async releaseAssigned(bookingPassengerId: string, flightId: string): Promise<void> {
     this.assignments.delete(seatKey(flightId, bookingPassengerId))
+  }
+
+  async assignedSeats(flightId: string): Promise<Map<string, string>> {
+    const seats = new Map<string, string>()
+    for (const [key, seat] of this.assignments) {
+      if (key.startsWith(`${flightId}:`)) seats.set(key.slice(flightId.length + 1), seat.seatCode)
+    }
+    return seats
   }
 
   private statusOf(

@@ -86,6 +86,8 @@ export interface BookingProvider {
   /** The coupon of a booking passenger on one flight: a return trip has one per flight. */
   byBookingPassengerId(id: string, flightId: string): Promise<BookingPassenger | null>
   listByFlight(flightId: string): Promise<BookingPassenger[]>
+  /** The counter's search: the coupons of a flight, of a booking ref (part of it) or of a name (every word of it). */
+  search(query: { flightId?: string; pnr?: string; name?: string }): Promise<BookingPassenger[]>
 }
 
 /** Feature 7 owns the passenger profile; F6 fills empty fields and flags differences. */
@@ -121,6 +123,8 @@ export interface SeatProvider {
     opts: { avoidExitRow: boolean },
   ): Promise<{ seatCode: string; type: SeatType }>
   releaseAssigned(bookingPassengerId: string, flightId: string): Promise<void>
+  /** The assigned seat code of every booking passenger on a flight, in one read. */
+  assignedSeats(flightId: string): Promise<Map<string, string>>
 }
 
 /** Feature 4 owns baggage allowance and seat fees. */

@@ -213,6 +213,18 @@ describe('DbSeats', () => {
     })
   })
 
+  it('the assigned seats of a flight are read in one query, by booking passenger', async () => {
+    const { seats, db } = build()
+    db.seat_assignment.findMany.mockResolvedValue([
+      { ...seatRow({ status: 'assigned', seat_code: '14A' }), booking_coupon: { booking_passenger_id: 'bp-1' } },
+    ])
+    expect([...(await seats.assignedSeats('flt-fy204'))]).toEqual([['bp-1', '14A']])
+    expect(db.seat_assignment.findMany).toHaveBeenCalledTimes(1)
+    expect(db.seat_assignment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { flight_id: 'flt-fy204', status: 'assigned' } }),
+    )
+  })
+
   it('releasing the seats of a passenger touches one flight only', async () => {
     const { seats, db } = build()
     db.seat_assignment.updateMany.mockResolvedValue({ count: 1 })

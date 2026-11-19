@@ -224,6 +224,14 @@ export class DbSeats implements SeatProvider {
     })
   }
 
+  async assignedSeats(flightId: string): Promise<Map<string, string>> {
+    const rows = await this.db.seat_assignment.findMany({
+      where: { flight_id: flightId, status: 'assigned' },
+      include: { booking_coupon: { select: { booking_passenger_id: true } } },
+    })
+    return new Map(rows.map((row) => [row.booking_coupon.booking_passenger_id, row.seat_code]))
+  }
+
   /** The rows that still hold a seat: an assigned one and a hold that has not run out. */
   private async liveRows(flightId: string): Promise<SeatRow[]> {
     const rows = await this.db.seat_assignment.findMany({ where: { flight_id: flightId } })

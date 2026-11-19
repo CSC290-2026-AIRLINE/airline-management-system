@@ -16,7 +16,7 @@ import { allocateExcess, bagTagNumber, carryOnResult, checkedBagRefusal, excessF
 import { computeWindow } from './domain/window'
 import { CheckInError, invalidState, notFound, validation } from './errors'
 import { toBagView, toFlightSummary, toStaffCheckInView, toStaffRow } from './mappers'
-import { AUDIT, BOOKINGS, CLOCK, FLIGHTS, PAYMENTS, PRICING, SETTINGS, TIERS } from './providers/providers'
+import { AUDIT, BOOKINGS, CLOCK, FLIGHTS, PAYMENTS, PRICING, SEATS, SETTINGS, TIERS } from './providers/providers'
 import type {
   AuditProvider,
   BookingPassenger,
@@ -26,6 +26,7 @@ import type {
   FlightRecord,
   PaymentProvider,
   PricingProvider,
+  SeatProvider,
   SettingsProvider,
   TierProvider,
 } from './providers/providers'
@@ -36,6 +37,9 @@ import type { CheckInRepository } from './store/checkin-repository'
 /** The bags in the order they were weighed: the excess of each one depends on the ones before it. */
 const sortByWeighed = (bags: CheckedBagRecord[]): CheckedBagRecord[] =>
   [...bags].sort((a, b) => (a.weighed_at?.getTime() ?? 0) - (b.weighed_at?.getTime() ?? 0))
+
+/** A coupon is one booking passenger on one flight: a return trip has two. */
+const couponKey = (bookingPassengerId: string, flightId: string): string => `${bookingPassengerId}:${flightId}`
 
 export interface BagInput {
   weightKg: number
@@ -54,6 +58,7 @@ export class CounterService {
     @Inject(CLOCK) private readonly clock: ClockProvider,
     @Inject(FLIGHTS) private readonly flights: FlightProvider,
     @Inject(BOOKINGS) private readonly bookings: BookingProvider,
+    @Inject(SEATS) private readonly seats: SeatProvider,
     @Inject(PRICING) private readonly pricing: PricingProvider,
     @Inject(TIERS) private readonly tiers: TierProvider,
     @Inject(SETTINGS) private readonly settings: SettingsProvider,
@@ -63,50 +68,75 @@ export class CounterService {
     @Inject(CHECKIN_REPOSITORY) private readonly store: CheckInRepository,
   ) {}
 
-  /** The issue list of the counter: every check-in of a flight, a PNR or a name. */
+  /**
+   * The passenger list of the counter. A search (a flight, a booking ref or a name) lists the booked passengers,
+   * also the ones who have not started a check-in; with nothing to search for the list is every check-in.
+   */
   async search(actor: Actor, query: { flightId?: string; pnr?: string; name?: string }): Promise<StaffCheckInRow[]> {
     this.staffIdOf(actor)
-    const pnr = query.pnr?.trim().toUpperCase()
-    const name = query.name?.trim().toUpperCase()
-    const records = await this.store.searchCheckIns(query)
-    const ids = records.map((record) => record.id)
-    // One query per table for the whole list, not one per passenger: a full flight is a few hundred rows.
-    const [bookings, documents, bags] = await Promise.all([
-      Promise.all(records.map((record) => this.bookings.byBookingPassengerId(record.booking_passenger_id, record.flight_id))),
-      this.store.documentsForCheckIns(ids),
-      this.store.bagsForCheckIns(ids),
+    const found = await this.store.searchCheckIns(query)
+    const searching = Boolean(query.flightId || query.pnr?.trim() || query.name?.trim())
+    const booked = searching
+      ? await this.bookings.search(query)
+      : (await Promise.all(found.map((r) => this.bookings.byBookingPassengerId(r.booking_passenger_id, r.flight_id)))).filter(
+          (b) => b !== null,
+        )
+    const bookingOf = new Map(booked.map((b) => [couponKey(b.bookingPassengerId, b.flightId), b]))
+    // One read per table and per flight for the whole list, not one per passenger: a full flight is a few hundred rows.
+    const flightIds = [...new Set(booked.map((b) => b.flightId))]
+    const [flights, seats] = await Promise.all([
+      this.flights.byIds(flightIds),
+      Promise.all(flightIds.map((id) => this.seats.assignedSeats(id))),
     ])
-    const flights = new Map<string, FlightRecord | null>()
-    const rows: StaffCheckInRow[] = []
-    for (const [index, record] of records.entries()) {
-      const booking = bookings[index]
-      if (!booking) continue
-      const passengerName = `${booking.firstName} ${booking.lastName}`
-      if (pnr && !booking.pnr.toUpperCase().includes(pnr)) continue
-      if (name && !passengerName.toUpperCase().includes(name)) continue
-      if (!flights.has(record.flight_id)) flights.set(record.flight_id, await this.flights.byId(record.flight_id))
-      rows.push(
-        toStaffRow({
-          id: record.id,
-          pnr: booking.pnr,
-          passengerName,
-          flightNumber: flights.get(record.flight_id)?.flightNumber ?? '',
-          status: record.status,
-          issues: this.issuesOf(
-            record,
-            documents.find((d) => d.check_in_id === record.id) ?? null,
-            sortByWeighed(bags.filter((b) => b.check_in_id === record.id)),
-          ),
-        }),
-      )
+    const flightOf = new Map(flights.map((flight) => [flight.id, flight]))
+    const seatsOf = new Map(flightIds.map((id, index) => [id, seats[index]]))
+
+    const records: CheckInRecord[] = []
+    for (const record of found) {
+      const booking = bookingOf.get(couponKey(record.booking_passenger_id, record.flight_id))
+      if (booking) records.push(await this.upToDate(actor, record, booking, flightOf.get(record.flight_id)))
+    }
+    const ids = records.map((record) => record.id)
+    const [documents, bags] = await Promise.all([this.store.documentsForCheckIns(ids), this.store.bagsForCheckIns(ids)])
+
+    const rowOf = (booking: BookingPassenger, record: CheckInRecord | null): StaffCheckInRow =>
+      toStaffRow({
+        id: record?.id ?? null,
+        bookingPassengerId: booking.bookingPassengerId,
+        flightId: booking.flightId,
+        pnr: booking.pnr,
+        passengerName: `${booking.firstName} ${booking.lastName}`,
+        flightNumber: flightOf.get(booking.flightId)?.flightNumber ?? '',
+        seat: seatsOf.get(booking.flightId)?.get(booking.bookingPassengerId) ?? null,
+        status: record?.status ?? 'not_started',
+        issues: record
+          ? this.issuesOf(
+              record,
+              documents.find((d) => d.check_in_id === record.id) ?? null,
+              sortByWeighed(bags.filter((b) => b.check_in_id === record.id)),
+            )
+          : [],
+      })
+    const rows = records.map((record) => rowOf(bookingOf.get(couponKey(record.booking_passenger_id, record.flight_id))!, record))
+    // The booked passengers nobody checked in yet; a cancelled booking that never started is not on the list.
+    const started = new Set(records.map((record) => couponKey(record.booking_passenger_id, record.flight_id)))
+    for (const booking of booked) {
+      if (!booking.cancelled && !started.has(couponKey(booking.bookingPassengerId, booking.flightId))) rows.push(rowOf(booking, null))
     }
     return rows
+  }
+
+  /** The agent starts the check-in of a booked passenger who has not started one online. */
+  async start(actor: Actor, input: { bookingPassengerId: string; flightId: string }): Promise<StaffCheckInView> {
+    this.staffIdOf(actor)
+    const started = await this.checkins.startCoupon(actor, input.bookingPassengerId, input.flightId)
+    return this.detail(actor, started.id)
   }
 
   /** Everything the counter screen shows for one passenger. */
   async detail(actor: Actor, checkInId: string): Promise<StaffCheckInView> {
     this.staffIdOf(actor)
-    const record = await this.checkins.refreshHold(actor, await this.requireCheckIn(checkInId))
+    const record = await this.checkins.refreshHold(actor, await this.requireCheckIn(actor, checkInId))
     const booking = await this.bookingOf(record)
     const bags = await this.bagsOf(record)
     const checkIn = await this.checkins.get(actor, record.id)
@@ -128,7 +158,7 @@ export class CounterService {
   /** Weights a bag and writes down the excess it added to the passenger's allowance. */
   async weighBag(actor: Actor, checkInId: string, input: BagInput): Promise<StaffCheckInView> {
     const staffId = this.staffIdOf(actor)
-    const record = await this.requireCheckIn(checkInId)
+    const record = await this.requireCheckIn(actor, checkInId)
     if (record.status !== 'started' && record.status !== 'checked_in') {
       throw invalidState('Bags can only be weighed while the check-in is open')
     }
@@ -186,7 +216,7 @@ export class CounterService {
     // The gate offloads the bags of a no-show, so the tag is the guard and not the status.
     if (bag.tag_number !== null || bag.status !== 'weighed') throw invalidState('A tagged bag cannot be removed')
     if (bag.excess_payment_id) throw invalidState('A paid bag cannot be removed; refund through Feature 5')
-    const record = await this.requireCheckIn(bag.check_in_id)
+    const record = await this.requireCheckIn(actor, bag.check_in_id)
     await this.store.deleteBag(bagId)
 
     const booking = await this.bookingOf(record)
@@ -208,19 +238,18 @@ export class CounterService {
     return this.detail(actor, record.id)
   }
 
-  /** Tags a bag. The unpaid excess of the passenger is charged first, so the button pays and prints in one go. */
+  /** Tags a bag. A bag with an unpaid excess fee is refused `EXCESS_UNPAID`: the agent takes the money first (`payExcess`). */
   async tagBag(actor: Actor, bagId: string): Promise<{ bag: CheckedBagView; view: StaffCheckInView }> {
     this.staffIdOf(actor)
     const bag = await this.store.getBag(bagId)
     if (!bag || bag.deleted_at) throw notFound('Bag')
-    const record = await this.requireCheckIn(bag.check_in_id)
+    const record = await this.requireCheckIn(actor, bag.check_in_id)
     if (record.status !== 'started' && record.status !== 'checked_in') {
       throw invalidState('Bags can only be tagged while the check-in is open')
     }
     if (bag.status === 'tagged') {
       return { bag: toBagView(bag), view: await this.detail(actor, record.id) }
     }
-    // No tag until the fee is paid: the agent takes the money first (`payExcess`).
     if (bag.excess_fee > 0 && !bag.excess_payment_id) {
       throw new CheckInError(409, 'EXCESS_UNPAID', 'The excess fee of this bag is not paid', { bagId, fee: bag.excess_fee })
     }
@@ -237,7 +266,7 @@ export class CounterService {
   /** The agent took the excess fee: every unpaid bag of the check-in is charged in one payment. */
   async payExcess(actor: Actor, checkInId: string): Promise<StaffCheckInView> {
     this.staffIdOf(actor)
-    const record = await this.requireCheckIn(checkInId)
+    const record = await this.requireCheckIn(actor, checkInId)
     if (record.status !== 'started' && record.status !== 'checked_in') {
       throw invalidState('Excess can only be paid while the check-in is open')
     }
@@ -269,7 +298,7 @@ export class CounterService {
     this.staffIdOf(actor)
     const bag = await this.store.findBagByTag(tagNumber)
     if (!bag) throw notFound('Bag')
-    return this.lookupOf(bag, await this.requireCheckIn(bag.check_in_id))
+    return this.lookupOf(bag, await this.requireCheckIn(actor, bag.check_in_id))
   }
 
   /** Every bag on a flight, for feature 10. */
@@ -289,7 +318,8 @@ export class CounterService {
   /** Weighs the carry-on at the counter: too big or too heavy means it travels as a checked bag. */
   async carryOn(actor: Actor, checkInId: string, input: BagInput): Promise<StaffCheckInView> {
     const staffId = this.staffIdOf(actor)
-    const record = await this.requireCheckIn(checkInId)
+    const record = await this.requireCheckIn(actor, checkInId)
+    this.assertNotCancelled(record)
     const weight = roundKg(input.weightKg)
     if (!Number.isFinite(weight) || weight <= 0) {
       throw validation('The carry-on weight must be a positive number', { weightKg: input.weightKg })
@@ -349,9 +379,11 @@ export class CounterService {
     this.staffIdOf(actor)
     const pass = await this.store.getPass(passId)
     if (!pass) throw notFound('Boarding pass')
+    const record = await this.requireCheckIn(actor, pass.check_in_id)
+    this.assertNotCancelled(record)
     if (!pass.printed_at) await this.store.updatePass(passId, { printed_at: this.clock.now() })
     await this.record(actor, 'boarding_pass.print', 'boarding_pass', passId, 'boarding pass printed')
-    return this.checkins.boardingPass(actor, (await this.requireCheckIn(pass.check_in_id)).id)
+    return this.checkins.boardingPass(actor, record.id)
   }
 
   /** The counter is a staff screen: a customer token may not read it. */
@@ -360,10 +392,26 @@ export class CounterService {
     return actor.staffId
   }
 
-  private async requireCheckIn(checkInId: string): Promise<CheckInRecord> {
+  /** The check-in, cancelled first when its flight or booking was cancelled since: features 2 and 3 do not call us. */
+  private async requireCheckIn(actor: Actor, checkInId: string): Promise<CheckInRecord> {
     const record = await this.store.getCheckIn(checkInId)
     if (!record) throw notFound('Check-in')
-    return record
+    return this.checkins.refreshCancelled(actor, record)
+  }
+
+  private assertNotCancelled(record: CheckInRecord): void {
+    if (record.status === 'cancelled') throw invalidState('This check-in is cancelled')
+  }
+
+  /** A row of the list follows a cancelled flight or booking and a hold security has lifted, like the detail does. */
+  private async upToDate(
+    actor: Actor,
+    record: CheckInRecord,
+    booking: BookingPassenger,
+    flight: FlightRecord | undefined,
+  ): Promise<CheckInRecord> {
+    const current = booking.cancelled || flight?.status === 'cancelled' ? await this.checkins.refreshCancelled(actor, record) : record
+    return this.checkins.refreshHold(actor, current)
   }
 
   private async bagsOf(record: CheckInRecord): Promise<CheckedBagRecord[]> {

@@ -143,6 +143,23 @@ describe('customer routes', () => {
 })
 
 describe('staff routes', () => {
+  it('staff: a booked passenger who has not started is found and started at the counter', async () => {
+    const search = await req.get('/staff/check-ins?pnr=ER224F').set('x-test-user', STAFF).expect(200)
+    expect(search.body).toEqual([expect.objectContaining({ id: null, status: 'not_started', bookingPassengerId: 'bp-er224f' })])
+    const started = await req
+      .post('/staff/check-ins')
+      .set('x-test-user', STAFF)
+      .send({ bookingPassengerId: 'bp-er224f', flightId: 'flt-fy204' })
+      .expect(201)
+    expect(started.body.checkIn).toMatchObject({ status: 'started', booking: { pnr: 'ER224F' } })
+    await req.post('/staff/check-ins').set('x-test-user', STAFF).send({ flightId: 'flt-fy204' }).expect(400)
+    await req
+      .post('/staff/check-ins')
+      .set('x-test-user', CUSTOMER)
+      .send({ bookingPassengerId: 'bp-er224f', flightId: 'flt-fy204' })
+      .expect(403)
+  })
+
   it('staff: search, detail, weigh, tag, gate list, scan, headcount, close', async () => {
     const search = await req.get('/staff/check-ins?flightId=flt-fy204').set('x-test-user', STAFF).expect(200)
     expect(search.body.length).toBeGreaterThan(0)

@@ -4,7 +4,6 @@ import type {
   Cabin,
   CarryOnAllowance,
   CheckedBagView,
-  CheckInStatus,
   CheckInView,
   CheckInWindow,
   FlightSummary,
@@ -190,14 +189,7 @@ export function toStaffCheckInView(input: StaffCheckInViewInput): StaffCheckInVi
   }
 }
 
-export function toStaffRow(input: {
-  id: string
-  pnr: string
-  passengerName: string
-  flightNumber: string
-  status: CheckInStatus
-  issues: IssueCode[]
-}): StaffCheckInRow {
+export function toStaffRow(input: StaffCheckInRow): StaffCheckInRow {
   return { ...input }
 }
 

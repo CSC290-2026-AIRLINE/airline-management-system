@@ -48,12 +48,13 @@ function build() {
   const store = new CheckInStore(clock)
   const payments = new FixturePayments()
   const audit = new LoggerAudit()
+  const seats = new FixtureSeats(clock)
   const checkins = new CheckInService(
     clock,
     new FixtureFlights(),
     new FixtureBookings(),
     new FixturePassengers(),
-    new FixtureSeats(clock),
+    seats,
     new FixturePricing(),
     payments,
     new FixtureScreening(),
@@ -68,6 +69,7 @@ function build() {
     clock,
     new FixtureFlights(),
     new FixtureBookings(),
+    seats,
     new FixturePricing(),
     new FixtureTiers(),
     new FixtureSettings(),
@@ -548,6 +550,53 @@ describe('CounterService lookups', () => {
     expect(again.printedAt).toBe(first.printedAt)
   })
 
+  it('search lists a booked passenger who has not started a check-in', async () => {
+    const { counter } = build()
+    // Anna Eriksson is booked on FY 204 and has no check-in yet.
+    const anna = { id: null, status: 'not_started', pnr: 'ER224F', bookingPassengerId: 'bp-er224f', flightId: 'flt-fy204' }
+    expect(await counter.search(staff, { pnr: 'ER224F' })).toEqual([expect.objectContaining(anna)])
+    expect(await counter.search(staff, { name: 'eriksson' })).toEqual([expect.objectContaining(anna)])
+    expect(await counter.search(staff, { flightId: 'flt-fy204' })).toContainEqual(expect.objectContaining(anna))
+  })
+
+  it('search leaves out a cancelled booking that never started', async () => {
+    const { counter } = build()
+    const anna = BOOKINGS.find((b) => b.pnr === 'ER224F')!
+    anna.cancelled = true
+    try {
+      expect(await counter.search(staff, { pnr: 'ER224F' })).toEqual([])
+    } finally {
+      anna.cancelled = false
+    }
+  })
+
+  it('the agent starts the check-in of a booked passenger, who is then a started row', async () => {
+    const { counter } = build()
+    const view = await counter.start(staff, { bookingPassengerId: 'bp-er224f', flightId: 'flt-fy204' })
+    expect(view.checkIn).toMatchObject({ status: 'started', flight: { id: 'flt-fy204' } })
+    expect(await counter.search(staff, { pnr: 'ER224F' })).toEqual([expect.objectContaining({ id: view.checkIn.id, status: 'started' })])
+    await expect(counter.start(cust, { bookingPassengerId: 'bp-er224f', flightId: 'flt-fy204' })).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    })
+    await expect(counter.start(staff, { bookingPassengerId: 'bp-nobody', flightId: 'flt-fy204' })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    })
+  })
+
+  it('search rows carry the seat of the passenger', async () => {
+    const { counter } = build()
+    expect(await counter.search(staff, { pnr: 'EC224G' })).toEqual([expect.objectContaining({ seat: '14A' })])
+    expect(await counter.search(staff, { pnr: 'ER224F' })).toEqual([expect.objectContaining({ seat: null })])
+  })
+
+  it('search shows a held passenger security has since cleared as checked in', async () => {
+    const { counter } = build()
+    // Dana Kowalski is seeded on hold with a boarding pass.
+    expect(await counter.search(staff, { pnr: 'HD224H' })).toEqual([expect.objectContaining({ status: 'on_hold' })])
+    jest.spyOn(FixtureScreening.prototype, 'status').mockResolvedValue('clear')
+    expect(await counter.search(staff, { pnr: 'HD224H' })).toEqual([expect.objectContaining({ status: 'checked_in', issues: [] })])
+  })
+
   it('search filters by flight, pnr and name (case-insensitive substring)', async () => {
     const { counter } = build()
     const byFlight = await counter.search(staff, { flightId: 'flt-fy204' })
@@ -557,5 +606,28 @@ describe('CounterService lookups', () => {
     expect(byPnr.map((row) => row.pnr)).toEqual(['EC224G'])
     const byName = await counter.search(staff, { name: 'saetang' })
     expect(byName.map((row) => row.passengerName)).toEqual(['Pim Saetang'])
+  })
+})
+
+describe('CounterService and a cancelled booking', () => {
+  it('nothing is weighed, charged, checked or printed once the booking is cancelled', async () => {
+    const { counter, store, payments } = build()
+    const id = await pimId(store)
+    const pim = BOOKINGS.find((b) => b.pnr === 'EC224G')!
+    // 30 kg on a 20 kg allowance: an excess fee waits to be paid.
+    await counter.weighBag(staff, id, bag(30))
+    const pass = (await store.passesForCheckIn(id))[0]
+    pim.cancelled = true
+    try {
+      await expect(counter.payExcess(staff, id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+      await expect(counter.weighBag(staff, id, bag(5))).rejects.toMatchObject({ code: 'INVALID_STATE' })
+      await expect(counter.carryOn(staff, id, bag(5))).rejects.toMatchObject({ code: 'INVALID_STATE' })
+      await expect(counter.printPass(staff, pass.id)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+      expect((await counter.detail(staff, id)).checkIn.status).toBe('cancelled')
+    } finally {
+      pim.cancelled = false
+    }
+    expect(payments.charges).toHaveLength(0)
+    expect((await store.getCheckIn(id))?.status).toBe('cancelled')
   })
 })
