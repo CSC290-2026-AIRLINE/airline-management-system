@@ -604,16 +604,6 @@ export class BuildPairingService {
       throw new BadRequestException(rosteringError(RosteringErrorCode.NO_PAIRINGS, 'Choose at least one valid pairing to commit'))
     const context = await this.loadContext(params.base)
     const window = this.serviceDates(params)
-    const runs = await this.db.roster_run.findMany({
-      where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
-      select: { id: true, status: true },
-      orderBy: [{ status: 'asc' }, { created_at: 'desc' }],
-    })
-    // A published batch with a draft run beside it (the pairings left over) still takes new pairings, into the draft.
-    if (!runs.some((run) => run.status === 'draft') && runs.some((run) => run.status === 'published')) {
-      throw new ConflictException(`The roster run for ${params.base} · ${params.dateFrom} to ${params.dateTo} is already published`)
-    }
-
     const flightIds = [...new Set(drafts.flatMap((draft) => draft.legs.map((leg) => leg.flightId)))]
     const flights = await this.db.flight.findMany({
       where: { id: { in: flightIds } },
@@ -655,15 +645,14 @@ export class BuildPairingService {
         this.db.$transaction(async (tx) => {
           // Two people committing the same base and dates at once would each see no run and make one. The lock makes the second wait,
           // and the run is looked up again under it, so both commits land in the same draft run.
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`roster-run:${params.base}:${params.dateFrom}:${params.dateTo}`}, 0))`
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`roster-run:${params.base}:${params.dateFrom}:${params.dateTo}`}, 0))`
+          // New pairings go into the draft run of these dates. A published run is closed, so when only that one exists the commit
+          // opens a new draft beside it, the same shape the leftovers of a published batch already have.
           const existing = await tx.roster_run.findFirst({
-            where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
+            where: { base_airport: params.base, date_from: window.gte, date_to: window.lte, status: 'draft' },
             select: { id: true, status: true },
-            orderBy: [{ status: 'asc' }, { created_at: 'desc' }],
+            orderBy: { created_at: 'desc' },
           })
-          if (existing?.status === 'published') {
-            throw new ConflictException(`The roster run for ${params.base} · ${params.dateFrom} to ${params.dateTo} is already published`)
-          }
           const target =
             existing ??
             (await tx.roster_run.create({

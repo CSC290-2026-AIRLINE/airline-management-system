@@ -38,12 +38,12 @@ function setup(options: { flights: ReturnType<typeof flight>[]; runs?: { id: str
   const created: { data: { pairing_leg: { create: { flight_id: string; added_by: string }[] } } }[] = []
   let sequence = 200
   const tx = {
-    $queryRaw: jest.fn().mockResolvedValue([]),
+    $executeRaw: jest.fn().mockResolvedValue(0),
     roster_run: {
       create: jest.fn().mockResolvedValue({ id: 'run-new', status: 'draft' }),
       update: jest.fn(),
       // Under the lock the run is read again; it is the same one the first read found.
-      findFirst: jest.fn().mockResolvedValue((options.runs ?? [])[0] ?? null),
+      findFirst: jest.fn().mockResolvedValue((options.runs ?? []).find((run) => run.status === 'draft') ?? null),
     },
     pairing: {
       create: jest.fn((args: (typeof created)[number]) => {
@@ -176,18 +176,25 @@ describe('BuildPairingService.commitPairings', () => {
 
     await service.commitPairings(params, [{ ref: 'P-108', legs: [leg('1'), leg('2')] }])
 
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(1)
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
     expect(tx.roster_run.findFirst).toHaveBeenCalled()
     expect(tx.roster_run.create).not.toHaveBeenCalled()
     expect(tx.roster_run_pairing.createMany).toHaveBeenCalledWith({ data: [{ roster_run_id: 'run-7', pairing_id: expect.any(String) }] })
   })
 
-  it('refuses an empty commit and a published run', async () => {
+  it('refuses an empty commit', async () => {
     await expect(setup({ flights: [] }).service.commitPairings(params, [])).rejects.toBeInstanceOf(BadRequestException)
-    const published = setup({ flights: [out, back], runs: [{ id: 'run-1', status: 'published' }] })
-    await expect(published.service.commitPairings(params, [{ ref: 'P-108', legs: [leg('1'), leg('2')] }])).rejects.toBeInstanceOf(
-      ConflictException,
-    )
+  })
+
+  it('opens a new draft run beside a published one, so pairings made later can still be crewed and published', async () => {
+    const { service, tx } = setup({ flights: [out, back], runs: [{ id: 'run-1', status: 'published' }] })
+
+    const result = await service.commitPairings(params, [{ ref: 'P-108', legs: [leg('1'), leg('2')] }])
+
+    expect(result.committed).toHaveLength(1)
+    expect(tx.roster_run.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: 'draft' }) }))
+    expect(tx.roster_run.create).toHaveBeenCalledTimes(1)
+    expect(tx.roster_run_pairing.createMany).toHaveBeenCalledWith({ data: [{ roster_run_id: 'run-new', pairing_id: expect.any(String) }] })
   })
 })
 
