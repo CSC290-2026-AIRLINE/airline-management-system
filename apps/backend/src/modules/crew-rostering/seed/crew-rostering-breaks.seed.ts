@@ -56,7 +56,8 @@ const dayAfter = (date: string, days: number): string =>
 
 const bkkInstant = (date: string, hhmm: string): Date => new Date(Date.parse(`${date}T${hhmm}:00Z`) - BKK_OFFSET_HOURS * 3_600_000)
 
-export async function seedCrewRosteringBreaks(prisma: PrismaClient): Promise<void> {
+/** `windowStart` moves the window (`--start=YYYY-MM-DD`). Flights are keyed by number and date, so the same numbers fit any new window. */
+export async function seedCrewRosteringBreaks(prisma: PrismaClient, windowStart: string = WINDOW_START): Promise<void> {
   // The airports, routes and the A320 type already exist in the local database; fail with a clear message if one does not.
   const airports = await prisma.airport.findMany({ where: { iata_code: { in: ['BKK', 'ICN', 'NRT'] } }, select: { iata_code: true } })
   if (airports.length !== 3) throw new Error('BKK, ICN and NRT must exist first. Run the demo seed once to create them.')
@@ -94,7 +95,7 @@ export async function seedCrewRosteringBreaks(prisma: PrismaClient): Promise<voi
   }
 
   for (const flight of FLIGHTS) {
-    const date = dayAfter(WINDOW_START, flight.day)
+    const date = dayAfter(windowStart, flight.day)
     const serviceDate = new Date(`${date}T00:00:00Z`)
     const dep = bkkInstant(date, flight.dep)
     const arr = bkkInstant(date, flight.arr)
@@ -115,6 +116,6 @@ export async function seedCrewRosteringBreaks(prisma: PrismaClient): Promise<voi
   }
 
   console.log(
-    `  crew rostering breaks: ${FLIGHTS.length} flights.\n  Use base ${BASE}, ${WINDOW_START} to ${dayAfter(WINDOW_START, 4)} in Build pairings.`,
+    `  crew rostering breaks: ${FLIGHTS.length} flights.\n  Use base ${BASE}, ${windowStart} to ${dayAfter(windowStart, 4)} in Build pairings.`,
   )
 }

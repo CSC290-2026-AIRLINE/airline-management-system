@@ -132,7 +132,8 @@ const pad = (value: number, width: number): string => String(value).padStart(wid
 
 /* ── seed ───────────────────────────────────────────────────────────────── */
 
-export async function seedCrewRosteringDemo(prisma: PrismaClient): Promise<void> {
+/** `windowStart` moves the whole window (`--start=YYYY-MM-DD`), for when the default one is already paired or published. */
+export async function seedCrewRosteringDemo(prisma: PrismaClient, windowStart: string = WINDOW_START): Promise<void> {
   for (const airport of AIRPORTS) {
     await prisma.airport.upsert({ where: { iata_code: airport.iata_code }, update: {}, create: airport })
   }
@@ -188,7 +189,7 @@ export async function seedCrewRosteringDemo(prisma: PrismaClient): Promise<void>
   }
 
   for (const flight of FLIGHTS) {
-    const date = dayAfter(WINDOW_START, flight.day)
+    const date = dayAfter(windowStart, flight.day)
     const serviceDate = new Date(`${date}T00:00:00Z`)
     const dep = bkkInstant(date, flight.dep)
     const arr = bkkInstant(date, flight.arr)
@@ -237,6 +238,6 @@ export async function seedCrewRosteringDemo(prisma: PrismaClient): Promise<void>
 
   console.log(
     `  crew rostering demo: ${FLIGHTS.length} flights, ${created} new crew of ${CREW.length}.\n` +
-      `  Use base ${BASE}, ${WINDOW_START} to ${dayAfter(WINDOW_START, 4)} in Build pairings.`,
+      `  Use base ${BASE}, ${windowStart} to ${dayAfter(windowStart, 4)} in Build pairings.`,
   )
 }
