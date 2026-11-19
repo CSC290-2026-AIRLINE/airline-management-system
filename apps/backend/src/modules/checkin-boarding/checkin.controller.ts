@@ -1,12 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseFilters, UseGuards } from '@nestjs/common'
 import type { BoardingPassView, CheckInView, SeatLock, SeatMap } from './api-types'
 import type { Actor } from './actor'
+import { BadIdFilter } from './bad-id.filter'
 import { CheckInService } from './checkin.service'
 import { optionalString, requireInt, requireString } from './dto/validate'
 import { ActorGuard, CurrentActor, requireActor } from './guards/staff.guard'
 
 /** The passenger side: find the booking, passport, seat, bags, boarding pass. */
 @Controller()
+@UseFilters(BadIdFilter)
 @UseGuards(ActorGuard)
 export class CheckInController {
   constructor(private readonly checkins: CheckInService) {}

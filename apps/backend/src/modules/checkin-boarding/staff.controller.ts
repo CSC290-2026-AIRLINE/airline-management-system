@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseFilters, UseGuards } from '@nestjs/common'
 import type {
   AddGatesResult,
   AirportGateCount,
@@ -14,6 +14,7 @@ import type {
   StaffCheckInView,
 } from './api-types'
 import type { Actor } from './actor'
+import { BadIdFilter } from './bad-id.filter'
 import { CounterService } from './counter.service'
 import {
   optionalBoolean,
@@ -30,6 +31,7 @@ import { CurrentActor, StaffGuard, requireActor } from './guards/staff.guard'
 
 /** The counter and the gate: staff only, the guard refuses everybody else. */
 @Controller('staff')
+@UseFilters(BadIdFilter)
 @UseGuards(StaffGuard)
 export class StaffController {
   constructor(
