@@ -13,6 +13,7 @@ const TITLES: Record<string, string> = {
   SEAT_TAKEN: 'That seat is taken',
   LOCK_EXPIRED: 'Your seat hold expired',
   NOT_FOUND: 'We could not find that booking',
+  NOT_ELIGIBLE: 'This booking cannot be checked in',
   FORBIDDEN: 'Not allowed',
   EXCESS_UNPAID: 'The excess baggage fee is not paid',
   BAG_REFUSED: 'That bag cannot be accepted',
