@@ -1,3 +1,5 @@
+import type { Cabin } from './api/types.ts'
+
 // Every time is shown in Bangkok local time, the airline's base.
 const BANGKOK = 'Asia/Bangkok'
 
@@ -33,4 +35,15 @@ export function formatDay(value: string): string {
 
 export function formatBaht(amount: number): string {
   return baht.format(amount)
+}
+
+const CABIN_NAMES: Record<Cabin, string> = {
+  economy: 'Economy',
+  premium_economy: 'Premium Economy',
+  business: 'Business',
+  first: 'First',
+}
+
+export function cabinName(cabin: Cabin): string {
+  return CABIN_NAMES[cabin]
 }

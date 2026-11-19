@@ -50,7 +50,7 @@
   background: var(--f6-seat-mine-bg);
 }
 
-.swatch[data-status='business'] {
+.swatch[data-status='other-cabin'] {
   border-color: var(--f6-seat-business-line);
   background: var(--f6-seat-business-bg);
 }
@@ -152,8 +152,8 @@
   cursor: not-allowed;
 }
 
-/* The seats of another cabin are drawn like the design's business seats. */
-.seat[data-business='true'] {
+/* The seats of another cabin are drawn like the design's business seats, with their letters showing. */
+.seat[data-other-cabin='true'] {
   background: var(--f6-seat-business-bg);
   border-color: var(--f6-seat-business-line);
   color: var(--f6-seat-business-text);

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import type { Cabin, CarryOnAllowance, CheckInView } from '../api/types.ts'
+import type { CarryOnAllowance, CheckInView } from '../api/types.ts'
+import { cabinName } from '../format.ts'
 import { Message } from './Message.tsx'
 import styles from './flow.module.css'
 
@@ -7,13 +8,6 @@ const MAX_BAGS = 10
 
 // shortcut: the published carry-on rule is only the fallback for a view without one; the API sends the rule of the cabin
 const CARRY_ON: CarryOnAllowance = { maxKg: 7, maxLengthCm: 56, maxWidthCm: 36, maxHeightCm: 23 }
-
-const FARE_LABEL: Record<Cabin, string> = {
-  economy: 'Economy',
-  premium_economy: 'Premium Economy',
-  business: 'Business',
-  first: 'First',
-}
 
 export function BagsStep({
   checkIn,
@@ -49,7 +43,7 @@ export function BagsStep({
           <div className={styles.tile}>
             <span className={styles.tileLabel}>Checked baggage allowance</span>
             <span className={styles.tileValue}>{allowance.freeKg} kg</span>
-            <span className={styles.tileNote}>{FARE_LABEL[checkIn.passenger.cabin]} fare</span>
+            <span className={styles.tileNote}>{cabinName(checkIn.passenger.cabin)} fare</span>
           </div>
         ) : null}
         <div className={styles.tile}>

@@ -1,5 +1,5 @@
-import type { SeatMap as SeatMapModel } from '../api/types.ts'
-import { formatBaht } from '../format.ts'
+import type { Cabin, SeatMap as SeatMapModel } from '../api/types.ts'
+import { cabinName, formatBaht } from '../format.ts'
 import styles from './seatmap.module.css'
 
 const LETTERS = 'ABCDEF'
@@ -11,8 +11,21 @@ function columnOf(letter: string): number {
   return index < 3 ? index + 2 : index + 3
 }
 
+/** The cabins on the map that are not the passenger's, front to back, as the legend names them. */
+function otherCabinsOf(map: SeatMapModel, cabin: Cabin): string[] {
+  const names: string[] = []
+  for (const row of map.rows) {
+    for (const seat of row.seats) {
+      const name = cabinName(seat.cabin)
+      if (seat.cabin !== cabin && !names.includes(name)) names.push(name)
+    }
+  }
+  return names
+}
+
 export function SeatMap({
   map,
+  cabin,
   selected,
   onPick,
   frontFee,
@@ -20,12 +33,15 @@ export function SeatMap({
   disabled = false,
 }: {
   map: SeatMapModel
+  /** The passenger's own cabin: the seats of every other cabin are shown but cannot be picked. */
+  cabin: Cabin
   selected: string | null
   onPick: (code: string) => void
   frontFee: number
   exitFee: number
   disabled?: boolean
 }) {
+  const otherCabins = otherCabinsOf(map, cabin)
   return (
     <div className={styles.wrapper}>
       <ul className={styles.legend}>
@@ -41,9 +57,12 @@ export function SeatMap({
         <li>
           <span className={styles.swatch} data-status="mine" /> Your seat
         </li>
-        <li>
-          <span className={styles.swatch} data-status="business" /> Business (other cabin)
-        </li>
+        {otherCabins.length > 0 ? (
+          <li>
+            <span className={styles.swatch} data-status="other-cabin" /> {otherCabins.join(', ')} (other{' '}
+            {otherCabins.length > 1 ? 'cabins' : 'cabin'})
+          </li>
+        ) : null}
       </ul>
 
       <div className={styles.well}>
@@ -82,10 +101,10 @@ export function SeatMap({
                       className={styles.seat}
                       data-status={seat.status}
                       data-paid={seat.fee > 0}
-                      data-business={seat.type === 'business'}
+                      data-other-cabin={seat.cabin !== cabin}
                       style={{ gridColumn: columnOf(seat.letter), gridRow: 2 }}
                       aria-pressed={selected === seat.code}
-                      aria-label={`Seat ${seat.code}${seat.fee > 0 ? `, ${formatBaht(seat.fee)}` : ''}`}
+                      aria-label={`Seat ${seat.code}${seat.cabin !== cabin ? `, ${cabinName(seat.cabin)}` : seat.fee > 0 ? `, ${formatBaht(seat.fee)}` : ''}`}
                       disabled={disabled || taken}
                       onClick={() => onPick(seat.code)}
                     >
