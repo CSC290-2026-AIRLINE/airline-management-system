@@ -38,7 +38,13 @@ function setup(options: { flights: ReturnType<typeof flight>[]; runs?: { id: str
   const created: { data: { pairing_leg: { create: { flight_id: string; added_by: string }[] } } }[] = []
   let sequence = 200
   const tx = {
-    roster_run: { create: jest.fn().mockResolvedValue({ id: 'run-new', status: 'draft' }), update: jest.fn() },
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    roster_run: {
+      create: jest.fn().mockResolvedValue({ id: 'run-new', status: 'draft' }),
+      update: jest.fn(),
+      // Under the lock the run is read again; it is the same one the first read found.
+      findFirst: jest.fn().mockResolvedValue((options.runs ?? [])[0] ?? null),
+    },
     pairing: {
       create: jest.fn((args: (typeof created)[number]) => {
         created.push(args)
@@ -165,6 +171,17 @@ describe('BuildPairingService.commitPairings', () => {
     expect(tx.pairing.create).not.toHaveBeenCalled()
   })
 
+  it('takes the lock on base and dates, then looks the run up again, so two commits at once share one draft run', async () => {
+    const { service, tx } = setup({ flights: [out, back], runs: [{ id: 'run-7', status: 'draft' }] })
+
+    await service.commitPairings(params, [{ ref: 'P-108', legs: [leg('1'), leg('2')] }])
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1)
+    expect(tx.roster_run.findFirst).toHaveBeenCalled()
+    expect(tx.roster_run.create).not.toHaveBeenCalled()
+    expect(tx.roster_run_pairing.createMany).toHaveBeenCalledWith({ data: [{ roster_run_id: 'run-7', pairing_id: expect.any(String) }] })
+  })
+
   it('refuses an empty commit and a published run', async () => {
     await expect(setup({ flights: [] }).service.commitPairings(params, [])).rejects.toBeInstanceOf(BadRequestException)
     const published = setup({ flights: [out, back], runs: [{ id: 'run-1', status: 'published' }] })
@@ -174,8 +191,8 @@ describe('BuildPairingService.commitPairings', () => {
   })
 })
 
-/** Just enough of `DbService` for `saveLegs` on a pairing in a draft run, and for dropping drafts. */
-function setupEdit() {
+/** Just enough of `DbService` for `saveLegs`. The pairing is in a draft run only when `inRun` is set. */
+function setupEdit({ inRun = false }: { inRun?: boolean } = {}) {
   const out = flight('1', 'BKK', 'NRT', 1, 7)
   const back = flight('2', 'NRT', 'BKK', 9, 15)
   const row = {
@@ -186,7 +203,7 @@ function setupEdit() {
       { id: 'leg-1', added_by: 'auto', flight: out },
       { id: 'leg-2', added_by: 'auto', flight: back },
     ],
-    roster_run_pairing: { roster_run: { id: 'run-1', status: 'draft' } },
+    roster_run_pairing: inRun ? { roster_run: { id: 'run-1', status: 'draft' } } : null,
   }
   const tx = {
     rule_break: { deleteMany: jest.fn() },
@@ -216,17 +233,25 @@ function setupEdit() {
   return { audit, service: new BuildPairingService(db as unknown as DbService, audit as unknown as AuditService), tx, db }
 }
 
-describe('BuildPairingService.saveLegs on a committed pairing', () => {
-  it('keeps the pairing in its run and clears only the legs taken off', async () => {
+describe('BuildPairingService.saveLegs', () => {
+  it('replaces the legs of a pairing that is in no run', async () => {
     const { service, tx } = setupEdit()
 
     const result = await service.saveLegs('pairing-1', [leg('1')])
 
-    expect(tx.roster_run_pairing.deleteMany).not.toHaveBeenCalled()
-    expect(tx.rule_break.deleteMany).toHaveBeenCalledWith({ where: { pairing_leg_id: { in: ['leg-2'] } } })
-    expect(tx.pairing_leg_assignment.deleteMany).toHaveBeenCalledWith({ where: { pairing_leg_id: { in: ['leg-2'] } } })
     expect(tx.pairing_leg.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['leg-2'] } } })
     expect(result.withdrawnFromRun).toBe(false)
+  })
+
+  it('refuses a pairing committed to a draft run, so it cannot skip the commit checks, and changes nothing', async () => {
+    const { service, tx, db } = setupEdit({ inRun: true })
+
+    // Taking the flight home off leaves a pairing that ends away from base, which commit would have refused.
+    await expect(service.saveLegs('pairing-1', [leg('1')])).rejects.toBeInstanceOf(ConflictException)
+
+    expect(db.flight.findMany).not.toHaveBeenCalled()
+    expect(tx.pairing_leg.createMany).not.toHaveBeenCalled()
+    expect(tx.pairing_leg.deleteMany).not.toHaveBeenCalled()
   })
 
   it('refuses flights on two aircraft types and changes nothing', async () => {
@@ -258,16 +283,6 @@ describe('BuildPairingService.saveLegs on a committed pairing', () => {
       }),
       tx,
     )
-  })
-
-  it('is still in the run after the next Generate, which drops only pairings outside every run', async () => {
-    const { service, db } = setupEdit()
-    await service.saveLegs('pairing-1', [leg('1')])
-
-    const result = await (service as unknown as { discardDrafts: (p: typeof params) => Promise<unknown> }).discardDrafts(params)
-
-    expect(db.pairing.deleteMany).not.toHaveBeenCalled()
-    expect(result).toEqual({ deleted: 0, kept: 1 })
   })
 })
 

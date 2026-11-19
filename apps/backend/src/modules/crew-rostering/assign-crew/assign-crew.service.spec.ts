@@ -75,7 +75,7 @@ interface Internals {
   planPairing: (
     pairing: RunPairing,
     pool: CrewRow[],
-    busy: Map<string, { legId: string; pairingId: string; dep: Date; arr: Date }[]>,
+    busy: Map<string, { legId: string; pairingId: string; dep: Date; arr: Date; blockDep: Date; blockArr: Date }[]>,
     options: { demoBreaks?: boolean; random?: () => number },
   ) => Record<'captain' | 'first_officer' | 'cabin_crew' | 'police', CrewRow[]>
   dutyDays: (legs: Leg[], limits: RuleLimitsRow) => Leg[][]
@@ -114,7 +114,16 @@ describe('AssignCrewService auto-assign picks', () => {
     new Map([
       [
         'captain-tired',
-        [{ legId: 'other', pairingId: 'p-9', dep: new Date('2026-09-15T02:00:00Z'), arr: new Date('2026-09-15T06:00:00Z') }],
+        [
+          {
+            legId: 'other',
+            pairingId: 'p-9',
+            dep: new Date('2026-09-15T02:00:00Z'),
+            arr: new Date('2026-09-15T06:00:00Z'),
+            blockDep: new Date('2026-09-15T02:00:00Z'),
+            blockArr: new Date('2026-09-15T06:00:00Z'),
+          },
+        ],
       ],
     ])
   // Every roll comes up 0, the roll that would trigger every demo break.
@@ -157,6 +166,43 @@ describe('AssignCrewService auto-assign picks', () => {
     expect(speakersOn(3)).toBe(3)
   })
 
+  it('keeps a person off a day trip that falls inside the days a multi-day pairing keeps them away', () => {
+    // Out 2 Sep, back 4 Sep: no flight touches 3 Sep, and the night in Tokyo is far more than the 10 h rest either side.
+    const away = new Map([
+      [
+        'captain-ok',
+        [
+          {
+            legId: 'a-1',
+            pairingId: 'p-9',
+            dep: new Date('2026-09-02T01:00:00Z'),
+            arr: new Date('2026-09-02T07:00:00Z'),
+            blockDep: new Date('2026-09-02T01:00:00Z'),
+            blockArr: new Date('2026-09-04T07:00:00Z'),
+          },
+          {
+            legId: 'a-2',
+            pairingId: 'p-9',
+            dep: new Date('2026-09-04T01:00:00Z'),
+            arr: new Date('2026-09-04T07:00:00Z'),
+            blockDep: new Date('2026-09-02T01:00:00Z'),
+            blockArr: new Date('2026-09-04T07:00:00Z'),
+          },
+        ],
+      ],
+    ])
+    const dayTrip = pairing([
+      leg('1', '2026-09-03T01:00:00Z', '2026-09-03T05:00:00Z'),
+      leg('2', '2026-09-03T08:00:00Z', '2026-09-03T12:00:00Z'),
+    ])
+
+    const plan = internals(service()).planPairing(dayTrip, [crew('captain-ok', 'captain'), crew('captain-spare', 'captain')], away, {
+      random: always,
+    })
+
+    expect(plan.captain.map((member) => member.id)).toEqual(['captain-spare'])
+  })
+
   it('leaves a seat empty when nobody is legal', () => {
     const plan = internals(service()).planPairing(
       flight,
@@ -166,6 +212,96 @@ describe('AssignCrewService auto-assign picks', () => {
     )
 
     expect(plan.first_officer).toEqual([])
+  })
+})
+
+describe('AssignCrewService.evaluate pairing blocks', () => {
+  const block = (legId: string, pairingId: string, dep: string, arr: string, blockDep: string, blockArr: string) => ({
+    legId,
+    pairingId,
+    dep: new Date(dep),
+    arr: new Date(arr),
+    blockDep: new Date(blockDep),
+    blockArr: new Date(blockArr),
+  })
+  const evaluate = (instance: AssignCrewService, ...args: unknown[]) =>
+    (instance as unknown as { evaluate: (...a: unknown[]) => { rule: string; crewId: string | null }[] }).evaluate(...args)
+
+  it('reports OVERLAP when a day trip falls inside the nights a multi-day pairing spends away', () => {
+    const dayTrip = pairing([leg('1', '2026-09-03T01:00:00Z', '2026-09-03T05:00:00Z', { international: false, localLanguages: [] })])
+    const captain = crew('c-1', 'captain')
+    const busy = new Map([
+      [
+        'c-1',
+        [
+          block('1', 'p-1', '2026-09-03T01:00:00Z', '2026-09-03T05:00:00Z', '2026-09-03T01:00:00Z', '2026-09-03T05:00:00Z'),
+          block('a-1', 'p-9', '2026-09-02T01:00:00Z', '2026-09-02T07:00:00Z', '2026-09-02T01:00:00Z', '2026-09-04T07:00:00Z'),
+          block('a-2', 'p-9', '2026-09-04T01:00:00Z', '2026-09-04T07:00:00Z', '2026-09-02T01:00:00Z', '2026-09-04T07:00:00Z'),
+        ],
+      ],
+    ])
+    const context = { defaults: LIMITS, countryRules: new Map(), airportCountry: new Map(), countryLanguages: new Map(), timeZone: 'UTC' }
+
+    const found = evaluate(
+      service(),
+      [dayTrip],
+      [{ pairing_leg_id: '1', pairing_id: 'p-1', crew_id: 'c-1', role: 'captain', crew: captain }],
+      busy,
+      context,
+    )
+
+    expect(found.filter((item) => item.rule === 'OVERLAP' && item.crewId === 'c-1')).toHaveLength(1)
+  })
+})
+
+describe('AssignCrewService.storeBreaks', () => {
+  function setup() {
+    const row = (id: string, pairingId: string) => ({
+      id,
+      pairing_id: pairingId,
+      pairing_leg_id: `leg-${id}`,
+      rule: 'REST_SHORT',
+      crew_id: null,
+      role: null,
+      detail: 'x',
+      resolved_at: null,
+    })
+    const tx = {
+      rule_break: {
+        findMany: jest.fn().mockResolvedValue([row('b-1', 'p-fixed'), row('b-2', 'p-left')]),
+        updateMany: jest.fn(),
+        deleteMany: jest.fn(),
+        update: jest.fn(),
+        createMany: jest.fn(),
+      },
+    }
+    const db = { $transaction: jest.fn((run: (client: typeof tx) => Promise<unknown>) => run(tx)) }
+    const instance = new AssignCrewService(
+      db as unknown as DbService,
+      fakeClock() as unknown as SimulationClock,
+      fakeAudit() as unknown as AuditService,
+    )
+    const store = (draft: boolean) =>
+      (instance as unknown as { storeBreaks: (...a: unknown[]) => Promise<void> }).storeBreaks('run-1', [], new Set(['p-fixed']), draft)
+    return { tx, store }
+  }
+
+  it('closes a break as fixed only when its pairing is still judged; one whose pairing left the batch is deleted', async () => {
+    const { tx, store } = setup()
+
+    await store(true)
+
+    expect(tx.rule_break.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['b-1'] } } }))
+    expect(tx.rule_break.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['b-2'] } } })
+  })
+
+  it('still closes every break as fixed in a published run', async () => {
+    const { tx, store } = setup()
+
+    await store(false)
+
+    expect(tx.rule_break.deleteMany).not.toHaveBeenCalled()
+    expect(tx.rule_break.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['b-1', 'b-2'] } } }))
   })
 })
 

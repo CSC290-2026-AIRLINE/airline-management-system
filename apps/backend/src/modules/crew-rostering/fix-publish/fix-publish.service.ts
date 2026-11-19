@@ -271,6 +271,9 @@ interface BusyLeg {
   flightNumber: string
   dep: Date
   arr: Date
+  /** The person's whole stretch in this pairing, first departure to last arrival. */
+  blockDep: Date
+  blockArr: Date
 }
 
 interface ActiveAssignment {
@@ -1040,10 +1043,24 @@ export class FixPublishService {
     })
 
     const clash = others.find((other) => scope.some((leg) => other.dep < leg.arr && leg.dep < other.arr))
+    // Another pairing is one block for them, so a night away inside it counts as busy even when no two flights meet.
+    const scopePairings = new Set(scope.map((leg) => leg.pairingId))
+    const inside = clash
+      ? undefined
+      : others.find(
+          (other) =>
+            !scopePairings.has(other.pairingId) &&
+            other.blockDep.getTime() - limits.reportMinutes * 60_000 < end &&
+            start < other.blockArr.getTime() + limits.releaseMinutes * 60_000,
+        )
     checks.push({
       label: 'No overlap',
-      ok: clash === undefined,
-      reason: clash ? `Overlaps ${clash.flightNumber} (rule ${RULE_NUMBER.OVERLAP}).` : undefined,
+      ok: clash === undefined && inside === undefined,
+      reason: clash
+        ? `Overlaps ${clash.flightNumber} (rule ${RULE_NUMBER.OVERLAP}).`
+        : inside
+          ? `Is on another pairing (${inside.flightNumber}) during this flight (rule ${RULE_NUMBER.OVERLAP}).`
+          : undefined,
     })
 
     return {
@@ -1113,14 +1130,24 @@ export class FixPublishService {
     const crewById = new Map(pool.map((member) => [member.id, member]))
     for (const row of active) crewById.set(row.crew_id, row.crew)
 
+    const blocks = new Map<string, { dep: Date; arr: Date }>()
+    for (const row of history) {
+      const key = `${row.crew_id}|${row.pairing_id}`
+      const { dep_at: dep, arr_at: arr } = row.pairing_leg.flight
+      const block = blocks.get(key)
+      blocks.set(key, { dep: block && block.dep < dep ? block.dep : dep, arr: block && block.arr > arr ? block.arr : arr })
+    }
     const busy = new Map<string, BusyLeg[]>()
     for (const row of history) {
+      const block = blocks.get(`${row.crew_id}|${row.pairing_id}`)!
       const entry = {
         legId: row.pairing_leg_id,
         pairingId: row.pairing_id,
         flightNumber: row.pairing_leg.flight.flight_number,
         dep: row.pairing_leg.flight.dep_at,
         arr: row.pairing_leg.flight.arr_at,
+        blockDep: block.dep,
+        blockArr: block.arr,
       }
       busy.set(row.crew_id, [...(busy.get(row.crew_id) ?? []), entry])
     }

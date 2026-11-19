@@ -2,8 +2,11 @@
  * Runs only a crew-rostering seed, so G01 can load its data without touching the shared `db/seed.ts`.
  *
  *   npm run db:up && npm run db:migrate
- *   npx tsx -r tsconfig-paths/register apps/backend/src/modules/crew-rostering/seed/run-crew-rostering-seed.ts          # small Figma-shaped set
- *   npx tsx -r tsconfig-paths/register apps/backend/src/modules/crew-rostering/seed/run-crew-rostering-seed.ts --full   # the large set
+ *   npm exec -w apps/backend -- tsx -r tsconfig-paths/register src/modules/crew-rostering/seed/run-crew-rostering-seed.ts          # small Figma-shaped set
+ *   npm exec -w apps/backend -- tsx -r tsconfig-paths/register src/modules/crew-rostering/seed/run-crew-rostering-seed.ts --full   # the large set
+ *
+ * Run these from the repo root (the workspace flag sets the folder `tsconfig-paths` needs). Plain `npx tsx ... apps/backend/...` from the
+ * root fails with MODULE_NOT_FOUND because it can't find the `@backend` paths.
  *
  * Add `--breaks` for flights only (16–20 Nov 2026) that are sure to leave rule breaks to fix; it needs the airports and routes the
  * small set creates. Run one of the two big sets per database, not both. It is safe to run the same one twice. The small set prints the window to pick

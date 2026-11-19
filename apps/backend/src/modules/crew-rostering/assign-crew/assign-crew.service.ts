@@ -26,8 +26,7 @@ import { isoDate, isRestBetween, shortName } from '../crew-format'
  *    pairing is for. Rows are still written per leg, as the table requires.
  *  · **Re-check, not rebuild.** A check inserts the breaks it finds, closes the open ones
  *    it no longer finds as `fixed`, and never reopens one Ops has overridden.
- *  · Business timestamps (`assigned_at`, `resolved_at`) should come from the simulation
- *    clock; feature 1 has no clock service yet, so the server clock stands in.
+ *  · Business timestamps (`assigned_at`, `resolved_at`) come from the `SimulationClock`.
  */
 
 export const SEAT_ROLES = ['captain', 'first_officer', 'cabin_crew', 'police'] as const
@@ -299,6 +298,9 @@ interface BusyLeg {
   pairingId: string
   dep: Date
   arr: Date
+  /** The person's whole stretch in this pairing: first departure to last arrival. Nobody can be on anything else inside it. */
+  blockDep: Date
+  blockArr: Date
 }
 
 interface FoundBreak {
@@ -496,7 +498,7 @@ export class AssignCrewService {
       this.busyByCrew(history),
       context,
     )
-    await this.storeBreaks(rosterRunId, found)
+    await this.storeBreaks(rosterRunId, found, inScope, run.status !== 'published')
     return this.toResult(run, pairings, assignments, await this.openBreaks(rosterRunId))
   }
 
@@ -540,6 +542,13 @@ export class AssignCrewService {
       if (!strict) return true
 
       const theirs = busy.get(member.id) ?? []
+      // A pairing is one block from the first report to the last release, so a day trip cannot slot into the gap of a multi-day one.
+      const free = theirs.every((other) => {
+        const otherStart = other.blockDep.getTime() - limits.reportMinutes * 60_000
+        const otherEnd = other.blockArr.getTime() + limits.releaseMinutes * 60_000
+        return otherEnd <= start || end <= otherStart
+      })
+      if (!free) return false
       const rest = limits.minRestHours * HOUR
       const rested = theirs.every((other) => {
         const otherStart = other.dep.getTime() - limits.reportMinutes * 60_000
@@ -595,7 +604,16 @@ export class AssignCrewService {
     const plan: Record<SeatRole, CrewDbRow[]> = { captain, first_officer: firstOfficer, cabin_crew: cabin, police }
     for (const member of Object.values(plan).flat()) {
       const theirs = busy.get(member.id) ?? []
-      theirs.push(...pairing.legs.map((leg) => ({ legId: leg.id, pairingId: pairing.id, dep: leg.dep, arr: leg.arr })))
+      theirs.push(
+        ...pairing.legs.map((leg) => ({
+          legId: leg.id,
+          pairingId: pairing.id,
+          dep: leg.dep,
+          arr: leg.arr,
+          blockDep: first.dep,
+          blockArr: last.arr,
+        })),
+      )
       busy.set(member.id, theirs)
     }
     return plan
@@ -704,7 +722,7 @@ export class AssignCrewService {
                 crewId: null,
                 role: null,
                 rule: 'NO_LOCAL_CREW',
-                detail: `${speakers} of ${leg.localCrewRequired} cabin crew on ${leg.flightNumber} speak ${leg.localLanguages.join(' or ')} for ${leg.destination}.`,
+                detail: `${leg.flightNumber} needs ${leg.localCrewRequired} cabin crew who speak ${leg.localLanguages.join(' or ').toUpperCase()} for ${leg.destination}, has ${speakers}.`,
               })
             }
           }
@@ -750,9 +768,37 @@ export class AssignCrewService {
       }
     }
 
+    // A pairing is one block for the person on it. Two blocks that overlap are a break even when no two flights do, such as a
+    // day trip from base that falls in the night a multi-day pairing spends away.
+    const crewById = new Map(assignments.map((row) => [row.crew_id, row.crew]))
+    for (const [crewId, member] of crewById) {
+      const blocks = this.personBlocks(busy.get(crewId) ?? [], context)
+      for (const mine of blocks) {
+        const pairing = pairingOfLeg.get(mine.firstLegId)
+        if (!pairing) continue
+        const other = blocks.find(
+          (candidate) =>
+            candidate.pairingId !== mine.pairingId &&
+            candidate.start < mine.end &&
+            mine.start < candidate.end &&
+            // Flights that overlap themselves are already reported as OVERLAP on the leg.
+            !candidate.legs.some((a) => mine.legs.some((b) => a.dep < b.arr && b.dep < a.arr)),
+        )
+        if (other) {
+          raise({
+            pairingId: pairing.id,
+            legId: mine.firstLegId,
+            crewId,
+            role: null,
+            rule: 'OVERLAP',
+            detail: `${shortName(member)} is on another pairing during ${pairing.code}.`,
+          })
+        }
+      }
+    }
+
     // Rest is a property of a person's duties, not of one leg: each duty after the first must
     // start at least the minimum rest after the one before it ends.
-    const crewById = new Map(assignments.map((row) => [row.crew_id, row.crew]))
     for (const [crewId, member] of crewById) {
       const duties = this.personDuties(busy.get(crewId) ?? [], context)
       for (let index = 1; index < duties.length; index += 1) {
@@ -779,12 +825,23 @@ export class AssignCrewService {
   /**
    * Records a check: inserts what is new, closes the open breaks no longer found as
    * `fixed`, refreshes the wording of the ones still open, and leaves overridden ones closed.
+   * A pairing that left the batch (nobody is on it any more, so it is not judged) did not get fixed: in a draft run its open
+   * breaks are deleted, so the history does not claim a fix nobody made.
    */
-  private async storeBreaks(rosterRunId: string, found: FoundBreak[]): Promise<void> {
+  private async storeBreaks(rosterRunId: string, found: FoundBreak[], inScope: ReadonlySet<string>, draft: boolean): Promise<void> {
     await this.db.$transaction(async (tx) => {
       const stored = await tx.rule_break.findMany({
         where: { roster_run_id: rosterRunId, OR: [{ resolved_at: null }, { resolution: 'overridden' }] },
-        select: { id: true, pairing_leg_id: true, rule: true, crew_id: true, role: true, detail: true, resolved_at: true },
+        select: {
+          id: true,
+          pairing_id: true,
+          pairing_leg_id: true,
+          rule: true,
+          crew_id: true,
+          role: true,
+          detail: true,
+          resolved_at: true,
+        },
       })
       const open = new Map(
         stored.filter((row) => row.resolved_at === null).map((row) => [breakKey(row.pairing_leg_id, row.rule, row.crew_id, row.role), row]),
@@ -794,7 +851,10 @@ export class AssignCrewService {
       )
       const foundKeys = new Set(found.map((item) => breakKey(item.legId, item.rule, item.crewId, item.role)))
 
-      const fixed = [...open.entries()].filter(([key]) => !foundKeys.has(key)).map(([, row]) => row.id)
+      const gone = [...open.entries()].filter(([key]) => !foundKeys.has(key))
+      const dropped = draft ? gone.filter(([, row]) => !inScope.has(row.pairing_id)).map(([, row]) => row.id) : []
+      if (dropped.length > 0) await tx.rule_break.deleteMany({ where: { id: { in: dropped } } })
+      const fixed = gone.map(([, row]) => row.id).filter((id) => !dropped.includes(id))
       if (fixed.length > 0) {
         await tx.rule_break.updateMany({ where: { id: { in: fixed } }, data: { resolved_at: this.clock.now(), resolution: 'fixed' } })
       }
@@ -871,6 +931,26 @@ export class AssignCrewService {
         end: group[group.length - 1].arr.getTime() + releaseMinutes * 60_000,
       }))
       .sort((a, b) => a.start - b.start)
+  }
+
+  /** A person's pairings as blocks: first report to last release, with the legs inside. */
+  private personBlocks(
+    legs: BusyLeg[],
+    context: Context,
+  ): { pairingId: string; firstLegId: string; start: number; end: number; legs: BusyLeg[] }[] {
+    const { reportMinutes, releaseMinutes } = context.defaults
+    const byPairing = new Map<string, BusyLeg[]>()
+    for (const leg of legs) byPairing.set(leg.pairingId, [...(byPairing.get(leg.pairingId) ?? []), leg])
+    return [...byPairing.entries()].map(([pairingId, group]) => {
+      const sorted = [...group].sort((a, b) => a.dep.getTime() - b.dep.getTime())
+      return {
+        pairingId,
+        firstLegId: sorted[0].legId,
+        start: sorted[0].blockDep.getTime() - reportMinutes * 60_000,
+        end: sorted[0].blockArr.getTime() + releaseMinutes * 60_000,
+        legs: sorted,
+      }
+    })
   }
 
   /* ── reads ──────────────────────────────────────────────────────────────── */
@@ -1068,13 +1148,24 @@ export class AssignCrewService {
   }
 
   private busyByCrew(rows: AssignmentDbRow[]): Map<string, BusyLeg[]> {
+    // A person's block in a pairing runs from the first departure to the last arrival among the legs they are on there.
+    const blocks = new Map<string, { dep: Date; arr: Date }>()
+    for (const row of rows) {
+      const key = `${row.crew_id}|${row.pairing_id}`
+      const { dep_at: dep, arr_at: arr } = row.pairing_leg.flight
+      const block = blocks.get(key)
+      blocks.set(key, { dep: block && block.dep < dep ? block.dep : dep, arr: block && block.arr > arr ? block.arr : arr })
+    }
     const out = new Map<string, BusyLeg[]>()
     for (const row of rows) {
+      const block = blocks.get(`${row.crew_id}|${row.pairing_id}`)!
       const entry = {
         legId: row.pairing_leg_id,
         pairingId: row.pairing_id,
         dep: row.pairing_leg.flight.dep_at,
         arr: row.pairing_leg.flight.arr_at,
+        blockDep: block.dep,
+        blockArr: block.arr,
       }
       out.set(row.crew_id, [...(out.get(row.crew_id) ?? []), entry])
     }

@@ -25,8 +25,8 @@ import { isRestBetween, localDay, shortName } from '../crew-format'
  *    of the run (rule breaks, assignments, run link); in a published run the answer is
  *    `PAIRING_IN_USE`.
  *  · **Only valid pairings join a run**, and only when every leg is inside the run's dates.
- *    Editing the legs of a pairing in a draft run takes it out of the run, so it has to be
- *    committed again and cannot slip in invalid.
+ *    A pairing in a run is locked: its legs cannot be edited, because nothing re-judges it once it is in
+ *    (publish does not check the pairing rules). To change one, delete it and build it again.
  */
 
 export type PairingErrorCode =
@@ -411,10 +411,10 @@ export class BuildPairingService {
    * Replaces a pairing's legs.
    *
    * Legs are diffed rather than rewritten so the ones that stay keep their row. A pairing
-   * in a published run is refused; one in a draft run stays in that run, and only the legs
-   * taken off lose their assignments and rule breaks (the foreign keys require it). Seats on
-   * the legs that stay are kept, and the next auto-assign and check fill and re-judge the rest.
-   * Flights on two aircraft models are refused, because nobody could be crewed on the result.
+   * in a run, draft or published, is refused, the same as the page locks it: the pairing rules
+   * are judged only at commit, so an edit afterwards could slip in a pairing that is not closed
+   * at base or runs too long. Flights on two aircraft models are refused, because nobody could
+   * be crewed on the result.
    */
   async saveLegs(pairingId: string, legs: SaveLegInput[], actorUserId?: string): Promise<SaveLegsResult> {
     const flightIds = [...new Set(legs.map((leg) => leg.flightId))]
@@ -423,6 +423,7 @@ export class BuildPairingService {
     const row = await this.findPairing(pairingId)
     const run = row.roster_run_pairing?.roster_run ?? null
     if (run?.status === 'published') throw this.inUse(row.code)
+    if (run) throw this.committed(row.code)
 
     const flights = await this.db.flight.findMany({
       where: { id: { in: flightIds } },
@@ -452,7 +453,6 @@ export class BuildPairingService {
       await this.mapUniqueViolation(
         () =>
           this.db.$transaction(async (tx) => {
-            if (run && removedLegIds.length > 0) await this.releaseLegs(tx, removedLegIds)
             if (removedLegIds.length > 0) await tx.pairing_leg.deleteMany({ where: { id: { in: removedLegIds } } })
             if (added.length > 0) {
               await tx.pairing_leg.createMany({
@@ -653,8 +653,19 @@ export class BuildPairingService {
     const { run, committed } = await this.mapUniqueViolation(
       () =>
         this.db.$transaction(async (tx) => {
+          // Two people committing the same base and dates at once would each see no run and make one. The lock makes the second wait,
+          // and the run is looked up again under it, so both commits land in the same draft run.
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`roster-run:${params.base}:${params.dateFrom}:${params.dateTo}`}, 0))`
+          const existing = await tx.roster_run.findFirst({
+            where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
+            select: { id: true, status: true },
+            orderBy: [{ status: 'asc' }, { created_at: 'desc' }],
+          })
+          if (existing?.status === 'published') {
+            throw new ConflictException(`The roster run for ${params.base} · ${params.dateFrom} to ${params.dateTo} is already published`)
+          }
           const target =
-            runs[0] ??
+            existing ??
             (await tx.roster_run.create({
               data: { base_airport: params.base, date_from: window.gte, date_to: window.lte, status: 'draft' },
               select: { id: true, status: true },
@@ -874,12 +885,6 @@ export class BuildPairingService {
     await tx.roster_run_pairing.deleteMany({ where: { pairing_id: pairingId } })
   }
 
-  /** Clears the crew and rule breaks of legs about to be deleted from a pairing that stays in its run. */
-  private async releaseLegs(tx: Prisma.TransactionClient, legIds: string[]): Promise<void> {
-    await tx.rule_break.deleteMany({ where: { pairing_leg_id: { in: legIds } } })
-    await tx.pairing_leg_assignment.deleteMany({ where: { pairing_leg_id: { in: legIds } } })
-  }
-
   /** A flight is in one pairing at most (`pairing_leg.flight_id` is unique). */
   private async mapUniqueViolation<T>(write: () => Promise<T>, message: string): Promise<T> {
     try {
@@ -888,6 +893,17 @@ export class BuildPairingService {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException(message)
       throw error
     }
+  }
+
+  /** A pairing in a draft run: its legs are locked, and the way to change them is to delete it and build it again. */
+  private committed(code: string): ConflictException {
+    return new ConflictException(
+      rosteringError(
+        RosteringErrorCode.PAIRING_IN_USE,
+        `${code} is committed to a roster run, so its flights are locked. Delete the pairing and build it again to change them.`,
+        { pairing: code },
+      ),
+    )
   }
 
   private inUse(code: string): ConflictException {
