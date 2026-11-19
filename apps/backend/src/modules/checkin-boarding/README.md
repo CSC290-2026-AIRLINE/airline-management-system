@@ -188,7 +188,7 @@ inject the token and nothing else.
 every row is looked up on its natural key first, so a second run changes nothing.
 
 - Airports `NRT` and `ICN` (BKK comes from the shared seed), the routes BKK→NRT and BKK→ICN, the aircraft type
-  `F6-DEMO-A320` and the two aircraft `HS-F6A` (FY 204) and `HS-F6B` (FY 318) — two tails, because the database
+  `F6-DEMO-A320-V2` and the two aircraft `HS-F6A` (FY 204) and `HS-F6B` (FY 318) — two tails, because the database
   forbids one aircraft from flying two overlapping departures.
 - The fare classes `Y` (economy), `W` (premium economy) and `J` (business) with their baggage rates (20, 25 and
   30 kg free, 500 THB per kg, max 32 kg per bag) and the seat fees of economy and premium economy (front 250, exit

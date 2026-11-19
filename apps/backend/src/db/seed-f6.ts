@@ -24,9 +24,12 @@ const AIRPORTS = [
   { iata_code: 'ICN', icao_code: 'RKSI', name: 'Incheon', city: 'Seoul', country: 'kr', timezone: 'Asia/Seoul', min_turnaround_min: 45 },
 ]
 
-/** The aircraft type of both demo flights. */
+/**
+ * The aircraft type of both demo flights. The database never lets the layout of a type change, so the layout with
+ * premium economy seats is a type of its own; a database seeded with the earlier `F6-DEMO-A320` keeps that row.
+ */
 const AIRCRAFT_TYPE = {
-  code: 'F6-DEMO-A320',
+  code: 'F6-DEMO-A320-V2',
   manufacturer: 'Airbus',
   model: 'A320 (demo)',
   layout: DEMO_LAYOUT,
@@ -216,9 +219,7 @@ async function seedAirports(prisma: PrismaClient): Promise<number> {
 /** The aircraft type has a partial unique index on its code, so it is found first and created when it is missing. */
 async function seedAircraftType(prisma: PrismaClient): Promise<{ id: string }> {
   const existing = await prisma.aircraft_type.findFirst({ where: { code: AIRCRAFT_TYPE.code, deleted_at: null } })
-  // A database seeded earlier has the old layout with no premium economy seats: the demo type follows the code.
-  if (existing)
-    return prisma.aircraft_type.update({ where: { id: existing.id }, data: { layout: AIRCRAFT_TYPE.layout, updated_at: new Date() } })
+  if (existing) return existing
   return prisma.aircraft_type.create({ data: AIRCRAFT_TYPE })
 }
 
@@ -228,6 +229,10 @@ async function seedAircraft(prisma: PrismaClient, aircraftTypeId: string): Promi
   for (const flight of Object.values(DEMO_FLIGHTS)) {
     const existing = await prisma.aircraft.findFirst({ where: { tail_number: flight.aircraftTail, deleted_at: null } })
     if (existing) {
+      // A database seeded earlier has the demo aircraft on the type without premium economy seats: they move to this one.
+      if (existing.aircraft_type_id !== aircraftTypeId) {
+        await prisma.aircraft.update({ where: { id: existing.id }, data: { aircraft_type_id: aircraftTypeId, updated_at: new Date() } })
+      }
       aircraft.set(flight.aircraftTail, existing)
       continue
     }
