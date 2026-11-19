@@ -1,4 +1,4 @@
-import { toAlpha2 } from './countries'
+import { COUNTRY_CODES, ISO_COUNTRY_COUNT, toAlpha2 } from './countries'
 import {
   buildLine2,
   buildSpecimenLine2,
@@ -101,6 +101,21 @@ describe('validateMrz', () => {
   })
 })
 
+describe('validateMrz dates', () => {
+  const line2 = (dob: string, expiry: string) => buildLine2({ number: 'L898902C3', nationality3: 'UTO', dob, sex: 'F', expiry })
+
+  it('refuses a date of birth or an expiry that is no real date, although its check digit is right', () => {
+    expect(validateMrz(SPECIMEN_LINE1, line2('741345', '300415'))).toMatchObject({ ok: false, failedCheck: 'date_of_birth' })
+    expect(validateMrz(SPECIMEN_LINE1, line2('740812', '301345'))).toMatchObject({ ok: false, failedCheck: 'expiry' })
+    expect(validateMrz(SPECIMEN_LINE1, line2('740812', '300230'))).toMatchObject({ ok: false, failedCheck: 'expiry' })
+    expect(validateMrz(SPECIMEN_LINE1, line2('74<812', '300415'))).toMatchObject({ ok: false, failedCheck: 'date_of_birth' })
+  })
+
+  it('accepts 29 February of a leap year', () => {
+    expect(validateMrz(SPECIMEN_LINE1, line2('960229', '280229'))).toMatchObject({ ok: true })
+  })
+})
+
 describe('passport validity and names', () => {
   it('passport must be valid 6 months after travel', () => {
     expect(isPassportValidForTravel('2027-05-11', '2026-11-11')).toBe(true)
@@ -128,7 +143,23 @@ describe('country codes', () => {
     expect(toAlpha2('POL')).toBe('pl')
     expect(toAlpha2('UTO')).toBe('ut')
     expect(toAlpha2('XXA')).toBeNull()
+    expect(toAlpha2('LBN')).toBe('lb')
+    expect(toAlpha2('GBD')).toBe('gb')
+    expect(toAlpha2('RKS')).toBe('xk')
     expect(toAlpha2('ZZZ')).toBeNull()
+  })
+
+  it('the country table holds every ISO 3166-1 country, each with a real two-letter code', () => {
+    expect(ISO_COUNTRY_COUNT).toBe(249)
+    const names = new Intl.DisplayNames(['en'], { type: 'region' })
+    const seen = new Set<string>()
+    for (const [code3, code2] of COUNTRY_CODES) {
+      expect(code3).toMatch(/^[A-Z]{3}$/)
+      // An unknown region comes back as the code itself.
+      expect(names.of(code2.toUpperCase())).not.toBe(code2.toUpperCase())
+      seen.add(code2)
+    }
+    expect(seen.size).toBe(249)
   })
 })
 

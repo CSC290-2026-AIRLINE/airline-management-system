@@ -93,6 +93,9 @@ export function validateMrz(line1: string, line2: string, opts?: { todayYear?: n
   const dobYY = Number(dob.slice(0, 2))
   const dobYear = dobYY > currentYY ? 1900 + dobYY : 2000 + dobYY
   const expiryYY = Number(expiry.slice(0, 2))
+  // A check digit only proves the field was read right, not that it names a day.
+  if (!isRealDate(dobYear, dob)) return fail('date_of_birth', 'Date of birth is not a real date')
+  if (!isRealDate(2000 + expiryYY, expiry)) return fail('expiry', 'Expiry date is not a real date')
 
   const sexChar = l2[20]
   const sex: 'M' | 'F' | 'X' = sexChar === 'M' || sexChar === 'F' ? sexChar : 'X'
@@ -178,6 +181,14 @@ export interface Line2Fields {
   sex: string
   expiry: string
   personal?: string
+}
+
+/** True when a YYMMDD field is six digits and names a day that exists in that year. */
+function isRealDate(year: number, yymmdd: string): boolean {
+  if (!/^\d{6}$/.test(yymmdd)) return false
+  const month = Number(yymmdd.slice(2, 4))
+  const day = Number(yymmdd.slice(4, 6))
+  return month >= 1 && month <= 12 && day >= 1 && day <= new Date(Date.UTC(year, month, 0)).getUTCDate()
 }
 
 /** Builds a valid 44 character line 2 (all four check digits, composite included) from its fields. */
