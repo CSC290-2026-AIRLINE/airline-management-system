@@ -228,12 +228,14 @@ export class DbSeats implements SeatProvider {
     })
   }
 
-  async assignedSeats(flightId: string): Promise<Map<string, string>> {
+  async assignedSeats(flightIds: string[]): Promise<Map<string, Map<string, string>>> {
     const rows = await this.db.seat_assignment.findMany({
-      where: { flight_id: flightId, status: 'assigned' },
+      where: { flight_id: { in: flightIds }, status: 'assigned' },
       include: { booking_coupon: { select: { booking_passenger_id: true } } },
     })
-    return new Map(rows.map((row) => [row.booking_coupon.booking_passenger_id, row.seat_code]))
+    const seats = new Map<string, Map<string, string>>(flightIds.map((id) => [id, new Map<string, string>()]))
+    for (const row of rows) seats.get(row.flight_id)?.set(row.booking_coupon.booking_passenger_id, row.seat_code)
+    return seats
   }
 
   /**

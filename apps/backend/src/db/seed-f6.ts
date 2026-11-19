@@ -89,7 +89,7 @@ export async function seedFeature6(prisma: PrismaClient): Promise<void> {
       await prisma.seat_inventory.upsert({
         where: { flight_id_cabin: { flight_id: row.id, cabin } },
         // The capacity follows the demo aircraft, also on a database seeded before premium economy had seats.
-        update: { capacity: flight.seatInventory[cabin] },
+        update: { capacity: flight.seatInventory[cabin], updated_at: now },
         create: { flight_id: row.id, cabin, capacity: flight.seatInventory[cabin] },
       })
     }
@@ -217,7 +217,8 @@ async function seedAirports(prisma: PrismaClient): Promise<number> {
 async function seedAircraftType(prisma: PrismaClient): Promise<{ id: string }> {
   const existing = await prisma.aircraft_type.findFirst({ where: { code: AIRCRAFT_TYPE.code, deleted_at: null } })
   // A database seeded earlier has the old layout with no premium economy seats: the demo type follows the code.
-  if (existing) return prisma.aircraft_type.update({ where: { id: existing.id }, data: { layout: AIRCRAFT_TYPE.layout } })
+  if (existing)
+    return prisma.aircraft_type.update({ where: { id: existing.id }, data: { layout: AIRCRAFT_TYPE.layout, updated_at: new Date() } })
   return prisma.aircraft_type.create({ data: AIRCRAFT_TYPE })
 }
 

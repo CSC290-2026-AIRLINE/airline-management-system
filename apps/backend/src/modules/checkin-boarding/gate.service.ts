@@ -165,7 +165,7 @@ export class GateService {
     const boarding = await this.store.flightBoarding(flightId)
     if (boarding?.closed_at) throw invalidState('The gate of this flight is closed')
     // A cancelled or departed flight keeps the gate it has, but it never gets its first one.
-    if (!boarding && (flight.status === 'cancelled' || flight.status === 'departed')) {
+    if (!boarding && !this.stillBoards(flight)) {
       throw invalidState('A cancelled or departed flight cannot be given a gate')
     }
     if (!gate.is_active) throw conflict('GATE_INACTIVE', 'This gate is turned off', { gateId: gate.id })
@@ -472,8 +472,6 @@ export class GateService {
       if (pass) {
         // Only a passenger who could still board is a no-show; a cancelled or denied check-in keeps its status.
         if (record.status !== 'checked_in' && record.status !== 'on_hold') continue
-        // A hold nobody cleared before the close gives the seat back.
-        if (record.status === 'on_hold') await this.seats.releaseAssigned(record.booking_passenger_id, record.flight_id)
         const written = await this.store.appendEvent({
           flight_id: flightId,
           gate_id: boarding.gate_id,
@@ -486,6 +484,8 @@ export class GateService {
         })
         // The pass boarded while the gate was closing: it is not a no-show and its bags stay on board.
         if (written.event !== 'no_show') continue
+        // A hold nobody cleared before the close gives the seat back.
+        if (record.status === 'on_hold') await this.seats.releaseAssigned(record.booking_passenger_id, record.flight_id)
       } else if (record.status === 'started' || record.status === 'on_hold') {
         // Never checked in, so the seat goes back to the pool.
         await this.seats.releaseAssigned(record.booking_passenger_id, record.flight_id)
@@ -553,6 +553,14 @@ export class GateService {
   }
 
   /**
+   * A flight boards while it is scheduled or delayed and has not left. Feature 2 has no job yet that writes "departed"
+   * when the departure time passes, so the time decides as well, the way features 2 and 7 read it.
+   */
+  private stillBoards(flight: FlightRecord): boolean {
+    return (flight.status === 'scheduled' || flight.status === 'delayed') && flight.depAt.getTime() > this.clock.now().getTime()
+  }
+
+  /**
    * The flights that still board, by gate id. A closed gate is done, and a flight that was cancelled, departed or
    * arrived frees its gate even when nobody closed it.
    */
@@ -562,7 +570,7 @@ export class GateService {
     const flights = new Map<string, NonNullable<GateInfo['flight']>>()
     for (const boarding of boardings) {
       const flight = byId.get(boarding.flight_id)
-      if (!flight || (flight.status !== 'scheduled' && flight.status !== 'delayed')) continue
+      if (!flight || !this.stillBoards(flight)) continue
       flights.set(boarding.gate_id, { id: flight.id, flightNumber: flight.flightNumber, depAt: flight.depAt.toISOString() })
     }
     return flights

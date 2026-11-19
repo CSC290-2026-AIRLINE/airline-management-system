@@ -216,15 +216,18 @@ describe('DbSeats', () => {
     })
   })
 
-  it('the assigned seats of a flight are read in one query, by booking passenger', async () => {
+  it('the assigned seats of several flights are read in one query, by flight and booking passenger', async () => {
     const { seats, db } = build()
     db.seat_assignment.findMany.mockResolvedValue([
       { ...seatRow({ status: 'assigned', seat_code: '14A' }), booking_coupon: { booking_passenger_id: 'bp-1' } },
+      { ...seatRow({ status: 'assigned', seat_code: '9F', flight_id: 'flt-fy318' }), booking_coupon: { booking_passenger_id: 'bp-1' } },
     ])
-    expect([...(await seats.assignedSeats('flt-fy204'))]).toEqual([['bp-1', '14A']])
+    const found = await seats.assignedSeats(['flt-fy204', 'flt-fy318'])
+    expect(found.get('flt-fy204')?.get('bp-1')).toBe('14A')
+    expect(found.get('flt-fy318')?.get('bp-1')).toBe('9F')
     expect(db.seat_assignment.findMany).toHaveBeenCalledTimes(1)
     expect(db.seat_assignment.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { flight_id: 'flt-fy204', status: 'assigned' } }),
+      expect.objectContaining({ where: { flight_id: { in: ['flt-fy204', 'flt-fy318'] }, status: 'assigned' } }),
     )
   })
 

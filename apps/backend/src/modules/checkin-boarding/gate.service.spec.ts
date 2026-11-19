@@ -456,6 +456,16 @@ describe('GateService.setGateActive', () => {
     }
   })
 
+  it('a flight past its departure time that nobody closed frees its gate, whatever its status says', async () => {
+    const { gate, clock } = build()
+    // FY 204 left at 03:25Z; no job has written "departed" yet and nobody closed gate A1.
+    clock.set(new Date('2026-11-11T03:30:00.000Z'))
+    expect((await gate.gates('BKK')).find((g) => g.id === 'gate-a1')?.flight).toBeNull()
+    expect(await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a1' })).toMatchObject({ gate: { code: 'A1' } })
+    await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a2' })
+    expect(await gate.setGateActive(staff, 'gate-a1', false)).toMatchObject({ isActive: false })
+  })
+
   it('the open flights of the gates are read in one go, not one flight at a time', async () => {
     const { gate, flights } = build()
     const one = jest.spyOn(flights, 'byId')
@@ -568,6 +578,22 @@ describe('GateService head-count and close', () => {
     await gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })
     expect((await store.getCheckIn(await idOf(store, 'HD224H')))?.status).toBe('no_show')
     expect(await seats.assigned(dana.bookingPassengerId, 'flt-fy204')).toBeNull()
+  })
+
+  it('a held passenger who boarded while the gate closed keeps the seat', async () => {
+    const { gate, store, seats } = build()
+    const dana = BOOKINGS.find((b) => b.pnr === 'HD224H')!
+    const original = store.appendEvent.bind(store)
+    const pass = await store.passByReference('H3VN8PLA')
+    if (!pass) throw new Error('the seeded pass is missing')
+    // Security cleared the passenger and the gate boarded them in the instant the close wrote its no-shows.
+    jest.spyOn(store, 'appendEvent').mockImplementation((input) => {
+      if (input.event !== 'no_show' || input.boarding_pass_id !== pass.id) return original(input)
+      return Promise.resolve({ ...input, id: 'ev-race', created_at: new Date(), event: 'rejected', reason: 'ALREADY_BOARDED' })
+    })
+    await gate.setHeadcount(staff, 'flt-fy204', { source: 'manual', count: 0 })
+    await gate.closeGate(staff, 'flt-fy204', { confirmMismatch: true })
+    expect(await seats.assigned(dana.bookingPassengerId, 'flt-fy204')).toMatchObject({ seatCode: '11D' })
   })
 
   it('a pass that boarded while the gate closed is not a no-show', async () => {

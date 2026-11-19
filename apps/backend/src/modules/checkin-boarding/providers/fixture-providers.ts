@@ -268,10 +268,11 @@ export class FixtureSeats implements SeatProvider {
     this.assignments.delete(seatKey(flightId, bookingPassengerId))
   }
 
-  async assignedSeats(flightId: string): Promise<Map<string, string>> {
-    const seats = new Map<string, string>()
+  async assignedSeats(flightIds: string[]): Promise<Map<string, Map<string, string>>> {
+    const seats = new Map<string, Map<string, string>>(flightIds.map((id) => [id, new Map<string, string>()]))
     for (const [key, seat] of this.assignments) {
-      if (key.startsWith(`${flightId}:`)) seats.set(key.slice(flightId.length + 1), seat.seatCode)
+      const flightId = flightIds.find((id) => key.startsWith(`${id}:`))
+      if (flightId) seats.get(flightId)?.set(key.slice(flightId.length + 1), seat.seatCode)
     }
     return seats
   }

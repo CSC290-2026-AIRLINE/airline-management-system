@@ -123,8 +123,8 @@ export interface SeatProvider {
     opts: { avoidExitRow: boolean },
   ): Promise<{ seatCode: string; type: SeatType }>
   releaseAssigned(bookingPassengerId: string, flightId: string): Promise<void>
-  /** The assigned seat code of every booking passenger on a flight, in one read. */
-  assignedSeats(flightId: string): Promise<Map<string, string>>
+  /** The assigned seat codes of several flights in one read: flight id, then booking passenger id, then the seat. */
+  assignedSeats(flightIds: string[]): Promise<Map<string, Map<string, string>>>
 }
 
 /** Feature 4 owns baggage allowance and seat fees. */

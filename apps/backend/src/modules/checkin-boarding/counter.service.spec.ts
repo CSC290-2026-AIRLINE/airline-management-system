@@ -78,7 +78,7 @@ function build() {
     checkins,
     store,
   )
-  return { counter, checkins, store, payments, audit, clock }
+  return { counter, checkins, store, payments, audit, clock, seats }
 }
 
 /** Pim Saetang is seeded checked_in on FY 204: economy, 20 kg free, 500 THB per kg, 32 kg a bag. */
@@ -595,6 +595,21 @@ describe('CounterService lookups', () => {
     expect(await counter.search(staff, { pnr: 'HD224H' })).toEqual([expect.objectContaining({ status: 'on_hold' })])
     jest.spyOn(FixtureScreening.prototype, 'status').mockResolvedValue('clear')
     expect(await counter.search(staff, { pnr: 'HD224H' })).toEqual([expect.objectContaining({ status: 'checked_in', issues: [] })])
+  })
+
+  it('the list still loads when feature 7 cannot say where a held passenger stands', async () => {
+    const { counter } = build()
+    jest.spyOn(FixtureScreening.prototype, 'status').mockRejectedValue(new Error('feature 7 is down'))
+    expect(await counter.search(staff, { pnr: 'HD224H' })).toEqual([expect.objectContaining({ status: 'on_hold', issues: ['ON_HOLD'] })])
+  })
+
+  it('a search over several flights reads their seats in one go', async () => {
+    const { counter, seats } = build()
+    const spy = jest.spyOn(seats, 'assignedSeats')
+    const rows = await counter.search(staff, { name: 'a' })
+    expect(new Set(rows.map((row) => row.flightId)).size).toBe(2)
+    expect(rows.find((row) => row.pnr === 'EC224G')?.seat).toBe('14A')
+    expect(spy).toHaveBeenCalledTimes(1)
   })
 
   it('search filters by flight, pnr and name (case-insensitive substring)', async () => {

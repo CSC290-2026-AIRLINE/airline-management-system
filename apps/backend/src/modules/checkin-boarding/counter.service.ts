@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import type { Actor } from './actor'
 import type {
   BagAllowance,
@@ -54,6 +54,8 @@ export interface BagInput {
  */
 @Injectable()
 export class CounterService {
+  private readonly logger = new Logger(CounterService.name)
+
   constructor(
     @Inject(CLOCK) private readonly clock: ClockProvider,
     @Inject(FLIGHTS) private readonly flights: FlightProvider,
@@ -82,14 +84,10 @@ export class CounterService {
           (b) => b !== null,
         )
     const bookingOf = new Map(booked.map((b) => [couponKey(b.bookingPassengerId, b.flightId), b]))
-    // One read per table and per flight for the whole list, not one per passenger: a full flight is a few hundred rows.
+    // One read per table for the whole list, not one per passenger or per flight: a full flight is a few hundred rows.
     const flightIds = [...new Set(booked.map((b) => b.flightId))]
-    const [flights, seats] = await Promise.all([
-      this.flights.byIds(flightIds),
-      Promise.all(flightIds.map((id) => this.seats.assignedSeats(id))),
-    ])
+    const [flights, seatsOf] = await Promise.all([this.flights.byIds(flightIds), this.seats.assignedSeats(flightIds)])
     const flightOf = new Map(flights.map((flight) => [flight.id, flight]))
-    const seatsOf = new Map(flightIds.map((id, index) => [id, seats[index]]))
 
     const records: CheckInRecord[] = []
     for (const record of found) {
@@ -411,7 +409,13 @@ export class CounterService {
     flight: FlightRecord | undefined,
   ): Promise<CheckInRecord> {
     const current = booking.cancelled || flight?.status === 'cancelled' ? await this.checkins.refreshCancelled(actor, record) : record
-    return this.checkins.refreshHold(actor, current)
+    try {
+      return await this.checkins.refreshHold(actor, current)
+    } catch (error) {
+      // The list has to load when feature 7 cannot answer: the row keeps its hold, the passenger's own screen asks again.
+      this.logger.warn(`The hold of check-in ${record.id} was not refreshed: ${error instanceof Error ? error.message : String(error)}`)
+      return current
+    }
   }
 
   private async bagsOf(record: CheckInRecord): Promise<CheckedBagRecord[]> {
