@@ -89,12 +89,17 @@ export class CheckInService {
     const passenger = wanted ? passengers.find((b) => stripNonLetters(b.firstName) === wanted) : passengers[0]
     if (!passenger) throw notFound('Booking')
     this.assertBookingOwner(actor, passenger, 'Booking')
-    if (!passenger.paid) throw new CheckInError(409, 'NOT_ELIGIBLE', 'The booking is not paid', { reason: 'unpaid' })
 
-    const { booking, flight } = await this.flightToCheckIn(coupons.filter((b) => b.passengerId === passenger.passengerId))
+    // A cancelled leg is never checked in, and the payment is the one of the leg that is.
+    const legs = coupons.filter((b) => b.passengerId === passenger.passengerId && !b.cancelled)
+    if (legs.length === 0) {
+      throw new CheckInError(409, 'NOT_ELIGIBLE', 'The booking is cancelled', { reason: 'booking_cancelled' })
+    }
+    const { booking, flight } = await this.flightToCheckIn(legs)
     if (flight.status === 'cancelled') {
       throw new CheckInError(409, 'NOT_ELIGIBLE', 'The flight is cancelled', { reason: 'flight_cancelled' })
     }
+    if (!booking.paid) throw new CheckInError(409, 'NOT_ELIGIBLE', 'The booking is not paid', { reason: 'unpaid' })
     this.assertWindowOpen(flight, await this.windowOf(flight))
 
     const existing = await this.store.findActiveCheckInByBookingPassenger(booking.bookingPassengerId, booking.flightId)
@@ -147,8 +152,10 @@ export class CheckInService {
       runId = again.runId
     }
     if (outcome === 'held') return record
+    // A hold that came after the boarding pass gives the passenger back the pass they had.
+    const reopened = (await this.store.passesForCheckIn(record.id)).length > 0 ? 'checked_in' : 'started'
     const updated = await this.store.updateCheckIn(record.id, {
-      status: outcome === 'denied' ? 'denied' : 'started',
+      status: outcome === 'denied' ? 'denied' : reopened,
       screening_run_id: runId,
     })
     const summary = outcome === 'denied' ? 'security confirmed the watchlist match' : 'security released the hold'
@@ -561,10 +568,15 @@ export class CheckInService {
     return flight
   }
 
-  /** Of a passenger's coupons, the flight that is open for check-in now; else the next one to depart. */
+  /**
+   * Of a passenger's coupons, the flight that is open for check-in now; else the next one to depart. A cancelled
+   * flight is only picked when no other leg flies.
+   */
   private async flightToCheckIn(coupons: BookingPassenger[]): Promise<{ booking: BookingPassenger; flight: FlightRecord }> {
     const now = this.clock.now()
-    const legs = await Promise.all(coupons.map(async (booking) => ({ booking, flight: await this.flightOf(booking.flightId) })))
+    const all = await Promise.all(coupons.map(async (booking) => ({ booking, flight: await this.flightOf(booking.flightId) })))
+    const flying = all.filter((leg) => leg.flight.status !== 'cancelled')
+    const legs = flying.length > 0 ? flying : all
     legs.sort((a, b) => a.flight.depAt.getTime() - b.flight.depAt.getTime())
     for (const leg of legs) if (isWindowOpen(now, await this.windowOf(leg.flight))) return leg
     return legs.find((leg) => leg.flight.depAt.getTime() >= now.getTime()) ?? legs[legs.length - 1]

@@ -216,6 +216,68 @@ describe('CheckInService.start', () => {
     })
   })
 
+  /** A second coupon of a passenger: the other leg of a return trip. */
+  const leg = (pnr: string, flightId: string, over: Partial<BookingPassenger> = {}): BookingPassenger => ({
+    bookingPassengerId: `bp-${pnr.toLowerCase()}`,
+    bookingId: `bk-${pnr.toLowerCase()}`,
+    pnr,
+    paid: true,
+    cancelled: false,
+    flightId,
+    passengerId: `pax-${pnr.toLowerCase()}`,
+    firstName: 'Test',
+    lastName: 'Legs',
+    cabin: 'economy',
+    fareClass: 'Y',
+    specialAssistance: [],
+    isPolice: false,
+    customerUserId: null,
+    ...over,
+  })
+
+  it('a cancelled return leg does not stop the paid outbound flight', async () => {
+    const { svc } = build()
+    addBooking(leg('XX100A', 'flt-fy204'))
+    addBooking(leg('XX100A', 'flt-fy318', { paid: false, cancelled: true }))
+    const out = await svc.start(cust, { pnr: 'XX100A', lastName: 'Legs' })
+    expect(out.flight.id).toBe('flt-fy204')
+  })
+
+  it('a cancelled first leg is skipped: the check-in starts on the leg that still flies', async () => {
+    const { svc } = build()
+    addBooking(leg('XX100B', 'flt-fy204', { paid: false, cancelled: true }))
+    addBooking(leg('XX100B', 'flt-fy318'))
+    const out = await svc.start(cust, { pnr: 'XX100B', lastName: 'Legs' })
+    expect(out.flight.id).toBe('flt-fy318')
+  })
+
+  it('a leg on a cancelled flight is skipped when another leg still flies', async () => {
+    const { svc } = build()
+    addFlight({ ...FLIGHTS.find((f) => f.id === 'flt-fy204')!, id: 'flt-test-gone', status: 'cancelled' })
+    addBooking(leg('XX100C', 'flt-test-gone'))
+    addBooking(leg('XX100C', 'flt-fy318'))
+    const out = await svc.start(cust, { pnr: 'XX100C', lastName: 'Legs' })
+    expect(out.flight.id).toBe('flt-fy318')
+  })
+
+  it('the payment is checked on the flight that is checked in, not on another leg', async () => {
+    const { svc } = build()
+    addBooking(leg('XX100D', 'flt-fy204', { paid: false }))
+    addBooking(leg('XX100D', 'flt-fy318'))
+    await expect(svc.start(cust, { pnr: 'XX100D', lastName: 'Legs' })).rejects.toMatchObject({
+      code: 'NOT_ELIGIBLE',
+      details: { reason: 'unpaid' },
+    })
+  })
+
+  it('a cancelled booking is refused as cancelled, not as unpaid', async () => {
+    const { svc } = build()
+    addBooking(leg('XX100E', 'flt-fy204', { paid: false, cancelled: true }))
+    const error = await svc.start(cust, { pnr: 'XX100E', lastName: 'Legs' }).catch((e: CheckInError) => e)
+    expect(error).toMatchObject({ code: 'NOT_ELIGIBLE', details: { reason: 'booking_cancelled' } })
+    expect((error as CheckInError).getResponse()).toMatchObject({ error: { message: 'The booking is cancelled' } })
+  })
+
   it('start hands an existing check-in to the caller who proved the booking', async () => {
     const { svc, store, audit } = build()
     const other: Actor = { userId: 'user-other', staffId: null }
@@ -557,6 +619,17 @@ describe('CheckInService.submitDocument', () => {
       screening.current = 'clear'
       expect((await svc.get(cust, id)).status).toBe('started')
       await expect(svc.holdSeat(cust, 'flt-fy204', { checkInId: id, seatCode: '7E' })).resolves.toBeTruthy()
+    })
+
+    it('goes back to checked in when the hold came after the boarding pass', async () => {
+      const { svc, store } = build()
+      const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
+      await svc.submitDocument(cust, c.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
+      await svc.complete(cust, c.id)
+      // Feature 7 screened again after the pass and held the passenger; the fixture has no hold on record, so the
+      // next read screens again and security lets the passenger go.
+      await store.updateCheckIn(c.id, { status: 'on_hold' })
+      expect((await svc.get(cust, c.id)).status).toBe('checked_in')
     })
 
     it('is denied once security confirmed the match', async () => {
