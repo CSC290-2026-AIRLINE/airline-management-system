@@ -1,5 +1,6 @@
 import type { DbService } from '@backend/db/db.service'
 import { DbSeats } from './db-seats'
+import { DEMO_LAYOUT } from './demo-data'
 import { FixtureClock } from './fixture-providers'
 
 // The generated Prisma client is ESM only: the provider under test never reaches a real database.
@@ -40,6 +41,8 @@ function build(over: Record<string, unknown> = {}) {
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     booking_coupon: { findFirst: jest.fn().mockResolvedValue(couponRow) },
+    // The aircraft of the flight and the cabins it sells: the seat list is built from them.
+    flight: { findUnique: jest.fn().mockResolvedValue({ aircraft: { aircraft_type: { layout: DEMO_LAYOUT } }, seat_inventory: [] }) },
     seat_fee: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null) },
     ...over,
   }
@@ -243,6 +246,49 @@ describe('DbSeats', () => {
     await expect(seats.lock('sa-1')).resolves.toMatchObject({ id: 'sa-1', seatCode: '5B', fee: 250, bookingPassengerId: 'bp-1' })
     db.seat_assignment.findUnique.mockResolvedValueOnce({ ...seatRow({ status: 'released' }), ...coupon })
     await expect(seats.lock('sa-1')).resolves.toBeNull()
+  })
+
+  it('a premium economy passenger gets a free seat of their cabin', async () => {
+    const { seats, db } = build()
+    db.booking_coupon.findFirst.mockResolvedValue({ ...couponRow, booking_segment: { cabin: 'premium_economy' } })
+    await expect(seats.assignAnyStandard('flt-fy204', 'bp-1', { avoidExitRow: false })).resolves.toEqual({
+      seatCode: '8A',
+      type: 'standard',
+    })
+    await expect(seats.hold('flt-fy204', '9F', 'bp-1', 300_000)).resolves.toMatchObject({ seatCode: '9F' })
+  })
+
+  it('the seat map is the aircraft of the flight: a plain grid split by the seat inventory', async () => {
+    const { seats, db } = build()
+    db.flight.findUnique.mockResolvedValue({
+      aircraft: { aircraft_type: { layout: { rows: 3, seats_per_row: 4 } } },
+      seat_inventory: [
+        { cabin: 'premium_economy', capacity: 4 },
+        { cabin: 'economy', capacity: 8 },
+      ],
+    })
+    const map = await seats.seatMap('flt-other', { bookingPassengerId: null, cabin: null })
+    expect(map.rows.map((row) => row.seats.map((seat) => `${seat.code}:${seat.cabin}`))).toEqual([
+      ['1A:premium_economy', '1B:premium_economy', '1C:premium_economy', '1D:premium_economy'],
+      ['2A:economy', '2B:economy', '2C:economy', '2D:economy'],
+      ['3A:economy', '3B:economy', '3C:economy', '3D:economy'],
+    ])
+    expect(db.flight.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'flt-other' } }))
+  })
+
+  it('a blocked seat of the layout is shown blocked, cannot be held and is never given out', async () => {
+    const { seats, db } = build()
+    db.flight.findUnique.mockResolvedValue({
+      aircraft: {
+        aircraft_type: {
+          layout: { cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 1, columns: ['A', 'B'], blocked_seats: ['1A'] }] },
+        },
+      },
+      seat_inventory: [],
+    })
+    expect(await statusOf(seats, '1A', { bookingPassengerId: null, cabin: null })).toBe('blocked')
+    await expect(seats.hold('flt-fy204', '1A', 'bp-1', 300_000)).rejects.toMatchObject({ code: 'SEAT_TAKEN' })
+    await expect(seats.assignAnyStandard('flt-fy204', 'bp-1', { avoidExitRow: false })).resolves.toMatchObject({ seatCode: '1B' })
   })
 
   it('assignAnyStandard takes a free standard seat of the cabin', async () => {

@@ -262,6 +262,33 @@ export interface DemoFlight {
   seatInventory: Record<Cabin, number>
 }
 
+/**
+ * The aircraft of both demo flights, in feature 9's layout format: business in rows 1 to 3, premium economy in rows 8
+ * and 9, economy around it with the paid front rows 4 and 5 and the exit row 12.
+ */
+export const DEMO_LAYOUT = {
+  cabins: [
+    { cabin_class: 'business', first_row: 1, last_row: 3, columns: ['A', 'C', 'D', 'F'], aisle_after: ['C'] },
+    {
+      cabin_class: 'economy',
+      first_row: 4,
+      last_row: 7,
+      columns: ['A', 'B', 'C', 'D', 'E', 'F'],
+      aisle_after: ['C'],
+      row_types: { extra_legroom: [4, 5] },
+    },
+    { cabin_class: 'premium_economy', first_row: 8, last_row: 9, columns: ['A', 'B', 'C', 'D', 'E', 'F'], aisle_after: ['C'] },
+    {
+      cabin_class: 'economy',
+      first_row: 10,
+      last_row: 20,
+      columns: ['A', 'B', 'C', 'D', 'E', 'F'],
+      aisle_after: ['C'],
+      row_types: { exit_row: [12] },
+    },
+  ],
+}
+
 /** The two demo flights: FY 204 to Tokyo Narita at gate A1 and FY 318 to Seoul Incheon at gate A2. */
 export const DEMO_FLIGHTS: Record<'fy204' | 'fy318', DemoFlight> = {
   fy204: {
@@ -277,7 +304,7 @@ export const DEMO_FLIGHTS: Record<'fy204' | 'fy318', DemoFlight> = {
     blockTimeMin: 360,
     aircraftTail: 'HS-F6A',
     gateCode: 'A1',
-    seatInventory: { economy: 102, premium_economy: 0, business: 18, first: 0 },
+    seatInventory: { economy: 90, premium_economy: 12, business: 12, first: 0 },
   },
   fy318: {
     key: 'fy318',
@@ -292,7 +319,7 @@ export const DEMO_FLIGHTS: Record<'fy204' | 'fy318', DemoFlight> = {
     blockTimeMin: 330,
     aircraftTail: 'HS-F6B',
     gateCode: 'A2',
-    seatInventory: { economy: 102, premium_economy: 0, business: 18, first: 0 },
+    seatInventory: { economy: 90, premium_economy: 12, business: 12, first: 0 },
   },
 }
 

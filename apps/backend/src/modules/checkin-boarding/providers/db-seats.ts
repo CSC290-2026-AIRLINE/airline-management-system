@@ -4,7 +4,8 @@ import type { Prisma } from '@backend/db/generated/prisma/client'
 import type { Cabin, SeatLock, SeatMap, SeatStatus, SeatType } from '../api-types'
 import { CheckInError } from '../errors'
 import type { Numeric } from '../store/prisma-mappers'
-import { SEAT_LAYOUT, SEAT_LIST, seatOf } from './fixtures'
+import { seatList } from '../domain/seat-list'
+import type { LayoutSeat } from '../domain/seat-list'
 import { CLOCK, SEAT_FEE_TYPE } from './providers'
 import type { ClockProvider, SeatProvider } from './providers'
 
@@ -31,7 +32,7 @@ const COUPON_INCLUDE = { booking_segment: { select: { cabin: true } } } as const
 const CABINS: Cabin[] = ['economy', 'premium_economy', 'business', 'first']
 const toCabin = (value: string): Cabin => (CABINS.includes(value as Cabin) ? (value as Cabin) : 'economy')
 
-/** The seat of the aircraft is a fixture; the database only says who sits where. */
+/** The seats come from the aircraft of the flight (features 9 and 3); `seat_assignment` says who sits where. */
 @Injectable()
 export class DbSeats implements SeatProvider {
   constructor(
@@ -45,10 +46,10 @@ export class DbSeats implements SeatProvider {
     const fees = await this.feeRows()
     const rows: SeatMap['rows'] = []
 
-    for (const seat of SEAT_LIST) {
+    for (const seat of await this.seatsOf(flightId)) {
       let row = rows.find((r) => r.row === seat.row)
       if (!row) {
-        row = { row: seat.row, exitRow: SEAT_LAYOUT.exitRows.includes(seat.row), seats: [] }
+        row = { row: seat.row, exitRow: seat.type === 'exit', seats: [] }
         rows.push(row)
       }
       row.seats.push({
@@ -57,7 +58,7 @@ export class DbSeats implements SeatProvider {
         letter: seat.letter,
         cabin: seat.cabin,
         type: seat.type,
-        status: this.statusOf(seat.code, seat.cabin, viewer, mine, live),
+        status: seat.blocked ? 'blocked' : this.statusOf(seat.code, seat.cabin, viewer, mine, live),
         fee: this.feeOf(fees, seat.cabin, seat.type),
       })
     }
@@ -65,8 +66,9 @@ export class DbSeats implements SeatProvider {
   }
 
   async hold(flightId: string, seatCode: string, bookingPassengerId: string, ttlMs: number): Promise<SeatLock> {
-    const seat = seatOf(seatCode)
+    const seat = await this.seatOf(flightId, seatCode)
     if (!seat) throw new CheckInError(400, 'VALIDATION', `Seat ${seatCode} does not exist`)
+    if (seat.blocked) throw new CheckInError(409, 'SEAT_TAKEN', `Seat ${seatCode} is not available`, { seatCode })
     const coupon = await this.couponOf(bookingPassengerId, flightId)
     if (!coupon) throw new CheckInError(404, 'NOT_FOUND', 'Booking not found')
     if (seat.cabin !== toCabin(coupon.booking_segment.cabin)) {
@@ -155,7 +157,7 @@ export class DbSeats implements SeatProvider {
         throw new CheckInError(409, 'LOCK_EXPIRED', 'The seat hold has expired', { seatCode: row.seat_code })
       }
     })
-    return { seatCode: row.seat_code, type: seatOf(row.seat_code)?.type ?? 'standard' }
+    return { seatCode: row.seat_code, type: (await this.seatOf(row.flight_id, row.seat_code))?.type ?? 'standard' }
   }
 
   async assigned(
@@ -165,7 +167,8 @@ export class DbSeats implements SeatProvider {
     const row = await this.db.seat_assignment.findFirst({
       where: { booking_coupon: { booking_passenger_id: bookingPassengerId }, flight_id: flightId, status: 'assigned' },
     })
-    return row ? { seatCode: row.seat_code, type: seatOf(row.seat_code)?.type ?? 'standard', paymentId: row.payment_id } : null
+    if (!row) return null
+    return { seatCode: row.seat_code, type: (await this.seatOf(flightId, row.seat_code))?.type ?? 'standard', paymentId: row.payment_id }
   }
 
   async assignAnyStandard(
@@ -177,7 +180,8 @@ export class DbSeats implements SeatProvider {
     if (!coupon) throw new CheckInError(404, 'NOT_FOUND', 'Booking not found')
     const cabin = toCabin(coupon.booking_segment.cabin)
     const live = await this.liveRows(flightId)
-    const free = SEAT_LIST.filter((seat) => seat.cabin === cabin && !live.some((row) => row.seat_code === seat.code))
+    const seats = await this.seatsOf(flightId)
+    const free = seats.filter((seat) => seat.cabin === cabin && !seat.blocked && !live.some((row) => row.seat_code === seat.code))
     // A standard seat first; an exit row only when the passenger may have one and nothing else is left.
     const candidates = [
       ...free.filter((s) => s.type === 'standard' || s.type === 'business'),
@@ -230,6 +234,26 @@ export class DbSeats implements SeatProvider {
       include: { booking_coupon: { select: { booking_passenger_id: true } } },
     })
     return new Map(rows.map((row) => [row.booking_coupon.booking_passenger_id, row.seat_code]))
+  }
+
+  /**
+   * The seats of the aircraft that flies the flight: feature 9's layout, split by feature 3's seat inventory when the
+   * layout has no cabins of its own. Read on every call, because feature 2 can swap the aircraft of a flight.
+   */
+  private async seatsOf(flightId: string): Promise<LayoutSeat[]> {
+    const flight = await this.db.flight.findUnique({
+      where: { id: flightId },
+      select: {
+        aircraft: { select: { aircraft_type: { select: { layout: true } } } },
+        seat_inventory: { select: { cabin: true, capacity: true } },
+      },
+    })
+    if (!flight) return []
+    return seatList(flight.aircraft.aircraft_type.layout, Object.fromEntries(flight.seat_inventory.map((row) => [row.cabin, row.capacity])))
+  }
+
+  private async seatOf(flightId: string, seatCode: string): Promise<LayoutSeat | undefined> {
+    return (await this.seatsOf(flightId)).find((seat) => seat.code === seatCode)
   }
 
   /** The rows that still hold a seat: an assigned one and a hold that has not run out. */

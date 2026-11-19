@@ -1,5 +1,5 @@
 import { SEAT_FEE_TYPE } from '@backend/modules/checkin-boarding/providers/providers'
-import { DEMO_FLIGHTS, DEMO_PASSENGERS, demoDepartures } from '@backend/modules/checkin-boarding/providers/demo-data'
+import { DEMO_FLIGHTS, DEMO_LAYOUT, DEMO_PASSENGERS, demoDepartures } from '@backend/modules/checkin-boarding/providers/demo-data'
 import type { DemoFlight } from '@backend/modules/checkin-boarding/providers/demo-data'
 import type { Cabin, SeatType } from '@backend/modules/checkin-boarding/api-types'
 import { PrismaClient } from './generated/prisma/client'
@@ -29,7 +29,7 @@ const AIRCRAFT_TYPE = {
   code: 'F6-DEMO-A320',
   manufacturer: 'Airbus',
   model: 'A320 (demo)',
-  layout: { rows: 20, letters: 'ABCDEF', exitRows: [12], business: [1, 2, 3] },
+  layout: DEMO_LAYOUT,
   hold_weight_limit_kg: 9000,
   max_takeoff_weight_kg: 78000,
   max_range_km: 6100,
@@ -88,7 +88,8 @@ export async function seedFeature6(prisma: PrismaClient): Promise<void> {
     for (const cabin of CABINS) {
       await prisma.seat_inventory.upsert({
         where: { flight_id_cabin: { flight_id: row.id, cabin } },
-        update: {},
+        // The capacity follows the demo aircraft, also on a database seeded before premium economy had seats.
+        update: { capacity: flight.seatInventory[cabin] },
         create: { flight_id: row.id, cabin, capacity: flight.seatInventory[cabin] },
       })
     }
@@ -215,7 +216,8 @@ async function seedAirports(prisma: PrismaClient): Promise<number> {
 /** The aircraft type has a partial unique index on its code, so it is found first and created when it is missing. */
 async function seedAircraftType(prisma: PrismaClient): Promise<{ id: string }> {
   const existing = await prisma.aircraft_type.findFirst({ where: { code: AIRCRAFT_TYPE.code, deleted_at: null } })
-  if (existing) return existing
+  // A database seeded earlier has the old layout with no premium economy seats: the demo type follows the code.
+  if (existing) return prisma.aircraft_type.update({ where: { id: existing.id }, data: { layout: AIRCRAFT_TYPE.layout } })
   return prisma.aircraft_type.create({ data: AIRCRAFT_TYPE })
 }
 

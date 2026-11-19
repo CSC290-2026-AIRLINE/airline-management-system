@@ -101,7 +101,7 @@ decided by `register('memory' | 'db')` in `checkin-boarding.module.ts` — one l
 | `FLIGHTS`        | `FlightProvider`           | F2 flights                       | `DbFlights` (`flight`, `route`, `airport`)                                  | `FixtureFlights` (FY 204, FY 318)                            |
 | `BOOKINGS`       | `BookingProvider`          | F3 bookings                      | `DbBookings` (`booking_coupon` and its relations)                           | `FixtureBookings` (14 prototype bookings)                    |
 | `PASSENGERS`     | `PassengerProfileProvider` | F7 passenger profile             | `DbPassengers` (`passenger`; fills empty fields only)                       | `FixturePassengers`                                          |
-| `SEATS`          | `SeatProvider`             | F3 seat map and holds            | `DbSeats` (`seat_assignment`; the layout stays a fixture)                   | `FixtureSeats` (5 minute hold, `SEAT_TAKEN`, `LOCK_EXPIRED`) |
+| `SEATS`          | `SeatProvider`             | F3 seat map and holds            | `DbSeats` (`seat_assignment`; seats from the aircraft's layout)             | `FixtureSeats` (5 minute hold, `SEAT_TAKEN`, `LOCK_EXPIRED`) |
 | `PRICING`        | `PricingProvider`          | F4 baggage and seat fees         | `DbPricing` (`overweight_baggage_rate`, `seat_fee`)                         | `FixturePricing` (20 kg free, 500 THB/kg, max 32 kg)         |
 | `PAYMENTS`       | `PaymentProvider`          | F5 payments                      | `DbPayments` (writes the `payment` row itself)                              | `FixturePayments` (fake payment ids)                         |
 | `SETTINGS`       | `SettingsProvider`         | F6 settings (`check_in_setting`) | `DbSettings` (`check_in_setting`, `carry_on_allowance`, `visa_requirement`) | `FixtureSettings`                                            |
@@ -235,10 +235,12 @@ id. When the confirmation fails, the payment is left behind on purpose and the a
 - **The name on the passport.** The schema stores the last four characters of the passport number only, so the staff
   view answers `nameOnPassport: null` and the frontends show "—". The name itself lives on the passenger row of
   feature 7; no column is requested for it here.
-- **The seat layout.** There is no seat-layout table (the layout JSON of `aircraft_type` belongs to feature 9), so
-  the 20-row A–F layout stays in `providers/fixtures.ts` (`SEAT_LAYOUT`) and both modes read it. What is persisted is
-  `seat_assignment`: `held`, `assigned` or `released`, with `hold_expires_at`, `fee_amount` and `payment_id`. A hold
-  that ran out is swept before the next hold is written, because the unique index still counts it.
+- **The seat layout.** There is no seat table: `DbSeats` builds the seats of a flight from `aircraft_type.layout`
+  (`domain/seat-list.ts`). Feature 9's `cabins` format is read as it is; a plain grid (`rows` + `seats_per_row`, the
+  aircraft of the shared seed) is split front to back by the flight's `seat_inventory`. The in-memory mode uses the
+  demo aircraft (`DEMO_LAYOUT`). What is persisted is `seat_assignment`: `held`, `assigned` or `released`, with
+  `hold_expires_at`, `fee_amount` and `payment_id`. A hold that ran out is swept before the next hold is written,
+  because the unique index still counts it.
 
 ### Special assistance
 
@@ -293,7 +295,7 @@ shown by the demo script.
 
 - **Staff roles** are not enforced: `DbStaffIdentity` only reads `user.type`. Feature 1's roles decide who may do what.
 - **F3 seat API**: the seat map, the 5-minute hold, confirm and release are ours. `DbSeats` writes the holds into
-  `seat_assignment` and reads the layout from the fixture; replace the provider with G13's contract when it exists.
+  `seat_assignment` and reads the seats from the aircraft's layout; replace the provider with G13's contract when it exists.
   Feature 3's special-assistance codes are read from `booking_service_request` (`requested` or `accepted`).
 - **F11 tier**: `FixtureTiers` returns none, so nobody gets the tier bag bonus or boarding group 2/3 by tier.
 - **F5 checkout**: `DbPayments` writes the `payment` row itself, with `provider = 'fake'`. When feature 5 exposes a

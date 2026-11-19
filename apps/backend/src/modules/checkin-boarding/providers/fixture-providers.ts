@@ -14,7 +14,6 @@ import {
   POLICE_PASSPORTS,
   PROFILES,
   PRICING,
-  SEAT_LAYOUT,
   SEAT_LIST,
   SEEDED_PASSES,
   SETTINGS,
@@ -162,7 +161,7 @@ export class FixtureSeats implements SeatProvider {
     for (const seat of SEAT_LIST) {
       let row = rows.find((r) => r.row === seat.row)
       if (!row) {
-        row = { row: seat.row, exitRow: SEAT_LAYOUT.exitRows.includes(seat.row), seats: [] }
+        row = { row: seat.row, exitRow: seat.type === 'exit', seats: [] }
         rows.push(row)
       }
       row.seats.push({

@@ -865,6 +865,23 @@ describe('CheckInService.complete', () => {
     expect((await store.getCheckIn(c.id))!.checked_in_at).toEqual(new Date(DEMO_NOW))
   })
 
+  it('a premium economy passenger who picks no seat gets a free one in their cabin', async () => {
+    const { svc } = build()
+    addBooking({
+      ...BOOKINGS.find((b) => b.pnr === 'ER224F')!,
+      bookingPassengerId: 'bp-test-premium',
+      bookingId: 'bk-test-premium',
+      pnr: 'XX200W',
+      passengerId: 'pax-test-premium',
+      cabin: 'premium_economy',
+      fareClass: 'W',
+    })
+    const c = await svc.start(cust, { pnr: 'XX200W', lastName: 'Eriksson' })
+    await svc.submitDocument(cust, c.id, { mrzLine1: SECOND_LINE1, mrzLine2: SECOND_LINE2 })
+    const pass = await svc.complete(cust, c.id)
+    expect(pass.seat).toMatch(/^[89][A-F]$/)
+  })
+
   it('is idempotent', async () => {
     const { svc, store } = build()
     const c = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })

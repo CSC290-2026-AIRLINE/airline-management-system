@@ -1,5 +1,7 @@
 import type { Cabin, SeatType } from '../api-types'
-import { DEMO_FLIGHTS, DEMO_PASSENGERS } from './demo-data'
+import { seatList } from '../domain/seat-list'
+import type { LayoutSeat } from '../domain/seat-list'
+import { DEMO_FLIGHTS, DEMO_LAYOUT, DEMO_PASSENGERS } from './demo-data'
 import type { BookingPassenger, FlightRecord, PassengerProfile } from './providers'
 
 /** 08:00 Bangkok on demo day (11 Nov 2026). The clock starts here. */
@@ -113,43 +115,12 @@ export const PRICING = {
   seatFee: { standard: 0, front: 250, exit: 450, business: 0 } as Record<SeatType, number>,
 }
 
-export const SEAT_LAYOUT = {
-  rows: 20,
-  businessRows: [1, 2, 3],
-  businessLetters: ['A', 'C', 'D', 'F'],
-  economyLetters: ['A', 'B', 'C', 'D', 'E', 'F'],
-  exitRows: [12],
-  frontRows: [4, 5],
-}
-
-export function seatTypeOf(row: number): SeatType {
-  if (SEAT_LAYOUT.businessRows.includes(row)) return 'business'
-  if (SEAT_LAYOUT.exitRows.includes(row)) return 'exit'
-  if (SEAT_LAYOUT.frontRows.includes(row)) return 'front'
-  return 'standard'
-}
-
-export interface FixtureSeat {
-  code: string
-  row: number
-  letter: string
-  cabin: Cabin
-  type: SeatType
+export interface FixtureSeat extends LayoutSeat {
   fee: number
 }
 
-export const SEAT_LIST: FixtureSeat[] = (() => {
-  const seats: FixtureSeat[] = []
-  for (let row = 1; row <= SEAT_LAYOUT.rows; row++) {
-    const business = SEAT_LAYOUT.businessRows.includes(row)
-    const letters = business ? SEAT_LAYOUT.businessLetters : SEAT_LAYOUT.economyLetters
-    for (const letter of letters) {
-      const type = seatTypeOf(row)
-      seats.push({ code: `${row}${letter}`, row, letter, cabin: business ? 'business' : 'economy', type, fee: PRICING.seatFee[type] })
-    }
-  }
-  return seats
-})()
+/** The seats of the demo aircraft, each with the fee of its type. */
+export const SEAT_LIST: FixtureSeat[] = seatList(DEMO_LAYOUT, {}).map((seat) => ({ ...seat, fee: PRICING.seatFee[seat.type] }))
 
 export function seatOf(code: string): FixtureSeat | undefined {
   return SEAT_LIST.find((s) => s.code === code)
