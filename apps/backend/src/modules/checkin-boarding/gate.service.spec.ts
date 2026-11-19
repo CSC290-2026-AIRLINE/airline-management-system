@@ -437,7 +437,7 @@ describe('GateService.setGateActive', () => {
 
   it('a gate whose flight is closed can be turned off and on again', async () => {
     const { gate, store } = build()
-    await store.updateFlightBoarding('flt-fy204', { closed_at: new Date() })
+    await store.updateFlightBoarding('flt-fy204', { closed_at: new Date(), closed_by: 'staff-demo', boarded_count: 0, manual_count: 0 })
     expect(await gate.setGateActive(staff, 'gate-a1', false)).toMatchObject({ code: 'A1', isActive: false })
     expect(await gate.setGateActive(staff, 'gate-a1', true)).toMatchObject({ isActive: true })
   })
@@ -511,7 +511,7 @@ describe('GateService.setGateActive', () => {
 
   it('a gate whose flight is closed can take another flight', async () => {
     const { gate, store } = build()
-    await store.updateFlightBoarding('flt-fy204', { closed_at: new Date() })
+    await store.updateFlightBoarding('flt-fy204', { closed_at: new Date(), closed_by: 'staff-demo', boarded_count: 0, manual_count: 0 })
     await gate.setGateActive(staff, 'gate-a1', false)
     await gate.setGateActive(staff, 'gate-a1', true)
     expect(await gate.setGate(staff, 'flt-fy318', { gateId: 'gate-a1' })).toMatchObject({ gate: { code: 'A1' } })

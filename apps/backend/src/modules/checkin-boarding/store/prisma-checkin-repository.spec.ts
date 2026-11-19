@@ -362,11 +362,11 @@ describe('PrismaCheckInRepository', () => {
   it('claims a gate close only while the gate is still open', async () => {
     const { db, repo } = build()
     db.flight_boarding.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 })
-    expect(await repo.claimFlightBoardingClose('flt-fy204', NOW, 'staff-1')).toBe(true)
-    expect(await repo.claimFlightBoardingClose('flt-fy204', NOW, 'staff-1')).toBe(false)
+    expect(await repo.claimFlightBoardingClose('flt-fy204', NOW, 'staff-1', 3)).toBe(true)
+    expect(await repo.claimFlightBoardingClose('flt-fy204', NOW, 'staff-1', 3)).toBe(false)
     expect(db.flight_boarding.updateMany).toHaveBeenCalledWith({
       where: { flight_id: 'flt-fy204', closed_at: null },
-      data: { closed_at: NOW, closed_by: 'staff-1', updated_at: expect.any(Date) },
+      data: { closed_at: NOW, closed_by: 'staff-1', boarded_count: 3, updated_at: expect.any(Date) },
     })
   })
 })

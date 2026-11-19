@@ -185,6 +185,19 @@ export type UpdatePassPatch = Partial<Omit<BoardingPassRecord, 'id' | 'check_in_
  * The repository contract is async and the maps answer straight away: every method writes its row and hands back a
  * promise, so the Prisma implementation can replace this one without touching the services.
  */
+/**
+ * The database refuses it too (the checks of `flight_boarding`): a closed gate always has who closed it, the frozen
+ * boarded count and a head-count; an open one has none of the first two.
+ */
+function closedRule(row: FlightBoardingRecord): FlightBoardingRecord {
+  const closed = row.closed_at !== null
+  if (closed !== (row.closed_by !== null) || closed !== (row.boarded_count !== null)) {
+    throw new Error('flight_boarding: closed_at, closed_by and boarded_count are set together')
+  }
+  if (closed && row.sensor_count === null && row.manual_count === null) throw new Error('flight_boarding: a closed gate has a head-count')
+  return row
+}
+
 @Injectable()
 export class CheckInStore implements CheckInRepository {
   private readonly checkIns = new Map<string, CheckInRecord>()
@@ -485,15 +498,16 @@ export class CheckInStore implements CheckInRepository {
   async updateFlightBoarding(flightId: string, patch: UpdateFlightBoardingPatch): Promise<FlightBoardingRecord> {
     const record = this.boardingRows.get(flightId)
     if (!record) throw new CheckInError(404, 'NOT_FOUND', 'Flight boarding not found')
-    const next = { ...record, ...patch, updated_at: this.now() }
+    const next = closedRule({ ...record, ...patch, updated_at: this.now() })
     this.boardingRows.set(flightId, next)
     return next
   }
 
-  async claimFlightBoardingClose(flightId: string, closedAt: Date, closedBy: string): Promise<boolean> {
+  async claimFlightBoardingClose(flightId: string, closedAt: Date, closedBy: string, boardedCount: number): Promise<boolean> {
     const record = this.boardingRows.get(flightId)
     if (!record || record.closed_at !== null) return false
-    this.boardingRows.set(flightId, { ...record, closed_at: closedAt, closed_by: closedBy, updated_at: this.now() })
+    const closed = { ...record, closed_at: closedAt, closed_by: closedBy, boarded_count: boardedCount, updated_at: this.now() }
+    this.boardingRows.set(flightId, closedRule(closed))
     return true
   }
 

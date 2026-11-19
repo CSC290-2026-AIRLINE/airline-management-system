@@ -1010,7 +1010,7 @@ describe('a closed gate', () => {
     const anna = await svc.start(cust, { pnr: 'ER224F', lastName: 'Eriksson' })
     await svc.submitDocument(cust, anna.id, { mrzLine1: SPECIMEN_LINE1, mrzLine2: buildSpecimenLine2() })
     // The agent closed the gate early: the window is still open.
-    await store.updateFlightBoarding('flt-fy204', { closed_at: clock.now(), closed_by: 'staff-demo', boarded_count: 0 })
+    await store.updateFlightBoarding('flt-fy204', { closed_at: clock.now(), closed_by: 'staff-demo', boarded_count: 0, manual_count: 0 })
     const refused = { code: 'NOT_ELIGIBLE', details: { reason: 'gate_closed' } }
     await expect(svc.complete(cust, anna.id)).rejects.toMatchObject(refused)
     const booked = BOOKINGS.find((b) => b.pnr === 'ER224F')!

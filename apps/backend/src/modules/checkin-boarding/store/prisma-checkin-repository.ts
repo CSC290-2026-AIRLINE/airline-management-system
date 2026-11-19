@@ -329,10 +329,11 @@ export class PrismaCheckInRepository implements CheckInRepository {
     return toFlightBoardingRecord(row)
   }
 
-  async claimFlightBoardingClose(flightId: string, closedAt: Date, closedBy: string): Promise<boolean> {
+  /** The table wants who closed, when, and the boarded count together: the three are written in the one claim. */
+  async claimFlightBoardingClose(flightId: string, closedAt: Date, closedBy: string, boardedCount: number): Promise<boolean> {
     const updated = await this.db.flight_boarding.updateMany({
       where: { flight_id: flightId, closed_at: null },
-      data: { closed_at: closedAt, closed_by: closedBy, updated_at: this.clock.now() },
+      data: { closed_at: closedAt, closed_by: closedBy, boarded_count: boardedCount, updated_at: this.clock.now() },
     })
     return updated.count === 1
   }

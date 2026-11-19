@@ -455,7 +455,7 @@ export class GateService {
     const closedAt = this.clock.now()
     // The close is claimed first: of two closes at the same moment only one gets past here, the other is told the gate
     // is already closed. A close that dies halfway opens the gate again, so it can simply be run again.
-    if (!(await this.store.claimFlightBoardingClose(flightId, closedAt, staffId))) {
+    if (!(await this.store.claimFlightBoardingClose(flightId, closedAt, staffId, boarded))) {
       throw invalidState('The gate of this flight is already closed')
     }
     let noShow = 0
@@ -505,7 +505,7 @@ export class GateService {
       // The count is the one frozen at the moment the gate closed.
       await this.store.updateFlightBoarding(flightId, { boarded_count: await this.boardedCountOf(flightId) })
     } catch (error) {
-      await this.store.updateFlightBoarding(flightId, { closed_at: null, closed_by: null })
+      await this.store.updateFlightBoarding(flightId, { closed_at: null, closed_by: null, boarded_count: null })
       throw error
     }
 

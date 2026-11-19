@@ -187,7 +187,7 @@ describe('CheckInStore', () => {
   it('lists the flight boardings that are still open', async () => {
     const s = store()
     expect((await s.openFlightBoardings()).map((b) => b.flight_id).sort()).toEqual(['flt-fy204', 'flt-fy318'])
-    await s.updateFlightBoarding('flt-fy204', { closed_at: new Date() })
+    await s.updateFlightBoarding('flt-fy204', { closed_at: new Date(), closed_by: 'staff-demo', boarded_count: 0, manual_count: 0 })
     expect((await s.openFlightBoardings()).map((b) => b.flight_id)).toEqual(['flt-fy318'])
   })
 
