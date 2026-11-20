@@ -141,7 +141,7 @@ export function BiDashboardPage() {
     setDrill({
       kind: 'cause',
       title: `Delay cause: ${cause.replaceAll('_', ' ')}`,
-      description: 'Departed flights whose largest announced delay has this cause.',
+      description: 'Flights with at least one announced delay from this cause.',
       filters: { ...filters, cause },
     })
   }
@@ -180,7 +180,7 @@ export function BiDashboardPage() {
           <BiPageHeader
             title="Business intelligence"
             description="On-time performance, load factor, revenue per seat and bookings by route and date. Read only."
-            status={latest ? `Data refreshed ${formatDateTime(latest.finished_at)}` : 'No data refreshed yet'}
+            status={latest ? `Data as of ${formatDateTime(latest.data_as_of)}` : 'No data refreshed yet'}
             action={
               <Button variant="outline" className="bi-button" onClick={() => void refresh()} disabled={isRefreshing}>
                 {isRefreshing && <RefreshCw className="animate-spin" />} {isRefreshing ? 'Refreshing' : 'Refresh'}

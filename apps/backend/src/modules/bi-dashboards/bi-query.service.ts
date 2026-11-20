@@ -118,11 +118,12 @@ export class BiQueryService {
   }
 
   /**
-   * One row per flight, for the drill-down lists and the flights CSV. `cause` is the reason category of the flight's
-   * largest delay. Seats and revenue are for the chosen cabin when one is given.
+   * One row per flight, for the drill-down lists and the flights CSV. The `cause` column is the reason category of the
+   * flight's largest delay. The `cause` filter matches any delay in that category and ignores departed-only, so the
+   * list is exactly the flights the delay-cause bar counts. Seats and revenue are for the chosen cabin when one is given.
    */
   flights(filter: BiFilterDto): Promise<BiFlightRow[]> {
-    const departedOnly = filter.departed_only !== 'false'
+    const departedOnly = !filter.cause && filter.departed_only !== 'false'
     return this.db.$queryRaw<BiFlightRow[]>`
       SELECT
         f.flight_id::text AS flight_id,
@@ -153,7 +154,11 @@ export class BiQueryService {
       ) seats ON seats.flight_id = f.flight_id
       ${flightWhere(filter, 'f')}
         ${departedOnly ? Prisma.sql`AND f.actual_departure_at IS NOT NULL` : Prisma.empty}
-        ${filter.cause ? Prisma.sql`AND cause.category = ${filter.cause}` : Prisma.empty}
+        ${
+          filter.cause
+            ? Prisma.sql`AND EXISTS (SELECT 1 FROM bi_flight_delay d WHERE d.flight_id = f.flight_id AND d.category = ${filter.cause})`
+            : Prisma.empty
+        }
         ${filter.cabin ? Prisma.sql`AND seats.seat_sold IS NOT NULL` : Prisma.empty}
       ORDER BY f.flight_date, f.flight_number`
   }

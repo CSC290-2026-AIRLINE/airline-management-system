@@ -75,8 +75,6 @@ export class BiEtlService implements OnModuleInit {
   }
 
   private async rebuild(tx: Prisma.TransactionClient): Promise<number> {
-    const [{ count: previous }] = await tx.$queryRaw<{ count: number }[]>`SELECT COUNT(*)::int AS count FROM bi_flight`
-
     // Children first, so no foreign key is broken mid-rebuild.
     await tx.$executeRaw`DELETE FROM bi_metric_day`
     await tx.$executeRaw`DELETE FROM bi_booking_day`
@@ -199,12 +197,8 @@ export class BiEtlService implements OnModuleInit {
       ) seats ON seats.flight_id = f.flight_id
       GROUP BY f.route_id, f.flight_date`
 
+    // Every run rebuilds from what the sources hold now, so an empty source gives an empty copy, not a stale one.
     const [{ count }] = await tx.$queryRaw<{ count: number }[]>`SELECT COUNT(*)::int AS count FROM bi_flight`
-    // A source with no flights at all, when the copy had some, is far more likely an empty or broken feed than a real
-    // change. Throwing here rolls the whole rebuild back, so the previous copy stays on screen.
-    if (count === 0 && previous > 0) {
-      throw new Error('SOURCE_EMPTY: the source tables have no flights, so the previous copy was kept')
-    }
     return count
   }
 
