@@ -1,33 +1,41 @@
 {
-  "name": "airline-management-system",
-  "private": true,
-  "workspaces": ["apps/*"],
-  "overrides": {
-    "@nestjs/platform-express": {
-      "multer": "^2.5.0",
-      "express": {
-        "body-parser": "^2.4.0"
-      }
-    },
-    "body-parser": "^2.4.0",
-    "multer": "^2.5.0"
-  },
-  "engines": {
-    "node": ">=24.0.0"
-  },
-  "scripts": {
-    "dev": "npm run db:up && concurrently -n \"BACKEND,CUSTOMER,STAFF\" -c \"blue,green,magenta\" \"npm run start:dev -w apps/backend\" \"npm run dev -w apps/customer-web\" \"npm run dev -w apps/staff-web\"",
-    "db:generate": "npm exec -w apps/backend -- prisma generate",
-    "db:up": "docker compose -f docker-compose.yml up -d",
-    "db:down": "docker compose -f docker-compose.yml down",
-    "db:logs": "docker compose -f docker-compose.yml logs -f",
-    "db:migrate": "npm exec -w apps/backend -- prisma migrate dev",
-    "db:migrate:deploy": "npm exec -w apps/backend -- prisma migrate deploy",
-    "db:migrate:reset": "npm exec -w apps/backend -- prisma migrate reset",
-    "db:studio": "npm exec -w apps/backend -- prisma studio",
-    "db:seed": "npm run db:seed -w apps/backend"
-  },
-  "devDependencies": {
-    "concurrently": "^8.2.2"
-  }
+	"name": "airline-management-system",
+	"private": true,
+	"workspaces": [
+		"apps/*"
+	],
+	"overrides": {
+		"@nestjs/platform-express": {
+			"multer": "^2.5.0",
+			"express": {
+				"body-parser": "^2.4.0"
+			}
+		},
+		"body-parser": "^2.4.0",
+		"multer": "^2.5.0"
+	},
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"scripts": {
+		"dev": "npm run db:up && concurrently -n \"BACKEND,CUSTOMER,STAFF\" -c \"blue,green,magenta\" \"npm run start:dev -w apps/backend\" \"npm run dev -w apps/customer-web\" \"npm run dev -w apps/staff-web\"",
+		"db:generate": "npm exec -w apps/backend -- prisma generate",
+		"db:up": "docker compose -f docker-compose.yml up -d",
+		"db:down": "docker compose -f docker-compose.yml down",
+		"db:logs": "docker compose -f docker-compose.yml logs -f",
+		"db:migrate": "npm exec -w apps/backend -- prisma migrate dev",
+		"db:migrate:deploy": "npm exec -w apps/backend -- prisma migrate deploy",
+		"db:migrate:reset": "npm exec -w apps/backend -- prisma migrate reset",
+		"db:studio": "npm exec -w apps/backend -- prisma studio",
+		"db:seed": "npm run db:seed -w apps/backend",
+		"db:prepare": "npm run db:migrate:deploy && npm run db:generate",
+		"db:seed:security": "npm run db:seed:security -w apps/backend --"
+	},
+	"devDependencies": {
+		"concurrently": "^8.2.2"
+	},
+	"dependencies": {
+		"@prisma/client": "^7.10.1",
+		"radix-ui": "^1.8.1"
+	}
 }

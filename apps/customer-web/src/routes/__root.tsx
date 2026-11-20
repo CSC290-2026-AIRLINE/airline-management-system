@@ -1,5 +1,6 @@
 import { createRootRouteWithContext, Outlet } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
+import SiteHeader from '@customer-web/components/SiteHeader'
 import type { RouterContext } from '../lib/router-context'
 
 export const Route = createRootRouteWithContext<RouterContext>()({
@@ -9,6 +10,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function RootComponent() {
   return (
     <>
+      <SiteHeader />
       <Outlet />
       {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />}
     </>

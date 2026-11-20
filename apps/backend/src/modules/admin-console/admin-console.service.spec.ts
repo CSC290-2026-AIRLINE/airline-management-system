@@ -447,21 +447,18 @@ describe('AdminConsoleService.getMyScreens', () => {
     expect(db.role_screen.findMany).not.toHaveBeenCalled()
   })
 
-  it('returns core + admin screens for an admin role, plus grants', async () => {
+  it('returns every active screen for an admin role, without looking up grants', async () => {
     const { db, svc } = makeDb()
     db.staff.findFirst.mockResolvedValue({ role_id: 'r-admin', role: { code: 'admin', name: 'Admin', is_admin: true } })
-    db.role_screen.findMany.mockResolvedValue([{ screen_id: 's-grant' }])
-    db.screen.findMany
-      .mockResolvedValueOnce([{ code: 'core.home' }, { code: 'f15.role_access' }])
-      .mockResolvedValueOnce([{ code: 'f05.payments' }])
+    db.screen.findMany.mockResolvedValueOnce([{ code: 'core.home' }, { code: 'f15.role_access' }, { code: 'f04.fare_setup' }])
     const res = await svc.getMyScreens('u-1')
-    expect([...res.screen_codes].sort()).toEqual(['core.home', 'f05.payments', 'f15.role_access'])
+    expect([...res.screen_codes].sort()).toEqual(['core.home', 'f04.fare_setup', 'f15.role_access'])
     expect(res.provisioned).toBe(true)
     // The console labels the signed-in person with the role they actually hold.
     expect(res.role).toEqual({ code: 'admin', name: 'Admin' })
-    // Two calls: first with kind in (core, admin), second with id in grants.
-    expect(db.screen.findMany.mock.calls[0][0].where).toEqual({ is_active: true, kind: { in: ['core', 'admin'] } })
-    expect(db.screen.findMany.mock.calls[1][0].where).toEqual({ id: { in: ['s-grant'] }, is_active: true })
+    expect(db.screen.findMany).toHaveBeenCalledTimes(1)
+    expect(db.screen.findMany.mock.calls[0][0].where).toEqual({ is_active: true })
+    expect(db.role_screen.findMany).not.toHaveBeenCalled()
   })
 
   it('returns only core screens for a non-admin role', async () => {

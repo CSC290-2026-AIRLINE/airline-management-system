@@ -6,10 +6,30 @@ import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
 import { BiDashboardsModule } from './modules/bi-dashboards/bi-dashboards.module'
+import { CheckinBoardingModule } from './modules/checkin-boarding/checkin-boarding.module'
 import { validateEnv } from './config/env.validation'
+import { ScreeningModule } from './modules/screening/screening.module'
+import { PricingModule } from './modules/pricing/pricing.module'
+import { PassengerProfilesModule } from '@backend/modules/passenger-profiles/passenger-profiles.module'
+import { WatchlistModule } from './modules/watchlist/watchlist.module'
+import { AircraftManagementModule } from '@backend/modules/aircraft-management/aircraft-management.module'
+import { FlightSchedulingModule } from './modules/flight-scheduling/flight-scheduling.module'
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }), DbModule, AuthModule, AdminConsoleModule, BiDashboardsModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    DbModule,
+    AuthModule,
+    AdminConsoleModule,
+    PricingModule,
+    CheckinBoardingModule.register('db'),
+    PassengerProfilesModule,
+    ScreeningModule,
+    WatchlistModule,
+    AircraftManagementModule,
+    FlightSchedulingModule,
+    BiDashboardsModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

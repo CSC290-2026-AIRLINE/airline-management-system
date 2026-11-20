@@ -1,0 +1,476 @@
+import { useCallback, useEffect, useState } from 'react'
+import { CorrectIdentityDialog } from '../components/CorrectIdentityDialog'
+import { CustomerDetail } from '../components/CustomerDetail'
+import { EmptyState } from '../components/EmptyState'
+import { Search } from 'lucide-react'
+import { Button } from '@staff-web/components/ui/button'
+import { Card } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
+import { PageFrame } from '../components/PageFrame'
+import { PaginationBar, SegmentedControl } from '../components/ListControls'
+import { PeopleCardList } from '../components/PeopleCardList'
+import { PeopleTable } from '../components/PeopleTable'
+import { useCustomerSearchApi, type SearchPassengersResponse } from '../lib/api'
+import { toPage } from '../lib/search'
+import {
+  backToParent,
+  DEFAULT_PAGE_SIZE,
+  MOBILE_PAGE_SIZE,
+  openPerson,
+  profileScopeFor,
+  toPersonKind,
+  withCustomerSearch,
+  type ResolvedCustomerSearch,
+} from '../lib/searchParams'
+import { MOBILE_QUERY, useMediaQuery } from '../lib/useMediaQuery'
+import { toPerson, toProfilePerson } from '../lib/person'
+import { personName } from '../lib/format'
+import type { IdentityCorrection, Person, PersonFilter } from '../types'
+
+/**
+ * Customer Search — staff-web.
+ *
+ * Composes every screen in the Figma section from four pieces of state, all of
+ * which live in the URL (see `lib/searchParams.ts`):
+ *   search term | type tab | page | selected person
+ *
+ * Desktop shows a full-width table when nothing is selected and switches to a
+ * list + profile split when a person is opened. Mobile hides the list entirely
+ * while a profile is open and adds a `← Back` control.
+ *
+ * DATA SOURCE: the real backend. `lib/api.ts` wraps the three Customer Search
+ * endpoints and `lib/person.ts` maps their responses onto `Person`. Filtering,
+ * sorting and pagination happen server-side, so this page holds one page of
+ * results plus whichever profile is open.
+ */
+
+interface CustomerSearchPageProps {
+  search: ResolvedCustomerSearch
+  onSearchChange: (next: ResolvedCustomerSearch) => void
+}
+
+/** A request result tagged with the query it belongs to, so stale data is ignored during render. */
+interface KeyedResult<T> {
+  key: string
+  data: T | null
+  error: string | null
+}
+
+const UNIT_LABEL: Record<PersonFilter, string> = {
+  all: 'people',
+  'account-holder': 'account holders',
+  traveller: 'travellers',
+}
+
+const TITLE_LABEL: Record<PersonFilter, string> = {
+  all: 'All people',
+  'account-holder': 'Account holders',
+  traveller: 'Travellers',
+}
+
+const SEARCH_PLACEHOLDER = 'Search name (Thai or passport spelling), email, ID, DOB or passport'
+/** The mobile field is narrower, so the design uses a shorter placeholder. */
+const SEARCH_PLACEHOLDER_MOBILE = 'Name, email, ID, DOB or passport'
+const SUBTITLE = 'Search account holders and linked travellers. Open a person to view details. Read-only by default.'
+const SUBTITLE_MOBILE = 'Search account holders and linked travellers. Tap a person for details. Read-only by default.'
+
+/**
+ * How long typing pauses before the URL is rewritten and the server is asked
+ * again. Long enough that a normal query is one request rather than one per
+ * keystroke, short enough that the list still feels attached to the keyboard.
+ * The Search button skips the wait entirely.
+ */
+const SEARCH_DEBOUNCE_MS = 250
+
+function messageOf(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
+}
+
+export function CustomerSearchPage({ search, onSearchChange }: CustomerSearchPageProps) {
+  const isMobile = useMediaQuery(MOBILE_QUERY)
+  const api = useCustomerSearchApi()
+
+  // `search.q` is the source of truth; the input holds the in-progress draft.
+  // Adjusting it during render (rather than in an effect) keeps the field in step
+  // with Back/Forward navigation without a second render pass.
+  const [draftQuery, setDraftQuery] = useState(search.q)
+  const [syncedQuery, setSyncedQuery] = useState(search.q)
+  if (search.q !== syncedQuery) {
+    setSyncedQuery(search.q)
+    setDraftQuery(search.q)
+  }
+
+  const [attempt, setAttempt] = useState(0)
+  const [listResult, setListResult] = useState<KeyedResult<SearchPassengersResponse> | null>(null)
+  const [profileResult, setProfileResult] = useState<KeyedResult<Person> | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [announcement, setAnnouncement] = useState('')
+
+  const pageSize = search.size ?? (isMobile ? MOBILE_PAGE_SIZE : DEFAULT_PAGE_SIZE)
+  const listKey = `${attempt}|${search.q}|${search.type}|${search.page}|${pageSize}`
+  // Which of the Artifact's two detail routes the open profile is read from. The Account
+  // holders tab has its own route; every other tab — and a deep link whose tab does not match
+  // the person — reads the passenger route, which answers for both kinds.
+  const profileScope = profileScopeFor(search.personType)
+  const profileKey = `${attempt}|${search.person ?? ''}|${profileScope}`
+
+  // Results are tagged with the request they came from, so a response that
+  // arrives after the user has typed again is discarded during render rather
+  // than needing a reset effect.
+  const list = listResult?.key === listKey ? listResult : null
+  const profile = profileResult?.key === profileKey ? profileResult : null
+  const selected = search.person ? (profile?.data ?? null) : undefined
+  const isLoadingList = list === null
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    api
+      .searchPeople({ q: search.q, type: search.type, page: search.page, size: pageSize }, controller.signal)
+      .then((data) => setListResult({ key: listKey, data, error: null }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        setListResult({ key: listKey, data: null, error: messageOf(error, 'Could not load customers.') })
+      })
+
+    return () => controller.abort()
+  }, [api, listKey, pageSize, search.page, search.q, search.type])
+
+  /**
+   * Live filtering. The URL is the source of truth, so the draft is pushed into
+   * it once typing pauses and the fetch effect above re-runs against the server.
+   * Filtering stays server-side — the page never filters the rows it happens to
+   * hold, which would only ever cover one page.
+   *
+   * Trimming here means the URL, the request and the Search button all carry the
+   * same value. `withCustomerSearch` resets to page 1 and closes any open profile,
+   * because both are wrong the moment the result set underneath them changes.
+   */
+  useEffect(() => {
+    if (draftQuery.trim() === search.q) return
+
+    const timer = setTimeout(() => {
+      onSearchChange(withCustomerSearch(search, { q: draftQuery.trim(), page: 1, person: null }))
+    }, SEARCH_DEBOUNCE_MS)
+
+    return () => clearTimeout(timer)
+  }, [draftQuery, onSearchChange, search])
+
+  useEffect(() => {
+    // No person open means no profile to fetch; the keyed result simply goes unread.
+    if (!search.person) return
+
+    const controller = new AbortController()
+    api
+      .fetchPerson(search.person, profileScope, controller.signal)
+      .then((data) => setProfileResult({ key: profileKey, data: toProfilePerson(data), error: null }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        setProfileResult({ key: profileKey, data: null, error: messageOf(error, 'Could not load this profile.') })
+      })
+
+    return () => controller.abort()
+  }, [api, profileKey, profileScope, search.person])
+
+  // `toPage` only reshapes the server's slice; the rows still need mapping.
+  const rows = (list?.data?.items ?? []).map(toPerson)
+  const page = toPage(rows, list?.data?.total ?? 0, search.page, pageSize)
+  const hasResults = page.total > 0
+
+  // A result set that shrank under a stale `?page=` would otherwise show an
+  // empty table on page 99 of 3. Correcting the URL refetches the right page.
+  useEffect(() => {
+    if (!list?.data) return
+    const pageCount = Math.max(1, Math.ceil(list.data.total / pageSize))
+    if (list.data.total > 0 && search.page > pageCount) {
+      onSearchChange(withCustomerSearch(search, { page: pageCount }))
+    }
+  }, [list, pageSize, search, onSearchChange])
+
+  const handleRetry = useCallback(() => {
+    setSaveError(null)
+    setAttempt((value) => value + 1)
+  }, [])
+
+  const handleSearchSubmit = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      onSearchChange(withCustomerSearch(search, { q: draftQuery.trim(), page: 1, person: null }))
+    },
+    [draftQuery, onSearchChange, search],
+  )
+
+  const handleTypeChange = useCallback(
+    (type: PersonFilter) => {
+      onSearchChange(withCustomerSearch(search, { type, page: 1, person: null }))
+    },
+    [onSearchChange, search],
+  )
+
+  /** Opens a person from the result list. It has no parent, so `← Back` closes it. */
+  const handleSelect = useCallback(
+    (person: Person) => {
+      setSaveError(null)
+      onSearchChange(openPerson(search, person, null))
+    },
+    [onSearchChange, search],
+  )
+
+  /**
+   * Opens a person from the open profile — a saved traveller or a linked account. The person carries its own kind, so the
+   * profile is read from the route that answers for that kind, and the profile it was opened from is recorded so `← Back`
+   * returns to it rather than closing the whole panel.
+   */
+  const handleSelectPerson = useCallback(
+    (person: Person) => {
+      setSaveError(null)
+      const parent = selected ? { id: selected.id, type: toPersonKind(selected.type) } : null
+      onSearchChange(openPerson(search, person, parent))
+    },
+    [onSearchChange, search, selected],
+  )
+
+  /** `← Back` returns to the profile the open one was opened from, and closes the profile when it came from the list. */
+  const handleBack = useCallback(() => {
+    setSaveError(null)
+    onSearchChange(backToParent(search))
+  }, [onSearchChange, search])
+
+  const handleClearSearch = useCallback(() => {
+    setDraftQuery('')
+    onSearchChange(withCustomerSearch(search, { q: '', page: 1, person: null }))
+  }, [onSearchChange, search])
+
+  /**
+   * `PUT /api/staff/passengers/:id/identity` carries only the three identity-lock
+   * columns, so the dialog's edits are merged onto the record already on screen: an
+   * absent edit keeps the current value and a `null` clears it. Names, local spellings
+   * and the passport are not sent — they are not correctable through this route.
+   */
+  const handleSaveCorrection = useCallback(
+    async (correction: IdentityCorrection) => {
+      if (!selected) return
+
+      setSaving(true)
+      setSaveError(null)
+      try {
+        const updated = await api.correctIdentity(selected.id, {
+          dateOfBirth: correction.dateOfBirth !== undefined ? correction.dateOfBirth : selected.dateOfBirth,
+          gender: correction.gender ?? selected.gender,
+          nationality: correction.nationality ?? selected.nationality,
+          reason: correction.reason,
+          confirm: true,
+        })
+
+        const person = toPerson(updated)
+        // The PUT response is a summary row; keep the links already loaded.
+        setProfileResult({
+          key: profileKey,
+          data: {
+            ...person,
+            savedTravellers: selected.savedTravellers,
+            linkedAccounts: selected.linkedAccounts,
+          },
+          error: null,
+        })
+        setAnnouncement(`Correction saved for ${personName(person)} and logged in the audit log.`)
+        onSearchChange(withCustomerSearch(search, { correct: null }))
+      } catch (error: unknown) {
+        setSaveError(messageOf(error, 'The correction could not be saved.'))
+      } finally {
+        setSaving(false)
+      }
+    },
+    [api, onSearchChange, profileKey, search, selected],
+  )
+
+  const isFiltered = search.q.trim().length > 0
+
+  const panelHead = (
+    <header className="flex flex-wrap items-center justify-between gap-3 px-4 pt-4">
+      <div className="flex items-baseline gap-2">
+        <h2 className="m-0 font-sans text-base font-semibold text-foreground">{TITLE_LABEL[search.type]}</h2>
+        <p className="text-sm text-muted-foreground">
+          {isMobile
+            ? `· ${page.total.toLocaleString('en-GB')}`
+            : // The API orders by surname; the mock's "most recent activity first" had no data behind it.
+              `${page.total.toLocaleString('en-GB')} · ${isFiltered ? 'filtered' : 'surname A–Z'}`}
+        </p>
+      </div>
+      {/* The empty state in the design drops the type filter entirely. */}
+      {hasResults ? <SegmentedControl value={search.type} onChange={handleTypeChange} /> : null}
+    </header>
+  )
+
+  const searchBar = (
+    <form className="flex gap-2" onSubmit={handleSearchSubmit} role="search">
+      <div className="relative flex-1">
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Input
+          type="search"
+          className="pl-9"
+          value={draftQuery}
+          onChange={(event) => setDraftQuery(event.target.value)}
+          placeholder={isMobile ? SEARCH_PLACEHOLDER_MOBILE : SEARCH_PLACEHOLDER}
+          aria-label="Search customers"
+        />
+      </div>
+      <Button type="submit">Search</Button>
+    </form>
+  )
+
+  // `Rows` appears above the select only on the full-width desktop table; the
+  // mobile and 360px master-detail pagers are compact enough to drop it.
+  const pagination = (showRange: boolean) => (
+    <PaginationBar
+      page={page}
+      unit={UNIT_LABEL[search.type]}
+      showRange={showRange}
+      showRowsLabel={!isMobile && showRange}
+      onPageChange={(nextPage) => onSearchChange(withCustomerSearch(search, { page: nextPage }))}
+      onPageSizeChange={(size) => onSearchChange(withCustomerSearch(search, { size, page: 1 }))}
+    />
+  )
+
+  const errorState = (hint: string) => (
+    <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
+      <p className="font-semibold">Customers could not be loaded</p>
+      <p className="text-sm text-muted-foreground">{hint}</p>
+      <Button type="button" variant="outline" onClick={handleRetry}>
+        Try again
+      </Button>
+    </div>
+  )
+
+  const loadingState = (
+    <div className="flex flex-col gap-2 p-4" aria-busy="true">
+      <span className="sr-only">Loading customers…</span>
+      {Array.from({ length: 5 }, (_, index) => (
+        <Skeleton className="h-12 w-full" key={index} />
+      ))}
+    </div>
+  )
+
+  const listBody = list?.error ? (
+    errorState(list.error)
+  ) : isLoadingList ? (
+    loadingState
+  ) : hasResults ? null : (
+    <EmptyState query={search.q} onClear={handleClearSearch} variant={isMobile ? 'mobile' : 'desktop'} />
+  )
+
+  // The profile panel has its own request, so it carries its own loading and
+  // error state rather than blocking the list behind it. A skeleton — never the
+  // previously opened person — keeps a fast click from flashing stale detail.
+  const profilePanel = search.person && !selected ? (profile?.error ? errorState(profile.error) : loadingState) : null
+
+  const correctingId = search.correct
+  const correcting = correctingId
+    ? selected?.id === correctingId
+      ? selected
+      : (rows.find((person) => person.id === correctingId) ?? null)
+    : null
+
+  return (
+    <PageFrame>
+      <p className="sr-only" role="status">
+        {announcement}
+      </p>
+
+      <div className="flex w-full flex-col gap-4">
+        {!search.person || !isMobile ? (
+          <header className="flex flex-col gap-2">
+            <h1 className="m-0 font-sans text-2xl font-bold tracking-tight text-foreground">Customer Search</h1>
+            <p className="text-sm text-muted-foreground">{isMobile ? SUBTITLE_MOBILE : SUBTITLE}</p>
+            {searchBar}
+          </header>
+        ) : null}
+
+        {isMobile ? (
+          search.person ? (
+            selected ? (
+              <CustomerDetail
+                person={selected}
+                variant="mobile"
+                onBack={handleBack}
+                onSelectPerson={handleSelectPerson}
+                onCorrectIdentity={(person) => onSearchChange(withCustomerSearch(search, { correct: person.id }))}
+              />
+            ) : (
+              <Card className="gap-0 py-0" aria-label="Profile">
+                {profilePanel}
+              </Card>
+            )
+          ) : (
+            <Card className="gap-0 py-0">
+              {panelHead}
+              {listBody}
+              {hasResults ? (
+                <>
+                  <PeopleCardList people={page.items} onSelect={handleSelect} variant="mobile" />
+                  {pagination(true)}
+                </>
+              ) : null}
+            </Card>
+          )
+        ) : (
+          <div className={search.person ? 'grid grid-cols-[22rem_minmax(0,1fr)] items-start gap-4' : ''}>
+            {/* Keyed on the URL, not on `selected`, so the split opens immediately and
+                the profile fills in beside it rather than replacing the whole view. */}
+            {search.person ? (
+              <Card className="gap-0 py-0" aria-label="Search results">
+                {panelHead}
+                {listBody}
+                {hasResults ? (
+                  <>
+                    <PeopleCardList people={page.items} selectedId={selected?.id ?? null} onSelect={handleSelect} variant="desktop" />
+                    {pagination(false)}
+                  </>
+                ) : null}
+              </Card>
+            ) : null}
+
+            <Card className="min-w-0 gap-0 py-0">
+              {selected ? (
+                <CustomerDetail
+                  person={selected}
+                  variant="desktop"
+                  onBack={handleBack}
+                  onClose={() => onSearchChange(withCustomerSearch(search, { person: null }))}
+                  onSelectPerson={handleSelectPerson}
+                  onCorrectIdentity={(person) => onSearchChange(withCustomerSearch(search, { correct: person.id }))}
+                />
+              ) : (
+                (profilePanel ?? (
+                  <>
+                    {panelHead}
+                    {listBody}
+                    {hasResults ? (
+                      <>
+                        <PeopleTable people={page.items} onSelect={handleSelect} />
+                        {pagination(true)}
+                      </>
+                    ) : null}
+                  </>
+                ))
+              )}
+            </Card>
+          </div>
+        )}
+      </div>
+
+      {correcting ? (
+        <CorrectIdentityDialog
+          person={correcting}
+          variant={isMobile ? 'mobile' : 'desktop'}
+          saving={saving}
+          saveError={saveError}
+          onClose={() => onSearchChange(withCustomerSearch(search, { correct: null }))}
+          onSave={(correction) => void handleSaveCorrection(correction)}
+        />
+      ) : null}
+    </PageFrame>
+  )
+}

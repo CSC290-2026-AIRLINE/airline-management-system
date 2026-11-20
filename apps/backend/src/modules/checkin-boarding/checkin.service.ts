@@ -1,0 +1,666 @@
+import { Inject, Injectable } from '@nestjs/common'
+import type { BagAllowance, BoardingPassView, Cabin, CheckInView, SeatChoice, SeatLock, SeatMap, SeatMapSeat } from './api-types'
+import type { Actor } from './actor'
+import { cancelCheckIn } from './cancel-check-in'
+import { bagAllowance } from './domain/allowance'
+import { boardingGroup } from './domain/boarding'
+import { toAlpha2 } from './domain/countries'
+import type { MrzData } from './domain/mrz'
+import { compareNames, isPassportValidForTravel, profileSync, stripNonLetters, validateMrz } from './domain/mrz'
+import { computeWindow, isWindowOpen } from './domain/window'
+import type { Window } from './domain/window'
+import { CheckInError, invalidState, notFound, validation } from './errors'
+import { toBoardingPassView, toCheckInView, toCheckInWindow, toDocumentView, toFlightSummary } from './mappers'
+import {
+  AUDIT,
+  BOOKINGS,
+  CLOCK,
+  FLIGHTS,
+  NOTIFY,
+  PASSENGERS,
+  PAYMENTS,
+  POLICE,
+  PRICING,
+  SCREENING,
+  SEATS,
+  SETTINGS,
+  TIERS,
+} from './providers/providers'
+import type {
+  AuditProvider,
+  BookingPassenger,
+  BookingProvider,
+  ClockProvider,
+  FlightProvider,
+  FlightRecord,
+  NotifyProvider,
+  PassengerProfileProvider,
+  PaymentProvider,
+  PoliceProvider,
+  PricingProvider,
+  ScreeningProvider,
+  SeatProvider,
+  SettingsProvider,
+  TierProvider,
+} from './providers/providers'
+import { newReference } from './reference'
+import type { BoardingPassRecord, CheckInRecord, TravelDocumentRecord } from './store/checkin-store'
+import { CHECKIN_REPOSITORY } from './store/checkin-repository'
+import type { CheckInRepository } from './store/checkin-repository'
+
+const bookingCancelled = () => new CheckInError(409, 'NOT_ELIGIBLE', 'The booking is cancelled', { reason: 'booking_cancelled' })
+
+/** Feature 3 holds a seat for five minutes. */
+const SEAT_HOLD_TTL_MS = 300_000
+
+/**
+ * The passenger side of feature 6: find the booking, submit the passport, pick a seat, declare the bags and
+ * collect the boarding pass. Every other feature sits behind a provider, the rules live in domain/.
+ */
+@Injectable()
+export class CheckInService {
+  constructor(
+    @Inject(CLOCK) private readonly clock: ClockProvider,
+    @Inject(FLIGHTS) private readonly flights: FlightProvider,
+    @Inject(BOOKINGS) private readonly bookings: BookingProvider,
+    @Inject(PASSENGERS) private readonly passengers: PassengerProfileProvider,
+    @Inject(SEATS) private readonly seats: SeatProvider,
+    @Inject(PRICING) private readonly pricing: PricingProvider,
+    @Inject(PAYMENTS) private readonly payments: PaymentProvider,
+    @Inject(SCREENING) private readonly screening: ScreeningProvider,
+    @Inject(POLICE) private readonly police: PoliceProvider,
+    @Inject(TIERS) private readonly tiers: TierProvider,
+    @Inject(NOTIFY) private readonly notify: NotifyProvider,
+    @Inject(AUDIT) private readonly audit: AuditProvider,
+    @Inject(SETTINGS) private readonly settings: SettingsProvider,
+    @Inject(CHECKIN_REPOSITORY) private readonly store: CheckInRepository,
+  ) {}
+
+  async start(actor: Actor, input: { pnr: string; lastName: string; firstName?: string }): Promise<CheckInView> {
+    // One coupon per flight: a return trip lists the same passenger twice. Tell the passengers apart first.
+    const coupons = await this.bookings.findByPnrAndLastName(input.pnr, input.lastName)
+    const passengers = [...new Map(coupons.map((b) => [b.passengerId, b])).values()]
+    // A family shares the PNR and the surname: the first name tells the passengers apart.
+    if (passengers.length > 1 && !input.firstName) {
+      throw validation('Several passengers on this booking share the surname; add the first name', {
+        reason: 'several_passengers',
+        firstNames: passengers.map((b) => b.firstName),
+      })
+    }
+    const wanted = input.firstName ? stripNonLetters(input.firstName) : null
+    const passenger = wanted ? passengers.find((b) => stripNonLetters(b.firstName) === wanted) : passengers[0]
+    if (!passenger) throw notFound('Booking')
+    this.assertBookingOwner(actor, passenger, 'Booking')
+
+    const mine = coupons.filter((b) => b.passengerId === passenger.passengerId)
+    const legs = await Promise.all(mine.map(async (booking) => ({ booking, flight: await this.flightOf(booking.flightId) })))
+    // Features 2 and 3 do not call us when they cancel: a check-in that was started on a leg cancelled since is
+    // cancelled here, where the passenger meets it again.
+    for (const leg of legs) {
+      if (!leg.booking.cancelled && leg.flight.status !== 'cancelled') continue
+      const stale = await this.store.findActiveCheckInByBookingPassenger(leg.booking.bookingPassengerId, leg.booking.flightId)
+      if (stale) await this.refreshCancelled(actor, stale)
+    }
+    // A cancelled leg is never checked in, and the payment is the one of the leg that is.
+    const live = legs.filter((leg) => !leg.booking.cancelled)
+    if (live.length === 0) throw bookingCancelled()
+    const { booking, flight } = await this.legToCheckIn(live)
+    return this.open(actor, booking, flight)
+  }
+
+  /** The counter starts the check-in of the booked passenger the agent picked, on the flight of that row. */
+  async startCoupon(actor: Actor, bookingPassengerId: string, flightId: string): Promise<CheckInView> {
+    const booking = await this.bookings.byBookingPassengerId(bookingPassengerId, flightId)
+    if (!booking) throw notFound('Booking')
+    this.assertBookingOwner(actor, booking, 'Booking')
+    if (booking.cancelled) throw bookingCancelled()
+    return this.open(actor, booking, await this.flightOf(flightId))
+  }
+
+  /** Opens the check-in of one leg: the one that is there is resumed, else a new one is started. */
+  private async open(actor: Actor, booking: BookingPassenger, flight: FlightRecord): Promise<CheckInView> {
+    if (flight.status === 'cancelled') {
+      throw new CheckInError(409, 'NOT_ELIGIBLE', 'The flight is cancelled', { reason: 'flight_cancelled' })
+    }
+    if (!booking.paid) throw new CheckInError(409, 'NOT_ELIGIBLE', 'The booking is not paid', { reason: 'unpaid' })
+    const existing = await this.store.findActiveCheckInByBookingPassenger(booking.bookingPassengerId, booking.flightId)
+    // The window guards starting and the steps. A check-in that got past them is reopened at any time: the boarding
+    // pass is needed most in the last hour, after the window has closed.
+    if (!existing || existing.status === 'started') this.assertWindowOpen(flight, await this.windowOf(flight))
+
+    if (existing) {
+      // The PNR and the surname proved the booking: the caller resumes the check-in of that booking.
+      await this.record(actor, 'check_in.start', 'check_in', existing.id, 'resumed')
+      if (await this.store.getDocumentByCheckIn(existing.id)) {
+        await this.record(actor, 'view_sensitive', 'check_in', existing.id, 'check-in read', true)
+      }
+      return this.viewOf(await this.refreshHold(actor, existing))
+    }
+    await this.assertGateOpen(flight.id)
+
+    const record = await this.store.createCheckIn({
+      booking_passenger_id: booking.bookingPassengerId,
+      passenger_id: booking.passengerId,
+      flight_id: booking.flightId,
+      status: 'started',
+    })
+    await this.record(actor, 'check_in.start', 'check_in', record.id, 'check-in started')
+    return this.viewOf(record)
+  }
+
+  async get(actor: Actor, id: string): Promise<CheckInView> {
+    const record = await this.refreshHold(actor, await this.require(actor, id))
+    if (await this.store.getDocumentByCheckIn(record.id)) {
+      await this.record(actor, 'view_sensitive', 'check_in', record.id, 'check-in read', true)
+    }
+    return this.viewOf(record)
+  }
+
+  /**
+   * A held check-in follows feature 7's decision: once security releases the passenger it opens again, once security
+   * confirms the match it is denied. Feature 7 does not call back, so this runs whenever a held check-in is read. A
+   * passenger held because screening could not run at all has no screening on record; they are screened again here.
+   */
+  async refreshHold(actor: Actor, record: CheckInRecord): Promise<CheckInRecord> {
+    if (record.status !== 'on_hold') return record
+    let outcome = await this.screening.status({ passengerId: record.passenger_id, flightId: record.flight_id })
+    let runId = record.screening_run_id
+    if (outcome === 'not_screened') {
+      const document = await this.store.getDocumentByCheckIn(record.id)
+      const booking = await this.bookingOf(record)
+      const again = await this.screening.check({
+        passengerId: record.passenger_id,
+        flightId: record.flight_id,
+        numberLast4: document?.number_last4 ?? '',
+        lastName: booking.lastName,
+      })
+      outcome = again.outcome
+      runId = again.runId
+    }
+    if (outcome === 'held') return record
+    // A hold that came after the boarding pass gives the passenger back the pass they had.
+    const reopened = (await this.store.passesForCheckIn(record.id)).length > 0 ? 'checked_in' : 'started'
+    const updated = await this.store.updateCheckIn(record.id, {
+      status: outcome === 'denied' ? 'denied' : reopened,
+      screening_run_id: runId,
+    })
+    const summary = outcome === 'denied' ? 'security confirmed the watchlist match' : 'security released the hold'
+    await this.record(actor, 'check_in.screening_update', 'check_in', record.id, summary)
+    return updated
+  }
+
+  async submitDocument(actor: Actor, id: string, input: { mrzLine1: string; mrzLine2: string; visaNumber?: string }): Promise<CheckInView> {
+    const record = await this.require(actor, id)
+    this.assertStarted(record, 'The travel document can only be submitted while the check-in is open')
+    const flight = await this.flightOf(record.flight_id)
+    this.assertWindowOpen(flight, await this.windowOf(flight))
+
+    const mrz = validateMrz(input.mrzLine1, input.mrzLine2, { todayYear: this.clock.now().getFullYear() % 100 })
+    if (!mrz.ok) throw new CheckInError(422, 'MRZ_INVALID', mrz.message, { failedCheck: mrz.failedCheck })
+    const data = mrz.data
+    if (!isPassportValidForTravel(data.expiryDate, flight.serviceDate)) {
+      throw new CheckInError(422, 'PASSPORT_EXPIRING', 'The passport expires too soon for this trip', { expiryDate: data.expiryDate })
+    }
+
+    const booking = await this.bookingOf(record)
+    const issuing2 = toAlpha2(data.issuingCountry3)
+    if (!issuing2) {
+      throw new CheckInError(422, 'MRZ_INVALID', 'The issuing country of this passport is not a known country', {
+        failedCheck: 'issuing_country',
+      })
+    }
+    const nationality2 = toAlpha2(data.nationality3)
+    await this.assertNotDuplicate(record, booking, data, nationality2)
+
+    const visaRequired = await this.settings.visaRequired(nationality2 ?? '', flight.destination.country)
+    if (visaRequired && !input.visaNumber) {
+      throw new CheckInError(422, 'VISA_REQUIRED', 'A visa number is required for this trip', { destination: flight.destination.code })
+    }
+
+    const profile = await this.passengers.byId(record.passenger_id)
+    const sync = profileSync(profile ?? { dateOfBirth: null, gender: null, nationality: null, passportNumber: null }, data)
+    if (Object.keys(sync.fill).length > 0) await this.passengers.fill(record.passenger_id, sync.fill)
+
+    const document = await this.upsertDocument(record.id, {
+      number_last4: data.numberLast4,
+      issuing_country: issuing2,
+      nationality: nationality2,
+      expiry_date: data.expiryDate,
+      // The visa number is only kept when the destination needs one.
+      visa_number: visaRequired ? (input.visaNumber ?? null) : null,
+      name_mismatch: compareNames(data, booking),
+      profile_differences: [...sync.differences],
+    })
+
+    const screening = await this.screening.check({
+      passengerId: record.passenger_id,
+      flightId: flight.id,
+      numberLast4: data.numberLast4,
+      lastName: booking.lastName,
+    })
+    const updated = await this.store.updateCheckIn(record.id, {
+      status: screening.outcome === 'held' ? 'on_hold' : record.status,
+      screening_run_id: screening.runId,
+    })
+    await this.record(actor, 'travel_document.submit', 'travel_document', document.id, 'travel document submitted')
+    return this.viewOf(updated)
+  }
+
+  /**
+   * The seat map of a flight. The caller passes the check-in it is picking a seat for: the map then shows that
+   * passenger their own seat and hides the other cabins. Without it the map has no viewer.
+   */
+  async seatMap(viewer: Actor | null, flightId: string, checkInId?: string): Promise<SeatMap> {
+    let bookingPassengerId: string | null = null
+    let cabin: Cabin | null = null
+    if (viewer && viewer.staffId === null && checkInId) {
+      const record = await this.store.getCheckIn(checkInId)
+      if (record && record.flight_id === flightId) {
+        bookingPassengerId = record.booking_passenger_id
+        cabin = (await this.bookings.byBookingPassengerId(bookingPassengerId, flightId))?.cabin ?? null
+      }
+    }
+    return this.seats.seatMap(flightId, { bookingPassengerId, cabin })
+  }
+
+  async holdSeat(actor: Actor, flightId: string, input: { checkInId: string; seatCode: string }): Promise<SeatLock> {
+    const record = await this.require(actor, input.checkInId)
+    if (record.flight_id !== flightId) throw notFound('Flight')
+    this.assertOpen(record, 'A seat can only be picked while the check-in is open')
+    const flight = await this.flightOf(record.flight_id)
+    this.assertWindowOpen(flight, await this.windowOf(flight))
+    if (!(await this.store.getDocumentByCheckIn(record.id))) {
+      throw invalidState('The travel document must be submitted before a seat can be picked')
+    }
+    const booking = await this.bookingOf(record)
+    const seat = await this.seatOf(flightId, input.seatCode)
+    if (seat.type === 'exit' && booking.specialAssistance.length > 0) {
+      throw validation('Exit row seats are not available to passengers who need special assistance', {
+        reason: 'exit_row_special_assistance',
+      })
+    }
+    return this.seats.hold(flightId, input.seatCode, record.booking_passenger_id, SEAT_HOLD_TTL_MS)
+  }
+
+  /** Gives the seat hold back. The hold belongs to a passenger, so the same owner rule as the check-in applies. */
+  async releaseSeat(actor: Actor, lockId: string): Promise<void> {
+    const held = await this.seats.lock(lockId)
+    if (!held) return
+    const record = await this.store.findActiveCheckInByBookingPassenger(held.bookingPassengerId, held.flightId)
+    if (record) await this.assertOwner(actor, record)
+    await this.seats.release(lockId)
+  }
+
+  async confirmSeat(actor: Actor, id: string, input: { lockId: string }): Promise<CheckInView> {
+    const record = await this.require(actor, id)
+    this.assertOpen(record, 'The seat can only be confirmed while the check-in is open')
+    const flight = await this.flightOf(record.flight_id)
+    this.assertWindowOpen(flight, await this.windowOf(flight))
+    // The hold is read from the seat provider, so it survives a restart of this service.
+    const held = await this.seats.lock(input.lockId)
+    if (!held || held.bookingPassengerId !== record.booking_passenger_id) throw notFound('Seat hold')
+    // The hold runs out before the money goes in: an expired hold is never charged.
+    if (new Date(held.expiresAt).getTime() <= this.clock.now().getTime()) {
+      throw new CheckInError(409, 'LOCK_EXPIRED', 'The seat hold has expired', { seatCode: held.seatCode })
+    }
+    const booking = await this.bookingOf(record)
+    let paymentId: string | null = null
+    if (held.fee > 0) {
+      const charge = await this.payments.charge({
+        amount: held.fee,
+        currency: 'THB',
+        purpose: 'seat',
+        reference: `seat_assignment:${input.lockId}`,
+        bookingId: booking.bookingId,
+      })
+      paymentId = charge.paymentId
+    }
+    let confirmed: { seatCode: string }
+    try {
+      confirmed = await this.seats.confirm(input.lockId, paymentId)
+    } catch (error) {
+      // The money went in but the seat did not: the payment is left behind on purpose, the audit says so.
+      if (paymentId) {
+        await this.record(actor, 'seat.payment_orphaned', 'payment', paymentId, `seat ${input.lockId} was paid but not confirmed`)
+      }
+      throw error
+    }
+    const pass = (await this.store.passesForCheckIn(record.id))[0]
+    if (pass) await this.store.updatePass(pass.id, { seat_code: confirmed.seatCode })
+    await this.record(actor, 'check_in.seat_confirm', 'check_in', record.id, `seat ${confirmed.seatCode} confirmed`)
+    return this.viewOf(record)
+  }
+
+  async declareBags(actor: Actor, id: string, input: { declaredBags: number }): Promise<CheckInView> {
+    // The route table gives the bag count to the passenger, the counter weighs the bags.
+    if (actor.staffId !== null) throw new CheckInError(403, 'FORBIDDEN', 'The bag count is declared by the passenger')
+    const record = await this.require(actor, id)
+    this.assertStarted(record, 'The bags can only be declared while the check-in is open')
+    const flight = await this.flightOf(record.flight_id)
+    this.assertWindowOpen(flight, await this.windowOf(flight))
+    if (!Number.isInteger(input.declaredBags) || input.declaredBags < 0 || input.declaredBags > 10) {
+      throw validation('The number of bags must be a whole number between 0 and 10', { declaredBags: input.declaredBags })
+    }
+    const updated = await this.store.updateCheckIn(record.id, { declared_bags: input.declaredBags })
+    return this.viewOf(updated)
+  }
+
+  async complete(actor: Actor, id: string): Promise<BoardingPassView> {
+    const record = await this.require(actor, id)
+    const issued = (await this.store.passesForCheckIn(record.id))[0]
+    if (issued) return this.passView(record, issued)
+    this.assertStarted(record, 'The boarding pass can only be issued while the check-in is open')
+    if (!(await this.store.getDocumentByCheckIn(record.id))) {
+      throw invalidState('The travel document must be submitted before the boarding pass is issued')
+    }
+    const flight = await this.flightOf(record.flight_id)
+    this.assertWindowOpen(flight, await this.windowOf(flight))
+    await this.assertGateOpen(flight.id)
+
+    const booking = await this.bookingOf(record)
+    const seat =
+      (await this.seats.assigned(record.booking_passenger_id, record.flight_id)) ??
+      (await this.seats.assignAnyStandard(flight.id, record.booking_passenger_id, {
+        avoidExitRow: booking.specialAssistance.length > 0,
+      }))
+    const tier = await this.tiers.tier(record.passenger_id)
+    const police = booking.isPolice || (await this.police.policePassengerIds(flight.id)).includes(record.passenger_id)
+    const group = police
+      ? 1
+      : boardingGroup({ specialAssistance: booking.specialAssistance, cabin: booking.cabin, tier: tier?.level ?? null })
+
+    await this.store.createPass({
+      check_in_id: record.id,
+      reference: newReference(),
+      seat_code: seat.seatCode,
+      boarding_group: group,
+    })
+    // A concurrent complete may have issued the pass first: read it back so both callers see the same one.
+    let pass = (await this.store.passesForCheckIn(record.id))[0]
+    // Each of the two may also have picked a seat. The seat row is what the flight sells, so the pass follows it;
+    // a pass left on the released seat would share it with the next passenger.
+    const held = await this.seats.assigned(record.booking_passenger_id, record.flight_id)
+    if (held && held.seatCode !== pass.seat_code) pass = await this.store.updatePass(pass.id, { seat_code: held.seatCode })
+    const updated = await this.store.updateCheckIn(record.id, { status: 'checked_in', checked_in_at: this.clock.now() })
+    await this.notify.send('boarding_pass_issued', { checkInId: record.id, reference: pass.reference, flightNumber: flight.flightNumber })
+    await this.notify.send('check_in_completed', { checkInId: record.id, reference: pass.reference, flightNumber: flight.flightNumber })
+    await this.record(actor, 'check_in.complete', 'boarding_pass', pass.id, 'boarding pass issued')
+    return this.passView(updated, pass)
+  }
+
+  async boardingPass(actor: Actor, id: string): Promise<BoardingPassView> {
+    const record = await this.require(actor, id)
+    const pass = (await this.store.passesForCheckIn(record.id))[0]
+    if (!pass) throw notFound('Boarding pass')
+    return this.passView(record, pass)
+  }
+
+  private async require(actor: Actor, id: string): Promise<CheckInRecord> {
+    const record = await this.store.getCheckIn(id)
+    if (!record) throw notFound('Check-in')
+    await this.assertOwner(actor, record)
+    return this.refreshCancelled(actor, record)
+  }
+
+  /**
+   * A cancelled flight or booking cancels the check-in (never deleted) and offloads its tagged bags. Features 2 and 3
+   * do not call us when they cancel, so this runs whenever a check-in is read.
+   */
+  async refreshCancelled(actor: Actor, record: CheckInRecord): Promise<CheckInRecord> {
+    if (record.status === 'cancelled' || record.status === 'boarded' || record.status === 'no_show') return record
+    const flight = await this.flightOf(record.flight_id)
+    const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id, record.flight_id)
+    if (flight.status !== 'cancelled' && !booking?.cancelled) return record
+    const why = flight.status === 'cancelled' ? 'the flight was cancelled' : 'the booking was cancelled'
+    return cancelCheckIn({ store: this.store, notify: this.notify, audit: this.audit }, actor, record, {
+      flightNumber: flight.flightNumber,
+      why,
+    })
+  }
+
+  /**
+   * Staff may act on any check-in. A customer may act on one whose booking is theirs. The check-in table has no owner
+   * column, so a booking with no matching owner (see `BookingPassenger.customerUserId`) is open to whoever holds the id.
+   */
+  private async assertOwner(actor: Actor, record: CheckInRecord): Promise<void> {
+    if (actor.staffId) return
+    const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id, record.flight_id)
+    if (booking) this.assertBookingOwner(actor, booking, 'Check-in')
+  }
+
+  private assertBookingOwner(actor: Actor, booking: BookingPassenger, what: string): void {
+    const owner = booking.customerUserId
+    // 404, not 403: a stranger learns nothing about whether the booking or the check-in exists.
+    if (!actor.staffId && owner && owner !== actor.userId) throw notFound(what)
+  }
+
+  private assertStarted(record: CheckInRecord, message: string): void {
+    if (record.status === 'on_hold' || record.status === 'denied') {
+      throw new CheckInError(409, 'ON_HOLD', 'Security is holding this check-in')
+    }
+    if (record.status !== 'started') throw invalidState(message)
+  }
+
+  /** A seat may still be changed after the pass was issued, so 'checked_in' is open too. */
+  private assertOpen(record: CheckInRecord, message: string): void {
+    if (record.status === 'on_hold' || record.status === 'denied') {
+      throw new CheckInError(409, 'ON_HOLD', 'Security is holding this check-in')
+    }
+    if (record.status !== 'started' && record.status !== 'checked_in') throw invalidState(message)
+  }
+
+  /**
+   * Nothing stops an agent from closing a gate early. A pass issued after that could never board, and its passenger
+   * would stay "checked in" for good: the no-shows are written once, at the close.
+   */
+  private async assertGateOpen(flightId: string): Promise<void> {
+    if (!(await this.store.flightBoarding(flightId))?.closed_at) return
+    throw new CheckInError(409, 'NOT_ELIGIBLE', 'The gate of this flight is closed', { reason: 'gate_closed' })
+  }
+
+  private assertWindowOpen(flight: FlightRecord, window: Window): void {
+    if (isWindowOpen(this.clock.now(), window)) return
+    throw new CheckInError(409, 'WINDOW_CLOSED', 'Check-in is not open for this flight', {
+      opensAt: window.opensAt.toISOString(),
+      closesAt: window.closesAt.toISOString(),
+    })
+  }
+
+  /** The same passport number may only be on the books once, unless it is the same person. */
+  private async assertNotDuplicate(
+    record: CheckInRecord,
+    booking: BookingPassenger,
+    mrz: MrzData,
+    nationality2: string | null,
+  ): Promise<void> {
+    for (const row of await this.passengers.findByPassportNumber(mrz.number)) {
+      if (row.id === record.passenger_id) continue
+      const sameName =
+        stripNonLetters(row.firstName) === stripNonLetters(booking.firstName) &&
+        stripNonLetters(row.lastName) === stripNonLetters(booking.lastName)
+      const sameBirth = !row.dateOfBirth || row.dateOfBirth === mrz.dateOfBirth
+      const sameNationality = !row.nationality || !nationality2 || row.nationality.toLowerCase() === nationality2
+      if (!sameName || !sameBirth || !sameNationality) {
+        throw new CheckInError(409, 'DUPLICATE_DOCUMENT', 'This passport number belongs to another passenger', {
+          numberLast4: mrz.numberLast4,
+        })
+      }
+    }
+  }
+
+  private async upsertDocument(
+    checkInId: string,
+    values: {
+      number_last4: string
+      issuing_country: string
+      nationality: string | null
+      expiry_date: string
+      visa_number: string | null
+      name_mismatch: boolean
+      profile_differences: string[]
+    },
+  ): Promise<TravelDocumentRecord> {
+    const existing = await this.store.getDocumentByCheckIn(checkInId)
+    if (existing) {
+      // A new passport is a new document: the staff clearances of the old one do not carry over.
+      return this.store.updateDocument(existing.id, {
+        ...values,
+        name_mismatch_cleared_at: null,
+        name_mismatch_cleared_by: null,
+        profile_differences_cleared_at: null,
+        profile_differences_cleared_by: null,
+        visa_checked_at: null,
+        visa_checked_by: null,
+      })
+    }
+    return this.store.createDocument({ check_in_id: checkInId, ...values })
+  }
+
+  private async viewOf(record: CheckInRecord): Promise<CheckInView> {
+    const flight = await this.flightOf(record.flight_id)
+    const window = await this.windowOf(flight)
+    const booking = await this.bookingOf(record)
+    const document = await this.store.getDocumentByCheckIn(record.id)
+    const pass = (await this.store.passesForCheckIn(record.id))[0]
+    return toCheckInView({
+      checkIn: record,
+      flight: toFlightSummary(flight, await this.gateOf(flight.id), window.boardingAt),
+      window: toCheckInWindow(window, isWindowOpen(this.clock.now(), window)),
+      booking: { pnr: booking.pnr, bookingPassengerId: record.booking_passenger_id },
+      passenger: {
+        id: record.passenger_id,
+        firstName: booking.firstName,
+        lastName: booking.lastName,
+        cabin: booking.cabin,
+        fareClass: booking.fareClass,
+        specialAssistance: booking.specialAssistance,
+      },
+      document: document ? toDocumentView(document, await this.visaRequiredOf(document, flight)) : null,
+      seat: await this.seatChoiceOf(record, booking),
+      allowance: await this.allowanceOf(record, booking, flight.routeId),
+      carryOn: await this.settings.carryOn(booking.cabin),
+      boardingPassId: pass?.id ?? null,
+    })
+  }
+
+  private async passView(record: CheckInRecord, pass: BoardingPassRecord): Promise<BoardingPassView> {
+    const flight = await this.flightOf(record.flight_id)
+    const window = await this.windowOf(flight)
+    const gate = await this.gateOf(flight.id)
+    const booking = await this.bookingOf(record)
+    return toBoardingPassView({
+      pass,
+      checkIn: record,
+      flight: toFlightSummary(flight, gate, window.boardingAt),
+      seat: pass.seat_code,
+      gate: gate?.code ?? null,
+      boardingAt: window.boardingAt.toISOString(),
+      passengerName: `${booking.firstName} ${booking.lastName}`,
+      bags: record.declared_bags ?? 0,
+    })
+  }
+
+  /** Whether the destination of the flight needs a visa for the nationality of the document. */
+  private async visaRequiredOf(document: TravelDocumentRecord, flight: FlightRecord): Promise<boolean> {
+    return this.settings.visaRequired(document.nationality ?? '', flight.destination.country)
+  }
+
+  /** Feature 4's checked allowance, the tier bonus and the size limit: the bags step shows them. */
+  private allowanceOf(record: CheckInRecord, booking: BookingPassenger, routeId: string): Promise<BagAllowance> {
+    return bagAllowance({
+      pricing: this.pricing,
+      tiers: this.tiers,
+      settings: this.settings,
+      fareClass: booking.fareClass,
+      routeId,
+      passengerId: record.passenger_id,
+    })
+  }
+
+  private async seatChoiceOf(record: CheckInRecord, booking: BookingPassenger): Promise<SeatChoice | null> {
+    const assigned = await this.seats.assigned(record.booking_passenger_id, record.flight_id)
+    if (!assigned) return null
+    return {
+      code: assigned.seatCode,
+      type: assigned.type,
+      fee: await this.pricing.seatFee(booking.cabin, assigned.type),
+      paymentId: assigned.paymentId,
+    }
+  }
+
+  private async seatOf(flightId: string, seatCode: string): Promise<SeatMapSeat> {
+    const map = await this.seats.seatMap(flightId, { bookingPassengerId: null, cabin: null })
+    const seat = map.rows.flatMap((row) => row.seats).find((s) => s.code === seatCode)
+    if (!seat) throw validation(`Seat ${seatCode} does not exist`, { seatCode })
+    return seat
+  }
+
+  private async gateOf(flightId: string): Promise<{ id: string; code: string } | null> {
+    const boarding = await this.store.flightBoarding(flightId)
+    if (!boarding) return null
+    const gate = await this.store.getGate(boarding.gate_id)
+    return gate ? { id: gate.id, code: gate.code } : null
+  }
+
+  private async flightOf(flightId: string): Promise<FlightRecord> {
+    const flight = await this.flights.byId(flightId)
+    if (!flight) throw notFound('Flight')
+    return flight
+  }
+
+  /**
+   * Of a passenger's legs, the flight that is open for check-in now and not checked in yet; else the next one to
+   * depart. A cancelled flight is only picked when no other leg flies.
+   */
+  private async legToCheckIn(
+    all: Array<{ booking: BookingPassenger; flight: FlightRecord }>,
+  ): Promise<{ booking: BookingPassenger; flight: FlightRecord }> {
+    const now = this.clock.now()
+    const flying = all.filter((leg) => leg.flight.status !== 'cancelled')
+    const legs = flying.length > 0 ? flying : all
+    legs.sort((a, b) => a.flight.depAt.getTime() - b.flight.depAt.getTime())
+    // Two flights within a day are open together: one that already has its boarding pass gives way to the one that
+    // still needs check-in. When every open flight is done, the passenger sees the pass of the first.
+    let done: (typeof legs)[number] | undefined
+    for (const leg of legs) {
+      if (leg.flight.depAt.getTime() < now.getTime()) continue
+      const checkIn = await this.store.findActiveCheckInByBookingPassenger(leg.booking.bookingPassengerId, leg.booking.flightId)
+      // A pass counts until the flight leaves, also in the last hour, when its window has closed.
+      if (checkIn && ['checked_in', 'boarded', 'no_show'].includes(checkIn.status)) done ??= leg
+      // A gate closed early takes nobody any more, like a closed window: the next flight is tried.
+      else if (isWindowOpen(now, await this.windowOf(leg.flight)) && !(await this.store.flightBoarding(leg.flight.id))?.closed_at) {
+        return leg
+      }
+    }
+    return done ?? legs.find((leg) => leg.flight.depAt.getTime() >= now.getTime()) ?? legs[legs.length - 1]
+  }
+
+  private async bookingOf(record: CheckInRecord): Promise<BookingPassenger> {
+    const booking = await this.bookings.byBookingPassengerId(record.booking_passenger_id, record.flight_id)
+    if (!booking) throw notFound('Booking')
+    return booking
+  }
+
+  private async windowOf(flight: FlightRecord): Promise<Window> {
+    return computeWindow(flight.depAt, await this.settings.window())
+  }
+
+  private async record(
+    actor: Actor,
+    action: string,
+    entityType: string,
+    entityId: string,
+    summary: string,
+    isSensitive = false,
+  ): Promise<void> {
+    await this.audit.record({
+      actorType: actor.staffId ? 'staff' : 'customer',
+      actorId: actor.userId,
+      action,
+      entityType,
+      entityId,
+      summary,
+      isSensitive,
+    })
+  }
+}
