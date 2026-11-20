@@ -30,7 +30,7 @@ import { auditEntryNotFound, roleNotFound, toAdminValidationError } from './admi
  * no public admin route. Validation pipe is controller-scoped (not global) until the Dev Leads globalise it.
  *
  * Every failure is `{ error: { code, message, details? } }`, like the Staff & roles routes: `VALIDATION_FAILED`,
- * `REASON_REQUIRED`, `ROLE_NOT_FOUND`, `ROLE_NAME_TAKEN`, `ROLE_CODE_TAKEN`, `ROLE_IN_USE`, `ROLE_NOT_DELETABLE`,
+ * `REASON_REQUIRED`, `ROLE_NOT_FOUND`, `ROLE_NAME_TAKEN`, `ROLE_CODE_TAKEN`, `ROLE_IN_USE`, `ROLE_NOT_DELETABLE`, `MOVE_TARGET_INVALID`, `SYSTEM_ROLE_LOCKED`,
  * `SCREEN_NOT_ASSIGNABLE`, `SCREEN_KIND_CONFLICT`, `AUDIT_ENTRY_NOT_FOUND`, `AUDIT_WRITE_FAILED`, and `FORBIDDEN`
  * from the guard.
  */
@@ -80,9 +80,9 @@ export class AdminConsoleController {
   }
 
   /**
-   * Delete a role that nobody who can sign in holds. Admin roles, the system's own No access role, and roles with
-   * staff are refused with a 409 and an error code the page can show. Accounts that were deleted but still point at the
-   * role are moved to the No access role, so the role can go.
+   * Delete a role. Admin roles and the system's own No access role are refused (`ROLE_NOT_DELETABLE`, 409). Staff who
+   * can sign in and hold the role move to `move_to_role_id` (No access when left out); accounts that cannot sign in move
+   * to No access. Every move is audited.
    */
   @Delete('roles/:id')
   @HttpCode(204)
@@ -91,7 +91,7 @@ export class AdminConsoleController {
     @Param('id', new ParseUUIDPipe({ exceptionFactory: roleNotFound })) id: string,
     @Body() dto: DeleteRoleDto,
   ): Promise<void> {
-    await this.svc.deleteRole(admin, id, dto.reason)
+    await this.svc.deleteRole(admin, id, dto.reason, dto.move_to_role_id)
   }
 
   /** Granted `assignable` screen ids for one role (active screens only). `ROLE_NOT_FOUND` (404) if the role does not exist. */

@@ -37,8 +37,10 @@ Every admin-console route answers a failure in one shape:
 | `ROLE_NOT_FOUND`        | The role id does not exist.                                                        |
 | `ROLE_NAME_TAKEN`       | A role with that name already exists (compared without case).                      |
 | `ROLE_CODE_TAKEN`       | No free code could be derived from that name.                                      |
-| `ROLE_IN_USE`           | The role still has staff, so it cannot be deleted.                                 |
-| `ROLE_NOT_DELETABLE`    | It is an admin role.                                                               |
+| `ROLE_IN_USE`           | A staff member was given the role while it was being deleted. Try again.           |
+| `ROLE_NOT_DELETABLE`    | It is an admin role or the No access role.                                         |
+| `MOVE_TARGET_INVALID`   | `move_to_role_id` is the role itself, an admin role, or does not exist.            |
+| `SYSTEM_ROLE_LOCKED`    | The No access role's screens cannot be changed (409).                              |
 | `SCREEN_NOT_ASSIGNABLE` | A screen id is not an active `assignable` screen. `details.screen_ids` names them. |
 | `SCREEN_KIND_CONFLICT`  | A `core` or `admin` screen cannot be added by hand — it belongs in code.           |
 | `AUDIT_ENTRY_NOT_FOUND` | The audit entry id does not exist.                                                 |
@@ -340,12 +342,15 @@ audit row commit in **one transaction**.
 
 ```
 DELETE /api/admin/roles/:id
-{ "reason": "Role was created by mistake" }
+{ "reason": "The gate team merged into check-in", "move_to_role_id": "<role uuid>" }
 ```
 
-`204` on success. `409` `ROLE_IN_USE` while staff still hold the role, `409`
-`ROLE_NOT_DELETABLE` for an admin role, `404` `ROLE_NOT_FOUND` for an unknown id. The
-grants and the audit row go in one transaction as well.
+`204` on success. Staff who can sign in and hold the role move to `move_to_role_id`, or to the
+No access role when it is left out; accounts that cannot sign in always move to No access. Every
+move writes a `role_change` row. `409` `ROLE_NOT_DELETABLE` for an admin role or No access,
+`400` `MOVE_TARGET_INVALID` when the target is the role itself, an admin role, or unknown,
+`404` `ROLE_NOT_FOUND` for an unknown id. The moves, the delete and the audit rows go in one
+transaction.
 
 ### `PUT /api/admin/roles/:id/screens` — grant or revoke screens
 
@@ -540,7 +545,7 @@ entry with a clear `summary` such as "correcting booking#1234 status (was X)".
 | -------------------------------- | ---------------------------------- | --------- | ---------------------------------------------------- |
 | Your feature (backend module)    | `registerSelfScreens([...])`       | n/a       | Register the screens your feature exposes, on boot.  |
 | Admin console (frontend)         | `POST /api/admin/roles`            | admin     | Create a role, with its first grants.                |
-| Admin console (frontend)         | `DELETE /api/admin/roles/:id`      | admin     | Remove a role nobody holds.                          |
+| Admin console (frontend)         | `DELETE /api/admin/roles/:id`      | admin     | Remove a role, moving its staff to another role.     |
 | Admin console (frontend)         | `GET /api/admin/screens`           | admin     | Render the matrix.                                   |
 | Admin console (frontend)         | `GET /api/admin/roles`             | admin     | Render the role selector and staff count.            |
 | Admin console (frontend)         | `GET /api/admin/roles/:id/screens` | admin     | Show which `assignable` screens a role has.          |

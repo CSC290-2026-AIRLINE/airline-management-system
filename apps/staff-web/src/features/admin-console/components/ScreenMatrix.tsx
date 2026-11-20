@@ -17,6 +17,7 @@ export function ScreenMatrix({
   granted,
   pending,
   isAdminRole,
+  readOnly = false,
   onToggle,
   search,
   onSearchChange,
@@ -28,6 +29,8 @@ export function ScreenMatrix({
   pending: Set<string> | null
   /** True when the selected role is an admin role — then every row is ticked and locked. */
   isAdminRole: boolean
+  /** True for a system role (No access): every row is locked. */
+  readOnly?: boolean
   onToggle: (screenId: string, kind: ScreenKind) => void
   search: string
   onSearchChange: (value: string) => void
@@ -99,6 +102,7 @@ export function ScreenMatrix({
                 isChecked={isChecked}
                 unsavedIds={unsavedIds}
                 isAdminRole={isAdminRole}
+                readOnly={readOnly}
                 onToggle={onToggle}
               />
             </section>

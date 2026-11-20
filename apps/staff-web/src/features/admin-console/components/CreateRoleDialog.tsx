@@ -154,8 +154,8 @@ export function CreateRoleDialog({
                 maxLength={100}
                 autoFocus
               />
+              <Hint error={!!nameError}>{nameError ?? 'Shown in the role list and on staff accounts. Must be unique.'}</Hint>
             </Field>
-            <Hint error={!!nameError}>{nameError ?? 'Shown in the role list and on staff accounts. Must be unique.'}</Hint>
 
             <Field label="Reason (saved in the audit log)" htmlFor={`${uid}-reason`} error={!!reasonError}>
               <Input
@@ -169,8 +169,8 @@ export function CreateRoleDialog({
                 placeholder="e.g. New revenue team needs payment reports"
                 maxLength={500}
               />
+              <Hint error={!!reasonError}>{reasonError ?? `At least ${MIN_REASON_LENGTH} characters, so the audit log says why.`}</Hint>
             </Field>
-            <Hint error={!!reasonError}>{reasonError ?? `At least ${MIN_REASON_LENGTH} characters, so the audit log says why.`}</Hint>
 
             <div className="mt-5 rounded-lg border border-border bg-muted/40 px-4 py-3">
               <p className="m-0 text-sm font-semibold text-foreground">

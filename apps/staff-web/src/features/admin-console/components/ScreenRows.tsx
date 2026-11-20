@@ -7,6 +7,9 @@ import type { ScreenDto, ScreenKind } from '../types'
 /** What every locked row says when you hover it. */
 export const LOCKED_TIP = 'Core and Admin screens can’t be given or taken away, and an admin role always sees every screen'
 
+/** What every row says when the whole role is read-only (the system's No access role). */
+export const SYSTEM_ROLE_TIP = 'This role is managed by the system; its screens can’t be changed'
+
 /**
  * The rows of one feature group — a checkbox, the screen name, and the badge on the right.
  *
@@ -23,6 +26,7 @@ export function ScreenRows({
   isChecked,
   unsavedIds,
   isAdminRole,
+  readOnly = false,
   onToggle,
 }: {
   screens: ScreenDto[]
@@ -30,12 +34,15 @@ export function ScreenRows({
   /** Ids whose tick state differs from the last save — they carry the "Unsaved" badge. */
   unsavedIds: Set<string>
   isAdminRole: boolean
+  /** True for a system role: every row is locked. */
+  readOnly?: boolean
   onToggle: (screenId: string, kind: ScreenKind) => void
 }) {
+  const tip = readOnly ? SYSTEM_ROLE_TIP : LOCKED_TIP
   return (
     <ul>
       {screens.map((s) => {
-        const locked = s.kind !== 'assignable' || isAdminRole
+        const locked = s.kind !== 'assignable' || isAdminRole || readOnly
         const checked = isChecked(s)
         const unsaved = unsavedIds.has(s.id)
         const row = (
@@ -71,7 +78,7 @@ export function ScreenRows({
               </Badge>
             )}
             {unsaved && <Badge className="w-20 bg-warning-soft text-warning">Unsaved</Badge>}
-            {locked && <span className="sr-only">{LOCKED_TIP}</span>}
+            {locked && <span className="sr-only">{tip}</span>}
           </li>
         )
         if (!locked) return row
@@ -79,7 +86,7 @@ export function ScreenRows({
           <Tooltip key={s.id}>
             <TooltipTrigger asChild>{row}</TooltipTrigger>
             <TooltipContent side="top" align="start" className="bg-foreground px-2 py-1.5 font-sans text-white [&>svg]:hidden">
-              {LOCKED_TIP}
+              {tip}
             </TooltipContent>
           </Tooltip>
         )

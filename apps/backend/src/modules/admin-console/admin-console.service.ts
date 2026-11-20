@@ -37,9 +37,9 @@ const MIN_REASON_LENGTH = 10
  * The role a staff account is parked in when the role it held is deleted.
  *
  * `staff.role_id` is NOT NULL and the foreign key refuses to let a role go while an account still points at it, so an
- * account that cannot sign in cannot simply be left pointing at a role that is being removed. The No access role grants
- * no screens at all, so the account keeps nothing: it cannot sign in, and if it is ever switched back on it opens no
- * page until an admin gives it a real role.
+ * account that cannot sign in cannot simply be left pointing at a role that is being removed. The No access role holds
+ * no assignable screens and its grants cannot be edited (`SYSTEM_ROLE_LOCKED`), so an account switched back on opens
+ * only the Core screens every role has until an admin gives it a real role.
  */
 const NO_ACCESS_ROLE_CODE = 'system.no_access'
 const NO_ACCESS_ROLE_NAME = 'No access'
@@ -489,6 +489,13 @@ export class AdminConsoleService {
 
     const role = await this.db.role.findUnique({ where: { id: roleId }, select: { id: true, code: true } })
     if (!role) throw roleNotFound()
+    if (isSystemRole(role.code)) {
+      throw new AdminError(
+        HttpStatus.CONFLICT,
+        'SYSTEM_ROLE_LOCKED',
+        'The No access role is managed by the system. Its screens can’t be changed.',
+      )
+    }
 
     // De-duplicate before comparing, so a client that sends the same id twice gets the same result as one that does
     // not — otherwise `changed` would flip on every save.
@@ -672,24 +679,26 @@ export class AdminConsoleService {
   }
 
   /**
-   * Deletes a role that nobody who can sign in holds, and records the deletion in the audit log — one transaction, so
-   * the log and the role table agree.
+   * Deletes a role and records the deletion in the audit log — one transaction, so the log and the role table agree.
+   * Admin roles and the system's No access role can never be deleted.
    *
-   * A role can only go when it is unused: the `staff.role_id` foreign key already refuses to delete a role that people
-   * hold, but checking first turns that into a clear 409 instead of a database error. Admin roles can never be
-   * deleted — they are what gives people access to the console in the first place.
-   *
-   * Accounts that **cannot sign in** — switched off, or deleted — are the exception: they do not use the role, but the
-   * foreign key still counts them, so the role could never be removed. They are moved to the No access role instead, and
-   * each move is written to the audit log.
+   * The `staff.role_id` foreign key refuses to delete a role anybody still points at, so every holder is moved first,
+   * and each move is written to the audit log:
+   *   - staff who **can sign in** go to `moveToRoleId`, the role the admin picked in the delete dialog, or to the No
+   *     access role when none was picked. An admin role is refused as a target (`MOVE_TARGET_INVALID`): giving several
+   *     people the admin console at once is not something a delete should do by accident.
+   *   - accounts that **cannot sign in** — switched off, or deleted — always go to the No access role.
    *
    * The `role` table has no `deleted_at`, so this is a real delete. History survives it: `audit_log.actor_role` stores
    * the role **code** as a snapshot, and `audit_log.entity_id` is free text.
    */
-  async deleteRole(admin: AdminPrincipal, roleId: string, reason: string): Promise<void> {
+  async deleteRole(admin: AdminPrincipal, roleId: string, reason: string, moveToRoleId?: string): Promise<void> {
     const trimmedReason = reason.trim()
     if (trimmedReason.length < MIN_REASON_LENGTH) {
       throw new AdminError(HttpStatus.BAD_REQUEST, 'REASON_REQUIRED', `reason must be at least ${MIN_REASON_LENGTH} characters`)
+    }
+    if (moveToRoleId === roleId) {
+      throw new AdminError(HttpStatus.BAD_REQUEST, 'MOVE_TARGET_INVALID', 'Pick a different role to move the staff to.')
     }
 
     const role = await this.db.role.findUnique({
@@ -713,35 +722,38 @@ export class AdminConsoleService {
         'The No access role cannot be deleted. It is where the accounts that cannot sign in are kept.',
       )
     }
-    const staffCount = await this.db.staff.count({ where: AdminConsoleService.liveStaffWhere(roleId) })
-    if (staffCount > 0) {
-      throw new AdminError(
-        HttpStatus.CONFLICT,
-        'ROLE_IN_USE',
-        `${staffCount} staff member${staffCount === 1 ? '' : 's'} who can sign in still hold this role. Move them to another role first.`,
-      )
-    }
 
     const occurredAt = this.clock.now()
+    const actor = AuditService.staffActor(admin)
     try {
       await this.db.$transaction(async (tx) => {
-        // Counted again on the transaction's own client, so the number is the one the delete sees. A staff row created
-        // for this role in another tab between the check above and the delete would otherwise fail on the foreign key
-        // and answer 500 instead of a clean 409.
-        const stillHeld = await tx.staff.count({ where: AdminConsoleService.liveStaffWhere(roleId) })
-        if (stillHeld > 0) {
-          throw new AdminError(
-            HttpStatus.CONFLICT,
-            'ROLE_IN_USE',
-            `${stillHeld} staff member${stillHeld === 1 ? '' : 's'} who can sign in still hold this role. Move them to another role first.`,
-          )
+        // The picked role is read inside the transaction, so it cannot vanish between the check and the move.
+        let target: { id: string; code: string; name: string } | null = null
+        if (moveToRoleId) {
+          const found = await tx.role.findUnique({
+            where: { id: moveToRoleId },
+            select: { id: true, code: true, name: true, is_admin: true },
+          })
+          if (!found) {
+            throw new AdminError(HttpStatus.BAD_REQUEST, 'MOVE_TARGET_INVALID', 'The role picked for the staff no longer exists.')
+          }
+          if (found.is_admin) {
+            throw new AdminError(
+              HttpStatus.BAD_REQUEST,
+              'MOVE_TARGET_INVALID',
+              'Staff cannot be moved to an Admin role this way. Give Admin to people one at a time on Staff & roles.',
+            )
+          }
+          target = { id: found.id, code: found.code, name: found.name }
         }
 
         const grants = await tx.role_screen.findMany({ where: { role_id: roleId }, select: { screen_id: true } })
 
-        // Accounts that cannot sign in — switched off, or deleted — still point at this role, and the foreign key
-        // refuses to let the role go while they do. They are moved to the No access role, which opens nothing, and every
-        // move is written to the audit log.
+        const liveHolders = await tx.staff.findMany({
+          where: AdminConsoleService.liveStaffWhere(roleId),
+          select: { id: true, staff_code: true },
+          orderBy: { staff_code: 'asc' },
+        })
         const parkedHolders = await tx.staff.findMany({
           where: {
             role_id: roleId,
@@ -750,24 +762,52 @@ export class AdminConsoleService {
           select: { id: true, staff_code: true },
           orderBy: { staff_code: 'asc' },
         })
-        if (parkedHolders.length > 0) {
-          const parking = await this.ensureNoAccessRole(tx)
+
+        // The No access role is only touched (and created) when somebody is going there.
+        const needsNoAccess = parkedHolders.length > 0 || (liveHolders.length > 0 && !target)
+        const noAccess = needsNoAccess ? await this.ensureNoAccessRole(tx) : null
+        if (noAccess && noAccess.clearedScreenIds.length > 0) {
+          // Grants left over from before the role was locked. Clearing them is a change like any other: audit it.
+          await this.audit.write(
+            {
+              actor,
+              sourceFeature: SOURCE_FEATURE,
+              action: 'screen_access_change',
+              entityType: 'role',
+              entityId: noAccess.id,
+              summary: `Cleared screen access for role ${noAccess.code}: ${noAccess.clearedScreenIds.length} → 0 screen(s)`,
+              reason: trimmedReason,
+              before: { screen_ids: noAccess.clearedScreenIds },
+              after: { screen_ids: [] },
+              occurredAt,
+              sensitive: false,
+            },
+            tx,
+          )
+        }
+
+        const moves: { holders: { id: string; staff_code: string }[]; to: { id: string; code: string; name: string } | null }[] = [
+          { holders: liveHolders, to: target ?? noAccess },
+          { holders: parkedHolders, to: noAccess },
+        ]
+        for (const { holders, to } of moves) {
+          if (holders.length === 0 || !to) continue
           await tx.staff.updateMany({
-            where: { id: { in: parkedHolders.map((h) => h.id) } },
-            data: { role_id: parking.id, updated_at: new Date() },
+            where: { id: { in: holders.map((h) => h.id) } },
+            data: { role_id: to.id, updated_at: new Date() },
           })
-          for (const holder of parkedHolders) {
+          for (const holder of holders) {
             await this.audit.write(
               {
-                actor: AuditService.staffActor(admin),
+                actor,
                 sourceFeature: SOURCE_FEATURE,
                 action: 'role_change',
                 entityType: 'staff',
                 entityId: holder.id,
-                summary: `Moved ${holder.staff_code} to the ${parking.name} role so the ${role.name} role could be deleted`,
+                summary: `Moved ${holder.staff_code} to the ${to.name} role so the ${role.name} role could be deleted`,
                 reason: trimmedReason,
                 before: { role_code: role.code },
-                after: { role_code: parking.code },
+                after: { role_code: to.code },
                 occurredAt,
                 sensitive: false,
               },
@@ -780,7 +820,7 @@ export class AdminConsoleService {
         await tx.role.delete({ where: { id: roleId } })
         await this.audit.write(
           {
-            actor: AuditService.staffActor(admin),
+            actor,
             sourceFeature: SOURCE_FEATURE,
             action: 'delete',
             entityType: 'role',
@@ -788,6 +828,9 @@ export class AdminConsoleService {
             summary: `Deleted role ${role.name} (${role.code})`,
             reason: trimmedReason,
             before: { name: role.name, code: role.code, screen_ids: grants.map((g) => g.screen_id) },
+            ...(liveHolders.length > 0
+              ? { after: { staff_moved: liveHolders.length, moved_to_role_code: (target ?? noAccess)?.code ?? null } }
+              : {}),
             occurredAt,
             sensitive: false,
           },
@@ -795,14 +838,14 @@ export class AdminConsoleService {
         )
       })
     } catch (e) {
-      // The count and the delete are not one atomic step, so the world can still move under us: a staff row can be
-      // created for this role, or the role can be deleted, between the two. The database refuses the write in both
-      // cases, and each refusal has its own answer — the role is in use, or it is already gone.
+      // Holders are moved inside the transaction, but a staff row can still be given this role from another tab after
+      // the move, or the role can be deleted by somebody else. The database refuses the write in both cases, and each
+      // refusal has its own answer — try again, or it is already gone.
       if (isForeignKeyViolation(e)) {
         throw new AdminError(
           HttpStatus.CONFLICT,
           'ROLE_IN_USE',
-          'A staff member took this role while it was being deleted. Move them to another role first.',
+          'A staff member was given this role while it was being deleted. Try deleting it again.',
         )
       }
       if (isMissingRow(e)) {
@@ -816,18 +859,21 @@ export class AdminConsoleService {
    * The No access role, created the first time an account has to be parked in it.
    *
    * It is created here rather than in the seed so that this module needs no change to the database team's files: the
-   * role only has to exist when a role is deleted, and by then somebody is already asking for it. Its grants are
-   * cleared on the way in, so it always opens nothing.
+   * role only has to exist when a role is deleted, and by then somebody is already asking for it. Any grants it holds
+   * (only possible from before the role was locked) are cleared on the way in and returned, so the caller can audit them.
    */
-  private async ensureNoAccessRole(tx: Prisma.TransactionClient): Promise<{ id: string; code: string; name: string }> {
+  private async ensureNoAccessRole(
+    tx: Prisma.TransactionClient,
+  ): Promise<{ id: string; code: string; name: string; clearedScreenIds: string[] }> {
     const role = await tx.role.upsert({
       where: { code: NO_ACCESS_ROLE_CODE },
       update: {},
       create: { code: NO_ACCESS_ROLE_CODE, name: NO_ACCESS_ROLE_NAME, is_admin: false },
       select: { id: true, code: true, name: true },
     })
-    await tx.role_screen.deleteMany({ where: { role_id: role.id } })
-    return role
+    const grants = await tx.role_screen.findMany({ where: { role_id: role.id }, select: { screen_id: true } })
+    if (grants.length > 0) await tx.role_screen.deleteMany({ where: { role_id: role.id } })
+    return { ...role, clearedScreenIds: grants.map((g) => g.screen_id) }
   }
 
   /**

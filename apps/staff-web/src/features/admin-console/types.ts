@@ -46,6 +46,8 @@ export type RoleErrorCode =
   | 'ROLE_CODE_TAKEN'
   | 'ROLE_IN_USE'
   | 'ROLE_NOT_DELETABLE'
+  | 'MOVE_TARGET_INVALID'
+  | 'SYSTEM_ROLE_LOCKED'
   | 'SCREEN_NOT_ASSIGNABLE'
 
 export interface AuditEntry {

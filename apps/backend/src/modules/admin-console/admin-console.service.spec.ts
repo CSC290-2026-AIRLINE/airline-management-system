@@ -832,6 +832,18 @@ describe('AdminConsoleService.replaceRoleScreens (PUT /admin/roles/:id/screens)'
     )
   }
 
+  it('refuses to change the screens of the No access role (SYSTEM_ROLE_LOCKED, 409)', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, [], 'system.no_access')
+
+    expect(await errorCode(svc.replaceRoleScreens(ADMIN, 'r-1', ['s-1'], REASON))).toMatchObject({
+      status: 409,
+      code: 'SYSTEM_ROLE_LOCKED',
+    })
+    expect(db.$transaction).not.toHaveBeenCalled()
+    expect(tx.role_screen.createMany).not.toHaveBeenCalled()
+  })
+
   it('replaces grants and writes one audit row inside a single transaction', async () => {
     const { db, svc, tx } = makeDb()
     prime(db, ['s-old'])
@@ -1185,8 +1197,19 @@ describe('AdminConsoleService.deleteRole (DELETE /admin/roles/:id)', () => {
     db.role.findUnique.mockResolvedValue(role)
     db.staff.count.mockResolvedValue(0)
     tx.staff.count.mockResolvedValue(0)
-    tx.role_screen.findMany.mockResolvedValue([{ screen_id: 's-1' }])
+    // The role being deleted holds s-1; the No access role holds nothing unless a test says so.
+    tx.role_screen.findMany.mockImplementation((args: { where: { role_id: string } }) =>
+      Promise.resolve(args.where.role_id === role.id ? [{ screen_id: 's-1' }] : []),
+    )
   }
+
+  type Holder = { id: string; staff_code: string }
+  /** Who holds the role: `live` can sign in, `parked` cannot (switched off or deleted). Nobody by default. */
+  function setHolders(tx: TxMock, { live = [], parked = [] }: { live?: Holder[]; parked?: Holder[] }) {
+    tx.staff.findMany.mockImplementation((args: { where: { OR?: unknown } }) => Promise.resolve(args.where.OR ? parked : live))
+  }
+
+  const auditRows = (tx: TxMock) => tx.audit_log.create.mock.calls.map((c: [{ data: Record<string, unknown> }]) => c[0].data)
 
   it('removes the grants and the role, and writes one audit row, in a single transaction', async () => {
     const { db, svc, tx } = makeDb()
@@ -1228,7 +1251,7 @@ describe('AdminConsoleService.deleteRole (DELETE /admin/roles/:id)', () => {
     const { db, svc, tx } = makeDb()
     prime(db, tx)
     // One account was deleted and still points at the role: the foreign key would refuse the delete.
-    tx.staff.findMany.mockResolvedValue([{ id: 'st-9', staff_code: 'ST-0009' }])
+    setHolders(tx, { parked: [{ id: 'st-9', staff_code: 'ST-0009' }] })
 
     await svc.deleteRole(ADMIN, 'r-1', REASON)
 
@@ -1253,7 +1276,7 @@ describe('AdminConsoleService.deleteRole (DELETE /admin/roles/:id)', () => {
   it('looks for the accounts that cannot sign in — switched off or deleted — when it parks them', async () => {
     const { db, svc, tx } = makeDb()
     prime(db, tx)
-    tx.staff.findMany.mockResolvedValue([])
+    setHolders(tx, {})
 
     await svc.deleteRole(ADMIN, 'r-1', REASON)
 
@@ -1267,35 +1290,122 @@ describe('AdminConsoleService.deleteRole (DELETE /admin/roles/:id)', () => {
     )
   })
 
-  it('leaves the No access role without any screens, so it opens nothing', async () => {
+  it('clears grants the No access role still holds, and audits the clearing', async () => {
     const { db, svc, tx } = makeDb()
     prime(db, tx)
-    tx.staff.findMany.mockResolvedValue([{ id: 'st-9', staff_code: 'ST-0009' }])
+    setHolders(tx, { parked: [{ id: 'st-9', staff_code: 'ST-0009' }] })
+    tx.role_screen.findMany.mockImplementation((args: { where: { role_id: string } }) =>
+      Promise.resolve([{ screen_id: args.where.role_id === 'r-no-access' ? 's-left-over' : 's-1' }]),
+    )
 
     await svc.deleteRole(ADMIN, 'r-1', REASON)
 
     expect(tx.role_screen.deleteMany).toHaveBeenCalledWith({ where: { role_id: 'r-no-access' } })
+    const rows = tx.audit_log.create.mock.calls.map((c: [{ data: Record<string, unknown> }]) => c[0].data)
+    const cleared = rows.find((r) => r.entity_id === 'r-no-access')
+    expect(cleared).toMatchObject({
+      action: 'screen_access_change',
+      entity_type: 'role',
+      reason: REASON,
+      before: { screen_ids: ['s-left-over'] },
+      after: { screen_ids: [] },
+    })
   })
 
-  it('refuses to delete a role that staff who can sign in still hold', async () => {
+  it('writes no clearing row when the No access role holds no grants', async () => {
     const { db, svc, tx } = makeDb()
     prime(db, tx)
-    db.staff.count.mockResolvedValue(2)
+    setHolders(tx, { parked: [{ id: 'st-9', staff_code: 'ST-0009' }] })
 
-    await expect(svc.deleteRole(ADMIN, 'r-1', REASON)).rejects.toMatchObject({ code: 'ROLE_IN_USE' })
-    expect(db.$transaction).not.toHaveBeenCalled()
+    await svc.deleteRole(ADMIN, 'r-1', REASON)
+
+    expect(tx.role_screen.deleteMany).not.toHaveBeenCalledWith({ where: { role_id: 'r-no-access' } })
+    const rows = tx.audit_log.create.mock.calls.map((c: [{ data: Record<string, unknown> }]) => c[0].data)
+    expect(rows.some((r) => r.entity_id === 'r-no-access')).toBe(false)
+  })
+
+  it('moves the staff who can sign in to the role the admin picked, and audits each move', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+    setHolders(tx, {
+      live: [
+        { id: 'st-1', staff_code: 'ST-0001' },
+        { id: 'st-2', staff_code: 'ST-0002' },
+      ],
+    })
+    tx.role.findUnique.mockResolvedValue({ id: 'r-gate', code: 'gate', name: 'Gate', is_admin: false })
+
+    await svc.deleteRole(ADMIN, 'r-1', REASON, 'r-gate')
+
+    expect(tx.staff.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['st-1', 'st-2'] } },
+      data: { role_id: 'r-gate', updated_at: expect.any(Date) },
+    })
+    // Nobody is going to No access, so it is neither created nor touched.
+    expect(tx.role.upsert).not.toHaveBeenCalled()
+    const rows = auditRows(tx)
+    const moves = rows.filter((r) => r.action === 'role_change')
+    expect(moves.map((r) => r.entity_id)).toEqual(['st-1', 'st-2'])
+    expect(moves[0]).toMatchObject({ before: { role_code: 'finance_staff' }, after: { role_code: 'gate' }, reason: REASON })
+    expect(rows.find((r) => r.action === 'delete')).toMatchObject({ after: { staff_moved: 2, moved_to_role_code: 'gate' } })
+    expect(tx.role.delete).toHaveBeenCalledWith({ where: { id: 'r-1' } })
+  })
+
+  it('moves the staff who can sign in to No access when no role was picked', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+    setHolders(tx, { live: [{ id: 'st-1', staff_code: 'ST-0001' }] })
+
+    await svc.deleteRole(ADMIN, 'r-1', REASON)
+
+    expect(tx.staff.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['st-1'] } },
+      data: { role_id: 'r-no-access', updated_at: expect.any(Date) },
+    })
+    expect(auditRows(tx).find((r) => r.action === 'role_change')).toMatchObject({ after: { role_code: 'system.no_access' } })
+  })
+
+  it('sends the staff who can sign in to the picked role and the ones who cannot to No access', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+    setHolders(tx, { live: [{ id: 'st-1', staff_code: 'ST-0001' }], parked: [{ id: 'st-9', staff_code: 'ST-0009' }] })
+    tx.role.findUnique.mockResolvedValue({ id: 'r-gate', code: 'gate', name: 'Gate', is_admin: false })
+
+    await svc.deleteRole(ADMIN, 'r-1', REASON, 'r-gate')
+
+    expect(tx.staff.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ['st-1'] } }, data: expect.objectContaining({ role_id: 'r-gate' }) }),
+    )
+    expect(tx.staff.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ['st-9'] } }, data: expect.objectContaining({ role_id: 'r-no-access' }) }),
+    )
+  })
+
+  it('refuses an admin role as the target, and deletes nothing (MOVE_TARGET_INVALID)', async () => {
+    const { db, svc, tx } = makeDb()
+    prime(db, tx)
+    setHolders(tx, { live: [{ id: 'st-1', staff_code: 'ST-0001' }] })
+    tx.role.findUnique.mockResolvedValue({ id: 'r-admin', code: 'admin', name: 'Admin', is_admin: true })
+
+    expect(await errorCode(svc.deleteRole(ADMIN, 'r-1', REASON, 'r-admin'))).toMatchObject({ status: 400, code: 'MOVE_TARGET_INVALID' })
+    expect(tx.staff.updateMany).not.toHaveBeenCalled()
     expect(tx.role.delete).not.toHaveBeenCalled()
   })
 
-  it('counts the staff again inside the transaction, so a role taken mid-delete answers 409', async () => {
+  it('refuses a target role that does not exist (MOVE_TARGET_INVALID)', async () => {
     const { db, svc, tx } = makeDb()
     prime(db, tx)
-    // Nobody held the role when the check outside the transaction ran; somebody took it before the delete did.
-    tx.staff.count.mockResolvedValue(1)
+    tx.role.findUnique.mockResolvedValue(null)
 
-    await expect(svc.deleteRole(ADMIN, 'r-1', REASON)).rejects.toMatchObject({ code: 'ROLE_IN_USE' })
+    expect(await errorCode(svc.deleteRole(ADMIN, 'r-1', REASON, 'r-gone'))).toMatchObject({ status: 400, code: 'MOVE_TARGET_INVALID' })
     expect(tx.role.delete).not.toHaveBeenCalled()
-    expect(tx.audit_log.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses the role being deleted as its own target, before touching the database', async () => {
+    const { db, svc } = makeDb()
+
+    expect(await errorCode(svc.deleteRole(ADMIN, 'r-1', REASON, 'r-1'))).toMatchObject({ status: 400, code: 'MOVE_TARGET_INVALID' })
+    expect(db.role.findUnique).not.toHaveBeenCalled()
   })
 
   it('answers 409 when the database refuses the delete because a staff row took the role', async () => {

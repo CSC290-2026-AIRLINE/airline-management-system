@@ -33,6 +33,8 @@ export interface CreateRoleBody {
 
 export interface DeleteRoleBody {
   reason: string
+  /** Where the staff who can sign in and hold the role go. Left out: the No access role. */
+  move_to_role_id?: string
 }
 
 /**

@@ -8,9 +8,9 @@ import type { RoleSummary } from '../types'
  * The role list — the narrow left column of the Role access card.
  *
  * Roles are listed A–Z with the number of staff that hold them. The Admin role carries an "All screens" badge, because
- * an admin role sees every screen whatever its grants say. A role that nobody holds can be deleted from here; a role
- * that staff who can sign in still hold has no delete button at all, so the rule is visible before anyone clicks. The
- * system's own role — the No access role, where the accounts that cannot sign in are kept — has no delete button either.
+ * an admin role sees every screen whatever its grants say. Every other role can be deleted from here — the delete dialog
+ * asks where its staff should go. Admin roles and the system's own No access role, where the accounts that cannot sign
+ * in are kept, have no delete button.
  */
 export function RoleList({
   roles,
@@ -39,7 +39,7 @@ export function RoleList({
         <ul className="flex flex-col gap-0.5" aria-label="Roles">
           {roles.map((role) => {
             const selected = role.id === selectedId
-            const canDelete = role.staff_count === 0 && !role.is_admin && !role.is_system
+            const canDelete = !role.is_admin && !role.is_system
             return (
               <li key={role.id} className="flex items-center gap-1">
                 <button
@@ -79,7 +79,7 @@ export function RoleList({
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    className={cn('shrink-0 text-muted-foreground hover:text-danger', selected && 'text-white/80 hover:text-white')}
+                    className="shrink-0 text-muted-foreground hover:text-danger"
                     onClick={() => onDelete(role)}
                     aria-label={`Delete the ${role.name} role`}
                   >
