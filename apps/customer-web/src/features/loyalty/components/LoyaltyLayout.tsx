@@ -11,7 +11,7 @@ const TABS = [
 
 // Desktop: underlined tabs. Phone: a segmented control with the active tab in mint (M1).
 const tab = cx(
-  'flex-1 whitespace-nowrap rounded-lg px-2 py-2 text-center text-[13px] font-medium text-muted no-underline',
+  'flex-1 whitespace-nowrap rounded-lg px-2 py-2 text-center text-[13px] font-medium text-muted-foreground no-underline',
   'data-[status=active]:bg-mint data-[status=active]:font-semibold data-[status=active]:text-[#0b5563]',
   'sm:flex-none sm:rounded-none sm:border-b-2 sm:border-transparent sm:px-0 sm:pt-0 sm:pb-3 sm:text-sm',
   'sm:data-[status=active]:border-navy sm:data-[status=active]:bg-transparent sm:data-[status=active]:text-ink',
@@ -28,7 +28,7 @@ export function LoyaltyLayout({ subtitle, children }: { subtitle?: string; child
         <div className={cx(CONTAINER, 'flex flex-col gap-5 sm:gap-7')}>
           <div className="flex flex-col gap-1.5">
             <h1 className="text-[22px] leading-tight font-bold sm:text-[32px]">My FlySmiles</h1>
-            {subtitle && <p className="text-[13px] text-muted sm:text-sm">{subtitle}</p>}
+            {subtitle && <p className="text-[13px] text-muted-foreground sm:text-sm">{subtitle}</p>}
           </div>
           <nav
             aria-label="FlySmiles"

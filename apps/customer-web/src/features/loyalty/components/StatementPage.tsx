@@ -49,7 +49,7 @@ export function StatementPage({
     <>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
         <div className="col-span-2 flex flex-col gap-1 rounded-xl bg-navy p-5 text-white sm:col-span-1 sm:border sm:border-line sm:bg-white sm:p-4 sm:text-ink">
-          <span className="text-[10px] font-semibold tracking-[0.06em] text-white/70 uppercase sm:text-muted">Balance now</span>
+          <span className="text-[10px] font-semibold tracking-[0.06em] text-white/70 uppercase sm:text-muted-foreground">Balance now</span>
           <span className="text-[32px] leading-tight font-bold sm:text-xl">{formatMiles(member.milesBalance)}</span>
           <span className="text-xs text-white/70 sm:hidden">miles</span>
         </div>
@@ -102,9 +102,9 @@ export function StatementPage({
 
         <fieldset className="m-0 flex flex-wrap items-center gap-2 border-0 p-0 sm:gap-3">
           <legend className="sr-only">Date range</legend>
-          <span className="hidden text-xs text-muted sm:inline">Date range</span>
+          <span className="hidden text-xs text-muted-foreground sm:inline">Date range</span>
           <DateField label="From" value={win.from} max={win.to} onChange={(from) => onSearch({ type: search.type, from, to: win.to })} />
-          <span className="hidden text-muted sm:inline" aria-hidden="true">
+          <span className="hidden text-muted-foreground sm:inline" aria-hidden="true">
             –
           </span>
           <DateField label="To" value={win.to} min={win.from} onChange={(to) => onSearch({ type: search.type, from: win.from, to })} />
@@ -127,7 +127,7 @@ export function StatementPage({
           </>
         )}
       </Card>
-      <p className="text-[11px] text-muted">
+      <p className="text-[11px] text-muted-foreground">
         Miles expire 36 months after the flight. Spending, adjustments and expiry never lower the miles that count toward your tier.
       </p>
     </>
@@ -137,7 +137,7 @@ export function StatementPage({
 function Summary({ label, short, value, tone }: { label: string; short?: string; value: string; tone: string }) {
   return (
     <div className="flex flex-col gap-1 rounded-xl bg-[#eef1f6] p-4 sm:border sm:border-line sm:bg-white">
-      <span className="text-[10px] font-semibold tracking-[0.06em] text-muted uppercase">
+      <span className="text-[10px] font-semibold tracking-[0.06em] text-muted-foreground uppercase">
         <span className="sm:hidden">{short ?? label}</span>
         <span className="hidden sm:inline">{label}</span>
       </span>
@@ -162,7 +162,7 @@ function DateField({
   const id = `statement-${label.toLowerCase()}`
   return (
     <div className="flex flex-1 items-center gap-2 sm:flex-none">
-      <Label htmlFor={id} className="text-xs font-normal text-muted">
+      <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
         <CalendarDays size={14} className="hidden sm:block" aria-hidden="true" />
         {label}
       </Label>
@@ -183,9 +183,9 @@ function Description({ row }: { row: StatementRow }) {
   return (
     <>
       <div className="text-[13px] font-medium">{row.title}</div>
-      <div className="text-[11px] text-muted">{row.detail}</div>
+      <div className="text-[11px] text-muted-foreground">{row.detail}</div>
       {row.expiryNote && (
-        <div className={cx('text-[11px]', row.expiringSoon ? 'font-semibold text-warn' : 'text-muted')}>{row.expiryNote}</div>
+        <div className={cx('text-[11px]', row.expiringSoon ? 'font-semibold text-warn' : 'text-muted-foreground')}>{row.expiryNote}</div>
       )}
     </>
   )
@@ -233,7 +233,7 @@ function StatementCards({ rows }: { rows: StatementRow[] }) {
       {rows.map((r) => (
         <li key={r.seq} className="flex flex-col gap-2 rounded-xl border border-line bg-white p-4">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-muted">{formatTableDate(r.occurredAt)}</span>
+            <span className="text-xs text-muted-foreground">{formatTableDate(r.occurredAt)}</span>
             <TypePill type={r.type} />
           </div>
           <div className="flex items-start justify-between gap-3">
@@ -242,7 +242,7 @@ function StatementCards({ rows }: { rows: StatementRow[] }) {
             </div>
             <div className="flex flex-col items-end">
               <SignedMiles type={r.type} miles={r.miles} className="text-[15px]" />
-              <span className="text-[11px] whitespace-nowrap text-muted">bal {formatMiles(r.balanceAfter)}</span>
+              <span className="text-[11px] whitespace-nowrap text-muted-foreground">bal {formatMiles(r.balanceAfter)}</span>
             </div>
           </div>
         </li>

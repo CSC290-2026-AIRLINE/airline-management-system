@@ -97,14 +97,14 @@ function TierProgress({ member }: { member: MemberSummary }) {
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <span className="text-[11px] font-bold tracking-[0.1em] text-link">YOUR TIER PROGRESS</span>
-          {member.tier && <span className="text-[11px] text-muted">Valid until {formatDate(member.tier.expiresAt)}</span>}
+          {member.tier && <span className="text-[11px] text-muted-foreground">Valid until {formatDate(member.tier.expiresAt)}</span>}
         </div>
         <h2 id="tier-progress" className="text-[22px] font-semibold sm:text-2xl">
           {title}
         </h2>
         {!member.tier && next && (
           // Every customer starts here: enrolled with their account, no tier, earning from the first flight.
-          <p className="text-[13px] text-muted">
+          <p className="text-[13px] text-muted-foreground">
             {formatMiles(Math.max(0, next.minMiles - member.tierMiles))} miles or {Math.max(0, next.minFlights - member.tierFlights)}{' '}
             flights to {next.name}. Every flight you take earns miles, starting with your first.
           </p>
@@ -119,7 +119,7 @@ function TierProgress({ member }: { member: MemberSummary }) {
             note={`${formatMiles(Math.max(0, next.minMiles - member.tierMiles))} tier miles to ${next.name}`}
             bar="[&_[data-slot=progress-indicator]]:bg-gold"
           />
-          <div className="flex items-center gap-3 text-[10px] text-muted" aria-hidden="true">
+          <div className="flex items-center gap-3 text-[10px] text-muted-foreground" aria-hidden="true">
             <Separator className="flex-1" />
             OR
             <Separator className="flex-1" />
@@ -131,12 +131,12 @@ function TierProgress({ member }: { member: MemberSummary }) {
             note={`${Math.max(0, next.minFlights - member.tierFlights)} eligible flights to ${next.name}`}
             bar="[&_[data-slot=progress-indicator]]:bg-link"
           />
-          <p className="text-[11px] text-muted">
+          <p className="text-[11px] text-muted-foreground">
             Either goal in the last 12 months qualifies you. Only your flown seats count. Spending miles never lowers your tier miles.
           </p>
         </>
       ) : (
-        <p className="text-[13px] text-muted">Keep flying to renew your tier before it expires.</p>
+        <p className="text-[13px] text-muted-foreground">Keep flying to renew your tier before it expires.</p>
       )}
     </Card>
   )
@@ -147,13 +147,13 @@ function Progress({ label, have, need, note, bar }: { label: string; have: numbe
   return (
     <div className="flex flex-col gap-1.5 border-t border-line pt-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4">
-        <span className="text-[13px] text-muted">{label}</span>
+        <span className="text-[13px] text-muted-foreground">{label}</span>
         <span className="text-xl font-semibold tabular-nums">
           {formatMiles(have)} / {formatMiles(need)}
         </span>
       </div>
       <ProgressBar value={pct} aria-label={label} className={cx('h-1.5 bg-divider', bar)} />
-      <span className="text-[11px] text-muted">{note}</span>
+      <span className="text-[11px] text-muted-foreground">{note}</span>
     </div>
   )
 }
@@ -167,7 +167,7 @@ function Updates({ member }: { member: MemberSummary }) {
         Updates
       </h2>
       {!renewedToday && !expiring ? (
-        <p className="text-[13px] text-muted">Nothing new. Miles you earn show here after each flight.</p>
+        <p className="text-[13px] text-muted-foreground">Nothing new. Miles you earn show here after each flight.</p>
       ) : (
         <ul className="m-0 flex list-none flex-col gap-6 p-0 sm:pl-3">
           {renewedToday && member.tier && (
@@ -177,7 +177,7 @@ function Updates({ member }: { member: MemberSummary }) {
               </span>
               <div className="flex flex-col">
                 <strong className="text-[13px] font-semibold text-ok">{member.tier.name} renewed today</strong>
-                <span className="text-xs text-muted">
+                <span className="text-xs text-muted-foreground">
                   Your last flight kept you {member.tier.name} until {formatDate(member.tier.expiresAt)}.
                 </span>
               </div>
@@ -192,7 +192,7 @@ function Updates({ member }: { member: MemberSummary }) {
                 <strong className="text-[13px] font-semibold">
                   {formatMiles(expiring.miles)} miles expire on {formatDate(expiring.expiresOn)}.
                 </strong>
-                <span className="text-xs text-muted">Fly or spend them before then.</span>
+                <span className="text-xs text-muted-foreground">Fly or spend them before then.</span>
               </div>
             </li>
           )}
@@ -277,13 +277,13 @@ function LatestActivity({ rows }: { rows: StatementRow[] }) {
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col">
                   <span className="text-[13px] font-medium">{r.title}</span>
-                  <span className="text-[11px] text-muted">
+                  <span className="text-[11px] text-muted-foreground">
                     {formatDate(r.occurredAt)} · {r.detail}
                   </span>
                 </div>
                 <div className="flex flex-col items-end">
                   <SignedMiles type={r.type} miles={r.miles} tone="text-link" className="text-[15px]" />
-                  <span className="text-[10px] text-muted">{TYPE_LABEL[r.type]}</span>
+                  <span className="text-[10px] text-muted-foreground">{TYPE_LABEL[r.type]}</span>
                 </div>
               </li>
             )

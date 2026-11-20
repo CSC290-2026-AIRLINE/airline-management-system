@@ -25,7 +25,7 @@ export function RedemptionsPage({ rows }: { rows: RedemptionRow[] }) {
   return (
     <>
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[13px] text-muted">
+        <span className="text-[13px] text-muted-foreground">
           {rows.length} redemption{rows.length === 1 ? '' : 's'}
         </span>
         <SearchFlightsLink label="Search flights" />
@@ -37,7 +37,7 @@ export function RedemptionsPage({ rows }: { rows: RedemptionRow[] }) {
           </li>
         ))}
       </ul>
-      <p className="text-[11px] text-muted">
+      <p className="text-[11px] text-muted-foreground">
         To cancel a redemption, cancel the booking in My Trips. The miles come back to your balance at once.
       </p>
     </>
@@ -66,7 +66,7 @@ function RedemptionCard({ row }: { row: RedemptionRow }) {
           </h2>
           <BookingPill status={row.bookingStatus} />
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 text-[12px] text-muted md:text-[13px]">
+        <div className="flex flex-wrap items-center gap-x-3 text-[12px] text-muted-foreground md:text-[13px]">
           <span>{formatDate(row.departsAt)}</span>
           <Separator orientation="vertical" className="h-3!" />
           <span>{row.cabin}</span>
@@ -78,7 +78,7 @@ function RedemptionCard({ row }: { row: RedemptionRow }) {
       </div>
       <div className="col-span-2 flex items-center justify-between gap-4 border-t border-line px-4 py-3 md:col-span-1 md:border-t-0 md:border-l md:px-6">
         <div className="flex flex-col">
-          <span className="text-[10px] font-semibold tracking-[0.06em] text-muted uppercase">
+          <span className="text-[10px] font-semibold tracking-[0.06em] text-muted-foreground uppercase">
             {row.returned ? 'Miles returned' : 'Miles used'}
           </span>
           <span className={cx('text-xl font-bold md:text-2xl', row.returned && 'text-[#8a94a6]')}>{formatMiles(row.miles)}</span>

@@ -8,9 +8,9 @@
   --font-serif: Georgia, 'Times New Roman', serif;
   --font-mono: ui-monospace, 'SF Mono', Consolas, monospace;
 
-  /* Flython / FlySmiles palette, from the F11 Figma file. */
+  /* Flython / FlySmiles palette, from the F11 Figma file. Grey text uses shadcn's text-muted-foreground: a --color-muted
+     here would override shadcn's muted background colour app-wide. */
   --color-ink: #0a1424;
-  --color-muted: #677287;
   --color-line: #e0e5ed;
   --color-divider: #e8edf3;
   --color-field: #dbe2ea;
@@ -22,6 +22,9 @@
   --color-canvas: #f6f8fc;
   --color-gold: #c9a227;
   --color-gold-ink: #6b4e00;
+  /* shadcn's grey text, mapped here too: index.css is a separate, layered Tailwind build, so its utilities lose to this
+     unlayered one (e.g. sm:text-muted-foreground would lose to text-white/70). */
+  --color-muted-foreground: var(--muted-foreground);
   --color-ok: #087338;
   --color-warn: #995c05;
   --color-danger: #b42318;

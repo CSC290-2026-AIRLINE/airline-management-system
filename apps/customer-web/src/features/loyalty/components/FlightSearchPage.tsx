@@ -26,7 +26,7 @@ const CABIN_LABEL: Record<string, string> = {
 }
 
 const FIELD = 'h-11 w-full bg-white'
-const CAPS = 'text-[11px] font-semibold tracking-[0.08em] text-muted uppercase'
+const CAPS = 'text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase'
 
 function clock(iso: string, timeZone: string) {
   try {
@@ -72,7 +72,7 @@ export function FlightSearchPage({ search, onSearch }: { search: AwardSearchPara
         {search.from && search.to && search.date ? (
           <Results key={JSON.stringify(search)} search={search} from={search.from} to={search.to} date={search.date} />
         ) : (
-          <p className="text-xs text-muted">Choose a route and date to see flights and their miles prices.</p>
+          <p className="text-xs text-muted-foreground">Choose a route and date to see flights and their miles prices.</p>
         )}
       </main>
     </div>
@@ -202,7 +202,7 @@ function SearchForm({
               onChange={(e) => setChildren(Number(e.target.value) || 0)}
             />
           </div>
-          <p className={cx('col-span-2 text-xs', tooMany ? 'text-danger' : 'text-muted')} role={tooMany ? 'alert' : undefined}>
+          <p className={cx('col-span-2 text-xs', tooMany ? 'text-danger' : 'text-muted-foreground')} role={tooMany ? 'alert' : undefined}>
             {tooMany ? 'Up to 9 adults and children together.' : 'Up to 9 adults and children together. Lap infants take no award seat.'}
           </p>
           <Button type="submit" className="col-span-2 h-12 bg-navy hover:bg-navy/90" disabled={tooMany}>
@@ -239,7 +239,7 @@ function Results({ search, from, to, date }: { search: AwardSearchParams; from: 
                 Where you see “or … miles”, you can pay the fare with miles on the next step. Taxes and surcharges are still paid by card.
               </AlertDescription>
             </Alert>
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               Award seats as of {out.asOf.slice(11, 16)} UTC · simulated time · miles close {out.awardCutoffHours} hours before departure
               {` · your balance ${formatMiles(out.milesBalance)} miles`}
             </p>
@@ -296,11 +296,11 @@ function Leg({
       <div className="flex flex-col gap-0.5">
         <h2 className="text-[17px] font-bold">{title}</h2>
         {first && (
-          <span className="text-[13px] text-muted">
+          <span className="text-[13px] text-muted-foreground">
             {first.originCity} → {first.destinationCity} · {dayLabel(date)}
           </span>
         )}
-        <span className="text-xs text-muted">Miles shown are the total for {party}</span>
+        <span className="text-xs text-muted-foreground">Miles shown are the total for {party}</span>
       </div>
       {result.flights.length === 0 ? (
         <Alert className="bg-white">
@@ -351,24 +351,24 @@ function FlightCard({ flight: f, selected, onPick }: { flight: AwardFlight; sele
         </span>
         {nextDay && <span className="text-xs font-semibold text-[#9a5b00]">+1 day</span>}
       </span>
-      <span className="text-[12.5px] text-muted">
+      <span className="text-[12.5px] text-muted-foreground">
         {f.flightNumber} · {duration(f.durationMin)} · direct
       </span>
       <span className="flex flex-col gap-[3px] pt-2.5">
         {f.closed ? (
-          <span className="text-[12.5px] text-muted">Miles are closed this close to departure.</span>
+          <span className="text-[12.5px] text-muted-foreground">Miles are closed this close to departure.</span>
         ) : f.cabins.length === 0 ? (
-          <span className="text-[12.5px] text-muted">No award seats on this flight</span>
+          <span className="text-[12.5px] text-muted-foreground">No award seats on this flight</span>
         ) : (
           f.cabins.map((c) => (
             <span key={c.cabin} className="flex flex-col gap-[3px]">
               <span className="flex flex-wrap items-baseline gap-x-2">
-                <span className={cx('text-sm font-semibold', c.enoughSeats ? 'text-link' : 'text-muted line-through')}>
+                <span className={cx('text-sm font-semibold', c.enoughSeats ? 'text-link' : 'text-muted-foreground line-through')}>
                   or {formatMiles(c.totalMiles)} miles + taxes
                 </span>
-                <span className="text-[12.5px] font-semibold text-muted">{CABIN_LABEL[c.cabin] ?? c.cabin}</span>
+                <span className="text-[12.5px] font-semibold text-muted-foreground">{CABIN_LABEL[c.cabin] ?? c.cabin}</span>
               </span>
-              <span className="text-[12.5px] text-muted">
+              <span className="text-[12.5px] text-muted-foreground">
                 {c.seatsLeft === 0
                   ? 'Award seats sold out'
                   : `${c.seatsLeft} award seat${c.seatsLeft === 1 ? '' : 's'} left${c.enoughSeats ? '' : ' · not enough for your party'}`}
@@ -416,7 +416,7 @@ function TripSummary({
             (shortfall > 0 ? (
               <span className="text-danger"> · {formatMiles(shortfall)} miles short</span>
             ) : (
-              <span className="text-muted"> · {formatMiles(balance - miles)} miles left after</span>
+              <span className="text-muted-foreground"> · {formatMiles(balance - miles)} miles left after</span>
             ))}
         </CardContent>
       )}
@@ -424,7 +424,7 @@ function TripSummary({
         <Button className="h-12 w-full bg-navy text-[15px] hover:bg-navy/90" disabled>
           Continue
         </Button>
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           Booking with miles opens on Passengers &amp; extras (Feature 3b), which holds the seats and spends the miles. It is not live yet.
         </p>
       </CardFooter>

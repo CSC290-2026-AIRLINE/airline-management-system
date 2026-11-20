@@ -67,7 +67,7 @@ export function BenefitsPage({ member, tiers, uses }: { member: MemberSummary; t
                   <span
                     className={cx(
                       'grid size-10 flex-none place-items-center rounded-lg',
-                      line.included ? 'bg-[#fbe7a8] text-gold-ink' : 'bg-divider text-muted',
+                      line.included ? 'bg-[#fbe7a8] text-gold-ink' : 'bg-divider text-muted-foreground',
                     )}
                     aria-hidden="true"
                   >
@@ -76,14 +76,16 @@ export function BenefitsPage({ member, tiers, uses }: { member: MemberSummary; t
                   <div className="flex flex-col gap-1 sm:mt-4">
                     <span className="text-[13px] font-medium">{CARD_LABEL[line.key]}</span>
                     <strong className="text-lg leading-tight sm:text-[22px]">{valueText(line.key, line.included, line.value)}</strong>
-                    <span className="text-xs text-muted">{line.included ? BENEFIT_HINT[line.key] : 'Not part of your tier.'}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {line.included ? BENEFIT_HINT[line.key] : 'Not part of your tier.'}
+                    </span>
                   </div>
                 </Card>
               )
             })}
           </div>
         ) : (
-          <p className="text-[13px] text-muted">
+          <p className="text-[13px] text-muted-foreground">
             Reach a tier to unlock lounge access, extra baggage, priority lanes, upgrades and insurance.
           </p>
         )}
@@ -106,7 +108,7 @@ export function BenefitsPage({ member, tiers, uses }: { member: MemberSummary; t
       )}
 
       <BenefitHistory uses={uses} />
-      <p className="text-[11px] text-muted">
+      <p className="text-[11px] text-muted-foreground">
         Upgrades are given automatically within 24 hours of departure when a higher cabin has unsold seats. Insurance is a record on your
         booking only. No real insurer is contacted.
       </p>
@@ -149,7 +151,7 @@ function BenefitHistory({ uses }: { uses: BenefitUse[] }) {
         <h2 id="history" className="text-xl font-semibold">
           Benefit history
         </h2>
-        <p className="text-xs text-muted">A record of the benefits you have used.</p>
+        <p className="text-xs text-muted-foreground">A record of the benefits you have used.</p>
       </div>
       <Card className="gap-0 py-0 shadow-none">
         <Tabs value={kind} onValueChange={(v) => setKind(v as BenefitUseKind)} className="gap-0">
@@ -178,11 +180,13 @@ function BenefitHistory({ uses }: { uses: BenefitUse[] }) {
                         <Icon size={16} />
                       </span>
                       <div className="flex flex-col">
-                        <span className="text-[11px] text-muted">{formatDate(u.usedAt)}</span>
+                        <span className="text-[11px] text-muted-foreground">{formatDate(u.usedAt)}</span>
                         <span className="text-[13px] font-semibold">{tab.title}</span>
                       </div>
-                      <span className="text-xs text-muted sm:text-[13px]">{u.route}</span>
-                      <span className="col-start-2 text-xs text-muted sm:col-start-auto sm:text-right sm:text-[13px]">{u.detail}</span>
+                      <span className="text-xs text-muted-foreground sm:text-[13px]">{u.route}</span>
+                      <span className="col-start-2 text-xs text-muted-foreground sm:col-start-auto sm:text-right sm:text-[13px]">
+                        {u.detail}
+                      </span>
                     </li>
                   ))}
                 </ul>

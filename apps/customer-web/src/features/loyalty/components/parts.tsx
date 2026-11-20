@@ -85,7 +85,7 @@ export function EmptyState({ title, body, action }: { title: string; body: strin
   return (
     <div className="flex flex-col items-center gap-1 px-4 py-10 text-center">
       <strong className="text-[15px] text-ink">{title}</strong>
-      <span className="text-[13px] text-muted">{body}</span>
+      <span className="text-[13px] text-muted-foreground">{body}</span>
       {action && <div className="mt-2">{action}</div>}
     </div>
   )
