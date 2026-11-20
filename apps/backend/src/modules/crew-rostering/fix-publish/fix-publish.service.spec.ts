@@ -2,7 +2,8 @@ import { ConflictException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import type { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
-import type { AssignCrewService } from '../assign-crew/assign-crew.service'
+import type { AssignCrewService } from '@backend/modules/crew-rostering/assign-crew/assign-crew.service'
+import { Prisma } from '@backend/db/generated/prisma/client'
 import { FixPublishService, inFlightOrder } from './fix-publish.service'
 
 // The services only need these for types; the real modules are ESM.
@@ -67,16 +68,54 @@ function setupPublish(
   jest
     .spyOn(service as unknown as { buildState: () => Promise<unknown> }, 'buildState')
     .mockResolvedValue({ rosterRun: { status: 'published' } })
-  return { service, tx, calls, audit }
+  return { service, tx, calls, audit, assign }
+}
+
+/**
+ * `swap` with the world and plan stubbed, and the transaction recorded. `resolvedUnderLock` is what the break looks like
+ * when it is read again under the run lock: closed if another operator got there first.
+ */
+function swapSetup(world: unknown, plan: unknown, options: { resolvedUnderLock?: boolean } = {}) {
+  const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    rule_break: { findUnique: jest.fn().mockResolvedValue({ resolved_at: options.resolvedUnderLock ? new Date() : null }) },
+    pairing_leg_assignment: { updateMany: jest.fn(), createMany: jest.fn() },
+  }
+  const db = { $transaction: jest.fn((write: (client: typeof tx) => Promise<unknown>) => write(tx)) }
+  const service = new FixPublishService(
+    db as unknown as DbService,
+    {} as AssignCrewService,
+    fakeAudit() as unknown as AuditService,
+    fakeClock() as unknown as SimulationClock,
+  )
+  const internals = service as unknown as Record<'readBreak' | 'loadWorld' | 'planFor' | 'candidateFor', unknown>
+  jest.spyOn(internals as { readBreak: () => Promise<unknown> }, 'readBreak').mockResolvedValue({
+    id: 'brk-1',
+    roster_run_id: 'run-1',
+    pairing_id: 'p-1',
+    pairing_leg_id: 'leg-1',
+    rule: 'NO_LOCAL_CREW',
+    role: null,
+    crew_id: null,
+    detail: 'x',
+    resolved_at: null,
+  })
+  jest.spyOn(internals as { loadWorld: () => Promise<unknown> }, 'loadWorld').mockResolvedValue(world)
+  jest.spyOn(internals as { planFor: () => unknown }, 'planFor').mockReturnValue(plan)
+  jest.spyOn(service, 'check').mockResolvedValue({ breaks: [] } as never)
+  return { service, tx }
 }
 
 describe('FixPublishService.publish', () => {
   it('locks the run, re-checks it under the lock, then flips it once', async () => {
-    const { service, tx, calls, audit } = setupPublish()
+    const { service, tx, calls, audit, assign } = setupPublish()
 
     await service.publish(RUN, 'user-1')
 
     expect(calls).toEqual(['lock', 'check'])
+    // On the publish transaction, so the check and the flip see and commit the same roster.
+    expect(assign.check).toHaveBeenCalledWith(RUN, tx)
+    expect(assign.scopeIds).toHaveBeenCalledWith(RUN, tx)
     expect(tx.roster_run.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: RUN, status: 'draft' } }))
     expect(audit.resolveActor).toHaveBeenCalledWith('user-1')
     expect(audit.write).toHaveBeenCalledTimes(1)
@@ -300,38 +339,92 @@ describe('FixPublishService swap, who comes off', () => {
   })
 
   it('writes one unassignment and one new seat when a NO_LOCAL_CREW swap is made', async () => {
-    const tx = {
-      $queryRaw: jest.fn().mockResolvedValue([]),
-      pairing_leg_assignment: { updateMany: jest.fn(), createMany: jest.fn() },
-    }
-    const db = { $transaction: jest.fn((run: (client: typeof tx) => Promise<unknown>) => run(tx)) }
-    const service = new FixPublishService(
-      db as unknown as DbService,
-      {} as AssignCrewService,
-      fakeAudit() as unknown as AuditService,
-      fakeClock() as unknown as SimulationClock,
-    )
-    const internals = service as unknown as Record<'readBreak' | 'loadWorld' | 'planFor' | 'check', unknown>
-    jest.spyOn(internals as { readBreak: () => Promise<unknown> }, 'readBreak').mockResolvedValue({
-      id: 'brk-1',
-      roster_run_id: 'run-1',
-      pairing_id: 'p-1',
-      pairing_leg_id: 'leg-1',
-      rule: 'NO_LOCAL_CREW',
-      role: null,
-      crew_id: null,
-      detail: 'x',
-      resolved_at: null,
-    })
-    jest.spyOn(internals as { loadWorld: () => Promise<unknown> }, 'loadWorld').mockResolvedValue(world)
-    jest.spyOn(internals as { planFor: () => unknown }, 'planFor').mockReturnValue(nonSpeakerPlan)
-    jest.spyOn(service, 'check' as never).mockResolvedValue({ breaks: [] } as never)
+    const { service, tx } = swapSetup(world, nonSpeakerPlan)
 
     await service.swap('brk-1', 'c-speaker', 'user-1')
 
     expect(tx.pairing_leg_assignment.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['a-ann'] } } }))
     expect(tx.pairing_leg_assignment.createMany).toHaveBeenCalledWith({
       data: [expect.objectContaining({ pairing_leg_id: 'leg-1', crew_id: 'c-speaker', role: 'cabin_crew' })],
+    })
+  })
+
+  describe('two operators on one item', () => {
+    /** A NO_LEGAL_CREW cabin seat on a leg that needs four cabin crew. */
+    const addPlan = { mode: 'add', role: 'cabin_crew', scope: [{ ...leg, cabinCrewRequired: 4 }], languages: [] }
+    const withCabin = (count: number) => ({
+      ...world,
+      pairings: [{ id: 'p-1', limits: { minPoliceInternational: 2 } }],
+      assignments: Array.from({ length: count }, (_, index) => row(`a-${index}`, `c-${index}`, 'cabin_crew')),
+    })
+
+    it('refuses, and writes nothing, when the other operator closed the item first', async () => {
+      const { service, tx } = swapSetup(withCabin(3), addPlan, { resolvedUnderLock: true })
+
+      await expect(service.swap('brk-1', 'c-speaker', 'user-1')).rejects.toThrow('Someone else fixed this item')
+      expect(tx.pairing_leg_assignment.createMany).not.toHaveBeenCalled()
+    })
+
+    it('refuses, and writes nothing, when the seat was filled while the item was still open', async () => {
+      const { service, tx } = swapSetup(withCabin(4), addPlan)
+
+      await expect(service.swap('brk-1', 'c-speaker', 'user-1')).rejects.toThrow('Someone else fixed this item')
+      expect(tx.pairing_leg_assignment.createMany).not.toHaveBeenCalled()
+    })
+
+    it('turns a unique-index clash on a one-person seat into a 409, not a 500', async () => {
+      const { service, tx } = swapSetup(withCabin(3), addPlan)
+      const clash = Object.assign(new Prisma.PrismaClientKnownRequestError('unique', { code: 'P2002', clientVersion: 'test' }), {
+        code: 'P2002',
+      })
+      tx.pairing_leg_assignment.createMany.mockRejectedValue(clash)
+
+      await expect(service.swap('brk-1', 'c-speaker', 'user-1')).rejects.toBeInstanceOf(ConflictException)
+    })
+  })
+})
+
+describe('FixPublishService.raiseSickCall', () => {
+  const NOW = new Date('2026-11-21T00:00:00Z')
+
+  function sickCallSetup(depAt: Date) {
+    const tx = { $queryRaw: jest.fn(), pairing_leg_assignment: { update: jest.fn() } }
+    const db = {
+      pairing_leg_assignment: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'a-1',
+          role: 'cabin_crew',
+          crew: { first_name: 'Ann', last_name: 'Lee' },
+          pairing_leg: { flight: { flight_number: 'FD210', dep_at: depAt } },
+        }),
+      },
+      $transaction: jest.fn((write: (client: typeof tx) => Promise<unknown>) => write(tx)),
+    }
+    const service = new FixPublishService(
+      db as unknown as DbService,
+      {} as AssignCrewService,
+      fakeAudit() as unknown as AuditService,
+      { now: () => NOW } as unknown as SimulationClock,
+    )
+    jest.spyOn(service, 'check').mockResolvedValue({} as never)
+    return { service, tx }
+  }
+  const input = { legId: 'leg-1', memberId: 'c-1', reason: 'Sick' }
+
+  it('refuses a leg that departed before the simulation clock’s now, and changes nothing', async () => {
+    const { service, tx } = sickCallSetup(new Date('2026-11-02T12:30:00Z'))
+
+    await expect(service.raiseSickCall(RUN, input, 'user-1')).rejects.toThrow('FD210 has already departed')
+    expect(tx.pairing_leg_assignment.update).not.toHaveBeenCalled()
+  })
+
+  it('takes the person off a leg that has not left yet', async () => {
+    const { service, tx } = sickCallSetup(new Date('2026-11-22T12:30:00Z'))
+
+    await service.raiseSickCall(RUN, input, 'user-1')
+    expect(tx.pairing_leg_assignment.update).toHaveBeenCalledWith({
+      where: { id: 'a-1' },
+      data: expect.objectContaining({ reason: 'Sick' }),
     })
   })
 })

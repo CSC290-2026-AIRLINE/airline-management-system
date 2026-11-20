@@ -1,11 +1,11 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
-import { AuditService } from '../../admin-console/audit/audit.service'
-import { SimulationClock } from '../../admin-console/simulation-clock'
-import { countryName } from '../country-names'
-import { localTime } from '../crew-format'
-import { changedFields, writeRosteringAudit } from '../rostering-audit'
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
+import { countryName } from '@backend/modules/crew-rostering/country-names'
+import { localTime } from '@backend/modules/crew-rostering/crew-format'
+import { changedFields, writeRosteringAudit } from '@backend/modules/crew-rostering/rostering-audit'
 
 /**
  * Feature 8 · Step 1 — crew directory.

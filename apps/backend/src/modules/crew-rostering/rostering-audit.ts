@@ -1,5 +1,5 @@
 import type { Prisma } from '@backend/db/generated/prisma/client'
-import type { AuditService } from '../admin-console/audit/audit.service'
+import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 
 /** What one Feature 8 change says in the audit log. The actor, the feature number and the time are filled in here. */
 export interface RosteringAuditEntry {

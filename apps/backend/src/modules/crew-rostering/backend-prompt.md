@@ -20,7 +20,7 @@ For **every single one** of the 5 sub-folders above, you must create exactly 3 f
 - `<foldername>.module.ts`
 - `<foldername>.service.ts`
 
-_(Note: Do NOT use DTO files. Handle request validation/typing directly or inline where appropriate without separate DTO classes)._
+_(Note: Validate request input with DTO classes in each module's `dto/` folder using `class-validator`, as `apps/backend/CLAUDE.md` requires. Shared pieces live in `crew-rostering/dto/`.)_
 
 ---
 

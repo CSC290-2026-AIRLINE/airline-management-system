@@ -1,20 +1,22 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, UseFilters, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Post, Query, UseFilters, UseGuards, UsePipes } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
-import { AssignCrewService, type AssignCrewParams, type CommittedPairingResult, type RunResult } from './assign-crew.service'
-import { asObjectOrEmpty, requireDate, requireText, requireUuid } from '../request-parsing'
-import { RosteringExceptionFilter } from '../rostering-error'
-import { StaffOnlyGuard } from '../staff-only.guard'
+import { rosteringValidationPipe, uuidParam } from '@backend/modules/crew-rostering/dto/validation'
+import { WindowQueryDto } from '@backend/modules/crew-rostering/dto/window-query.dto'
+import { RosteringExceptionFilter } from '@backend/modules/crew-rostering/rostering-error'
+import { StaffOnlyGuard } from '@backend/modules/crew-rostering/staff-only.guard'
+import { AssignCrewService, type CommittedPairingResult, type RunResult } from './assign-crew.service'
+import { AutoAssignDto, AutoAssignQueryDto } from './dto/assign-crew.dto'
 
 /**
  * Feature 8 · Step 3 — assign crew.
  *
- * Parsing is inline rather than in a DTO folder, as this feature requires. The page
- * loads the committed pairings for a window, shows what a run already holds, runs
+ * The page loads the committed pairings for a window, shows what a run already holds, runs
  * auto-assign on a selection, and can re-check a run without changing who is crewed.
  */
 @Controller('crew-rostering/assign-crew')
 @UseGuards(StaffOnlyGuard)
 @UseFilters(RosteringExceptionFilter)
+@UsePipes(rosteringValidationPipe)
 export class AssignCrewController {
   constructor(private readonly assignCrewService: AssignCrewService) {}
 
@@ -25,14 +27,14 @@ export class AssignCrewController {
 
   /** The run Build pairings committed for this window, and the pairings it left out. */
   @Get('pairings')
-  async listCommittedPairings(@Query() query: Record<string, string | undefined>): Promise<CommittedPairingResult> {
-    return this.assignCrewService.listCommittedPairings(parseParams(query))
+  async listCommittedPairings(@Query() query: WindowQueryDto): Promise<CommittedPairingResult> {
+    return this.assignCrewService.listCommittedPairings(query)
   }
 
   /** Stored assignments and open rule breaks, without re-checking. */
   @Get('runs/:rosterRunId')
-  async getRun(@Param('rosterRunId') rosterRunId: string): Promise<RunResult> {
-    return this.assignCrewService.getRun(requireUuid(rosterRunId, 'rosterRunId'))
+  async getRun(@Param('rosterRunId', uuidParam('rosterRunId')) rosterRunId: string): Promise<RunResult> {
+    return this.assignCrewService.getRun(rosterRunId)
   }
 
   /**
@@ -41,40 +43,11 @@ export class AssignCrewController {
    */
   @Post('runs/:rosterRunId/auto-assign')
   async autoAssign(
-    @Param('rosterRunId') rosterRunId: string,
-    @Body() body: unknown,
+    @Param('rosterRunId', uuidParam('rosterRunId')) rosterRunId: string,
+    @Body() body: AutoAssignDto,
+    @Query() query: AutoAssignQueryDto,
     @CurrentUser() user: { id: string },
-    @Query('demoBreaks') demoBreaks?: string,
   ): Promise<RunResult> {
-    return this.assignCrewService.autoAssign(
-      requireUuid(rosterRunId, 'rosterRunId'),
-      parsePairingIds(asObjectOrEmpty(body).pairingIds),
-      { demoBreaks: parseFlag(demoBreaks, 'demoBreaks') },
-      user.id,
-    )
+    return this.assignCrewService.autoAssign(rosterRunId, body.pairingIds, { demoBreaks: query.demoBreaks === 'true' }, user.id)
   }
-}
-
-/* ── input parsing ──────────────────────────────────────────────────────────
- * Inline rather than in a DTO folder, as this feature requires. */
-
-function parseParams(source: Record<string, string | undefined>): AssignCrewParams {
-  const dateFrom = requireDate(source.dateFrom, 'dateFrom')
-  const dateTo = requireDate(source.dateTo, 'dateTo')
-  if (dateTo < dateFrom) throw new BadRequestException('dateTo must be on or after dateFrom')
-  const base = requireText(source.base, 'base').toUpperCase()
-  if (!/^[A-Z]{3}$/.test(base)) throw new BadRequestException('base must be a 3-letter IATA code')
-  return { dateFrom, dateTo, base }
-}
-
-function parsePairingIds(value: unknown): string[] {
-  if (value === undefined || value === null) return []
-  if (!Array.isArray(value)) throw new BadRequestException('pairingIds must be an array')
-  return value.map((entry, index) => requireUuid(entry, `pairingIds[${index}]`))
-}
-
-function parseFlag(value: string | undefined, field: string): boolean {
-  if (value === undefined || value === 'false') return false
-  if (value === 'true') return true
-  throw new BadRequestException(`${field} must be true or false`)
 }

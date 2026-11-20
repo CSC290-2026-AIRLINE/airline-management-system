@@ -1,13 +1,14 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
-import { SimulationClock } from '../../admin-console/simulation-clock'
-import { AuditService } from '../../admin-console/audit/audit.service'
-import { writeRosteringAudit } from '../rostering-audit'
-import { loadBaseContext } from '../base-context'
-import { cabinCrewFor, DEFAULT_SEATS_PER_CABIN_CREW, MIN_CABIN_CREW } from '../cabin-crew'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import { writeRosteringAudit } from '@backend/modules/crew-rostering/rostering-audit'
+import { loadBaseContext } from '@backend/modules/crew-rostering/base-context'
+import { lockDraftRun } from '@backend/modules/crew-rostering/run-lock'
+import { cabinCrewFor, DEFAULT_SEATS_PER_CABIN_CREW, MIN_CABIN_CREW } from '@backend/modules/crew-rostering/cabin-crew'
 import { LOCAL_MISS_RATE, POLICE_SHORT_RATE, pickOne } from './random-pick'
-import { isoDate, isRestBetween, shortName } from '../crew-format'
+import { isoDate, isRestBetween, shortName } from '@backend/modules/crew-rostering/crew-format'
 
 /**
  * Feature 8 · Step 3 — assign crew.
@@ -383,9 +384,9 @@ export class AssignCrewService {
   }
 
   /** The scope of a run as it stands in the database. */
-  async scopeIds(rosterRunId: string): Promise<Set<string>> {
-    const { pairings } = await this.loadRun(rosterRunId)
-    return this.scopeOf(pairings, await this.activeAssignments(pairings))
+  async scopeIds(rosterRunId: string, client: Prisma.TransactionClient = this.db): Promise<Set<string>> {
+    const { pairings } = await this.loadRun(rosterRunId, client)
+    return this.scopeOf(pairings, await this.activeAssignments(pairings, client))
   }
 
   /** What is stored for the run now, without re-checking. */
@@ -454,6 +455,9 @@ export class AssignCrewService {
     }
 
     await this.db.$transaction(async (tx) => {
+      // Run first, then crew, in the same order as swap and sick call, so they never wait on each other in a circle.
+      // Publish takes this lock too, so a run published since the read above is refused here instead of re-crewed.
+      await lockDraftRun(tx, rosterRunId, 'This roster was published while auto-assign ran, so it can no longer be crewed automatically')
       const crewIds = [...new Set(rows.map((row) => row.crew_id))]
       if (crewIds.length > 0) {
         // Holding the crew rows means nobody else can assign these people until this commits. Anything
@@ -493,10 +497,15 @@ export class AssignCrewService {
     return this.check(rosterRunId)
   }
 
-  /** Re-checks every rule on the run against what is stored, and records the result. */
-  async check(rosterRunId: string): Promise<RunResult> {
-    const { run, pairings, context } = await this.loadRun(rosterRunId)
-    const assignments = await this.activeAssignments(pairings)
+  /**
+   * Re-checks every rule on the run against what is stored, and records the result.
+   *
+   * Pass the caller's transaction as `client` when it already holds the run lock (publish does), so the check
+   * reads and writes inside that transaction instead of waiting on the lock from a second connection.
+   */
+  async check(rosterRunId: string, client: Prisma.TransactionClient = this.db): Promise<RunResult> {
+    const { run, pairings, context } = await this.loadRun(rosterRunId, client)
+    const assignments = await this.activeAssignments(pairings, client)
     // Only the pairings in play are judged: the ones somebody is crewed on. The rest wait for the next round and raise nothing.
     const inScope = this.scopeOf(pairings, assignments)
     const crewIds = [...new Set(assignments.map((row) => row.crew_id))]
@@ -504,7 +513,7 @@ export class AssignCrewService {
     const history =
       crewIds.length === 0
         ? []
-        : await this.db.pairing_leg_assignment.findMany({
+        : await client.pairing_leg_assignment.findMany({
             where: { crew_id: { in: crewIds }, unassigned_at: null, pairing_leg: { flight: { dep_at: this.historyWindow(legs) } } },
             select: ASSIGNMENT_SELECT,
           })
@@ -515,8 +524,14 @@ export class AssignCrewService {
       this.busyByCrew(history),
       context,
     )
-    await this.storeBreaks(rosterRunId, found, inScope, run.status !== 'published')
-    return this.toResult(run, pairings, assignments, await this.openBreaks(rosterRunId), await this.fleetsAt(run.base_airport))
+    await this.storeBreaks(rosterRunId, found, inScope, run.status !== 'published', client)
+    return this.toResult(
+      run,
+      pairings,
+      assignments,
+      await this.openBreaks(rosterRunId, client),
+      await this.fleetsAt(run.base_airport, client),
+    )
   }
 
   /* ── assignment ─────────────────────────────────────────────────────────── */
@@ -844,9 +859,21 @@ export class AssignCrewService {
    * `fixed`, refreshes the wording of the ones still open, and leaves overridden ones closed.
    * A pairing that left the batch (nobody is on it any more, so it is not judged) did not get fixed: in a draft run its open
    * breaks are deleted, so the history does not claim a fix nobody made.
+   *
+   * The run row is locked first, so two checks of one run take turns. Without it both could read "no break yet" for a
+   * break whose `crew_id` or `role` is null and insert it twice: the unique index treats NULLs as distinct, and the
+   * second copy would never be closed, which blocks publish for good. Inside a caller's transaction the lock is
+   * already held (or taken here) on that same connection.
    */
-  private async storeBreaks(rosterRunId: string, found: FoundBreak[], inScope: ReadonlySet<string>, draft: boolean): Promise<void> {
-    await this.db.$transaction(async (tx) => {
+  private async storeBreaks(
+    rosterRunId: string,
+    found: FoundBreak[],
+    inScope: ReadonlySet<string>,
+    draft: boolean,
+    client: Prisma.TransactionClient = this.db,
+  ): Promise<void> {
+    const write = async (tx: Prisma.TransactionClient): Promise<void> => {
+      await tx.$queryRaw`SELECT id FROM roster_run WHERE id = ${rosterRunId}::uuid FOR UPDATE`
       const stored = await tx.rule_break.findMany({
         where: { roster_run_id: rosterRunId, OR: [{ resolved_at: null }, { resolution: 'overridden' }] },
         select: {
@@ -895,7 +922,9 @@ export class AssignCrewService {
         }
       }
       if (fresh.length > 0) await tx.rule_break.createMany({ data: fresh, skipDuplicates: true })
-    })
+    }
+    if (client === this.db) await this.db.$transaction(write)
+    else await write(client)
   }
 
   /**
@@ -973,8 +1002,8 @@ export class AssignCrewService {
   /* ── reads ──────────────────────────────────────────────────────────────── */
 
   /** The aircraft models the pilots and cabin crew based at `base` fly (police are exempt from fleet). */
-  private async fleetsAt(base: string): Promise<Set<string>> {
-    const rows = await this.db.crew.findMany({
+  private async fleetsAt(base: string, client: Prisma.TransactionClient = this.db): Promise<Set<string>> {
+    const rows = await client.crew.findMany({
       where: { deleted_at: null, base_airport: base, role: { not: 'police' } },
       select: { fleet_aircraft_type: true },
       distinct: ['fleet_aircraft_type'],
@@ -983,24 +1012,30 @@ export class AssignCrewService {
   }
 
   /** The run with its pairings and legs, for the step that fixes and publishes it. */
-  async loadRun(rosterRunId: string): Promise<{ run: RunDbRow; pairings: RunPairing[]; context: Context }> {
-    const run = await this.db.roster_run.findUnique({ where: { id: rosterRunId }, select: RUN_SELECT })
+  async loadRun(
+    rosterRunId: string,
+    client: Prisma.TransactionClient = this.db,
+  ): Promise<{ run: RunDbRow; pairings: RunPairing[]; context: Context }> {
+    const run = await client.roster_run.findUnique({ where: { id: rosterRunId }, select: RUN_SELECT })
     if (!run) throw new NotFoundException(`Roster run ${rosterRunId} was not found`)
-    const context = await this.loadContext(run.base_airport)
+    const context = await this.loadContext(run.base_airport, client)
     return { run, pairings: this.toRunPairings(run, context), context }
   }
 
-  private async activeAssignments(pairings: RunPairing[]): Promise<(AssignmentDbRow & { crew: CrewDbRow })[]> {
+  private async activeAssignments(
+    pairings: RunPairing[],
+    client: Prisma.TransactionClient = this.db,
+  ): Promise<(AssignmentDbRow & { crew: CrewDbRow })[]> {
     if (pairings.length === 0) return []
-    return this.db.pairing_leg_assignment.findMany({
+    return client.pairing_leg_assignment.findMany({
       where: { pairing_id: { in: pairings.map((pairing) => pairing.id) }, unassigned_at: null },
       select: { ...ASSIGNMENT_SELECT, crew: { select: CREW_SELECT } },
       orderBy: { created_at: 'asc' },
     })
   }
 
-  private async openBreaks(rosterRunId: string): Promise<RuleBreakRow[]> {
-    const rows = await this.db.rule_break.findMany({
+  private async openBreaks(rosterRunId: string, client: Prisma.TransactionClient = this.db): Promise<RuleBreakRow[]> {
+    const rows = await client.rule_break.findMany({
       where: { roster_run_id: rosterRunId, resolved_at: null },
       select: {
         id: true,
@@ -1032,10 +1067,10 @@ export class AssignCrewService {
       })
   }
 
-  private async loadContext(base: string): Promise<Context> {
+  private async loadContext(base: string, client: Prisma.TransactionClient = this.db): Promise<Context> {
     const [{ read, ...shared }, languages] = await Promise.all([
-      loadBaseContext(this.db, base),
-      this.db.country_language.findMany({ select: { country_code: true, language_code: true }, orderBy: { language_code: 'asc' } }),
+      loadBaseContext(client, base),
+      client.country_language.findMany({ select: { country_code: true, language_code: true }, orderBy: { language_code: 'asc' } }),
     ])
 
     const countryLanguages = new Map<string, string[]>()

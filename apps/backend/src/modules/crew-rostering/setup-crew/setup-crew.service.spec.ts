@@ -1,7 +1,7 @@
 import type { DbService } from '@backend/db/db.service'
 import { SetupCrewService } from './setup-crew.service'
-import type { AuditService } from '../../admin-console/audit/audit.service'
-import type { SimulationClock } from '../../admin-console/simulation-clock'
+import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import type { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 
 // The service only needs these two for types and the unique-violation check; the real modules are ESM.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))

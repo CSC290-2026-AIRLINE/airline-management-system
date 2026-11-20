@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import { SetupRuleService } from './setup-rule.service'
-import type { AuditService } from '../../admin-console/audit/audit.service'
+import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 
 // The service only needs `DbService` for its type; the real module is ESM.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))

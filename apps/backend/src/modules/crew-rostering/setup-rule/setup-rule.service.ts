@@ -1,7 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
-import { AuditService } from '../../admin-console/audit/audit.service'
-import { changedFields, writeRosteringAudit } from '../rostering-audit'
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import { changedFields, writeRosteringAudit } from '@backend/modules/crew-rostering/rostering-audit'
+import { countryName } from '@backend/modules/crew-rostering/country-names'
 
 /**
  * Feature 8 · Step 2 — legality rules.
@@ -100,8 +101,11 @@ export interface RuleSetRow {
 }
 
 export interface CountryOptionRow {
+  /** The upper-case code, which is also the value the pages send back (`JP`). */
   name: string
   code: string
+  /** What the picker shows, e.g. `Japan (JP)`. */
+  label: string
 }
 
 export interface LanguageOptionRow {
@@ -290,7 +294,9 @@ export class SetupRuleService {
       ...rules.map((row) => row.country_code),
       ...mappings.map((row) => row.country_code),
     ])
-    return [...codes].map((code) => ({ name: countryLabel(code), code })).sort((a, b) => a.name.localeCompare(b.name))
+    return [...codes]
+      .map((code) => ({ name: countryLabel(code), code, label: `${countryName(code)} (${countryLabel(code)})` }))
+      .sort((a, b) => a.label.localeCompare(b.label))
   }
 
   /** Languages an operator can mark as local. Every code in `country_language` qualifies. */

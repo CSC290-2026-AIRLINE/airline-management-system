@@ -1,32 +1,31 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, UseFilters, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseFilters, UseGuards, UsePipes } from '@nestjs/common'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
+import { rosteringValidationPipe, uuidParam } from '@backend/modules/crew-rostering/dto/validation'
+import { WindowQueryDto } from '@backend/modules/crew-rostering/dto/window-query.dto'
+import { RosteringExceptionFilter } from '@backend/modules/crew-rostering/rostering-error'
+import { StaffOnlyGuard } from '@backend/modules/crew-rostering/staff-only.guard'
+import { CommitPairingsDto, SaveLegsDto } from './dto/build-pairing.dto'
 import {
   BuildPairingService,
-  type BuildParams,
-  type CommitDraft,
   type CommitResult,
-  type GenerateResult,
   type DeletePairingResult,
   type FlightImpactRow,
+  type GenerateResult,
   type PairingListResult,
-  type SaveLegInput,
   type SaveLegsResult,
 } from './build-pairing.service'
-import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
-import { SimulationClock } from '../../admin-console/simulation-clock'
-import { asObject, requireDate, requireText, requireUuid } from '../request-parsing'
-import { RosteringExceptionFilter } from '../rostering-error'
-import { StaffOnlyGuard } from '../staff-only.guard'
 
 /**
  * Feature 8 · Step 2 — build pairings.
  *
- * Query parsing is inline rather than in a DTO folder, as this feature requires.
- * `dateFrom`, `dateTo` and `base` appear on four routes, so they are parsed by one
- * helper and every handler gets the same `YYYY-MM-DD` and IATA validation.
+ * `dateFrom`, `dateTo` and `base` appear on four routes, so they share `WindowQueryDto`
+ * and every handler gets the same `YYYY-MM-DD` and IATA validation.
  */
 @Controller('crew-rostering/build-pairing')
 @UseGuards(StaffOnlyGuard)
 @UseFilters(RosteringExceptionFilter)
+@UsePipes(rosteringValidationPipe)
 export class BuildPairingController {
   constructor(
     private readonly buildPairingService: BuildPairingService,
@@ -45,73 +44,42 @@ export class BuildPairingController {
   }
 
   @Get('pairings')
-  async listPairings(@Query() query: Record<string, string | undefined>): Promise<PairingListResult> {
-    return this.buildPairingService.listPairings(parseBuildParams(query))
+  async listPairings(@Query() query: WindowQueryDto): Promise<PairingListResult> {
+    return this.buildPairingService.listPairings(query)
   }
 
   @Post('pairings/generate')
-  async generatePairings(@Body() body: unknown): Promise<GenerateResult> {
-    return this.buildPairingService.generatePairings(parseBuildParams(asObject(body)))
+  async generatePairings(@Body() body: WindowQueryDto): Promise<GenerateResult> {
+    return this.buildPairingService.generatePairings(body)
   }
 
   /** The pairings and crew a change to this flight affects. Feature 2 uses it to re-check rosters. */
   @Get('flights/:flightId/impact')
-  async flightImpact(@Param('flightId') flightId: string): Promise<FlightImpactRow> {
-    return this.buildPairingService.flightImpact(requireUuid(flightId, 'flightId'))
+  async flightImpact(@Param('flightId', uuidParam('flightId')) flightId: string): Promise<FlightImpactRow> {
+    return this.buildPairingService.flightImpact(flightId)
   }
 
   /** Stores the chosen pairings and hands them to the window's draft roster run. */
   @Post('pairings/commit')
-  async commitPairings(@Body() body: unknown, @CurrentUser() user: { id: string }): Promise<CommitResult> {
-    const source = asObject(body)
-    return this.buildPairingService.commitPairings(parseBuildParams(source), parseDrafts(source.pairings), user.id)
+  async commitPairings(@Body() body: CommitPairingsDto, @CurrentUser() user: { id: string }): Promise<CommitResult> {
+    const { dateFrom, dateTo, base, pairings } = body
+    return this.buildPairingService.commitPairings({ dateFrom, dateTo, base }, pairings, user.id)
   }
 
   @Put('pairings/:pairingId/legs')
   async saveLegs(
-    @Param('pairingId') pairingId: string,
-    @Body() body: unknown,
+    @Param('pairingId', uuidParam('pairingId')) pairingId: string,
+    @Body() body: SaveLegsDto,
     @CurrentUser() user: { id: string },
   ): Promise<SaveLegsResult> {
-    return this.buildPairingService.saveLegs(requireUuid(pairingId, 'pairingId'), parseLegs(asObject(body).legs), user.id)
+    return this.buildPairingService.saveLegs(pairingId, body.legs, user.id)
   }
 
   @Delete('pairings/:pairingId')
-  async deletePairing(@Param('pairingId') pairingId: string, @CurrentUser() user: { id: string }): Promise<DeletePairingResult> {
-    return this.buildPairingService.deletePairing(requireUuid(pairingId, 'pairingId'), user.id)
+  async deletePairing(
+    @Param('pairingId', uuidParam('pairingId')) pairingId: string,
+    @CurrentUser() user: { id: string },
+  ): Promise<DeletePairingResult> {
+    return this.buildPairingService.deletePairing(pairingId, user.id)
   }
-}
-
-/* ── input parsing ──────────────────────────────────────────────────────────
- * Inline rather than in a DTO folder, as this feature requires. */
-
-function parseBuildParams(source: Record<string, unknown>): BuildParams {
-  const dateFrom = requireDate(source.dateFrom, 'dateFrom')
-  const dateTo = requireDate(source.dateTo, 'dateTo')
-  if (dateTo < dateFrom) throw new BadRequestException('dateTo must be on or after dateFrom')
-  const base = requireText(source.base, 'base').toUpperCase()
-  if (!/^[A-Z]{3}$/.test(base)) throw new BadRequestException('base must be a 3-letter IATA code')
-  return { dateFrom, dateTo, base }
-}
-
-function parseDrafts(value: unknown): CommitDraft[] {
-  if (!Array.isArray(value)) throw new BadRequestException('pairings must be an array')
-  const refs = new Set<string>()
-  return value.map((entry, index) => {
-    const draft = asObject(entry)
-    const ref = requireText(draft.ref, `pairings[${index}].ref`)
-    if (refs.has(ref)) throw new BadRequestException(`pairings[${index}].ref ${ref} appears twice`)
-    refs.add(ref)
-    const legs = parseLegs(draft.legs)
-    if (legs.length === 0) throw new BadRequestException(`pairings[${index}] needs at least one flight`)
-    return { ref, legs }
-  })
-}
-
-function parseLegs(value: unknown): SaveLegInput[] {
-  if (!Array.isArray(value)) throw new BadRequestException('legs must be an array')
-  return value.map((entry, index) => {
-    const leg = asObject(entry)
-    return { flightId: requireUuid(leg.flightId, `legs[${index}].flightId`), addedManually: leg.addedManually === true }
-  })
 }

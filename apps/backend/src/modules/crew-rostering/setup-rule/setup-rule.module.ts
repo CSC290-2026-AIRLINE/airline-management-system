@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common'
-import { AuditModule } from '../../admin-console/audit/audit.module'
+import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
 import { SetupRuleController } from './setup-rule.controller'
 import { SetupRuleService } from './setup-rule.service'
 

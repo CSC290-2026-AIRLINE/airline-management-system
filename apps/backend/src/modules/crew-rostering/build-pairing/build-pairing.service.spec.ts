@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import { BuildPairingService } from './build-pairing.service'
-import type { AuditService } from '../../admin-console/audit/audit.service'
+import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 
 // The service only needs these two for types and the unique-violation check; the real modules are ESM.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
@@ -238,7 +238,7 @@ describe('BuildPairingService.commitPairings', () => {
 })
 
 /** Just enough of `DbService` for `saveLegs`. The pairing is in a draft run only when `inRun` is set. */
-function setupEdit({ inRun = false }: { inRun?: boolean } = {}) {
+function setupEdit({ inRun = false, statusUnderLock = 'draft' }: { inRun?: boolean; statusUnderLock?: string } = {}) {
   const out = flight('1', 'BKK', 'NRT', 1, 7)
   const back = flight('2', 'NRT', 'BKK', 9, 15)
   const row = {
@@ -252,11 +252,13 @@ function setupEdit({ inRun = false }: { inRun?: boolean } = {}) {
     roster_run_pairing: inRun ? { roster_run: { id: 'run-1', status: 'draft' } } : null,
   }
   const tx = {
+    // The run lock: the status as it is under the lock, which publish may have changed since the first read.
+    $queryRaw: jest.fn().mockResolvedValue([{ status: statusUnderLock }]),
     rule_break: { deleteMany: jest.fn() },
     pairing_leg_assignment: { deleteMany: jest.fn() },
     roster_run_pairing: { deleteMany: jest.fn() },
     pairing_leg: { deleteMany: jest.fn(), createMany: jest.fn() },
-    pairing: { update: jest.fn() },
+    pairing: { update: jest.fn(), delete: jest.fn() },
   }
   const db = {
     crew_setting: { findMany: jest.fn().mockResolvedValue([]) },
@@ -278,6 +280,16 @@ function setupEdit({ inRun = false }: { inRun?: boolean } = {}) {
   const audit = fakeAudit()
   return { audit, service: new BuildPairingService(db as unknown as DbService, audit as unknown as AuditService), tx, db }
 }
+
+describe('BuildPairingService.deletePairing', () => {
+  it('refuses, and deletes nothing, when publish got the run first, checked under the run lock', async () => {
+    const { service, tx } = setupEdit({ inRun: true, statusUnderLock: 'published' })
+
+    await expect(service.deletePairing('pairing-1')).rejects.toBeInstanceOf(ConflictException)
+    expect(tx.$queryRaw).toHaveBeenCalled()
+    expect(tx.pairing.delete).not.toHaveBeenCalled()
+  })
+})
 
 describe('BuildPairingService.saveLegs', () => {
   it('replaces the legs of a pairing that is in no run', async () => {

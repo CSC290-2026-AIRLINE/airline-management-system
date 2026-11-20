@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common'
-import type { DbService } from '@backend/db/db.service'
+import type { Prisma } from '@backend/db/generated/prisma/client'
 
 /** A country that asks for more rest or less duty than the company baseline. */
 export interface CountryRule {
@@ -19,7 +19,7 @@ export interface BaseContext {
 }
 
 /** Reads the shared context for one base, in one round of queries. */
-export async function loadBaseContext(db: DbService, base: string): Promise<BaseContext> {
+export async function loadBaseContext(db: Prisma.TransactionClient, base: string): Promise<BaseContext> {
   const [settings, countryRules, airports] = await Promise.all([
     db.crew_setting.findMany({ select: { key: true, value: true } }),
     db.country_legality_rule.findMany({ select: { country_code: true, min_rest_hours: true, max_duty_hours: true } }),

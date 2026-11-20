@@ -1,7 +1,8 @@
+import { ConflictException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import { AssignCrewService, type Leg, type RuleLimitsRow, type RunPairing } from './assign-crew.service'
-import type { SimulationClock } from '../../admin-console/simulation-clock'
-import type { AuditService } from '../../admin-console/audit/audit.service'
+import type { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
+import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 
 // The services only need these for types; the real modules are ESM.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
@@ -267,6 +268,7 @@ describe('AssignCrewService.storeBreaks', () => {
       resolved_at: null,
     })
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ status: 'draft' }]),
       rule_break: {
         findMany: jest.fn().mockResolvedValue([row('b-1', 'p-fixed'), row('b-2', 'p-left')]),
         updateMany: jest.fn(),
@@ -340,10 +342,11 @@ describe('AssignCrewService duties', () => {
 })
 
 /** An auto-assign run over one domestic pairing, with the transaction and the audit writer recorded. */
-function autoAssignSetup() {
+function autoAssignSetup(options: { statusUnderLock?: string } = {}) {
   const flight = pairing([leg('1', '2026-09-15T01:00:00Z', '2026-09-15T07:00:00Z', { international: false, localLanguages: [] })])
   const tx = {
-    $queryRaw: jest.fn().mockResolvedValue([]),
+    // Both locks (run, then crew) go through here; only the run lock reads the row it returns.
+    $queryRaw: jest.fn().mockResolvedValue([{ status: options.statusUnderLock ?? 'draft' }]),
     pairing_leg_assignment: {
       count: jest.fn().mockResolvedValue(0),
       deleteMany: jest.fn().mockResolvedValue({ count: 3 }),
@@ -379,6 +382,14 @@ describe('AssignCrewService.autoAssign re-run', () => {
     })
   })
 
+  it('refuses, and writes nothing, when publish flipped the run after the first read', async () => {
+    const { instance, tx } = autoAssignSetup({ statusUnderLock: 'published' })
+
+    await expect(instance.autoAssign(RUN, [])).rejects.toBeInstanceOf(ConflictException)
+    expect(tx.pairing_leg_assignment.deleteMany).not.toHaveBeenCalled()
+    expect(tx.pairing_leg_assignment.createMany).not.toHaveBeenCalled()
+  })
+
   it('replaces only live automatic rows, so a sick call keeps its history row', async () => {
     const { instance, tx } = autoAssignSetup()
 
@@ -408,6 +419,71 @@ describe('AssignCrewService.autoAssign re-run', () => {
       }),
       tx,
     )
+  })
+})
+
+/** `storeBreaks` with one open NO_LEGAL_CREW break (null crew) already stored, and its writes recorded. */
+function storeBreaksSetup() {
+  const calls: string[] = []
+  const tx = {
+    $queryRaw: jest.fn(() => {
+      calls.push('lock')
+      return Promise.resolve([{ status: 'draft' }])
+    }),
+    rule_break: {
+      findMany: jest.fn(() => {
+        calls.push('read')
+        return Promise.resolve([
+          {
+            id: 'b-1',
+            pairing_id: 'p-1',
+            pairing_leg_id: 'leg-1',
+            rule: 'NO_LEGAL_CREW',
+            crew_id: null,
+            role: 'captain',
+            detail: 'x',
+            resolved_at: null,
+          },
+        ])
+      }),
+      updateMany: jest.fn(),
+      update: jest.fn(),
+      createMany: jest.fn(),
+    },
+  }
+  const db = { $transaction: jest.fn(async (write: (client: typeof tx) => Promise<void>) => write(tx)) }
+  const instance = new AssignCrewService(
+    db as unknown as DbService,
+    fakeClock() as unknown as SimulationClock,
+    fakeAudit() as unknown as AuditService,
+  )
+  const storeBreaks = (found: unknown[], client?: unknown) =>
+    (instance as unknown as { storeBreaks: (...a: unknown[]) => Promise<void> }).storeBreaks(RUN, found, new Set(['p-1']), true, client)
+  return { db, tx, calls, storeBreaks }
+}
+
+describe('AssignCrewService.storeBreaks, run lock', () => {
+  const sameBreak = { pairingId: 'p-1', legId: 'leg-1', rule: 'NO_LEGAL_CREW', crewId: null, role: 'captain', detail: 'x' }
+
+  it('locks the run before reading what is stored, so two checks of one run cannot both insert the same break', async () => {
+    const { tx, calls, storeBreaks } = storeBreaksSetup()
+
+    await storeBreaks([sameBreak])
+
+    expect(calls).toEqual(['lock', 'read'])
+    expect(tx.rule_break.createMany).not.toHaveBeenCalled()
+  })
+
+  it('writes on the caller’s transaction when given one, instead of opening a second', async () => {
+    const { db, tx, storeBreaks } = storeBreaksSetup()
+
+    await storeBreaks([], tx)
+
+    expect(db.$transaction).not.toHaveBeenCalled()
+    expect(tx.rule_break.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['b-1'] } },
+      data: expect.objectContaining({ resolution: 'fixed' }),
+    })
   })
 })
 

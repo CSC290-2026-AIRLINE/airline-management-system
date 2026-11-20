@@ -1,12 +1,13 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { Prisma } from '@backend/db/generated/prisma/client'
-import { AuditService } from '../../admin-console/audit/audit.service'
-import { loadBaseContext } from '../base-context'
-import { writeRosteringAudit } from '../rostering-audit'
-import { RosteringErrorCode, rosteringError } from '../rostering-error'
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import { loadBaseContext } from '@backend/modules/crew-rostering/base-context'
+import { writeRosteringAudit } from '@backend/modules/crew-rostering/rostering-audit'
+import { RosteringErrorCode, rosteringError } from '@backend/modules/crew-rostering/rostering-error'
 import { buildChains, seededRandom } from './chain-builder'
-import { isRestBetween, localDay, shortName } from '../crew-format'
+import { isRestBetween, localDay, shortName } from '@backend/modules/crew-rostering/crew-format'
+import { lockDraftRun } from '@backend/modules/crew-rostering/run-lock'
 
 /**
  * Feature 8 · Step 2 — build pairings.
@@ -209,8 +210,8 @@ export interface CommitResult {
 /** Minimum time between two legs the generator chains together. */
 const MIN_CONNECTION_MINUTES = 60
 
-/** Flights that can no longer be flown are never offered or paired. */
-const UNPAIRABLE_FLIGHT_STATUSES = ['cancelled']
+/** Flights that will not be flown, or already have been, are never offered or paired. */
+const UNPAIRABLE_FLIGHT_STATUSES = ['cancelled', 'departed', 'arrived']
 
 /** Fallbacks for a missing `crew_setting` row; the migration seeds the same values. */
 const DEFAULT_LIMITS: PairingLimitsRow = {
@@ -556,7 +557,10 @@ export class BuildPairingService {
 
     const legs = this.sortedLegs(row)
     await this.db.$transaction(async (tx) => {
-      if (run) await this.withdrawFromRun(tx, pairingId)
+      if (run) {
+        await lockDraftRun(tx, run.id, `Pairing ${row.code} was published while you were deleting it, so it can no longer be deleted`)
+        await this.withdrawFromRun(tx, pairingId)
+      }
       await tx.pairing.delete({ where: { id: pairingId } })
       await writeRosteringAudit(
         this.audit,
@@ -602,6 +606,9 @@ export class BuildPairingService {
   async commitPairings(params: BuildParams, drafts: CommitDraft[], actorUserId?: string): Promise<CommitResult> {
     if (drafts.length === 0)
       throw new BadRequestException(rosteringError(RosteringErrorCode.NO_PAIRINGS, 'Choose at least one valid pairing to commit'))
+    // Results are reported by ref, so two drafts with one ref could not be told apart.
+    const twice = drafts.find((draft, index) => drafts.findIndex((other) => other.ref === draft.ref) !== index)
+    if (twice) throw new BadRequestException(`pairings ref ${twice.ref} appears twice`)
     const context = await this.loadContext(params.base)
     const window = this.serviceDates(params)
     const flightIds = [...new Set(drafts.flatMap((draft) => draft.legs.map((leg) => leg.flightId)))]

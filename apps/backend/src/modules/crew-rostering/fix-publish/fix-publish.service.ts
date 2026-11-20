@@ -14,9 +14,9 @@ import {
   type RuleLimitsRow,
   type RunPairing,
   type SeatRole,
-} from '../assign-crew/assign-crew.service'
-import { isoDate, shortName } from '../crew-format'
-import { RosteringErrorCode, rosteringError } from '../rostering-error'
+} from '@backend/modules/crew-rostering/assign-crew/assign-crew.service'
+import { isoDate, shortName } from '@backend/modules/crew-rostering/crew-format'
+import { RosteringErrorCode, rosteringError } from '@backend/modules/crew-rostering/rostering-error'
 
 /**
  * Feature 8 · Step 4 — fix and publish.
@@ -236,6 +236,9 @@ const CLOSED_VERB: Record<SeatRole, string> = {
   police: 'police added',
 }
 
+/** Shown when a swap finds, under the lock, that somebody else already closed the item or filled the seat. */
+const CLOSED_MEANWHILE = 'Someone else fixed this item while you were choosing. Reload to see the roster as it is now.'
+
 /** Removals made by a swap are not sick calls, so they carry this prefix and are skipped. */
 const SWAP_REASON = 'swapped by Ops'
 
@@ -437,54 +440,68 @@ export class FixPublishService {
     const flightNumber = world.legs.get(brk.pairing_leg_id)?.flightNumber ?? 'this leg'
     const pairingCode = world.pairingById.get(brk.pairing_id)?.code ?? ''
     const fullName = `${chosen.first_name} ${chosen.last_name}`
-    const role = plan.role
 
     const actor = await this.audit.resolveActor(actorUserId)
-    const outgoing = await this.db.$transaction(async (tx) => {
-      // Run first, then crew: publish takes the run lock alone, so the two can never wait on each other in a circle.
-      await tx.$queryRaw`SELECT id FROM roster_run WHERE id = ${brk.roster_run_id}::uuid FOR UPDATE`
-      await tx.$queryRaw`SELECT id FROM crew WHERE id = ${replacementId}::uuid FOR UPDATE`
+    const { names: outgoing, role } = await this.db
+      .$transaction(async (tx) => {
+        // Run first, then crew: publish takes the run lock alone, so the two can never wait on each other in a circle.
+        await tx.$queryRaw`SELECT id FROM roster_run WHERE id = ${brk.roster_run_id}::uuid FOR UPDATE`
+        await tx.$queryRaw`SELECT id FROM crew WHERE id = ${replacementId}::uuid FOR UPDATE`
 
-      const fresh = await this.loadWorld(tx, brk.roster_run_id)
-      const freshPlan = this.planFor(brk, fresh)
-      const candidate = this.candidateFor(chosen, freshPlan, fresh)
-      if (!candidate.allowed) {
-        const why = candidate.checks.find((check) => !check.ok)
-        throw new ConflictException(`${fullName} cannot take this seat: ${why?.reason ?? why?.label ?? 'a rule fails'}`)
-      }
+        // Everything read before the lock may be stale: another operator can have fixed this break, or filled the seat,
+        // while this one was choosing. Read both again now that nobody else can write to the run.
+        const current = await tx.rule_break.findUnique({ where: { id: breakId }, select: { resolved_at: true } })
+        if (!current || current.resolved_at !== null) throw new ConflictException(CLOSED_MEANWHILE)
 
-      const scopeIds = freshPlan.scope.map((item) => item.id)
-      const leaving = this.leavingRows(freshPlan, fresh)
-      if (leaving.length > 0) {
-        await tx.pairing_leg_assignment.updateMany({
-          where: { id: { in: leaving.map((row) => row.id) } },
-          data: { unassigned_at: this.clock.now(), reason: SWAP_REASON },
+        const fresh = await this.loadWorld(tx, brk.roster_run_id)
+        const freshPlan = this.planFor(brk, fresh)
+        if (freshPlan.mode === 'none' || freshPlan.role === null)
+          throw new ConflictException(freshPlan.blockedNote ?? 'Nobody can be swapped in for this item')
+        if ((this.shortfall(freshPlan, fresh) ?? 1) <= 0) throw new ConflictException(CLOSED_MEANWHILE)
+        const role = freshPlan.role
+        const candidate = this.candidateFor(chosen, freshPlan, fresh)
+        if (!candidate.allowed) {
+          const why = candidate.checks.find((check) => !check.ok)
+          throw new ConflictException(`${fullName} cannot take this seat: ${why?.reason ?? why?.label ?? 'a rule fails'}`)
+        }
+
+        const scopeIds = freshPlan.scope.map((item) => item.id)
+        const leaving = this.leavingRows(freshPlan, fresh)
+        if (leaving.length > 0) {
+          await tx.pairing_leg_assignment.updateMany({
+            where: { id: { in: leaving.map((row) => row.id) } },
+            data: { unassigned_at: this.clock.now(), reason: SWAP_REASON },
+          })
+        }
+        await tx.pairing_leg_assignment.createMany({
+          data: freshPlan.scope.map((item) => ({
+            pairing_id: item.pairingId,
+            pairing_leg_id: item.id,
+            crew_id: chosen.id,
+            role,
+            assigned_by: 'ops',
+            assigned_at: this.clock.now(),
+          })),
         })
-      }
-      await tx.pairing_leg_assignment.createMany({
-        data: freshPlan.scope.map((item) => ({
-          pairing_id: item.pairingId,
-          pairing_leg_id: item.id,
-          crew_id: chosen.id,
-          role,
-          assigned_by: 'ops',
-          assigned_at: this.clock.now(),
-        })),
-      })
 
-      const left = [...new Set(leaving.map((row) => fresh.crewById.get(row.crewId)).filter((member): member is CrewDbRow => !!member))]
-      const names = left.map((member) => shortName(member))
-      const summary = `${shortName(chosen)} ${names.length > 0 ? `replaced ${names.join(', ')}` : 'added'} on ${pairingCode} · ${flightNumber}`
-      await this.writeAudit(tx, actor, {
-        action: 'update',
-        entityType: 'rule_break',
-        entityId: breakId,
-        summary,
-        before: { rule: brk.rule, detail: brk.detail, crew: left.map((member) => member.id) },
-        after: { resolution: 'swap', short: CLOSED_VERB[role], crew: chosen.id, role, legs: scopeIds },
+        const left = [...new Set(leaving.map((row) => fresh.crewById.get(row.crewId)).filter((member): member is CrewDbRow => !!member))]
+        const names = left.map((member) => shortName(member))
+        const summary = `${shortName(chosen)} ${names.length > 0 ? `replaced ${names.join(', ')}` : 'added'} on ${pairingCode} · ${flightNumber}`
+        await this.writeAudit(tx, actor, {
+          action: 'update',
+          entityType: 'rule_break',
+          entityId: breakId,
+          summary,
+          before: { rule: brk.rule, detail: brk.detail, crew: left.map((member) => member.id) },
+          after: { resolution: 'swap', short: CLOSED_VERB[role], crew: chosen.id, role, legs: scopeIds },
+        })
+        return { names, role }
       })
-      return names
-    })
+      .catch((error: unknown) => {
+        // A seat with a unique index (one captain, one first officer) filled by a write this lock did not cover.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException(CLOSED_MEANWHILE)
+        throw error
+      })
 
     const state = await this.check(brk.roster_run_id)
     const closed = state.breaks.find((item) => item.id === breakId)?.resolution !== undefined
@@ -561,13 +578,16 @@ export class FixPublishService {
         id: true,
         role: true,
         crew: { select: { first_name: true, last_name: true } },
-        pairing_leg: { select: { flight: { select: { flight_number: true } } } },
+        pairing_leg: { select: { flight: { select: { flight_number: true, dep_at: true } } } },
       },
     })
     if (!row) throw new NotFoundException('That crew member is not on this leg of the run')
 
     const name = shortName(row.crew)
     const flightNumber = row.pairing_leg.flight.flight_number
+    // A leg that has left already flew with this crew: taking someone off now would rewrite history, not cover a seat.
+    if (row.pairing_leg.flight.dep_at.getTime() <= this.clock.now().getTime())
+      throw new ConflictException(`${flightNumber} has already departed, so a sick call can no longer be raised on it`)
     const actor = await this.audit.resolveActor(actorUserId)
     await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM roster_run WHERE id = ${rosterRunId}::uuid FOR UPDATE`
@@ -612,8 +632,9 @@ export class FixPublishService {
         if (!locked) throw new NotFoundException(`Roster run ${rosterRunId} was not found`)
         if (locked.status === 'published') throw new ConflictException('This roster is already published')
 
-        // Checked again under the lock, so what is counted below is the roster as it stands now.
-        await this.assignCrew.check(rosterRunId)
+        // Checked again under the lock and on this transaction, so what is counted below is the roster as it stands now
+        // and nothing can change it before the status flips.
+        await this.assignCrew.check(rosterRunId, tx)
 
         const pairings = await tx.roster_run_pairing.count({ where: { roster_run_id: rosterRunId } })
         if (pairings === 0)
@@ -630,7 +651,7 @@ export class FixPublishService {
 
         // Publishing sends this batch only. Pairings nobody crewed move to a new draft run for the same window, which
         // Assign crew opens next, so the rest can be crewed and published in another round.
-        const inBatch = await this.assignCrew.scopeIds(rosterRunId)
+        const inBatch = await this.assignCrew.scopeIds(rosterRunId, tx)
         const members = await tx.roster_run_pairing.findMany({ where: { roster_run_id: rosterRunId }, select: { pairing_id: true } })
         const left = members.map((row) => row.pairing_id).filter((id) => !inBatch.has(id))
         if (left.length > 0) {
@@ -931,13 +952,22 @@ export class FixPublishService {
    * must be a local-language speaker, or any one-person seat, is one.
    */
   private seatsToFill(plan: Plan, world: World): number {
+    if (plan.languages.length > 0) return 1
+    return Math.max(1, this.shortfall(plan, world) ?? 1)
+  }
+
+  /**
+   * For a swap in `add` mode, how many more people of the plan's role the leg needs right now; zero or less means the
+   * seat has been filled since the break was raised. `null` when the swap replaces someone, so no seat count applies.
+   */
+  private shortfall(plan: Plan, world: World): number | null {
     const leg = plan.scope[0]
-    if (plan.mode !== 'add' || plan.role === null || plan.languages.length > 0 || !leg) return 1
+    if (plan.mode !== 'add' || plan.role === null || !leg) return null
     const limits = world.pairings.find((pairing) => pairing.id === leg.pairingId)?.limits
-    if (!limits) return 1
+    if (!limits) return null
     const need = plan.role === 'cabin_crew' ? leg.cabinCrewRequired : plan.role === 'police' ? limits.minPoliceInternational : 1
     const have = world.assignments.filter((item) => item.legId === leg.id && item.role === plan.role).length
-    return Math.max(1, need - have)
+    return need - have
   }
 
   private replacementSet(plan: Plan, world: World): ReplacementSetRow {
@@ -1102,8 +1132,8 @@ export class FixPublishService {
 
   /** Everything the page and the candidate rules read, in a handful of queries. */
   private async loadWorld(client: Prisma.TransactionClient, rosterRunId: string): Promise<World> {
-    const { run, pairings, context } = await this.assignCrew.loadRun(rosterRunId)
-    const scope = await this.assignCrew.scopeIds(rosterRunId)
+    const { run, pairings, context } = await this.assignCrew.loadRun(rosterRunId, client)
+    const scope = await this.assignCrew.scopeIds(rosterRunId, client)
     const legs = new Map(pairings.flatMap((pairing) => pairing.legs.map((leg) => [leg.id, leg] as const)))
     const pairingIds = pairings.map((pairing) => pairing.id)
 

@@ -1,4 +1,7 @@
-import type { SelfRegisterScreen } from '../admin-console/dto/admin-console.types'
+import type { AdminConsoleService } from '@backend/modules/admin-console/admin-console.service'
+
+/** One screen as the admin console's exported service takes it, so this file needs nothing from its internals. */
+type SelfRegisterScreen = Parameters<AdminConsoleService['registerSelfScreens']>[0][number]
 
 /**
  * Screens Feature 8 registers with the admin console on boot, one per item in the staff-web sidebar's "Crew & Rostering"
