@@ -1,9 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -17,16 +17,22 @@ import { AdminConsoleService } from './admin-console.service'
 import { AdminConsoleGuard } from './guards/admin-console.guard'
 import { Admin } from './decorators/admin.decorator'
 import type { AdminPrincipal } from './guards/admin-console.guard'
-import { RegisterScreenDto } from './dto/register-screen.dto'
+import { RegisterScreenRequestDto } from './dto/register-screen.dto'
 import { ReplaceRoleScreensDto } from './dto/replace-role-screens.dto'
+import { CreateRoleDto } from './dto/create-role.dto'
+import { DeleteRoleDto } from './dto/delete-role.dto'
 import { AuditQueryDto } from './dto/audit-query.dto'
-import type { AuditEntryDto, ReplaceRoleScreensResult } from './dto/admin-console.types'
-import type { ScreenKind } from './dto/register-screen.dto'
+import type { AuditEntryDto, RegisterScreenResult, ReplaceRoleScreensResult, RoleSummary } from './dto/admin-console.types'
+import { auditEntryNotFound, roleNotFound, toAdminValidationError } from './admin-error'
 
 /**
  * `/api/admin` — all admin-console endpoints. The class-level guards and pipes cover every route uniformly; there is
- * no public admin route. Validation pipe is controller-scoped (not global) until the Dev Leads globalise it; see
- * plan for the `core` follow-up.
+ * no public admin route. Validation pipe is controller-scoped (not global) until the Dev Leads globalise it.
+ *
+ * Every failure is `{ error: { code, message, details? } }`, like the Staff & roles routes: `VALIDATION_FAILED`,
+ * `REASON_REQUIRED`, `ROLE_NOT_FOUND`, `ROLE_NAME_TAKEN`, `ROLE_CODE_TAKEN`, `ROLE_IN_USE`, `ROLE_NOT_DELETABLE`, `MOVE_TARGET_INVALID`, `SYSTEM_ROLE_LOCKED`,
+ * `SCREEN_NOT_ASSIGNABLE`, `SCREEN_KIND_CONFLICT`, `AUDIT_ENTRY_NOT_FOUND`, `AUDIT_WRITE_FAILED`, and `FORBIDDEN`
+ * from the guard.
  */
 @Controller('admin')
 @UseGuards(AdminConsoleGuard)
@@ -35,23 +41,20 @@ import type { ScreenKind } from './dto/register-screen.dto'
     whitelist: true,
     forbidNonWhitelisted: true,
     transform: true,
+    exceptionFactory: toAdminValidationError,
   }),
 )
 export class AdminConsoleController {
   constructor(private readonly svc: AdminConsoleService) {}
 
   /**
-   * Self-registration. Every feature calls this once on boot from its `OnModuleInit`. Idempotent on `code`. Default
-   * `feature_no` is the row the admin-console itself uses; other callers must supply their feature number.
+   * An admin adds or renames one assignable screen by hand, with a reason; the change is audited. Features do not call
+   * this — they register their screens with `registerSelfScreens` at boot.
    */
   @Post('screens')
   @HttpCode(200)
-  async registerScreen(
-    @Body() dto: RegisterScreenDto & { feature_no?: string },
-  ): Promise<{ ok: true; screen: { id: string; code: string; name: string; kind: ScreenKind; feature_no: string } }> {
-    const feature_no = dto.feature_no ?? deriveFeatureNo(dto.code)
-    const screen = await this.svc.registerScreen({ ...dto, feature_no })
-    return { ok: true, screen }
+  registerScreen(@Admin() admin: AdminPrincipal, @Body() dto: RegisterScreenRequestDto): Promise<RegisterScreenResult> {
+    return this.svc.registerScreenByAdmin(admin, dto)
   }
 
   /** Active screens grouped by `feature_no`, sorted for the Role access matrix. */
@@ -66,11 +69,35 @@ export class AdminConsoleController {
     return this.svc.listRoles().then((roles) => ({ roles }))
   }
 
-  /** Granted `assignable` screen ids for one role. 404 if the role does not exist. */
+  /**
+   * Create a role. The admin gives it a name; the service derives the machine-readable code and writes the audit row in
+   * the same transaction as the role and its first grants.
+   */
+  @Post('roles')
+  @HttpCode(201)
+  createRole(@Admin() admin: AdminPrincipal, @Body() dto: CreateRoleDto): Promise<RoleSummary> {
+    return this.svc.createRole(admin, dto)
+  }
+
+  /**
+   * Delete a role. Admin roles and the system's own No access role are refused (`ROLE_NOT_DELETABLE`, 409). Staff who
+   * can sign in and hold the role move to `move_to_role_id` (No access when left out); accounts that cannot sign in move
+   * to No access. Every move is audited.
+   */
+  @Delete('roles/:id')
+  @HttpCode(204)
+  async deleteRole(
+    @Admin() admin: AdminPrincipal,
+    @Param('id', new ParseUUIDPipe({ exceptionFactory: roleNotFound })) id: string,
+    @Body() dto: DeleteRoleDto,
+  ): Promise<void> {
+    await this.svc.deleteRole(admin, id, dto.reason, dto.move_to_role_id)
+  }
+
+  /** Granted `assignable` screen ids for one role (active screens only). `ROLE_NOT_FOUND` (404) if the role does not exist. */
   @Get('roles/:id/screens')
-  async getRoleScreens(@Param('id', new ParseUUIDPipe()) id: string): Promise<{ screen_ids: string[] } | null> {
+  async getRoleScreens(@Param('id', new ParseUUIDPipe({ exceptionFactory: roleNotFound })) id: string): Promise<{ screen_ids: string[] }> {
     const result = await this.svc.getRoleScreens(id)
-    if (!result) return null
     return { screen_ids: result.screen_ids }
   }
 
@@ -84,7 +111,7 @@ export class AdminConsoleController {
   @HttpCode(200)
   replaceRoleScreens(
     @Admin() admin: AdminPrincipal,
-    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('id', new ParseUUIDPipe({ exceptionFactory: roleNotFound })) id: string,
     @Body() dto: ReplaceRoleScreensDto,
   ): Promise<ReplaceRoleScreensResult> {
     return this.svc.replaceRoleScreens(admin, id, dto.screen_ids, dto.reason)
@@ -97,22 +124,14 @@ export class AdminConsoleController {
   }
 
   /**
-   * Single audit entry by id. Mirrors the list endpoint's sensitive-masking rules so a sensitive row returns
-   * `before`/`after` as `null`. 404 when the id does not exist.
+   * One audit entry by id. A sensitive entry comes back masked, and opening it writes a `view_sensitive` row (see
+   * `AdminConsoleService.getAuditEntry`). `AUDIT_ENTRY_NOT_FOUND` (404) when the id does not exist or is not a UUID.
    */
   @Get('audit-log/:id')
-  async getAuditEntry(@Param('id', new ParseUUIDPipe()) id: string): Promise<AuditEntryDto> {
-    const entry = await this.svc.getAuditEntry(id)
-    if (!entry) throw new NotFoundException(`Audit entry ${id} not found`)
-    return entry
+  getAuditEntry(
+    @Admin() admin: AdminPrincipal,
+    @Param('id', new ParseUUIDPipe({ exceptionFactory: auditEntryNotFound })) id: string,
+  ): Promise<AuditEntryDto> {
+    return this.svc.getAuditEntry(admin, id)
   }
-}
-
-/**
- * Best-effort fallback for callers that don't pass `feature_no`. The `screen.code` convention is
- * `f<feature_no>.<snake_name>`; we extract the prefix. Returns `'1'` if the prefix is missing or non-numeric.
- */
-function deriveFeatureNo(code: string): string {
-  const m = /^f(\d+[a-z]?)\./.exec(code)
-  return m && m[1] ? m[1] : '1'
 }
