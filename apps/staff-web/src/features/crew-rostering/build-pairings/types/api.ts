@@ -141,7 +141,7 @@ export function createBuildPairingsApi(fetchWithAuth: FetchWithAuth) {
       return toList(await request<PairingListPayload>(fetchWithAuth, `/pairings?${query(params)}`))
     },
 
-    /** A fresh random proposal. Nothing is stored until `commit`. */
+    /** A proposal, the same one for the same window and flights. Nothing is stored until `commit`. */
     async generate(params: BuildPairingParams): Promise<GenerateResult> {
       const payload = await request<PairingListPayload>(fetchWithAuth, '/pairings/generate', {
         method: 'POST',

@@ -2,8 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearch } from '@tanstack/react-router'
 import { useAppAuth } from '../../../../auth/AuthProvider'
 import { parseWindowSearch } from '../../shared/window-search'
+import { useWindowInUrl } from '../../shared/use-window-in-url'
+import { draftRunWindow } from '../../shared/run-window'
+import type { NotCrewedPairing } from '../../shared/not-crewed-note'
 import { createAssignCrewApi } from './api'
 import { DEFAULT_PARAMS } from './mock-data'
+import { todayAndTomorrow } from '../../build-pairings/types/format'
 import { DEFAULT_RULE_LIMITS } from './roster-rules'
 import type {
   AssignCrewParams,
@@ -45,6 +49,8 @@ export interface AssignCrewState {
   /** Open breaks keyed by `pairing_leg.id`. */
   breaksByLeg: Map<string, RosterRuleBreak[]>
   summary: AssignmentSummary | null
+  /** Pairings nobody is on after auto-assign: not judged here or in Fix & publish, and moved on publish. */
+  notCrewed: readonly NotCrewedPairing[]
   /** `Date to must be on or after Date from.` when the range is inverted. */
   dateError: string | null
   setDateFrom: (value: string) => void
@@ -77,8 +83,15 @@ export function useAssignCrew(): AssignCrewState {
   const signedIn = accessToken !== null
 
   const search = useSearch({ strict: false }) as Record<string, unknown>
-  const [params, setParams] = useState<AssignCrewParams>(() => ({ ...DEFAULT_PARAMS, ...parseWindowSearch(search) }))
+  const [params, setParams] = useState<AssignCrewParams>(() => ({ ...DEFAULT_PARAMS, ...todayAndTomorrow(), ...parseWindowSearch(search) }))
+  // Opened without dates (from the sidebar), the page first looks for a draft run in today's window and opens it on its own
+  // dates, the same as Build pairings and Fix & publish, before loading anything.
+  const [windowReady, setWindowReady] = useState(() => {
+    const fromUrl = parseWindowSearch(search)
+    return fromUrl.dateFrom !== undefined || fromUrl.dateTo !== undefined
+  })
   const [bases, setBases] = useState<readonly string[]>(() => [params.base])
+  useWindowInUrl(params)
   const [rosterRun, setRosterRun] = useState<RosterRun | null>(null)
   const [pairings, setPairings] = useState<RosterPairing[]>([])
   const [uncommitted, setUncommitted] = useState<{ id: string; code: string }[]>([])
@@ -108,21 +121,37 @@ export function useAssignCrew(): AssignCrewState {
   }, [getApi, signedIn])
 
   useEffect(() => {
-    if (!signedIn || dateFrom === '' || dateTo === '' || dateTo < dateFrom) return
+    if (!signedIn || windowReady) return
     let cancelled = false
-    getApi()
+    void draftRunWindow(fetchRef.current, { dateFrom, dateTo, base }).then((runWindow) => {
+      if (cancelled) return
+      if (runWindow) setParams((current) => ({ ...current, ...runWindow }))
+      setWindowReady(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [signedIn, windowReady, dateFrom, dateTo, base])
+
+  useEffect(() => {
+    if (!signedIn || !windowReady || dateFrom === '' || dateTo === '' || dateTo < dateFrom) return
+    let cancelled = false
+    const api = getApi()
+    api
       .listPairings({ dateFrom, dateTo, base })
-      .then((loaded) => {
+      // Crew an earlier auto-assign stored is read back with the run, so a reload shows the same roster and breaks that
+      // Fix & publish sees instead of asking for another run.
+      .then(async (loaded) => ({ loaded, stored: loaded.rosterRun ? await api.getRun(loaded.rosterRun.id) : null }))
+      .then(({ loaded, stored }) => {
         if (cancelled) return
         setRosterRun(loaded.rosterRun)
         setPairings(loaded.pairings)
         setUncommitted(loaded.uncommitted)
         setLimits(loaded.limits)
-        // Nothing is chosen and nothing is shown as run yet: the operator picks the pairings and
-        // presses Run auto-assign themselves. Crew an earlier run stored stays in the backend and
-        // is replaced when they run it, so it is not read back here.
-        setSelectedIds([])
-        setResult(null)
+        const crewed = stored ? crewedPairingIds(stored) : []
+        // The pairings already crewed come back selected; with none, the operator picks and presses Run auto-assign.
+        setSelectedIds(crewed)
+        setResult(crewed.length > 0 ? stored : null)
         setLoadState('idle')
       })
       .catch((error: unknown) => {
@@ -133,7 +162,7 @@ export function useAssignCrew(): AssignCrewState {
     return () => {
       cancelled = true
     }
-  }, [getApi, signedIn, dateFrom, dateTo, base])
+  }, [getApi, signedIn, windowReady, dateFrom, dateTo, base])
 
   const selectedPairings = useMemo(() => pairings.filter((pairing) => selectedIds.includes(pairing.id)), [pairings, selectedIds])
 
@@ -160,6 +189,7 @@ export function useAssignCrew(): AssignCrewState {
 
   /** Changing the window reloads it, so the loading state is set here rather than inside the effect. */
   const setParam = useCallback((key: keyof AssignCrewParams, value: string) => {
+    setWindowReady(true)
     setLoadState('loading')
     setLoadError(null)
     setRunError(null)
@@ -199,6 +229,7 @@ export function useAssignCrew(): AssignCrewState {
     breaks,
     breaksByLeg,
     summary: result?.summary ?? null,
+    notCrewed: result?.notCrewed ?? [],
     dateError,
     setDateFrom: (value) => setParam('dateFrom', value),
     setDateTo: (value) => setParam('dateTo', value),
@@ -208,6 +239,15 @@ export function useAssignCrew(): AssignCrewState {
     clearSelection,
     runAutoAssign,
   }
+}
+
+/** Pairings with somebody on a seat or an open break: the ones an earlier auto-assign crewed. */
+function crewedPairingIds(run: RunResult): string[] {
+  const ids = new Set(run.breaks.map((item) => item.pairingId))
+  for (const leg of run.assignments) {
+    if (leg.captain || leg.firstOfficer || leg.cabinCrew.length > 0 || leg.police.length > 0) ids.add(leg.pairingId)
+  }
+  return [...ids]
 }
 
 const NOT_SIGNED_IN = 'Could not sign in to the API. Sign out, sign in again, and check that the backend is running on port 8080.'

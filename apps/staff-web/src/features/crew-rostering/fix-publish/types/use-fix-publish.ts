@@ -11,10 +11,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearch } from '@tanstack/react-router'
 import { useAppAuth } from '../../../../auth/AuthProvider'
-import { formatDateRange } from '../../build-pairings/types/format'
+import { formatDateRange, todayAndTomorrow } from '../../build-pairings/types/format'
 import type { BuildPairingParams } from '../../build-pairings/types/types'
 import { DEFAULT_PARAMS } from '../../assign-crew/types/mock-data'
 import { parseWindowSearch } from '../../shared/window-search'
+import { draftRunWindow } from '../../shared/run-window'
+import type { NotCrewedPairing } from '../../shared/not-crewed-note'
 import { createFixPublishApi } from './api'
 import type {
   FixBreak,
@@ -77,6 +79,8 @@ export interface FixPublishState {
   uncoveredLegIds: readonly string[]
   /** Pairings left in a new draft run after this roster was published: the next round starts in Assign crew with these. */
   remainingPairings: number
+  /** Pairings nobody is on, which publishing moves to a new draft run. */
+  notCrewed: readonly NotCrewedPairing[]
   /** The URL asked to open straight in the fix workspace. */
   startInFix: boolean
 }
@@ -93,10 +97,20 @@ export function useFixPublish(): FixPublishState {
   const signedIn = accessToken !== null
 
   const search = useSearch({ strict: false }) as Record<string, unknown>
-  const [params] = useState<BuildPairingParams>(() => ({ ...DEFAULT_PARAMS, ...parseWindowSearch(search) }))
+  const [params, setParams] = useState<BuildPairingParams>(() => ({
+    ...DEFAULT_PARAMS,
+    ...todayAndTomorrow(),
+    ...parseWindowSearch(search),
+  }))
   // A run named in the URL (a published roster reopened from the history page) wins over the window, which could
   // hold a newer draft beside it.
   const [{ runId, fix: startInFix = false }] = useState(() => parseWindowSearch(search))
+  // Opened without dates or a run (from the sidebar), the page first looks for a draft run in today's window and opens it
+  // on its own dates, the same as Build pairings and Assign crew, before loading anything.
+  const [windowReady, setWindowReady] = useState(() => {
+    const fromUrl = parseWindowSearch(search)
+    return fromUrl.runId !== undefined || fromUrl.dateFrom !== undefined || fromUrl.dateTo !== undefined
+  })
 
   const [data, setData] = useState<FixPublishData | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -107,7 +121,20 @@ export function useFixPublish(): FixPublishState {
   const [updateNote, setUpdateNote] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!signedIn) return
+    if (!signedIn || windowReady) return
+    let cancelled = false
+    void draftRunWindow(fetchRef.current, params).then((runWindow) => {
+      if (cancelled) return
+      if (runWindow) setParams((current) => ({ ...current, ...runWindow }))
+      setWindowReady(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [signedIn, windowReady, params])
+
+  useEffect(() => {
+    if (!signedIn || !windowReady) return
     let cancelled = false
     const api = getApi()
     ;(runId ? api.getRun(runId) : api.getState(params))
@@ -127,7 +154,7 @@ export function useFixPublish(): FixPublishState {
     return () => {
       cancelled = true
     }
-  }, [getApi, signedIn, params, runId])
+  }, [getApi, signedIn, windowReady, params, runId])
 
   const breaks = useMemo(() => [...(data?.breaks ?? [])].sort((a, b) => a.position - b.position), [data])
   const openBreaks = useMemo(() => breaks.filter((item) => item.resolution === undefined), [breaks])
@@ -315,6 +342,7 @@ export function useFixPublish(): FixPublishState {
     rosterFor,
     uncoveredLegIds: data?.uncoveredLegIds ?? [],
     remainingPairings: data?.remainingPairings ?? 0,
+    notCrewed: data?.notCrewed ?? [],
     startInFix,
   }
 }

@@ -3,7 +3,7 @@ import type { DbService } from '@backend/db/db.service'
 import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import type { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import type { AssignCrewService } from '../assign-crew/assign-crew.service'
-import { FixPublishService } from './fix-publish.service'
+import { FixPublishService, inFlightOrder } from './fix-publish.service'
 
 // The services only need these for types; the real modules are ESM.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
@@ -454,5 +454,28 @@ describe('FixPublishService history', () => {
     const { service } = setupHistory([], [], null)
 
     await expect(service.getRun(RUN)).rejects.toThrow('not found')
+  })
+})
+
+describe('inFlightOrder', () => {
+  const at = (hhmm: string) => ({ dep: new Date(`2026-11-20T${hhmm}:00Z`) })
+  const legs = new Map([
+    ['early', at('01:00')],
+    ['late', at('09:00')],
+  ])
+  const pairings = new Map([
+    ['p9', { code: 'P-9' }],
+    ['p10', { code: 'P-10' }],
+  ])
+  const row = (id: string, leg: string, pairing: string) => ({ id, pairing_leg_id: leg, pairing_id: pairing })
+
+  it('lists breaks by departure, then pairing code in number order, keeping ties as found', () => {
+    const rows = [row('a', 'late', 'p9'), row('b', 'early', 'p10'), row('c', 'early', 'p9'), row('d', 'early', 'p10')]
+    expect(inFlightOrder(rows, legs, pairings).map((item) => item.id)).toEqual(['c', 'b', 'd', 'a'])
+  })
+
+  it('puts a break whose leg is gone last', () => {
+    const rows = [row('gone', 'missing', 'p9'), row('a', 'late', 'p9')]
+    expect(inFlightOrder(rows, legs, pairings).map((item) => item.id)).toEqual(['a', 'gone'])
   })
 })

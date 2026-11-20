@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearch } from '@tanstack/react-router'
 import { useAppAuth } from '../../../../auth/AuthProvider'
 import { parseWindowSearch } from '../../shared/window-search'
+import { useWindowInUrl } from '../../shared/use-window-in-url'
 import { createBuildPairingsApi, type CommittedPairing, type GenerateResult } from './api'
 import { DEFAULT_PARAMS } from './mock-data'
 import { todayAndTomorrow } from './format'
@@ -58,7 +59,7 @@ export interface BuildPairingsState {
 /**
  * All build-pairings state in one place.
  *
- * The flow is propose, adjust, commit. Generate asks the server for a random proposal
+ * The flow is propose, adjust, commit. Generate asks the server for a proposal
  * (`/api/crew-rostering/build-pairing`) and nothing about it is stored. Edit legs and Delete change
  * the proposal here, in the page. Commit is the one call that writes: it sends the valid pairings,
  * the server checks them again, stores them and gives them to this window's roster run, and
@@ -86,6 +87,7 @@ export function useBuildPairings(): BuildPairingsState {
     ...parseWindowSearch(search),
   }))
   const [bases, setBases] = useState<readonly string[]>(() => [params.base])
+  useWindowInUrl(params)
   const [flights, setFlights] = useState<ScheduledFlight[]>([])
   const [pairings, setPairings] = useState<Pairing[]>([])
   const [rosterRun, setRosterRun] = useState<RosterRun | null>(null)
@@ -93,7 +95,7 @@ export function useBuildPairings(): BuildPairingsState {
   // Published after Clear and before Generate, instead of guessing from the pairings showing.
   const [windowRun, setWindowRun] = useState<RosterRun | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  // The page opens empty: nothing is shown until the operator presses Generate pairings.
+  // The page opens empty until the window's committed pairings load or the operator presses Generate pairings.
   const [loadState, setLoadState] = useState<LoadState>('idle')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -145,7 +147,10 @@ export function useBuildPairings(): BuildPairingsState {
     }
   }, [getApi, signedIn])
 
-  // Which run the chosen window already has. Reads only the run; the pairings stay empty until Generate is pressed.
+  // Which run the chosen window already has. Pairings already committed to it are shown straight away (locked), so coming back
+  // from the sidebar or a reload finds the run and can continue to Assign crew; new proposals still wait for Generate pairings.
+  // A proposal already on screen is never replaced by this answer arriving late.
+  const proposalShown = useRef(false)
   const { dateFrom, dateTo, base } = params
   useEffect(() => {
     if (!signedIn || isRangeInverted({ dateFrom, dateTo, base })) return
@@ -153,7 +158,23 @@ export function useBuildPairings(): BuildPairingsState {
     getApi()
       .listPairings({ dateFrom, dateTo, base })
       .then((list) => {
-        if (!cancelled) setWindowRun(runWithPairings(list, base))
+        if (cancelled) return
+        // Opened without dates (from the sidebar), today's window can catch only part of a draft run in progress, such as a
+        // 20–21 Nov run seen from 21–22 Nov. Open the run on its own dates instead, so this page lists all of its pairings,
+        // the same ones Assign crew crews. Dates from the URL or chosen by the operator are never moved.
+        const run = runWithPairings(list, base)
+        if (
+          !keepDates.current &&
+          !proposalShown.current &&
+          run?.status === 'draft' &&
+          (run.dateFrom !== dateFrom || run.dateTo !== dateTo)
+        ) {
+          keepDates.current = true
+          setParams((current) => ({ ...current, dateFrom: run.dateFrom, dateTo: run.dateTo }))
+          return
+        }
+        if (list.committed.length > 0 && !proposalShown.current) apply(list, base)
+        else setWindowRun(run)
       })
       .catch(() => {
         if (!cancelled) setWindowRun(null)
@@ -161,7 +182,7 @@ export function useBuildPairings(): BuildPairingsState {
     return () => {
       cancelled = true
     }
-  }, [getApi, signedIn, dateFrom, dateTo, base])
+  }, [getApi, signedIn, dateFrom, dateTo, base, apply])
 
   /** Runs a write, shows its failure as a notice, and keeps the page usable either way. */
   const mutate = useCallback(async (write: () => Promise<void>) => {
@@ -181,6 +202,7 @@ export function useBuildPairings(): BuildPairingsState {
     setLoadError(null)
     setNotice(null)
     setSelectedId(null)
+    proposalShown.current = true
     getApi()
       .generate(params)
       .then((list) => {
@@ -372,8 +394,9 @@ export function useBuildPairings(): BuildPairingsState {
     return { totalPairings: pairings.length, totalFlights, validCount, invalidCount, deletedCount, committedCount }
   }, [pairings])
 
-  /** Changing the window empties the view; the new window is only loaded when Generate pairings is pressed. */
+  /** Changing the window empties the view; its committed pairings come back from the load effect, new ones need Generate pairings. */
   const setParam = useCallback((key: keyof BuildPairingParams, value: string) => {
+    proposalShown.current = false
     setPairings([])
     setFlights([])
     setCommitted([])

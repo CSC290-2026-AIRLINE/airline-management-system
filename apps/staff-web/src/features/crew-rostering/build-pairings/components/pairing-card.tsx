@@ -83,7 +83,10 @@ export function PairingCard({
           return (
             <Fragment key={row.flightId}>
               <div className={`${TABLE_COLUMNS} border-t border-border-desc/30 py-3`}>
-                <span className="font-bold text-primary-text">{row.flightNumber}</span>
+                <span className="flex flex-col">
+                  <span className="font-bold text-primary-text">{row.flightNumber}</span>
+                  <span className="text-xs text-primary-text/55">{row.dayLabel}</span>
+                </span>
                 <span className="text-primary-text/75">{row.origin}</span>
                 <span className="text-primary-text/75">{row.destination}</span>
                 <span className="text-primary-text/75">{row.departureLocal}</span>

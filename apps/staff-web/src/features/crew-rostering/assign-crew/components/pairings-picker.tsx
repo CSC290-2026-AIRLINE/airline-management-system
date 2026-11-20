@@ -71,7 +71,7 @@ export function ExclusionFootnote({ excluded, withLead = true }: { excluded: rea
 function NoPairingsAlert() {
   return (
     <p role="alert" className="rounded-lg border border-invalid/30 bg-invalid/5 px-4 py-2.5 text-sm text-invalid">
-      NO_PAIRINGS · Select at least one pairing to run auto-assign.
+      Select at least one pairing to run auto-assign.
     </p>
   )
 }

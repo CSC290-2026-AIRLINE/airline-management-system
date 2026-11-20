@@ -11,7 +11,7 @@ import {
   localCrewEligibility,
   optionalDate,
 } from '../types/format'
-import type { Certification, CrewMember, UpcomingDuty } from '../types/types'
+import { PILOT_ROLES, type Certification, type CrewMember, type UpcomingDuty } from '../types/types'
 import { Button, PencilIcon, TagPill } from '../../shared/ui'
 import { CrewAvatar, Field, ProfileCard } from './profile-card'
 
@@ -39,6 +39,8 @@ export function CrewProfileView({
   onEditCertification: (certification: Certification) => void
 }) {
   const licence = licenceState(crew.licenceExpiresOn, expiryWarningDays)
+  // Only pilots hold type ratings; cabin crew and Flight Police get a certifications card without the pilot wording.
+  const isPilot = PILOT_ROLES.includes(crew.role)
   const certifications = <CertificationList crew={crew} warningDays={expiryWarningDays} onEdit={onEditCertification} />
 
   return (
@@ -105,8 +107,8 @@ export function CrewProfileView({
           </ProfileCard>
 
           <ProfileCard
-            title="Type ratings & certifications"
-            subtitle="Pilot ratings and mandatory crew certifications."
+            title={isPilot ? 'Type ratings & certifications' : 'Certifications'}
+            subtitle={isPilot ? 'Pilot ratings and mandatory crew certifications.' : 'Mandatory crew certifications.'}
             action={<AddLink onClick={onAddCertification} />}
           >
             {certifications}
@@ -216,7 +218,7 @@ function CertificationList({
           <li key={certification.id} className="flex items-center gap-3 rounded-xl bg-page-bg px-4 py-3.5">
             <div className="min-w-0 flex-1">
               <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-primary-text lg:text-base">
-                {certification.name}
+                {certification.aircraftType ? `${certification.name} · ${certification.aircraftType}` : certification.name}
                 {tag && <TagPill tone={tag}>{tag === 'invalid' ? 'Expired' : 'Expiring soon'}</TagPill>}
               </p>
               <p

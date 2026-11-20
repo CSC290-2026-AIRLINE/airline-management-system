@@ -104,7 +104,7 @@ export function ProgressHeader({ heading, openCount, totalItems, seatOnly, canPu
             </button>
             {!canPublish && (
               <p className="absolute right-0 bottom-0 text-[13px] font-medium whitespace-nowrap text-invalid">
-                ROSTER_HAS_BREAKS · close {openCount} open {openCount === 1 ? 'break' : 'breaks'} to publish
+                Close {openCount} open {openCount === 1 ? 'break' : 'breaks'} to publish
               </p>
             )}
           </div>

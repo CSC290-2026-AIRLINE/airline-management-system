@@ -1,4 +1,4 @@
-import { buildChains, shuffle, type ChainFlight } from './chain-builder'
+import { buildChains, seededRandom, shuffle, type ChainFlight } from './chain-builder'
 
 const HOUR = 3_600_000
 const at = (hour: number) => new Date(Date.UTC(2026, 8, 15) + hour * HOUR)
@@ -86,5 +86,29 @@ describe('shuffle', () => {
     const output = shuffle(input, Math.random)
     expect([...output].sort()).toEqual([1, 2, 3, 4, 5])
     expect(input).toEqual([1, 2, 3, 4, 5])
+  })
+})
+
+describe('seededRandom', () => {
+  it('gives the same numbers for the same key and different ones for another key, all in [0, 1)', () => {
+    const draw = (key: string) => Array.from({ length: 50 }, seededRandom(key))
+    expect(draw('BKK|2026-11-20|2026-11-21')).toEqual(draw('BKK|2026-11-20|2026-11-21'))
+    expect(draw('BKK|2026-11-20|2026-11-21')).not.toEqual(draw('BKK|2026-11-20|2026-11-22'))
+    expect(draw('any').every((value) => value >= 0 && value < 1)).toBe(true)
+  })
+
+  it('makes buildChains propose the same chains for the same input', () => {
+    // Three seeds and two ways home from NRT, so an unseeded run could pair them differently.
+    const flights = [
+      flight('a', 'BKK', 'NRT', 0, 6),
+      flight('b', 'BKK', 'NRT', 1, 7),
+      flight('c', 'BKK', 'NRT', 2, 8),
+      flight('x', 'NRT', 'BKK', 9, 15),
+      flight('y', 'NRT', 'BKK', 10, 16),
+      flight('z', 'NRT', 'ICN', 10, 14),
+    ]
+    const run = () =>
+      buildChains(flights, 'BKK', 60, always, seededRandom('BKK|2026-11-20|2026-11-21')).map((chain) => chain.map((item) => item.id))
+    expect(run()).toEqual(run())
   })
 })

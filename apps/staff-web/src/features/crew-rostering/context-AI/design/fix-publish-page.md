@@ -87,7 +87,7 @@ Law breaks close the panel with a plain line: _"This is a law rule, so it can on
 
 ### 3.3 Candidate cards
 
-Radio on the left, then name + role line, then the four check chips — `Eligible & available`, `Rest 12 h`, `62.75 / 100 h`, `No overlap`. Failures print their reason in red beneath (`Would exceed 100 flight hours in 28 days (rule 3).`).
+Radio on the left, then name + role line, then the four check chips — `Qualified` (role, licence, fleet and type rating; was `Eligible & available` in the mockup), `Rest 12 h`, `62.75 / 100 h`, `No overlap`. Failures print their reason in red beneath (`Would exceed 100 flight hours in 28 days (rule 3).`).
 
 - Selected candidate: `[Selected]` pill, navy border.
 - Blocked candidate: `[Not allowed]` red pill, greyed card, **still listed** — an operator who expected to see a colleague and cannot is looking at the reason, not at a shorter list.

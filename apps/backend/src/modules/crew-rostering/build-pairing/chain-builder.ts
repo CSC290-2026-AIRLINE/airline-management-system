@@ -5,7 +5,8 @@
  * below can be tested with a fixed sequence. `BuildPairingService.generatePairings` feeds it the
  * flights and stores what it returns.
  *
- *  · Every chain starts at the base, in a random order of seeds.
+ *  · Every chain starts at the base, in a random order of seeds. The service passes `seededRandom`, so "random" is
+ *    repeatable: the same window and flights give the same chains.
  *  · After each flight the next one is picked at random from the flights that can follow it
  *    (leave where it landed, after the minimum connection, inside the pairing-length limit, on the
  *    seed's aircraft model, because the same crew fly every leg and each holds one fleet type).
@@ -23,6 +24,21 @@ export interface ChainFlight {
 
 /** How often a flight that returns to base wins over the other options. */
 export const RETURN_PREFERENCE = 0.7
+
+/**
+ * A repeatable `random` for `buildChains`: the same key always gives the same sequence (FNV-1a hash into mulberry32).
+ * Keyed on the window and its free flights, Generate proposes the same pairings for the same input every time.
+ */
+export function seededRandom(key: string): () => number {
+  let state = 0x811c9dc5
+  for (let index = 0; index < key.length; index += 1) state = Math.imul(state ^ key.charCodeAt(index), 0x01000193)
+  return () => {
+    state = (state + 0x6d2b79f5) | 0
+    let mixed = Math.imul(state ^ (state >>> 15), 1 | state)
+    mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed
+    return ((mixed ^ (mixed >>> 14)) >>> 0) / 4_294_967_296
+  }
+}
 
 /** Fisher–Yates on a copy, so the caller's list keeps its order. */
 export function shuffle<T>(items: readonly T[], random: () => number): T[] {

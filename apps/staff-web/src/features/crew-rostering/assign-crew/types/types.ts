@@ -9,6 +9,7 @@
  * what `shared/app-shell` and `ui.tsx` already plan for.
  */
 
+import type { NotCrewedPairing } from '../../shared/not-crewed-note'
 import type { AirportCode, IsoInstant, LocalDate } from '../../build-pairings/types/types'
 
 export type { AirportCode, IsoInstant, LocalDate }
@@ -148,6 +149,8 @@ export interface RunResult {
   assignments: LegCrew[]
   breaks: RosterRuleBreak[]
   summary: AssignmentSummary
+  /** Pairings nobody is on while others are crewed: not judged, and moved to a new draft run on publish. */
+  notCrewed: NotCrewedPairing[]
 }
 
 /** A pairing in the window that Build pairings has not committed to the run. */

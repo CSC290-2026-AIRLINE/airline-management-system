@@ -5,7 +5,7 @@ import { AuditService } from '../../admin-console/audit/audit.service'
 import { loadBaseContext } from '../base-context'
 import { writeRosteringAudit } from '../rostering-audit'
 import { RosteringErrorCode, rosteringError } from '../rostering-error'
-import { buildChains } from './chain-builder'
+import { buildChains, seededRandom } from './chain-builder'
 import { isRestBetween, localDay, shortName } from '../crew-format'
 
 /**
@@ -324,8 +324,8 @@ export class BuildPairingService {
   /**
    * Proposes pairings from the window's unpaired flights. Nothing is stored.
    *
-   * Every call is a fresh random draw (see `buildChains`): seeds and connections are picked at
-   * random, most chains come home to base and some do not. A chain that cannot close is offered
+   * Seeds and connections are picked at random (see `buildChains`), but from a seed made of the base, the dates and
+   * the free flights, so the same input proposes the same pairings every time. Most chains come home to base and some do not. A chain that cannot close is offered
    * anyway, as Invalid, so Ops can repair it by hand before committing. Pairings committed earlier
    * come back too, with their run, and their flights are not offered again.
    *
@@ -341,7 +341,8 @@ export class BuildPairingService {
       this.db.flight.findMany({
         where: { service_date: window, status: { notIn: UNPAIRABLE_FLIGHT_STATUSES } },
         select: { ...FLIGHT_SELECT, pairing_leg: { select: { pairing_id: true } } },
-        orderBy: { dep_at: 'asc' },
+        // The id breaks ties, so two flights leaving at the same minute come in the same order every time.
+        orderBy: [{ dep_at: 'asc' }, { id: 'asc' }],
       }),
       this.findRun(params),
       this.db.pairing.findMany({
@@ -365,6 +366,7 @@ export class BuildPairingService {
       params.base,
       MIN_CONNECTION_MINUTES,
       (seed, flight) => this.spanDays(seed.dep_at, flight.arr_at, context.timeZone) <= context.defaults.maxPairingDays,
+      seededRandom([params.base, params.dateFrom, params.dateTo, ...free.map((flight) => flight.id)].join('|')),
     )
 
     // Pairings committed earlier are listed too, first and locked, so Ops can see what is already on its way to Assign crew.
@@ -400,10 +402,8 @@ export class BuildPairingService {
   }
 
   /** The number the next pairing code will carry (`P-` + the sequence), so a proposal can show the code it will get. */
-  private async nextPairingNumber(): Promise<number> {
-    const [sequence] = await this.db.$queryRaw<
-      { last_value: bigint; is_called: boolean }[]
-    >`SELECT last_value, is_called FROM pairing_code_seq`
+  private async nextPairingNumber(db: Pick<Prisma.TransactionClient, '$queryRaw'> = this.db): Promise<number> {
+    const [sequence] = await db.$queryRaw<{ last_value: bigint; is_called: boolean }[]>`SELECT last_value, is_called FROM pairing_code_seq`
     return Number(sequence.last_value) + (sequence.is_called ? 1 : 0)
   }
 
@@ -659,12 +659,20 @@ export class BuildPairingService {
               data: { base_airport: params.base, date_from: window.gte, date_to: window.lte, status: 'draft' },
               select: { id: true, status: true },
             }))
-          // One at a time and in order, so the codes follow the order of the list.
+          // A pairing keeps the code its proposal showed, so leaving one proposal out does not renumber the rest. Codes are
+          // handed out only here, and this lock lets one commit at a time do it: a code at or past the sequence's next number
+          // is free, is taken as is, and moves the sequence past it. An older code (another commit got there first) falls
+          // back to the sequence.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('pairing-codes', 0))`
+          let next = await this.nextPairingNumber(tx)
           const stored: { ref: string; id: string; code: string }[] = []
           for (const { draft, legs } of ready) {
             const manual = new Set(legs.filter((leg) => leg.addedManually).map((leg) => leg.flightId))
+            const proposed = proposedNumber(draft.ref)
+            const keep = proposed !== null && proposed >= next
             const created = await tx.pairing.create({
               data: {
+                ...(keep && { code: `P-${proposed}` }),
                 base_airport: params.base,
                 pairing_leg: {
                   create: legs.map((leg) => ({ flight_id: leg.flightId, added_by: manual.has(leg.flightId) ? 'ops' : 'auto' })),
@@ -672,6 +680,8 @@ export class BuildPairingService {
               },
               select: { id: true, code: true },
             })
+            if (keep) await tx.$queryRaw`SELECT setval('pairing_code_seq', ${proposed}::bigint)`
+            next = Math.max(next, (proposedNumber(created.code) ?? 0) + 1)
             stored.push({ ref: draft.ref, id: created.id, code: created.code })
             await writeRosteringAudit(
               this.audit,
@@ -953,4 +963,10 @@ function durationLabel(minutes: number): string {
   const hours = Math.floor(minutes / 60)
   const rest = minutes % 60
   return hours === 0 ? `${rest}m` : `${hours}h ${String(rest).padStart(2, '0')}m`
+}
+
+/** The number in a pairing code (`P-12` → 12), or null for anything else. */
+function proposedNumber(code: string): number | null {
+  const match = /^P-(\d+)$/.exec(code)
+  return match ? Number(match[1]) : null
 }

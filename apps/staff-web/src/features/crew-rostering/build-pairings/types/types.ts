@@ -167,6 +167,8 @@ export interface PairingMetrics {
 export interface LegSummaryRow {
   flightId: string
   flightNumber: string
+  /** `Wed 16 Sep`, the local departure day, so the same flight number on two days does not read as a duplicate. */
+  dayLabel: string
   origin: AirportCode
   destination: AirportCode
   departureLocal: string

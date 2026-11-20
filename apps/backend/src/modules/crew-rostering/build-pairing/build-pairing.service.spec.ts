@@ -35,10 +35,18 @@ function flight(id: string, origin: string, destination: string, dep: number, ar
 
 /** Just enough of `DbService` for `commitPairings`, with every write recorded. */
 function setup(options: { flights: ReturnType<typeof flight>[]; runs?: { id: string; status: string }[] }) {
-  const created: { data: { pairing_leg: { create: { flight_id: string; added_by: string }[] } } }[] = []
+  const created: { data: { code?: string; pairing_leg: { create: { flight_id: string; added_by: string }[] } } }[] = []
+  // `pairing_code_seq`: the last number it handed out. `setval` moves it; `create` without a code takes the next one.
   let sequence = 200
   const tx = {
     $executeRaw: jest.fn().mockResolvedValue(0),
+    $queryRaw: jest.fn((strings: TemplateStringsArray, ...values: unknown[]) => {
+      if (strings.join('?').includes('setval')) {
+        sequence = Number(values[0])
+        return Promise.resolve([{ setval: BigInt(sequence) }])
+      }
+      return Promise.resolve([{ last_value: BigInt(sequence), is_called: true }])
+    }),
     roster_run: {
       create: jest.fn().mockResolvedValue({ id: 'run-new', status: 'draft' }),
       update: jest.fn(),
@@ -48,6 +56,7 @@ function setup(options: { flights: ReturnType<typeof flight>[]; runs?: { id: str
     pairing: {
       create: jest.fn((args: (typeof created)[number]) => {
         created.push(args)
+        if (args.data.code) return Promise.resolve({ id: `pairing-${args.data.code.slice(2)}`, code: args.data.code })
         sequence += 1
         return Promise.resolve({ id: `pairing-${sequence}`, code: `P-${sequence}` })
       }),
@@ -176,10 +185,40 @@ describe('BuildPairingService.commitPairings', () => {
 
     await service.commitPairings(params, [{ ref: 'P-108', legs: [leg('1'), leg('2')] }])
 
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(1)
+    // One lock for the window's run, one for handing out pairing codes.
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(2)
     expect(tx.roster_run.findFirst).toHaveBeenCalled()
     expect(tx.roster_run.create).not.toHaveBeenCalled()
     expect(tx.roster_run_pairing.createMany).toHaveBeenCalledWith({ data: [{ roster_run_id: 'run-7', pairing_id: expect.any(String) }] })
+  })
+
+  it('keeps the code each proposal showed, so leaving one out does not renumber the rest', async () => {
+    const third = flight('3', 'BKK', 'NRT', 29.5, 35.5)
+    const fourth = flight('4', 'NRT', 'BKK', 36.5, 40.5)
+    const { service, tx, created } = setup({ flights: [out, back, third, fourth] })
+
+    // The sequence's next number is P-201. P-202 was proposed too but not committed.
+    const result = await service.commitPairings(params, [
+      { ref: 'P-201', legs: [leg('1'), leg('2')] },
+      { ref: 'P-203', legs: [leg('3'), leg('4')] },
+    ])
+
+    expect(result.committed).toEqual([
+      { ref: 'P-201', code: 'P-201' },
+      { ref: 'P-203', code: 'P-203' },
+    ])
+    expect(created.map((row) => row.data.code)).toEqual(['P-201', 'P-203'])
+    // The sequence is moved past each kept code, so the next commit cannot hand it out again.
+    expect(tx.$queryRaw).toHaveBeenCalledWith(expect.anything(), 203)
+  })
+
+  it('falls back to the sequence for a proposal whose code another commit already passed', async () => {
+    const { service, created } = setup({ flights: [out, back] })
+
+    const result = await service.commitPairings(params, [{ ref: 'P-150', legs: [leg('1'), leg('2')] }])
+
+    expect(result.committed).toEqual([{ ref: 'P-150', code: 'P-201' }])
+    expect(created[0].data.code).toBeUndefined()
   })
 
   it('refuses an empty commit', async () => {

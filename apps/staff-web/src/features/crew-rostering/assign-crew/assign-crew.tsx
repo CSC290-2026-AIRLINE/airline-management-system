@@ -14,7 +14,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { useAssignCrew } from './types/use-assign-crew'
 import type { AssignmentSummary } from './types/types'
 import { RosterRunBadge, WizardSteps } from '../shared/app-shell'
-import { ArrowRightIcon, Button } from '../shared/ui'
+import { NotCrewedNote } from '../shared/not-crewed-note'
+import { ArrowLeftIcon, ArrowRightIcon, Button } from '../shared/ui'
 import { AssignmentCards, AssignmentsTable } from './components/assignment-table'
 import { MobileBottomBar, PageColumn } from './components/mobile-chrome'
 import { PairingsPicker } from './components/pairings-picker'
@@ -32,6 +33,7 @@ export function AssignCrewPage() {
   const canRun = state.rosterRun?.status === 'draft' && state.selectedPairings.length > 0 && state.dateError === null && !state.isRunning
   const summary = state.summary
   const hasResults = state.assignments !== null && summary !== null
+  const notCrewedById = new Map(state.notCrewed.map((pairing) => [pairing.pairingId, pairing]))
 
   // Named in the rules note only when every selected leg flies the same aircraft type.
   const aircraftType = useMemo(() => {
@@ -106,7 +108,18 @@ export function AssignCrewPage() {
           <WizardSteps active="assign-crew" />
         </div>
 
+        {/* The way back on a wide screen; a phone has it in the top bar. The wizard strip itself is not clickable. */}
+        <button
+          type="button"
+          onClick={() => void navigate({ to: '/build-pairings', search: { ...state.params } })}
+          className="-mt-1 hidden w-fit items-center gap-1.5 text-sm font-semibold text-blue-700 transition-colors hover:text-blue-800 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 lg:flex"
+        >
+          <ArrowLeftIcon className="h-4 w-4" />
+          Build pairings
+        </button>
+
         {summary && state.assignments && <RunSummaryBanner summary={summary} onOpenFix={openFixPublish} />}
+        {summary && state.assignments && <NotCrewedNote pairings={state.notCrewed} />}
 
         {state.runError && (
           <p role="alert" className="rounded-lg border border-invalid/30 bg-invalid-bg px-4 py-3 text-sm font-medium text-invalid">
@@ -138,7 +151,7 @@ export function AssignCrewPage() {
           {hasResults ? (
             <>
               <RunStatCards summary={summary} />
-              <AssignmentsTable assignments={state.assignments!} breaksByLeg={state.breaksByLeg} />
+              <AssignmentsTable assignments={state.assignments!} breaksByLeg={state.breaksByLeg} notCrewed={notCrewedById} />
               {state.breaks.length > 0 && (
                 <div data-rule-breaks>
                   <RuleBreaksCard breaks={state.breaks} onOpenFix={openFixPublish} />
@@ -172,7 +185,7 @@ export function AssignCrewPage() {
           {hasResults ? (
             <>
               <RunStatCards summary={summary} />
-              <AssignmentCards assignments={state.assignments!} breaksByLeg={state.breaksByLeg} />
+              <AssignmentCards assignments={state.assignments!} breaksByLeg={state.breaksByLeg} notCrewed={notCrewedById} />
               {state.breaks.length > 0 && (
                 <div data-rule-breaks>
                   <RuleBreaksCard breaks={state.breaks} onOpenFix={openFixPublish} />

@@ -9,6 +9,7 @@
  * A sick call is not a rule. Taking somebody off leaves a seat empty, which the backend
  * reports as `NO_LEGAL_CREW` (or `POLICE_MIN`); `removed` says who came off.
  */
+import type { NotCrewedPairing } from '../../shared/not-crewed-note'
 import type {
   IsoInstant,
   LegCrew,
@@ -103,7 +104,7 @@ export interface FixBreak {
   /** The panel heading: the code, or `SICK CALL` for a seat somebody came off. */
   title: string
   severity: RuleSeverity
-  /** Numbering in the left list, fixed the first time the item appears and never reused. */
+  /** Numbering in the left list, in flight order (departure, then pairing). */
   position: number
   pairingId: string
   /** `P-101`. */
@@ -167,6 +168,8 @@ export interface FixPublishData {
   limits: RuleLimits | null
   /** Pairings of this window still waiting in a newer draft run: what the publish left for the next round. */
   remainingPairings: number
+  /** Before publishing: pairings nobody is on, which publishing moves to a new draft run. */
+  notCrewed: NotCrewedPairing[]
 }
 
 /** What an edit answers: the sentence for the panel, whether the item closed, and the new state. */

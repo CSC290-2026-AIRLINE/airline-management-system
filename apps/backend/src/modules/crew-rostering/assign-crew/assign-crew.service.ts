@@ -199,6 +199,18 @@ export interface RunResult {
   /** Open breaks only; fixed and overridden ones are Fix & publish's history. */
   breaks: RuleBreakRow[]
   summary: AssignmentSummaryRow
+  /**
+   * Pairings in the run with nobody on them while others are crewed. They are not judged, not published with this batch,
+   * and move to a new draft run on publish, so both pages list them instead of counting their empty seats as breaks.
+   */
+  notCrewed: NotCrewedRow[]
+}
+
+export interface NotCrewedRow {
+  pairingId: string
+  code: string
+  /** Set when the run's crew cannot fly it at all, e.g. `Nobody at BKK flies the ATR 72-600.` */
+  reason: string | null
 }
 
 const LEG_SELECT = {
@@ -359,12 +371,12 @@ export class AssignCrewService {
   }
 
   /**
-   * The pairings of a run that are in play: those somebody is crewed on, plus `include` (the ones just sent to auto-assign,
-   * which may have come out with nobody on them). A run nobody has crewed yet has no batch, so every pairing counts and the
-   * page cannot look ready to publish. The pairings left out are not wrong, they are for the next round.
+   * The pairings of a run that are in play: those somebody is crewed on. A run nobody has crewed yet has no batch, so every
+   * pairing counts and the page cannot look ready to publish. The pairings left out are not wrong, they are for the next round.
+   * Assign crew, Fix & publish and publish all use this one scope, so they agree on what is open.
    */
-  scopeOf(pairings: readonly RunPairing[], assignments: readonly { pairing_id: string }[], include: readonly string[] = []): Set<string> {
-    const crewed = new Set([...assignments.map((row) => row.pairing_id), ...include])
+  scopeOf(pairings: readonly RunPairing[], assignments: readonly { pairing_id: string }[]): Set<string> {
+    const crewed = new Set(assignments.map((row) => row.pairing_id))
     return crewed.size > 0
       ? new Set(pairings.filter((pairing) => crewed.has(pairing.id)).map((pairing) => pairing.id))
       : new Set(pairings.map((pairing) => pairing.id))
@@ -380,7 +392,7 @@ export class AssignCrewService {
   async getRun(rosterRunId: string): Promise<RunResult> {
     const { run, pairings } = await this.loadRun(rosterRunId)
     const assignments = await this.activeAssignments(pairings)
-    return this.toResult(run, pairings, assignments, await this.openBreaks(rosterRunId))
+    return this.toResult(run, pairings, assignments, await this.openBreaks(rosterRunId), await this.fleetsAt(run.base_airport))
   }
 
   /**
@@ -457,6 +469,11 @@ export class AssignCrewService {
         where: { pairing_id: { in: [...targetIds] }, assigned_by: 'auto', unassigned_at: null },
       })
       if (rows.length > 0) await tx.pairing_leg_assignment.createMany({ data: rows })
+      // A re-crew starts these pairings' breaks over. What the last round found was not fixed by it, it no longer applies, so
+      // it is removed rather than left behind as a "Fixed" row. Overrides stay: they record a decision and its reason.
+      await tx.rule_break.deleteMany({
+        where: { roster_run_id: rosterRunId, pairing_id: { in: [...targetIds] }, OR: [{ resolved_at: null }, { resolution: 'fixed' }] },
+      })
       const codes = targets.map((pairing) => pairing.code)
       await writeRosteringAudit(
         this.audit,
@@ -473,15 +490,15 @@ export class AssignCrewService {
       )
     })
 
-    return this.check(rosterRunId, [...targetIds])
+    return this.check(rosterRunId)
   }
 
   /** Re-checks every rule on the run against what is stored, and records the result. */
-  async check(rosterRunId: string, include: readonly string[] = []): Promise<RunResult> {
+  async check(rosterRunId: string): Promise<RunResult> {
     const { run, pairings, context } = await this.loadRun(rosterRunId)
     const assignments = await this.activeAssignments(pairings)
-    // Only the pairings in play are judged: the ones Ops crewed. The rest wait for the next round and raise nothing.
-    const inScope = this.scopeOf(pairings, assignments, include)
+    // Only the pairings in play are judged: the ones somebody is crewed on. The rest wait for the next round and raise nothing.
+    const inScope = this.scopeOf(pairings, assignments)
     const crewIds = [...new Set(assignments.map((row) => row.crew_id))]
     const legs = pairings.flatMap((pairing) => pairing.legs)
     const history =
@@ -499,7 +516,7 @@ export class AssignCrewService {
       context,
     )
     await this.storeBreaks(rosterRunId, found, inScope, run.status !== 'published')
-    return this.toResult(run, pairings, assignments, await this.openBreaks(rosterRunId))
+    return this.toResult(run, pairings, assignments, await this.openBreaks(rosterRunId), await this.fleetsAt(run.base_airport))
   }
 
   /* ── assignment ─────────────────────────────────────────────────────────── */
@@ -955,6 +972,16 @@ export class AssignCrewService {
 
   /* ── reads ──────────────────────────────────────────────────────────────── */
 
+  /** The aircraft models the pilots and cabin crew based at `base` fly (police are exempt from fleet). */
+  private async fleetsAt(base: string): Promise<Set<string>> {
+    const rows = await this.db.crew.findMany({
+      where: { deleted_at: null, base_airport: base, role: { not: 'police' } },
+      select: { fleet_aircraft_type: true },
+      distinct: ['fleet_aircraft_type'],
+    })
+    return new Set(rows.map((row) => row.fleet_aircraft_type))
+  }
+
   /** The run with its pairings and legs, for the step that fixes and publishes it. */
   async loadRun(rosterRunId: string): Promise<{ run: RunDbRow; pairings: RunPairing[]; context: Context }> {
     const run = await this.db.roster_run.findUnique({ where: { id: rosterRunId }, select: RUN_SELECT })
@@ -1081,7 +1108,19 @@ export class AssignCrewService {
     pairings: RunPairing[],
     assignments: (AssignmentDbRow & { crew: CrewDbRow })[],
     breaks: RuleBreakRow[],
+    fleets: ReadonlySet<string>,
   ): RunResult {
+    const inScope = this.scopeOf(pairings, assignments)
+    const notCrewed = pairings
+      .filter((pairing) => !inScope.has(pairing.id))
+      .map((pairing): NotCrewedRow => {
+        const unflown = [...new Set(pairing.legs.map((leg) => leg.aircraftType))].filter((model) => !fleets.has(model))
+        return {
+          pairingId: pairing.id,
+          code: pairing.code,
+          reason: unflown.length > 0 ? `Nobody at ${run.base_airport} flies the ${unflown.join(' or ')}.` : null,
+        }
+      })
     const rows: LegAssignmentRow[] = pairings.flatMap((pairing) =>
       pairing.legs.map((leg) => {
         const onLeg = assignments.filter((row) => row.pairing_leg_id === leg.id)
@@ -1107,6 +1146,7 @@ export class AssignCrewService {
       rosterRun: this.toRunRow(run),
       assignments: rows,
       breaks,
+      notCrewed,
       summary: {
         totalLegs: rows.length,
         fullyCrewedLegs: rows.filter(

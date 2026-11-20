@@ -5,6 +5,7 @@
  * off the same derived break list the rule-break card renders, so a leg can never
  * show `OK` while a card below says it is broken.
  */
+import type { NotCrewedPairing } from '../../shared/not-crewed-note'
 import { formatTime, pluralise, ROSTER_TIME_ZONE } from '../../build-pairings/types/format'
 import { RouteText } from '../../build-pairings/components/route-text'
 import type { LegCrew, RosterCrewMember, RosterRuleBreak } from '../types/types'
@@ -19,6 +20,8 @@ function formatShortDate(instant: string): string {
 export interface AssignmentsProps {
   assignments: readonly LegCrew[]
   breaksByLeg: Map<string, RosterRuleBreak[]>
+  /** Pairings nobody is on, keyed by id: their legs wait for the next run, so they are not "OK". */
+  notCrewed: ReadonlyMap<string, NotCrewedPairing>
 }
 
 /** `4 of 4` for a full complement, `2 of 4` when the leg is short. */
@@ -70,7 +73,17 @@ function policeMissing(assignment: LegCrew): string | undefined {
   return assignment.police.length < assignment.policeRequired ? 'Missing' : undefined
 }
 
-function StatusCell({ breaks }: { breaks: readonly RosterRuleBreak[] }) {
+function StatusCell({ breaks, deferred }: { breaks: readonly RosterRuleBreak[]; deferred?: NotCrewedPairing }) {
+  if (deferred) {
+    return (
+      <span
+        title={deferred.reason ?? 'Nobody is on this pairing yet. Publishing moves it to a new draft run.'}
+        className="rounded-full bg-band-bg px-2.5 py-0.5 text-[11px] font-bold whitespace-nowrap text-primary-text/60"
+      >
+        Next run
+      </span>
+    )
+  }
   if (breaks.length === 0) {
     return <span className="rounded-full bg-valid-bg px-2.5 py-0.5 text-[11px] font-bold text-valid">OK</span>
   }
@@ -88,7 +101,7 @@ function StatusCell({ breaks }: { breaks: readonly RosterRuleBreak[] }) {
 const HEAD = 'px-3 py-3 text-[11px] font-semibold tracking-wider text-primary-text/50 uppercase'
 
 /** Desktop table. One row per leg, tinted when that leg is breaking a rule. */
-export function AssignmentsTable({ assignments, breaksByLeg }: AssignmentsProps) {
+export function AssignmentsTable({ assignments, breaksByLeg, notCrewed }: AssignmentsProps) {
   if (assignments.length === 0) return null
   return (
     <section className="hidden rounded-2xl border border-border-desc/40 bg-card-bg p-7 lg:block">
@@ -150,7 +163,7 @@ export function AssignmentsTable({ assignments, breaksByLeg }: AssignmentsProps)
                     />
                   </td>
                   <td className="px-3 py-3.5">
-                    <StatusCell breaks={breaks} />
+                    <StatusCell breaks={breaks} deferred={notCrewed.get(assignment.pairingId)} />
                   </td>
                 </tr>
               )
@@ -163,7 +176,7 @@ export function AssignmentsTable({ assignments, breaksByLeg }: AssignmentsProps)
 }
 
 /** Mobile: the same legs as cards, because the table has nine columns. */
-export function AssignmentCards({ assignments, breaksByLeg }: AssignmentsProps) {
+export function AssignmentCards({ assignments, breaksByLeg, notCrewed }: AssignmentsProps) {
   if (assignments.length === 0) return null
   return (
     <section className="rounded-2xl border border-border-desc/40 bg-card-bg p-5 lg:hidden">
@@ -188,7 +201,7 @@ export function AssignmentCards({ assignments, breaksByLeg }: AssignmentsProps) 
                   />
                 </p>
                 <div className="shrink-0">
-                  <StatusCell breaks={breaks} />
+                  <StatusCell breaks={breaks} deferred={notCrewed.get(assignment.pairingId)} />
                 </div>
               </div>
               <div className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-primary-text/70">

@@ -14,6 +14,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { RosterRunBadge, WizardSteps } from '../shared/app-shell'
+import { NotCrewedNote } from '../shared/not-crewed-note'
 import { ArrowLeftIcon, ArrowRightIcon, Button, ChevronLeftIcon } from '../shared/ui'
 import { BreakChips } from './components/break-chips'
 import { BreakList, SeatRules } from './components/break-list'
@@ -49,6 +50,8 @@ export function FixPublishPage() {
   const seatOnly = state.openBreaks.every((item) => item.code === 'NO_LEGAL_CREW')
   const windowSearch = { dateFrom: state.params.dateFrom, dateTo: state.params.dateTo, base: state.params.base }
   const hasRun = state.rosterRun !== null
+  // Nothing to publish yet: no publish checks, no bottom bar and no ticked steps until a run exists.
+  const noRun = state.loadState === 'idle' && !hasRun
   const backToRoster = isPublished && showFix
   const left = state.remainingPairings
   // Pairings nobody crewed in this round wait in a new draft run: the next round starts in Assign crew with them, not from scratch.
@@ -95,7 +98,7 @@ export function FixPublishPage() {
         </header>
 
         <div className="lg:mb-1">
-          <WizardSteps active="fix-publish" allDone={isPublished && !hasOpen} />
+          <WizardSteps active="fix-publish" allDone={isPublished && !hasOpen} earlierDone={!noRun} />
         </div>
 
         {/* The way back. The wizard strip shows where you are but is not itself clickable,
@@ -131,7 +134,7 @@ export function FixPublishPage() {
 
         {state.loadState === 'loading' && <p className="text-sm text-primary-text/60">Loading the roster…</p>}
 
-        {state.loadState === 'idle' && !hasRun && (
+        {noRun && (
           <section className="rounded-2xl border border-border-desc/40 bg-card-bg px-6 py-10 text-center">
             <p className="text-base font-bold text-primary-text">No roster run for this base and dates yet</p>
             <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-primary-text/60">
@@ -179,6 +182,8 @@ export function FixPublishPage() {
             </NoticeStrip>
           </div>
         )}
+
+        {!isPublished && <NotCrewedNote pairings={state.notCrewed} />}
 
         {/* What the last fix did. Wide screens print it at the top of the panel; on a phone it is a strip. */}
         {state.fixNotice && showFix && (
@@ -258,8 +263,7 @@ export function FixPublishPage() {
                     Publish roster
                   </button>
                   <p className="text-center text-[13px] font-medium text-invalid">
-                    ROSTER_HAS_BREAKS · close {state.openBreaks.length} open {state.openBreaks.length === 1 ? 'break' : 'breaks'} before
-                    publishing.
+                    Close {state.openBreaks.length} open {state.openBreaks.length === 1 ? 'break' : 'breaks'} before publishing.
                   </p>
                 </div>
               )}
@@ -267,7 +271,7 @@ export function FixPublishPage() {
           </>
         )}
 
-        {!showFix && (
+        {!showFix && hasRun && (
           <>
             {/* On a phone the open items and the "Published" card come before the leg cards; on a wide screen the roster comes first. */}
             <div className="flex flex-col gap-5">
@@ -315,7 +319,7 @@ export function FixPublishPage() {
         )}
       </div>
 
-      {!showFix && (
+      {!showFix && hasRun && (
         <MobileBottomBar
           openCount={state.openBreaks.length}
           isPublished={isPublished}

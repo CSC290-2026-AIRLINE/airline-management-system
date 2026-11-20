@@ -349,6 +349,7 @@ function autoAssignSetup() {
       deleteMany: jest.fn().mockResolvedValue({ count: 3 }),
       createMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    rule_break: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
   }
   const db = {
     crew: { findMany: jest.fn().mockResolvedValue([crew('captain-ok', 'captain')]) },
@@ -368,6 +369,16 @@ function autoAssignSetup() {
 }
 
 describe('AssignCrewService.autoAssign re-run', () => {
+  it('clears the re-crewed pairings\' open and fixed breaks, so the last round is not listed as "Fixed", and keeps overrides', async () => {
+    const { instance, tx } = autoAssignSetup()
+
+    await instance.autoAssign(RUN, [])
+
+    expect(tx.rule_break.deleteMany).toHaveBeenCalledWith({
+      where: { roster_run_id: RUN, pairing_id: { in: ['p-1'] }, OR: [{ resolved_at: null }, { resolution: 'fixed' }] },
+    })
+  })
+
   it('replaces only live automatic rows, so a sick call keeps its history row', async () => {
     const { instance, tx } = autoAssignSetup()
 
@@ -413,12 +424,35 @@ describe('AssignCrewService.scopeOf', () => {
     expect([...scope].sort()).toEqual(['p-1', 'p-3'])
   })
 
-  it('also counts the pairings just sent to auto-assign, even if nobody could be put on them', () => {
-    const scope = service.scopeOf(pairings, [{ pairing_id: 'p-1' }], ['p-2'])
-    expect([...scope].sort()).toEqual(['p-1', 'p-2'])
+  it('leaves out a pairing nobody could be put on, the same as Fix & publish and publish do', () => {
+    // p-2 was sent to auto-assign and came out empty: it goes to the next round, so it raises no breaks here either.
+    const scope = service.scopeOf(pairings, [{ pairing_id: 'p-1' }])
+    expect([...scope].sort()).toEqual(['p-1'])
   })
 
   it('is the whole run while nobody is crewed, so an untouched run never looks ready to publish', () => {
     expect([...service.scopeOf(pairings, [])].sort()).toEqual(['p-1', 'p-2', 'p-3', 'p-4'])
+  })
+})
+
+describe('AssignCrewService not-crewed pairings', () => {
+  const run = { id: RUN, base_airport: 'BKK', date_from: new Date('2026-11-20'), date_to: new Date('2026-11-21'), status: 'draft' }
+  const a320 = { ...pairing([leg('1', '2026-11-20T01:00:00Z', '2026-11-20T03:00:00Z', { aircraftType: 'A320-200' })]) }
+  const atr = {
+    ...pairing([leg('2', '2026-11-20T04:00:00Z', '2026-11-20T06:00:00Z', { pairingId: 'p-2', aircraftType: 'ATR 72-600' })]),
+    id: 'p-2',
+    code: 'P-2',
+  }
+  const onA320 = [{ pairing_id: 'p-1', pairing_leg_id: '1', role: 'captain', crew: crew('captain-ok', 'captain') }]
+  const toResult = (instance: AssignCrewService) =>
+    (instance as unknown as { toResult: (...args: unknown[]) => { notCrewed: unknown[] } }).toResult.bind(instance)
+
+  it('lists a pairing with nobody on it, and says why when no crew at the base flies its aircraft', () => {
+    const result = toResult(service())(run, [a320, atr], onA320, [], new Set(['A320-200']))
+    expect(result.notCrewed).toEqual([{ pairingId: 'p-2', code: 'P-2', reason: 'Nobody at BKK flies the ATR 72-600.' }])
+  })
+
+  it('lists nothing while nobody is crewed at all, since the whole run is then judged', () => {
+    expect(toResult(service())(run, [a320, atr], [], [], new Set(['A320-200'])).notCrewed).toEqual([])
   })
 })

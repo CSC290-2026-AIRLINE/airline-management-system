@@ -44,12 +44,21 @@ export function RosterRunBadge({ base, dateFrom, dateTo, status }: { base: strin
  * labels sit under the numbers and the current number is ringed instead, because the
  * block would not fit three steps across.
  */
-export function WizardSteps({ active, allDone = false }: { active: WizardStep; allDone?: boolean }) {
+/** `earlierDone` is false when the page has nothing to show yet (no roster run), so the steps before it are not ticked. */
+export function WizardSteps({
+  active,
+  allDone = false,
+  earlierDone = true,
+}: {
+  active: WizardStep
+  allDone?: boolean
+  earlierDone?: boolean
+}) {
   const activeIndex = WIZARD_STEPS.findIndex((step) => step.id === active)
   return (
     <div className="flex items-start justify-center gap-1 rounded-2xl bg-band-bg px-3 py-3 sm:items-center sm:justify-start sm:gap-3 sm:px-3 sm:py-2">
       {WIZARD_STEPS.map((step, index) => {
-        const done = allDone || index < activeIndex
+        const done = allDone || (earlierDone && index < activeIndex)
         const current = !allDone && index === activeIndex
         return (
           <div key={step.id} className="flex items-start gap-1 sm:items-center sm:gap-3">

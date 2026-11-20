@@ -214,6 +214,7 @@ export function validatePairing(pairing: Pairing): PairingEvaluation {
     cardRows: legs.map((leg) => ({
       flightId: leg.flightId,
       flightNumber: leg.flightNumber,
+      dayLabel: formatDay(leg.departureAt),
       origin: leg.origin,
       destination: leg.destination,
       departureLocal: formatTime(leg.departureAt),

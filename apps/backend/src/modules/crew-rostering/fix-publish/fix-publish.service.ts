@@ -8,6 +8,7 @@ import {
   type Context,
   type Leg,
   type LegAssignmentRow,
+  type NotCrewedRow,
   type RosterRunRow,
   type RuleCode,
   type RuleLimitsRow,
@@ -158,6 +159,8 @@ export interface FixPublishState {
   limits: RuleLimitsRow | null
   /** Pairings of this window still waiting in a newer draft run: what is left after this batch was published. */
   remainingPairings: number
+  /** Before publishing: pairings of this run with nobody on them, which publishing moves to a new draft run. */
+  notCrewed: NotCrewedRow[]
 }
 
 export interface FixOutcome {
@@ -209,7 +212,8 @@ const PERSON_RULES: ReadonlySet<string> = new Set([
 ])
 
 /** Rule numbers as the "Rules used" card on Assign crew prints them. */
-const RULE_NUMBER = { REST_SHORT: 2, HOURS_28D: 3, OVERLAP: 4 } as const
+/** The numbers the rules strip prints (staff-web `displayRules`): duty, rest, hours, local crew, police, overlap. */
+const RULE_NUMBER = { REST_SHORT: 2, HOURS_28D: 3, OVERLAP: 6 } as const
 
 const ROLE_LABEL: Record<SeatRole, string> = {
   captain: 'Captain',
@@ -268,6 +272,8 @@ type BreakDbRow = Prisma.rule_breakGetPayload<{ select: typeof BREAK_SELECT }>
 interface BusyLeg {
   legId: string
   pairingId: string
+  /** `P-6`, so a clash can name the pairing, not just one of its flights. */
+  pairingCode: string
   flightNumber: string
   dep: Date
   arr: Date
@@ -346,7 +352,16 @@ export class FixPublishService {
     })
     return run
       ? this.buildState(run.id)
-      : { rosterRun: null, assignments: [], breaks: [], publishChecks: [], uncoveredLegIds: [], limits: null, remainingPairings: 0 }
+      : {
+          rosterRun: null,
+          assignments: [],
+          breaks: [],
+          publishChecks: [],
+          uncoveredLegIds: [],
+          limits: null,
+          remainingPairings: 0,
+          notCrewed: [],
+        }
   }
 
   /** The state of one run by its id, so a published roster can be reopened whatever else is in its window. */
@@ -670,7 +685,7 @@ export class FixPublishService {
     const closedFixed = rows.filter((row) => row.resolved_at !== null && row.resolution === 'fixed').map((row) => row.id)
     const trail = await this.swapTrail(closedFixed)
 
-    const breaks = rows.map((row, index) => this.toFixBreakRow(row, index + 1, world, trail))
+    const breaks = inFlightOrder(rows, world.legs, world.pairingById).map((row, index) => this.toFixBreakRow(row, index + 1, world, trail))
     const uncovered = new Set(
       breaks.filter((item) => item.resolution === undefined && item.code === 'NO_LEGAL_CREW').map((item) => item.legId),
     )
@@ -687,6 +702,7 @@ export class FixPublishService {
       uncoveredLegIds: [...uncovered],
       limits: world.pairings[0]?.limits ?? world.context.defaults,
       remainingPairings,
+      notCrewed: current.rosterRun.status === 'draft' ? current.notCrewed : [],
     }
   }
 
@@ -1001,7 +1017,7 @@ export class FixPublishService {
     ) {
       eligible = `No valid ${model} type rating on ${lastDate}.`
     }
-    checks.push({ label: 'Eligible & available', ok: eligible === undefined, reason: eligible })
+    checks.push({ label: 'Qualified', ok: eligible === undefined, reason: eligible })
 
     if (plan.languages.length > 0) {
       const speaks = plan.languages.some((language) => member.languages.includes(language))
@@ -1053,14 +1069,20 @@ export class FixPublishService {
             other.blockDep.getTime() - limits.reportMinutes * 60_000 < end &&
             start < other.blockArr.getTime() + limits.releaseMinutes * 60_000,
         )
+    // No two flights meet, but the duty on the other pairing (report to release) runs into this one's: say so with the
+    // times, rather than naming one of its flights as if it were in the air at the same time.
+    const timeZone = world.context.timeZone
+    const dutyClash = inside
+      ? `On duty for ${inside.pairingCode} from ${stamp(new Date(inside.blockDep.getTime() - limits.reportMinutes * 60_000), timeZone)} to ` +
+        `${stamp(new Date(inside.blockArr.getTime() + limits.releaseMinutes * 60_000), timeZone)}, which runs into this duty ` +
+        `(${stamp(new Date(start), timeZone)} to ${stamp(new Date(end), timeZone)}) (rule ${RULE_NUMBER.OVERLAP}).`
+      : undefined
+    const overlapOk = clash === undefined && inside === undefined
     checks.push({
-      label: 'No overlap',
-      ok: clash === undefined && inside === undefined,
-      reason: clash
-        ? `Overlaps ${clash.flightNumber} (rule ${RULE_NUMBER.OVERLAP}).`
-        : inside
-          ? `Is on another pairing (${inside.flightNumber}) during this flight (rule ${RULE_NUMBER.OVERLAP}).`
-          : undefined,
+      // A failed chip reads as what is wrong, not as a claim that sits next to its own contradiction.
+      label: overlapOk ? 'No overlap' : 'Overlap',
+      ok: overlapOk,
+      reason: clash ? `Overlaps ${clash.flightNumber} on ${clash.pairingCode} (rule ${RULE_NUMBER.OVERLAP}).` : dutyClash,
     })
 
     return {
@@ -1110,7 +1132,9 @@ export class FixPublishService {
           crew_id: true,
           pairing_id: true,
           pairing_leg_id: true,
-          pairing_leg: { select: { flight: { select: { flight_number: true, dep_at: true, arr_at: true } } } },
+          pairing_leg: {
+            select: { pairing: { select: { code: true } }, flight: { select: { flight_number: true, dep_at: true, arr_at: true } } },
+          },
         },
       }),
       client.pairing_leg_assignment.findMany({
@@ -1143,6 +1167,7 @@ export class FixPublishService {
       const entry = {
         legId: row.pairing_leg_id,
         pairingId: row.pairing_id,
+        pairingCode: row.pairing_leg.pairing.code,
         flightNumber: row.pairing_leg.flight.flight_number,
         dep: row.pairing_leg.flight.dep_at,
         arr: row.pairing_leg.flight.arr_at,
@@ -1206,6 +1231,20 @@ export class FixPublishService {
 }
 
 /** `15 Sep, 12:30` in the given timezone. */
+/**
+ * Breaks in flight order: by departure, then pairing code (P-9 before P-10), so the breaks on one flight sit together.
+ * Ties keep the order they were found in; a break whose leg is gone goes last.
+ */
+export function inFlightOrder<T extends { pairing_leg_id: string; pairing_id: string }>(
+  rows: readonly T[],
+  legs: ReadonlyMap<string, Pick<Leg, 'dep'>>,
+  pairings: ReadonlyMap<string, Pick<RunPairing, 'code'>>,
+): T[] {
+  const depOf = (row: T): number => legs.get(row.pairing_leg_id)?.dep.getTime() ?? Number.MAX_SAFE_INTEGER
+  const codeOf = (row: T): string => pairings.get(row.pairing_id)?.code ?? ''
+  return [...rows].sort((a, b) => depOf(a) - depOf(b) || codeOf(a).localeCompare(codeOf(b), undefined, { numeric: true }))
+}
+
 function stamp(instant: Date, timeZone: string): string {
   return new Intl.DateTimeFormat('en-GB', {
     timeZone,
