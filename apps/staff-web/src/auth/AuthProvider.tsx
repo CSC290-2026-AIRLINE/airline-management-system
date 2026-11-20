@@ -54,6 +54,7 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
      cookie, so each would POST /api/auth/session and the audit log would record two sign-ins. Sharing the in-flight
      promise makes the second run wait for the first instead of starting its own. */
   const sessionLoadRef = useRef<Promise<SessionData> | null>(null)
+  const refreshRef = useRef<Promise<string | null> | null>(null)
 
   function loadSession(): Promise<SessionData> {
     sessionLoadRef.current ??= (async () => {
@@ -128,7 +129,21 @@ export function AppAuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSignedIn, getToken, gate])
 
-  async function refreshAccessToken(): Promise<string | null> {
+  /*
+   * One refresh at a time. Refresh tokens rotate, so a second refresh that sends the old cookie looks like reuse, and the
+   * backend then signs the user out everywhere. Parallel 401s (a page of requests that all expire together) must share
+   * this one request, not each start their own.
+   */
+  function refreshAccessToken(): Promise<string | null> {
+    if (!refreshRef.current) {
+      refreshRef.current = requestRefresh().finally(() => {
+        refreshRef.current = null
+      })
+    }
+    return refreshRef.current
+  }
+
+  async function requestRefresh(): Promise<string | null> {
     const res = await fetch(`${API_URL}/api/auth/refresh`, { method: 'POST', credentials: 'include' })
     if (!res.ok) {
       storeAccessToken(null)

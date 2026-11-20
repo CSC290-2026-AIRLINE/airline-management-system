@@ -5,6 +5,7 @@ import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
+import { BiDashboardsModule } from './modules/bi-dashboards/bi-dashboards.module'
 import { CheckinBoardingModule } from './modules/checkin-boarding/checkin-boarding.module'
 import { validateEnv } from './config/env.validation'
 import { ScreeningModule } from './modules/screening/screening.module'
@@ -27,6 +28,7 @@ import { FlightSchedulingModule } from './modules/flight-scheduling/flight-sched
     WatchlistModule,
     AircraftManagementModule,
     FlightSchedulingModule,
+    BiDashboardsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

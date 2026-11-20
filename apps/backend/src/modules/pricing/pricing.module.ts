@@ -86,6 +86,9 @@ import { TaxFeeService } from './tax-fee/tax-fee.service'
     TaxFeeService,
     CurrencyRateService,
     ExpenseService,
+    // Read by Feature 14's financial report.
+    FinanceSummaryService,
+    PaymentScheduleService,
   ],
 })
 export class PricingModule implements OnModuleInit {
