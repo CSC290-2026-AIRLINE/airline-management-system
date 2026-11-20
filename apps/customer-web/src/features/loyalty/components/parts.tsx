@@ -1,5 +1,10 @@
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
+import { AlertCircle } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@customer-web/components/ui/alert'
+import { Badge } from '@customer-web/components/ui/badge'
+import { Button } from '@customer-web/components/ui/button'
+import { Skeleton } from '@customer-web/components/ui/skeleton'
 import type { BookingStatus, TierCode, TransactionType } from '../api/types'
 import { formatSignedMiles } from '../format'
 import type { LoadState } from '../use-load'
@@ -14,17 +19,24 @@ import {
   TIER_ART,
   TYPE_LABEL,
   TYPE_PILL,
-  ui,
 } from './ui'
 
 // Small pieces shared by the Feature 11 customer pages.
 
 export function TypePill({ type }: { type: TransactionType }) {
-  return <span className={cx(ui.pill, TYPE_PILL[type])}>{TYPE_LABEL[type]}</span>
+  return (
+    <Badge variant="secondary" className={TYPE_PILL[type]}>
+      {TYPE_LABEL[type]}
+    </Badge>
+  )
 }
 
 export function BookingPill({ status }: { status: BookingStatus }) {
-  return <span className={cx(ui.pill, BOOKING_PILL[status])}>{BOOKING_LABEL[status]}</span>
+  return (
+    <Badge variant="secondary" className={BOOKING_PILL[status]}>
+      {BOOKING_LABEL[status]}
+    </Badge>
+  )
 }
 
 // tone overrides the colour for positive amounts (the dashboard shows them in blue).
@@ -50,19 +62,22 @@ export function TierCard({ code, name, className }: { code: TierCode | null; nam
   )
 }
 
+// A router link styled as a shadcn Button (outline by default).
 export function SearchFlightsLink({
   label,
-  className = ui.button,
+  variant = 'outline',
+  className,
   to = FLIGHT_SEARCH_PATH,
 }: {
-  label: string
+  label: ReactNode
+  variant?: ComponentProps<typeof Button>['variant']
   className?: string
   to?: typeof FLIGHT_SEARCH_PATH | typeof AWARD_SEARCH_PATH
 }) {
   return (
-    <Link to={to} className={className}>
-      {label}
-    </Link>
+    <Button asChild variant={variant} className={className}>
+      <Link to={to}>{label}</Link>
+    </Button>
   )
 }
 
@@ -83,19 +98,22 @@ export function Loaded<T>({ state, retry, children }: { state: LoadState<T>; ret
       return (
         <div aria-live="polite" aria-busy="true" className="flex flex-col gap-4">
           <span className="sr-only">Loading…</span>
-          <div className="h-40 animate-pulse rounded-xl bg-white" />
-          <div className="h-64 animate-pulse rounded-xl bg-white" />
+          <Skeleton className="h-40 rounded-xl bg-white" />
+          <Skeleton className="h-64 rounded-xl bg-white" />
         </div>
       )
     case 'error':
       return (
-        <div className="flex flex-col items-start gap-3 rounded-xl border border-[#f3c2bd] bg-white p-5 text-danger" role="alert">
-          <strong>We could not load your FlySmiles details.</strong>
-          <span className="text-[13px]">{state.message}</span>
-          <button type="button" className={ui.button} onClick={retry}>
-            Try again
-          </button>
-        </div>
+        <Alert variant="destructive" className="bg-white">
+          <AlertCircle />
+          <AlertTitle>We could not load your FlySmiles details.</AlertTitle>
+          <AlertDescription className="flex flex-col items-start gap-3">
+            <p>{state.message}</p>
+            <Button variant="outline" onClick={retry}>
+              Try again
+            </Button>
+          </AlertDescription>
+        </Alert>
       )
     case 'ready':
       return <>{children(state.data)}</>

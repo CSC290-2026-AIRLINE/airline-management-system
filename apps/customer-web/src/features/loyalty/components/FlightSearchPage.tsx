@@ -1,11 +1,18 @@
 import { useCallback, useState, type FormEvent } from 'react'
+import { Info } from 'lucide-react'
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
+import { Button } from '@customer-web/components/ui/button'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@customer-web/components/ui/card'
+import { Input } from '@customer-web/components/ui/input'
+import { Label } from '@customer-web/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
 import type { AwardFlight, AwardRoute, AwardSearchResult } from '../api/types'
 import { useLoyaltyApi } from '../api/use-loyalty-api'
 import { seatsFor, type AwardSearchParams } from '../award-search'
 import { formatMiles } from '../format'
 import { useLoad } from '../use-load'
 import { Loaded } from './parts'
-import { CONTAINER, cx, focusRing, PAGE, ui } from './ui'
+import { CONTAINER, cx, PAGE } from './ui'
 
 // C03f Flight search with miles (mobile first, also on desktop), with H2 (nothing released) and H3 (not a member).
 // The miles price beside each flight is Feature 11's; cash fares and the booking itself are features 3a and 3b, so the
@@ -18,10 +25,8 @@ const CABIN_LABEL: Record<string, string> = {
   first: 'First',
 }
 
-const field = cx(
-  'min-h-11 w-full rounded-lg border border-field bg-white px-3 text-sm text-ink',
-  'focus-visible:border-link focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-link/30',
-)
+const FIELD = 'h-11 w-full bg-white'
+const CAPS = 'text-[11px] font-semibold tracking-[0.08em] text-muted uppercase'
 
 function clock(iso: string, timeZone: string) {
   try {
@@ -67,7 +72,7 @@ export function FlightSearchPage({ search, onSearch }: { search: AwardSearchPara
         {search.from && search.to && search.date ? (
           <Results key={JSON.stringify(search)} search={search} from={search.from} to={search.to} date={search.date} />
         ) : (
-          <p className={ui.small}>Choose a route and date to see flights and their miles prices.</p>
+          <p className="text-xs text-muted">Choose a route and date to see flights and their miles prices.</p>
         )}
       </main>
     </div>
@@ -103,68 +108,109 @@ function SearchForm({
   }
 
   if (routes.length === 0) {
-    return <p className="rounded-xl bg-[#f4f6f9] p-4 text-[13px] text-muted">No flights are open for sale right now.</p>
+    return (
+      <Alert>
+        <Info />
+        <AlertDescription>No flights are open for sale right now.</AlertDescription>
+      </Alert>
+    )
   }
 
   return (
-    <form onSubmit={submit} className={cx(ui.card, 'grid grid-cols-2 gap-3 p-4')} aria-label="Search flights">
-      <label className="flex flex-col gap-1">
-        <span className={ui.caps}>From</span>
-        <select className={field} value={from} onChange={(e) => setFrom(e.target.value)}>
-          {origins.map(([code, city]) => (
-            <option key={code} value={code}>
-              {city} ({code})
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className={ui.caps}>To</span>
-        <select className={field} value={toValue} onChange={(e) => setTo(e.target.value)}>
-          {destinations.map((d) => (
-            <option key={d.destination} value={d.destination}>
-              {d.destinationCity} ({d.destination})
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className={ui.caps}>Depart</span>
-        <input className={field} type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className={ui.caps}>Return (optional)</span>
-        <input
-          className={field}
-          type="date"
-          min={date || undefined}
-          value={hasReturn ? back : ''}
-          disabled={!hasReturn}
-          onChange={(e) => setBack(e.target.value)}
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className={ui.caps}>Adults</span>
-        <input className={field} type="number" min={1} max={9} value={adults} onChange={(e) => setAdults(Number(e.target.value) || 1)} />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className={ui.caps}>Children</span>
-        <input
-          className={field}
-          type="number"
-          min={0}
-          max={8}
-          value={children}
-          onChange={(e) => setChildren(Number(e.target.value) || 0)}
-        />
-      </label>
-      <p className={cx('col-span-2', tooMany ? 'text-xs text-danger' : ui.small)} role={tooMany ? 'alert' : undefined}>
-        {tooMany ? 'Up to 9 adults and children together.' : 'Up to 9 adults and children together. Lap infants take no award seat.'}
-      </p>
-      <button type="submit" className={cx(ui.buttonPrimary, 'col-span-2 min-h-12')} disabled={tooMany}>
-        Search flights
-      </button>
-    </form>
+    <Card className="py-4 shadow-none">
+      <CardContent className="px-4">
+        <form onSubmit={submit} className="grid grid-cols-2 gap-3" aria-label="Search flights">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="award-from" className={CAPS}>
+              From
+            </Label>
+            <Select value={from} onValueChange={setFrom}>
+              <SelectTrigger id="award-from" className={FIELD}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {origins.map(([code, city]) => (
+                  <SelectItem key={code} value={code}>
+                    {city} ({code})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="award-to" className={CAPS}>
+              To
+            </Label>
+            <Select value={toValue} onValueChange={setTo}>
+              <SelectTrigger id="award-to" className={FIELD}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {destinations.map((d) => (
+                  <SelectItem key={d.destination} value={d.destination}>
+                    {d.destinationCity} ({d.destination})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="award-date" className={CAPS}>
+              Depart
+            </Label>
+            <Input id="award-date" className={FIELD} type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="award-back" className={CAPS}>
+              Return (optional)
+            </Label>
+            <Input
+              id="award-back"
+              className={FIELD}
+              type="date"
+              min={date || undefined}
+              value={hasReturn ? back : ''}
+              disabled={!hasReturn}
+              onChange={(e) => setBack(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="award-adults" className={CAPS}>
+              Adults
+            </Label>
+            <Input
+              id="award-adults"
+              className={FIELD}
+              type="number"
+              min={1}
+              max={9}
+              value={adults}
+              onChange={(e) => setAdults(Number(e.target.value) || 1)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="award-children" className={CAPS}>
+              Children
+            </Label>
+            <Input
+              id="award-children"
+              className={FIELD}
+              type="number"
+              min={0}
+              max={8}
+              value={children}
+              onChange={(e) => setChildren(Number(e.target.value) || 0)}
+            />
+          </div>
+          <p className={cx('col-span-2 text-xs', tooMany ? 'text-danger' : 'text-muted')} role={tooMany ? 'alert' : undefined}>
+            {tooMany ? 'Up to 9 adults and children together.' : 'Up to 9 adults and children together. Lap infants take no award seat.'}
+          </p>
+          <Button type="submit" className="col-span-2 h-12 bg-navy hover:bg-navy/90" disabled={tooMany}>
+            Search flights
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -187,10 +233,13 @@ function Results({ search, from, to, date }: { search: AwardSearchParams; from: 
         const party = partyLabel(search.adults ?? 1, search.children ?? 0)
         return (
           <>
-            <p className="rounded-xl bg-[#e8eef7] px-4 py-3.5 text-[13px] font-medium text-link">
-              Where you see “or … miles”, you can pay the fare with miles on the next step. Taxes and surcharges are still paid by card.
-            </p>
-            <p className={ui.small}>
+            <Alert className="border-[#c9d6ec] bg-[#e8eef7] text-link">
+              <Info />
+              <AlertDescription className="text-link">
+                Where you see “or … miles”, you can pay the fare with miles on the next step. Taxes and surcharges are still paid by card.
+              </AlertDescription>
+            </Alert>
+            <p className="text-xs text-muted">
               Award seats as of {out.asOf.slice(11, 16)} UTC · simulated time · miles close {out.awardCutoffHours} hours before departure
               {` · your balance ${formatMiles(out.milesBalance)} miles`}
             </p>
@@ -254,13 +303,17 @@ function Leg({
         <span className="text-xs text-muted">Miles shown are the total for {party}</span>
       </div>
       {result.flights.length === 0 ? (
-        <p className="rounded-[14px] border border-line bg-white p-4 text-[13px] text-muted">No flights on this day. Try another date.</p>
+        <Alert className="bg-white">
+          <Info />
+          <AlertDescription>No flights on this day. Try another date.</AlertDescription>
+        </Alert>
       ) : (
         <>
           {!released && (
-            <p className="rounded-[14px] bg-[#f4f6f9] p-4 text-[13px] text-muted">
-              No award seats are released on this day. Cash fares are on Book a flight.
-            </p>
+            <Alert className="border-0 bg-[#f4f6f9]">
+              <Info />
+              <AlertDescription>No award seats are released on this day. Cash fares are on Book a flight.</AlertDescription>
+            </Alert>
           )}
           <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
             {result.flights.map((f) => (
@@ -284,11 +337,12 @@ function FlightCard({ flight: f, selected, onPick }: { flight: AwardFlight; sele
       onClick={onPick}
       disabled={!bookable}
       aria-pressed={selected}
+      // A selectable tile styled like the shadcn Card; there is no shadcn tile component.
       className={cx(
-        'flex w-full flex-col gap-2 rounded-[14px] bg-white p-4 text-left font-sans text-ink',
-        selected ? 'border-[1.5px] border-link' : 'border border-field',
+        'flex w-full flex-col gap-2 rounded-xl border bg-card p-4 text-left font-sans text-card-foreground outline-none',
+        'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
+        selected ? 'border-link ring-1 ring-link' : 'border-border',
         bookable ? 'cursor-pointer hover:border-link' : 'cursor-default',
-        focusRing,
       )}
     >
       <span className="flex items-end gap-2 whitespace-nowrap">
@@ -346,15 +400,17 @@ function TripSummary({
   const shortfall = balance !== null && miles > balance ? miles - balance : 0
 
   return (
-    <section className="flex flex-col gap-2.5 rounded-[14px] bg-[#f4f6f9] p-4" aria-labelledby="your-trip">
-      <h2 id="your-trip" className="text-[17px] font-bold">
-        Your trip
-      </h2>
-      <p className="text-[13px] text-muted">
-        {chosen.length > 0 ? chosen.map((f) => f.flightNumber).join(' + ') : 'Pick a flight with award seats'} · {party}
-      </p>
+    <Card className="gap-3 border-0 bg-[#f4f6f9] py-4 shadow-none" aria-labelledby="your-trip">
+      <CardHeader className="px-4">
+        <CardTitle id="your-trip" className="text-[17px]">
+          Your trip
+        </CardTitle>
+        <CardDescription className="text-[13px]">
+          {chosen.length > 0 ? chosen.map((f) => f.flightNumber).join(' + ') : 'Pick a flight with award seats'} · {party}
+        </CardDescription>
+      </CardHeader>
       {complete && (
-        <p className="text-sm">
+        <CardContent className="px-4 text-sm">
           From <strong>{formatMiles(miles)} miles</strong> + taxes by card
           {balance !== null &&
             (shortfall > 0 ? (
@@ -362,14 +418,16 @@ function TripSummary({
             ) : (
               <span className="text-muted"> · {formatMiles(balance - miles)} miles left after</span>
             ))}
-        </p>
+        </CardContent>
       )}
-      <button type="button" className={cx(ui.buttonPrimary, 'min-h-12 w-full rounded-[10px] text-[15px]')} disabled>
-        Continue
-      </button>
-      <p className={ui.small}>
-        Booking with miles opens on Passengers &amp; extras (Feature 3b), which holds the seats and spends the miles. It is not live yet.
-      </p>
-    </section>
+      <CardFooter className="flex-col items-stretch gap-2.5 px-4">
+        <Button className="h-12 w-full bg-navy text-[15px] hover:bg-navy/90" disabled>
+          Continue
+        </Button>
+        <p className="text-xs text-muted">
+          Booking with miles opens on Passengers &amp; extras (Feature 3b), which holds the seats and spends the miles. It is not live yet.
+        </p>
+      </CardFooter>
+    </Card>
   )
 }

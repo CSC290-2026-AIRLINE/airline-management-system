@@ -13,12 +13,6 @@ export const cx = (...classes: (string | false | null | undefined)[]) => classes
 
 export const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal'
 
-const buttonBase = cx(
-  'inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md px-[18px] py-2.5 text-sm font-semibold no-underline',
-  'disabled:cursor-not-allowed pointer-coarse:min-h-11',
-  focusRing,
-)
-
 // Page wrapper shared by every Feature 11 customer page: the F11 palette and type, light in dark mode as designed, and
 // headings reset against the app-wide h1/h2/p styles in index.css.
 export const PAGE = cx(
@@ -30,31 +24,6 @@ export const PAGE = cx(
 
 // Content column: 1220px wide on desktop, 16px side gutter on a phone.
 export const CONTAINER = 'mx-auto w-full max-w-[1252px] px-4 sm:px-6 lg:px-8'
-
-export const ui = {
-  button: cx(buttonBase, 'border border-field bg-white text-ink hover:bg-soft'),
-  buttonPrimary: cx(
-    buttonBase,
-    'border border-navy bg-navy text-white hover:bg-[#1c3563] disabled:border-[#cbd2dc] disabled:bg-[#e3e7ee] disabled:text-[#8a94a6]',
-  ),
-  buttonOnDark: cx(buttonBase, 'border border-white bg-white text-navy hover:bg-white/90'),
-  buttonGhostOnDark: cx(buttonBase, 'border border-white/40 bg-white/10 text-white hover:bg-white/20'),
-  link: cx('inline-flex items-center gap-1 rounded text-[13px] font-semibold text-link no-underline hover:underline', focusRing),
-  caps: 'text-[11px] font-semibold uppercase tracking-[0.08em] text-muted',
-  small: 'text-xs leading-normal text-muted',
-  card: 'rounded-xl border border-line bg-white',
-  cardTitle: 'text-lg font-bold text-ink sm:text-xl',
-  pill: 'inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold',
-  chip: cx(
-    'inline-flex min-h-8 cursor-pointer items-center rounded-full border border-field bg-white px-3.5 text-[13px] font-medium text-ink',
-    'aria-pressed:border-[#b9c8e4] aria-pressed:bg-[#e8eef7] aria-pressed:text-link pointer-coarse:min-h-10',
-    focusRing,
-  ),
-  th: 'border-b border-divider px-4 pb-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.04em] text-muted',
-  td: 'border-b border-divider px-4 py-3 align-middle',
-  num: 'text-right tabular-nums whitespace-nowrap',
-  iconBox: 'grid size-10 flex-none place-items-center rounded-lg',
-}
 
 export const TYPE_LABEL: Record<TransactionType, string> = {
   earn: 'Earned',

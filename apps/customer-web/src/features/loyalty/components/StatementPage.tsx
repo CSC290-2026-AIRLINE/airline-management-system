@@ -1,9 +1,18 @@
 import { CalendarDays } from 'lucide-react'
+import { Card } from '@customer-web/components/ui/card'
+import { Input } from '@customer-web/components/ui/input'
+import { Label } from '@customer-web/components/ui/label'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@customer-web/components/ui/table'
+import { ToggleGroup, ToggleGroupItem } from '@customer-web/components/ui/toggle-group'
 import type { MemberSummary, StatementRow } from '../api/types'
 import { formatMiles, formatSignedMiles, formatTableDate, minusMonths, toDateInput } from '../format'
 import { EmptyState, SearchFlightsLink, SignedMiles, TypePill } from './parts'
 import { STATEMENT_TYPES, type StatementSearch } from '../statement-search'
-import { cx, TYPE_LABEL, ui } from './ui'
+import { cx, TYPE_LABEL } from './ui'
+
+// Filter chips: rounded, light blue when on.
+const CHIP =
+  'h-8 rounded-full! border-l! px-3.5 text-[13px] data-[state=on]:border-[#b9c8e4] data-[state=on]:bg-[#e8eef7] data-[state=on]:text-link'
 
 function windowFor(search: StatementSearch, member: MemberSummary, rows: StatementRow[]) {
   const today = toDateInput(member.asOf)
@@ -53,46 +62,42 @@ export function StatementPage({
         />
       </div>
 
-      <section className="flex flex-col gap-4 sm:rounded-xl sm:border sm:border-line sm:bg-white sm:p-5" aria-label="Statement">
+      <Card className="gap-4 border-0 bg-transparent py-0 shadow-none sm:border sm:bg-white sm:p-5" aria-label="Statement">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Type">
-            <button type="button" className={ui.chip} aria-pressed={!search.type} onClick={() => onSearch({ ...keepWindow })}>
-              All
-            </button>
-            {STATEMENT_TYPES.map((t) => (
-              <button
-                key={t}
-                type="button"
-                className={ui.chip}
-                aria-pressed={search.type === t}
-                onClick={() => onSearch({ ...keepWindow, type: t })}
-              >
-                {TYPE_LABEL[t]}
-              </button>
-            ))}
-          </div>
-          <div
-            className="grid grid-cols-2 gap-1 rounded-xl border border-line bg-soft p-1 sm:flex sm:gap-2 sm:border-0 sm:bg-transparent sm:p-0"
-            role="group"
-            aria-label="Period"
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            spacing={2}
+            aria-label="Type"
+            className="flex-wrap"
+            value={search.type ?? 'all'}
+            onValueChange={(v) => v && onSearch(v === 'all' ? { ...keepWindow } : { ...keepWindow, type: v as StatementRow['type'] })}
           >
-            <button
-              type="button"
-              className={cx(ui.chip, 'justify-center')}
-              aria-pressed={win.preset === '12m'}
-              onClick={() => onSearch({ type: search.type, range: '12m' })}
-            >
+            <ToggleGroupItem value="all" className={CHIP}>
+              All
+            </ToggleGroupItem>
+            {STATEMENT_TYPES.map((t) => (
+              <ToggleGroupItem key={t} value={t} className={CHIP}>
+                {TYPE_LABEL[t]}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            spacing={2}
+            aria-label="Period"
+            className="grid grid-cols-2 sm:flex"
+            value={win.preset ?? ''}
+            onValueChange={(v) => v && onSearch({ type: search.type, range: v as '12m' | 'all' })}
+          >
+            <ToggleGroupItem value="12m" className={CHIP}>
               Last 12 months
-            </button>
-            <button
-              type="button"
-              className={cx(ui.chip, 'justify-center')}
-              aria-pressed={win.preset === 'all'}
-              onClick={() => onSearch({ type: search.type, range: 'all' })}
-            >
+            </ToggleGroupItem>
+            <ToggleGroupItem value="all" className={CHIP}>
               All time
-            </button>
-          </div>
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
 
         <fieldset className="m-0 flex flex-wrap items-center gap-2 border-0 p-0 sm:gap-3">
@@ -121,7 +126,7 @@ export function StatementPage({
             <StatementCards rows={shown} />
           </>
         )}
-      </section>
+      </Card>
       <p className="text-[11px] text-muted">
         Miles expire 36 months after the flight. Spending, adjustments and expiry never lower the miles that count toward your tier.
       </p>
@@ -154,24 +159,23 @@ function DateField({
   max?: string
   onChange: (v: string) => void
 }) {
+  const id = `statement-${label.toLowerCase()}`
   return (
-    <label
-      className={cx(
-        'flex min-h-10 flex-1 cursor-pointer flex-col justify-center gap-0.5 rounded-xl border border-line bg-soft px-4 py-2 sm:flex-none sm:flex-row sm:items-center sm:gap-2 sm:rounded-md sm:bg-white sm:px-3 sm:py-1.5',
-        'focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-teal',
-      )}
-    >
-      <CalendarDays size={14} className="hidden text-muted sm:block" aria-hidden="true" />
-      <span className="text-xs text-muted">{label}</span>
-      <input
+    <div className="flex flex-1 items-center gap-2 sm:flex-none">
+      <Label htmlFor={id} className="text-xs font-normal text-muted">
+        <CalendarDays size={14} className="hidden sm:block" aria-hidden="true" />
+        {label}
+      </Label>
+      <Input
+        id={id}
         type="date"
         value={value}
         min={min}
         max={max}
         onChange={(e) => e.target.value && onChange(e.target.value)}
-        className="border-0 bg-transparent p-0 font-sans text-[15px] font-medium text-ink outline-none sm:text-xs"
+        className="h-9 w-auto bg-white"
       />
-    </label>
+    </div>
   )
 }
 
@@ -189,45 +193,35 @@ function Description({ row }: { row: StatementRow }) {
 
 function StatementTable({ rows }: { rows: StatementRow[] }) {
   return (
-    <div className="hidden overflow-x-auto md:block">
-      <table className="w-full border-collapse">
-        <thead>
-          <tr>
-            <th className={ui.th} scope="col">
-              Date
-            </th>
-            <th className={ui.th} scope="col">
-              Description
-            </th>
-            <th className={ui.th} scope="col">
-              Type
-            </th>
-            <th className={cx(ui.th, 'text-right')} scope="col">
-              Miles
-            </th>
-            <th className={cx(ui.th, 'text-right')} scope="col">
-              Balance
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="hidden md:block">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead>Description</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead className="text-right">Miles</TableHead>
+            <TableHead className="text-right">Balance</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((r) => (
-            <tr key={r.seq}>
-              <td className={cx(ui.td, 'text-[13px] whitespace-nowrap')}>{formatTableDate(r.occurredAt)}</td>
-              <td className={ui.td}>
+            <TableRow key={r.seq}>
+              <TableCell className="text-[13px]">{formatTableDate(r.occurredAt)}</TableCell>
+              <TableCell className="whitespace-normal">
                 <Description row={r} />
-              </td>
-              <td className={ui.td}>
+              </TableCell>
+              <TableCell>
                 <TypePill type={r.type} />
-              </td>
-              <td className={cx(ui.td, ui.num, 'text-[13px]')}>
+              </TableCell>
+              <TableCell className="text-right text-[13px]">
                 <SignedMiles type={r.type} miles={r.miles} />
-              </td>
-              <td className={cx(ui.td, ui.num, 'text-[13px]')}>{formatMiles(r.balanceAfter)}</td>
-            </tr>
+              </TableCell>
+              <TableCell className="text-right text-[13px] tabular-nums">{formatMiles(r.balanceAfter)}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }

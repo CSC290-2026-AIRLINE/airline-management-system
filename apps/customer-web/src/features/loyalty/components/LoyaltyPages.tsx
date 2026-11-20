@@ -8,7 +8,9 @@ import { Loaded } from './parts'
 import { RedemptionsPage } from './RedemptionsPage'
 import type { StatementSearch } from '../statement-search'
 import { StatementPage } from './StatementPage'
-import { ui } from './ui'
+import { AlertCircle } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@customer-web/components/ui/alert'
+import { Button } from '@customer-web/components/ui/button'
 
 // Route-level pages: each loads what it needs through LoyaltyApi and renders the loading, error and ready states.
 // Every customer is a Flython Miles member: the backend enrols them on their first visit, so there is no Join step.
@@ -87,13 +89,16 @@ export function RedemptionsRoutePage() {
 export function LoyaltyError({ error, reset }: { error: unknown; reset: () => void }) {
   return (
     <LoyaltyLayout>
-      <div className="flex flex-col items-start gap-3 rounded-xl border border-[#f3c2bd] bg-white p-5 text-danger" role="alert">
-        <strong>Something went wrong on this page.</strong>
-        <span className="text-[13px]">{error instanceof Error ? error.message : 'Please try again.'}</span>
-        <button type="button" className={ui.button} onClick={reset}>
-          Try again
-        </button>
-      </div>
+      <Alert variant="destructive" className="bg-white">
+        <AlertCircle />
+        <AlertTitle>Something went wrong on this page.</AlertTitle>
+        <AlertDescription className="flex flex-col items-start gap-3">
+          <p>{error instanceof Error ? error.message : 'Please try again.'}</p>
+          <Button variant="outline" onClick={reset}>
+            Try again
+          </Button>
+        </AlertDescription>
+      </Alert>
     </LoyaltyLayout>
   )
 }

@@ -1,22 +1,25 @@
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, ArrowUpRight, Plane } from 'lucide-react'
+import { Button } from '@customer-web/components/ui/button'
+import { Card } from '@customer-web/components/ui/card'
+import { Separator } from '@customer-web/components/ui/separator'
 import type { RedemptionRow } from '../api/types'
 import { formatDate, formatMiles } from '../format'
 import { BookingPill, EmptyState, SearchFlightsLink } from './parts'
-import { cx, MY_TRIPS_PATH, ui } from './ui'
+import { cx, MY_TRIPS_PATH } from './ui'
 
 // C08 My Redemptions: seats paid with miles, with the booking status from Feature 3b. A redemption is cancelled by
 // cancelling its booking in My Trips, which gives the miles back.
 export function RedemptionsPage({ rows }: { rows: RedemptionRow[] }) {
   if (rows.length === 0) {
     return (
-      <section className={ui.card}>
+      <Card className="py-0 shadow-none">
         <EmptyState
           title="No redemptions yet"
           body="Pay with miles on Passengers & extras when a flight has award seats. Taxes still go on your card."
           action={<SearchFlightsLink label="Search flights" />}
         />
-      </section>
+      </Card>
     )
   }
   return (
@@ -44,9 +47,10 @@ export function RedemptionsPage({ rows }: { rows: RedemptionRow[] }) {
 function RedemptionCard({ row }: { row: RedemptionRow }) {
   const active = !row.returned && (row.bookingStatus === 'confirmed' || row.bookingStatus === 'held')
   return (
-    <article
+    <Card
+      role="article"
       className={cx(
-        'grid grid-cols-[auto_minmax(0,1fr)] overflow-hidden rounded-xl border border-l-4 border-line bg-white md:grid-cols-[150px_minmax(0,1fr)_minmax(0,320px)]',
+        'grid grid-cols-[auto_minmax(0,1fr)] gap-0 overflow-hidden border-l-4 py-0 shadow-none md:grid-cols-[150px_minmax(0,1fr)_minmax(0,320px)]',
         active ? 'border-l-navy' : 'border-l-[#c3cdda]',
       )}
       aria-label={`${row.flightNumber} ${row.fromCity} to ${row.toCity}`}
@@ -64,9 +68,9 @@ function RedemptionCard({ row }: { row: RedemptionRow }) {
         </div>
         <div className="flex flex-wrap items-center gap-x-3 text-[12px] text-muted md:text-[13px]">
           <span>{formatDate(row.departsAt)}</span>
-          <span className="h-3 w-px bg-line" aria-hidden="true" />
+          <Separator orientation="vertical" className="h-3!" />
           <span>{row.cabin}</span>
-          <span className="h-3 w-px bg-line" aria-hidden="true" />
+          <Separator orientation="vertical" className="h-3!" />
           <span>
             {row.seats} seat{row.seats === 1 ? '' : 's'}
           </span>
@@ -79,10 +83,12 @@ function RedemptionCard({ row }: { row: RedemptionRow }) {
           </span>
           <span className={cx('text-xl font-bold md:text-2xl', row.returned && 'text-[#8a94a6]')}>{formatMiles(row.miles)}</span>
         </div>
-        <Link to={MY_TRIPS_PATH} className={ui.link}>
-          View in My Trips <ArrowUpRight size={14} aria-hidden="true" />
-        </Link>
+        <Button asChild variant="link" className="px-0 text-link">
+          <Link to={MY_TRIPS_PATH}>
+            View in My Trips <ArrowUpRight aria-hidden="true" />
+          </Link>
+        </Button>
       </div>
-    </article>
+    </Card>
   )
 }
