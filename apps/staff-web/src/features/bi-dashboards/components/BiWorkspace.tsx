@@ -10,8 +10,15 @@ import '../bi-dashboard.css'
 
 export type BiView = 'operations' | 'finance'
 
+const NAV_ITEMS: { id: BiView; label: string }[] = [
+  { id: 'operations', label: 'Operations dashboard' },
+  { id: 'finance', label: 'Financial report' },
+]
+
 interface BiWorkspaceProps {
   view: BiView
+  /** The views the signed-in role can open; the others are left out of the navigation. */
+  views: BiView[]
   onViewChange: (view: BiView) => void
   name: string
   clock: string | null
@@ -19,7 +26,7 @@ interface BiWorkspaceProps {
   children: ReactNode
 }
 
-export function BiWorkspace({ view, onViewChange, name, clock, onSignOut, children }: BiWorkspaceProps) {
+export function BiWorkspace({ view, views, onViewChange, name, clock, onSignOut, children }: BiWorkspaceProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const clockText = clock
@@ -47,12 +54,7 @@ export function BiWorkspace({ view, onViewChange, name, clock, onSignOut, childr
       <p className="bi-workspace-label">STAFF · REPORTS</p>
       <nav aria-label="Business intelligence navigation" className="bi-navigation">
         <p>BUSINESS INTELLIGENCE</p>
-        {(
-          [
-            { id: 'operations', label: 'Operations dashboard' },
-            { id: 'finance', label: 'Financial report' },
-          ] as const
-        ).map((item) => (
+        {NAV_ITEMS.filter((item) => views.includes(item.id)).map((item) => (
           <Button
             key={item.id}
             variant="ghost"

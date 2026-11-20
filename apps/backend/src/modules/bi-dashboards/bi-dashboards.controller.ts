@@ -26,7 +26,7 @@ import { toCsv } from './bi-csv'
 import { BiFilterDto, BiFinanceQueryDto } from './dto/bi-filter.dto'
 import type { BiDailyMetric, BiKpis, BiRouteMetric, BiRunSummary } from './dto/bi-dashboards.types'
 import { CABIN_KEYS } from './dto/bi-options'
-import { BiStaffGuard } from './bi-staff.guard'
+import { BI_FINANCE_SCREEN, BI_OPERATIONS_SCREEN, BiScreens, BiStaffGuard } from './bi-staff.guard'
 
 const CABIN_LABELS: Record<(typeof CABIN_KEYS)[number], string> = {
   economy: 'Economy',
@@ -35,9 +35,13 @@ const CABIN_LABELS: Record<(typeof CABIN_KEYS)[number], string> = {
   first: 'First',
 }
 
-/** `/api/bi/*`. The global JWT guard authenticates the user; the local guard requires active staff. */
+/**
+ * `/api/bi/*`. The global JWT guard authenticates the user; the local guard requires active staff holding the route's
+ * screen: `f14.operations` by default, `f14.finance` for the finance routes, either one for the shared status.
+ */
 @Controller('bi')
 @UseGuards(BiStaffGuard)
+@BiScreens(BI_OPERATIONS_SCREEN)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class BiDashboardsController {
   constructor(
@@ -48,6 +52,7 @@ export class BiDashboardsController {
 
   /** Latest successful run, the most recent run, and whether a refresh is in progress. */
   @Get('status')
+  @BiScreens(BI_OPERATIONS_SCREEN, BI_FINANCE_SCREEN)
   async status(): Promise<{
     latest_success: BiRunSummary | null
     last_run: BiRunSummary | null
@@ -157,6 +162,7 @@ export class BiDashboardsController {
 
   /** One finance month, the month before it, and the months that exist. `month` is `YYYY-MM`; default is the latest. */
   @Get('finance')
+  @BiScreens(BI_FINANCE_SCREEN)
   finance(
     @Query() query: BiFinanceQueryDto,
   ): Promise<{ current: BiFinanceMonth | null; previous: BiFinanceMonth | null; months: string[] }> {
@@ -165,12 +171,14 @@ export class BiDashboardsController {
 
   /** Fleet-wide scheduled maintenance payments, due from the simulation's current date. */
   @Get('finance/payments')
+  @BiScreens(BI_FINANCE_SCREEN)
   upcomingPayments(): Promise<BiScheduledPayment[]> {
     return this.financeService.upcomingPayments(this.etl.simulationNow().slice(0, 10))
   }
 
   /** The finance lines as CSV, with the change against the previous month. */
   @Get('export/finance.csv')
+  @BiScreens(BI_FINANCE_SCREEN)
   @Header('Content-Type', 'text/csv; charset=utf-8')
   async exportFinance(@Query() query: BiFinanceQueryDto, @Res({ passthrough: true }) res: Response): Promise<string> {
     const { current, previous } = await this.financeService.forMonth(query.month)

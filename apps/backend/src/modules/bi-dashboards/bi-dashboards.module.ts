@@ -5,7 +5,7 @@ import { BiDashboardsController } from './bi-dashboards.controller'
 import { BiEtlService } from './bi-etl.service'
 import { BiQueryService } from './bi-query.service'
 import { BiFinanceService } from './bi-finance.service'
-import { BiStaffGuard } from './bi-staff.guard'
+import { BI_FINANCE_SCREEN, BI_OPERATIONS_SCREEN, BiStaffGuard } from './bi-staff.guard'
 
 /**
  * Feature 14: Business Intelligence dashboards. The backend rebuilds the `bi_*` copy (BiEtlService) and reads it
@@ -21,7 +21,8 @@ export class BiDashboardsModule implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.admin.registerSelfScreens([
-      { code: 'f14.bi_dashboards', name: 'Business intelligence', kind: 'assignable', feature_no: '14' },
+      { code: BI_OPERATIONS_SCREEN, name: 'BI operations dashboard', kind: 'assignable', feature_no: '14' },
+      { code: BI_FINANCE_SCREEN, name: 'BI financial report', kind: 'assignable', feature_no: '14' },
     ])
   }
 }
