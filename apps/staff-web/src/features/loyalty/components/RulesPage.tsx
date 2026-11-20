@@ -1,13 +1,19 @@
 import { useCallback, useState, type ReactNode } from 'react'
+import { Pencil } from 'lucide-react'
+import { toast } from 'sonner'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { cn } from '@staff-web/lib/utils'
 import type { Insurance, LoyaltyRules, LoyaltySettings, StaffLoyaltyApi, TierBenefits, TierCode } from '../api/types'
 import { useStaffLoyaltyApi } from '../api/use-staff-loyalty-api'
 import { formatMiles, parseWhole } from '../format'
 import { insuranceLabel, loungeLabel, upgradeLabel, yesNo } from '../labels'
 import { errorMessage, useLoad } from '../use-load'
-import { useToast } from '../use-toast'
-import { Segmented, TierPill, Toast } from './parts'
+import { Segmented, TierPill } from './parts'
 import { Loaded, StaffLoyaltyLayout } from './StaffLoyaltyLayout'
-import { cx, ui } from './ui'
 
 const AUDIT = 'logged in Feature 15 audit log'
 
@@ -82,7 +88,6 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Section>('tiers')
-  const [toast, showToast] = useToast()
 
   const start = (section: Section) => {
     setDraft(draftsOf(rules))
@@ -147,7 +152,7 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
       }
       setRules(next)
       setEditing(null)
-      showToast(`${message}. New activity uses the new values. · ${AUDIT}`)
+      toast.success(`${message}. New activity uses the new values. · ${AUDIT}`)
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -156,13 +161,7 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
   }
 
   const input = (value: string, onChange: (v: string) => void, label: string, width = 'w-24') => (
-    <input
-      className={cx(ui.input, ui.inputSmall, width)}
-      inputMode="decimal"
-      aria-label={label}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
+    <Input className={cn('h-8', width)} inputMode="decimal" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
   )
 
   const card = (section: Section, title: string, children: ReactNode, footnote?: ReactNode, subtitle?: string) => (
@@ -200,12 +199,12 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
       {/* Phones: one card per tier */}
       <ul className="m-0 flex list-none flex-col gap-2.5 p-0 lg:hidden">
         {rules.tiers.map((t) => (
-          <li key={t.code} className="flex flex-col gap-3 rounded-xl border border-f11-field px-4 py-3.5">
+          <li key={t.code} className="flex flex-col gap-3 rounded-lg border px-4 py-3.5">
             <TierPill tier={t} />
             <div className="grid grid-cols-3 gap-2">
               {(['Miles needed', 'Or flights', 'Valid'] as const).map((label, i) => (
                 <div key={label} className="flex min-w-0 flex-col gap-1">
-                  <span className="text-xs text-f11-muted">{label}</span>
+                  <span className="text-xs text-muted-foreground">{label}</span>
                   {tiersEditing ? (
                     input(draft.tiers[t.code][i], (v) => setTier(t.code, i, v), `${t.name} ${label}`, 'w-full')
                   ) : (
@@ -219,36 +218,36 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
           </li>
         ))}
       </ul>
-      <table className={cx(ui.table, ui.tableTall, 'max-lg:hidden')}>
-        <thead>
-          <tr>
-            <th scope="col">Tier</th>
-            <th scope="col">Miles needed</th>
-            <th scope="col">Or flights</th>
-            <th scope="col">Valid (months)</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table className="max-lg:hidden">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Tier</TableHead>
+            <TableHead>Miles needed</TableHead>
+            <TableHead>Or flights</TableHead>
+            <TableHead>Valid (months)</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rules.tiers.map((t) => (
-            <tr key={t.code}>
-              <td>
+            <TableRow key={t.code}>
+              <TableCell>
                 <TierPill tier={t} />
-              </td>
-              <td className={ui.strong}>
+              </TableCell>
+              <TableCell className="font-semibold">
                 {tiersEditing
                   ? input(draft.tiers[t.code][0], (v) => setTier(t.code, 0, v), `${t.name} miles needed`)
                   : formatMiles(t.minMiles)}
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 {tiersEditing ? input(draft.tiers[t.code][1], (v) => setTier(t.code, 1, v), `${t.name} flights`, 'w-16') : t.minFlights}
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 {tiersEditing ? input(draft.tiers[t.code][2], (v) => setTier(t.code, 2, v), `${t.name} months`, 'w-24') : t.validMonths}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </>,
     undefined,
     'Miles or flights in the rolling 12 months. Only flights the member flew personally count.',
@@ -257,20 +256,20 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
   const earnCard = card(
     'earn',
     'Earning multipliers',
-    <table className={cx(ui.table, 'min-w-0!')}>
-      <thead>
-        <tr>
-          <th scope="col">Fare class</th>
-          <th scope="col">Code</th>
-          <th scope="col">Multiplier</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Fare class</TableHead>
+          <TableHead>Code</TableHead>
+          <TableHead>Multiplier</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {rules.earnRules.map((r) => (
-          <tr key={r.fareClassId}>
-            <td>{r.fareClassName}</td>
-            <td>{r.fareClassCode}</td>
-            <td className={ui.strong}>
+          <TableRow key={r.fareClassId}>
+            <TableCell>{r.fareClassName}</TableCell>
+            <TableCell>{r.fareClassCode}</TableCell>
+            <TableCell className="font-semibold">
               {editing === 'earn'
                 ? input(
                     draft.earn[r.fareClassId],
@@ -279,11 +278,11 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
                     'w-20',
                   )
                 : `× ${r.multiplier}`}
-            </td>
-          </tr>
+            </TableCell>
+          </TableRow>
         ))}
-      </tbody>
-    </table>,
+      </TableBody>
+    </Table>,
     earnExample(rules),
   )
 
@@ -291,38 +290,40 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
   const memberPrice = Object.values(rules.benefits).find((x) => x.insurance.kind === 'member_price')?.insurance
   const priceThb = memberPrice?.kind === 'member_price' ? memberPrice.priceThb : 190
   const yesNoSelect = (code: TierCode, key: BenefitKey, label: string) => (
-    <select
-      className={cx(ui.input, ui.inputSmall, 'w-full max-w-[180px]')}
+    <NativeSelect
+      size="sm"
+      className="w-full min-w-44 max-w-[240px]"
       aria-label={`${label} · ${code}`}
       value={draft.benefits[code][key] ? 'yes' : 'no'}
       onChange={(e) => setBenefit(code, { [key]: e.target.value === 'yes' })}
     >
-      <option value="yes">
+      <NativeSelectOption value="yes">
         {key === 'complimentaryUpgrade'
           ? upgradeLabel(code, rules.tiers, { ...draft.benefits, [code]: { ...draft.benefits[code], complimentaryUpgrade: true } })
           : 'Yes'}
-      </option>
-      <option value="no">No</option>
-    </select>
+      </NativeSelectOption>
+      <NativeSelectOption value="no">No</NativeSelectOption>
+    </NativeSelect>
   )
   const benefitRows: { name: string; view: (c: TierCode) => string; edit: (c: TierCode) => ReactNode }[] = [
     {
       name: 'Lounge access',
       view: (c) => loungeLabel(rules.benefits[c].loungeGuests),
       edit: (c) => (
-        <select
-          className={cx(ui.input, ui.inputSmall, 'w-full max-w-[180px]')}
+        <NativeSelect
+          size="sm"
+          className="w-full min-w-44 max-w-[240px]"
           aria-label={`Lounge access · ${c}`}
-          value={draft.benefits[c].loungeGuests ?? 'none'}
+          value={draft.benefits[c].loungeGuests === null ? 'none' : String(draft.benefits[c].loungeGuests)}
           onChange={(e) => setBenefit(c, { loungeGuests: e.target.value === 'none' ? null : Number(e.target.value) })}
         >
-          <option value="none">No access</option>
+          <NativeSelectOption value="none">No access</NativeSelectOption>
           {[0, 1, 2].map((n) => (
-            <option key={n} value={n}>
+            <NativeSelectOption key={n} value={String(n)}>
               {loungeLabel(n)}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
       ),
     },
     {
@@ -333,7 +334,7 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
           draft.baggage[c],
           (v) => setDraft({ ...draft, baggage: { ...draft.baggage, [c]: v } }),
           `Extra baggage kg · ${c}`,
-          'w-full max-w-[180px]',
+          'w-full min-w-44 max-w-[240px]',
         ),
     },
     {
@@ -355,8 +356,9 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
       name: 'Travel insurance',
       view: (c) => insuranceLabel(rules.benefits[c].insurance),
       edit: (c) => (
-        <select
-          className={cx(ui.input, ui.inputSmall, 'w-full max-w-[180px]')}
+        <NativeSelect
+          size="sm"
+          className="w-full min-w-44 max-w-[240px]"
           aria-label={`Travel insurance · ${c}`}
           value={draft.benefits[c].insurance.kind}
           onChange={(e) => {
@@ -364,85 +366,80 @@ function Rules({ api, initial }: { api: StaffLoyaltyApi; initial: LoyaltyRules }
             setBenefit(c, { insurance: kind === 'member_price' ? { kind, priceThb } : { kind } })
           }}
         >
-          <option value="none">Not offered</option>
-          <option value="included">Included</option>
-          <option value="member_price">THB {priceThb} member price</option>
-        </select>
+          <NativeSelectOption value="none">Not offered</NativeSelectOption>
+          <NativeSelectOption value="included">Included</NativeSelectOption>
+          <NativeSelectOption value="member_price">THB {priceThb} member price</NativeSelectOption>
+        </NativeSelect>
       ),
     },
   ]
   const benefitsCard = card(
     'benefits',
     'Tier benefits',
-    <div className={ui.tableWrap}>
-      <table className={cx(ui.table, benefitsEditing && '[&_td]:py-1.5')}>
-        <thead>
-          <tr>
-            <th scope="col">Benefit</th>
-            {rules.tiers.map((t) => (
-              <th key={t.code} scope="col">
-                {t.name}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {benefitRows.map((row) => (
-            <tr key={row.name}>
-              <th scope="row">{row.name}</th>
-              {rules.tiers.map((t) => (
-                <td key={t.code}>{benefitsEditing ? row.edit(t.code) : row.view(t.code)}</td>
-              ))}
-            </tr>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Benefit</TableHead>
+          {rules.tiers.map((t) => (
+            <TableHead key={t.code}>{t.name}</TableHead>
           ))}
-        </tbody>
-      </table>
-    </div>,
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {benefitRows.map((row) => (
+          <TableRow key={row.name}>
+            <TableHead scope="row" className="font-semibold text-foreground">
+              {row.name}
+            </TableHead>
+            {rules.tiers.map((t) => (
+              <TableCell key={t.code}>{benefitsEditing ? row.edit(t.code) : row.view(t.code)}</TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>,
     benefitsEditing ? undefined : 'Features 6 and 12 read these the next time a benefit is used.',
   )
 
   const settingsCard = card(
     'settings',
     'Settings',
-    <div className={ui.tableWrap}>
-      <table className={ui.table}>
-        <thead>
-          <tr>
-            <th scope="col">Setting</th>
-            <th scope="col">Value</th>
-            <th scope="col">Used by</th>
-          </tr>
-        </thead>
-        <tbody>
-          {SETTINGS.map((s) => (
-            <tr key={s.key}>
-              <td>{s.label}</td>
-              <td className={ui.strong}>
-                {editing === 'settings' ? (
-                  <span className="inline-flex items-center gap-2">
-                    {input(
-                      draft.settings[s.key],
-                      (v) => setDraft({ ...draft, settings: { ...draft.settings, [s.key]: v } }),
-                      `${s.label} (${s.unit})`,
-                      'w-20',
-                    )}
-                    <span className={ui.muted}>{s.unit}</span>
-                  </span>
-                ) : (
-                  `${rules.settings[s.key]} ${s.unit}`
-                )}
-              </td>
-              <td>{s.usedBy}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>,
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Setting</TableHead>
+          <TableHead>Value</TableHead>
+          <TableHead>Used by</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {SETTINGS.map((s) => (
+          <TableRow key={s.key}>
+            <TableCell>{s.label}</TableCell>
+            <TableCell className="font-semibold">
+              {editing === 'settings' ? (
+                <span className="inline-flex items-center gap-2">
+                  {input(
+                    draft.settings[s.key],
+                    (v) => setDraft({ ...draft, settings: { ...draft.settings, [s.key]: v } }),
+                    `${s.label} (${s.unit})`,
+                    'w-20',
+                  )}
+                  <span className="font-normal text-muted-foreground">{s.unit}</span>
+                </span>
+              ) : (
+                `${rules.settings[s.key]} ${s.unit}`
+              )}
+            </TableCell>
+            <TableCell>{s.usedBy}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>,
   )
 
   return (
     <>
-      <Toast message={toast} />
       <div className="lg:hidden">
         <Segmented
           label="Rules section"
@@ -489,47 +486,38 @@ function EditableCard({
   children: ReactNode
 }) {
   return (
-    <section className={cx(ui.card, editing && ui.cardEditing, hiddenOnPhone && 'max-lg:hidden')} aria-label={title}>
-      <div className={ui.cardHead}>
-        <div className="flex flex-col gap-0.5">
-          <h2 className={cx(ui.cardTitle, 'text-lg')}>{title}</h2>
-          {subtitle && <span className={cx(ui.small, 'lg:hidden')}>{subtitle}</span>}
-        </div>
+    <Card className={cn(editing && 'border-primary ring-3 ring-primary/10', hiddenOnPhone && 'max-lg:hidden')} aria-label={title}>
+      <CardHeader>
+        <CardTitle className="text-lg">{title}</CardTitle>
+        {subtitle && <CardDescription className="lg:hidden">{subtitle}</CardDescription>}
         {!editing && (
-          <button
-            type="button"
-            className={cx(
-              ui.linkButton,
-              'max-lg:rounded-full max-lg:border max-lg:border-[#f3dca4] max-lg:bg-[#fff6dc] max-lg:px-4 max-lg:py-2 max-lg:text-f11-warn max-lg:hover:no-underline',
-            )}
-            onClick={onEdit}
-            disabled={locked}
-          >
-            <span className="lg:hidden" aria-hidden="true">
-              ✎{' '}
-            </span>
-            Edit
-          </button>
+          <CardAction>
+            <Button variant="outline" size="sm" onClick={onEdit} disabled={locked}>
+              <Pencil /> Edit
+            </Button>
+          </CardAction>
         )}
-      </div>
-      {children}
-      {footnote && <p className={ui.small}>{footnote}</p>}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {children}
+        {footnote && <p className="text-xs text-muted-foreground">{footnote}</p>}
+      </CardContent>
       {editing && (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className={cx(error ? ui.fieldError : ui.small, 'm-0 text-xs!')} role={error ? 'alert' : undefined}>
+        <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className={cn('m-0 text-xs', error ? 'text-destructive' : 'text-muted-foreground')} role={error ? 'alert' : undefined}>
             {error ?? 'Applies to new activity only. Saved changes go to the audit log.'}
           </p>
           <div className="grid grid-cols-2 gap-2.5 sm:flex">
-            <button type="button" className={ui.button} onClick={onCancel} disabled={busy}>
+            <Button variant="outline" onClick={onCancel} disabled={busy}>
               Cancel
-            </button>
-            <button type="button" className={ui.buttonPrimary} onClick={onSave} disabled={busy}>
+            </Button>
+            <Button onClick={onSave} disabled={busy}>
               {busy ? 'Saving…' : 'Save changes'}
-            </button>
+            </Button>
           </div>
-        </div>
+        </CardFooter>
       )}
-    </section>
+    </Card>
   )
 }
 

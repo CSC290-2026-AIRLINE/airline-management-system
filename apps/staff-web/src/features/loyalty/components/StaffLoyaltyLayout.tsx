@@ -1,4 +1,8 @@
 import type { ReactNode } from 'react'
+import { AlertCircle, Info } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
 import type { LoadState } from '../use-load'
 import { ui } from './ui'
 
@@ -20,7 +24,12 @@ export function StaffLoyaltyLayout({
       <main className={ui.main}>
         <h1 className={ui.title}>{title}</h1>
         <p className={ui.purpose}>{purpose}</p>
-        {info && <p className={ui.info}>{info}</p>}
+        {info && (
+          <Alert>
+            <Info />
+            <AlertDescription>{info}</AlertDescription>
+          </Alert>
+        )}
         {children}
       </main>
     </div>
@@ -31,18 +40,25 @@ export function Loaded<T>({ state, retry, children }: { state: LoadState<T>; ret
   switch (state.status) {
     case 'loading':
       return (
-        <p aria-live="polite" className={ui.muted}>
-          Loading…
-        </p>
+        <div aria-live="polite" aria-busy="true" className="flex flex-col gap-2">
+          <span className="sr-only">Loading…</span>
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-2/3" />
+        </div>
       )
     case 'error':
       return (
-        <div className={ui.error} role="alert">
-          <p>{state.message}</p>
-          <button type="button" className={ui.button} onClick={retry}>
-            Try again
-          </button>
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertTitle>Couldn’t load this</AlertTitle>
+          <AlertDescription className="flex flex-col items-start gap-3">
+            <p>{state.message}</p>
+            <Button variant="outline" size="sm" onClick={retry}>
+              Try again
+            </Button>
+          </AlertDescription>
+        </Alert>
       )
     case 'ready':
       return <>{children(state.data)}</>

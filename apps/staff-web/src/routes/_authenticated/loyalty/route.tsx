@@ -1,4 +1,5 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router'
+import { Toaster } from '@staff-web/components/ui/sonner'
 import { AppShell } from '@staff-web/features/admin-console/AppShell'
 import { RequireStaff } from '@staff-web/features/admin-console/components/RequireStaff'
 
@@ -12,6 +13,7 @@ function LoyaltyWorkspace() {
     <RequireStaff>
       <AppShell>
         <Outlet />
+        <Toaster position="top-center" />
       </AppShell>
     </RequireStaff>
   )

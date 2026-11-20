@@ -1,61 +1,61 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
+import { Badge } from '@staff-web/components/ui/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
+import { TableCell } from '@staff-web/components/ui/table'
+import { ToggleGroup, ToggleGroupItem } from '@staff-web/components/ui/toggle-group'
+import { cn } from '@staff-web/lib/utils'
 import type { TierCode, TransactionType } from '../api/types'
 import { formatSignedMiles } from '../format'
 import { TYPE_LABEL } from '../labels'
-import { ui } from './ui'
+import { TIER_TONE } from './tones'
 
-// Small pieces shared by the Feature 11 staff pages.
+// Small pieces shared by the Feature 11 staff pages, built on the shadcn components.
 
-const TYPE_PILL: Record<TransactionType, string> = {
-  earn: ui.pillBlue,
-  redeem: ui.pillAmber,
-  redeem_reversal: ui.pillGreen,
-  expire: ui.pillGrey,
-  adjust: ui.pillGrey,
+const TYPE_TONE: Record<TransactionType, string> = {
+  earn: 'bg-blue-50 text-blue-700',
+  redeem: 'bg-amber-50 text-amber-700',
+  redeem_reversal: 'bg-emerald-50 text-emerald-700',
+  expire: 'bg-muted text-muted-foreground',
+  adjust: 'bg-muted text-muted-foreground',
 }
 
 export function TypePill({ type }: { type: TransactionType }) {
-  return <span className={`${ui.pill} ${TYPE_PILL[type]}`}>{TYPE_LABEL[type]}</span>
+  return (
+    <Badge variant="secondary" className={TYPE_TONE[type]}>
+      {TYPE_LABEL[type]}
+    </Badge>
+  )
 }
-
-const TIER_PILL: Record<TierCode, string> = { silver: ui.pillSilver, gold: ui.pillGold, platinum: ui.pillPlatinum }
 
 export function TierPill({ tier }: { tier: { code: TierCode; name: string } | null }) {
   return tier ? (
-    <span className={`${ui.pill} ${TIER_PILL[tier.code]}`}>{tier.name}</span>
+    <Badge variant="secondary" className={TIER_TONE[tier.code]}>
+      {tier.name}
+    </Badge>
   ) : (
-    <span className={`${ui.pill} ${ui.pillDark}`}>No tier</span>
+    <Badge>No tier</Badge>
   )
 }
 
 export function MilesCell({ miles }: { miles: number }) {
-  return <td className={`${ui.num} ${ui.strong} ${miles > 0 ? ui.plus : ui.minus}`}>{formatSignedMiles(miles)}</td>
+  return (
+    <TableCell className={cn('text-right font-semibold tabular-nums', miles > 0 ? 'text-emerald-700' : 'text-amber-700')}>
+      {formatSignedMiles(miles)}
+    </TableCell>
+  )
 }
 
-// A pop-up dialog. Escape and the backdrop close it; focus moves into it when it opens.
+// A dialog that is open while it is rendered. Escape, the backdrop and the close button call `onClose`.
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  const id = useId()
-  const ref = useRef<HTMLDivElement>(null)
-  const close = useRef(onClose)
-
-  useEffect(() => {
-    close.current = onClose
-  }, [onClose])
-
-  useEffect(() => {
-    ref.current?.querySelector<HTMLElement>('input, select, button')?.focus()
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close.current()
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
   return (
-    <div className={ui.backdrop} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} className={ui.modal} role="dialog" aria-modal="true" aria-labelledby={id}>
-        <h2 id={id}>{title}</h2>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[calc(100svh-32px)] overflow-y-auto sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
         {children}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -71,21 +71,40 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void
 }) {
   return (
-    <div className={ui.segmented} role="group" aria-label={label}>
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      aria-label={label}
+      value={value}
+      // Radix sends '' when the pressed item is clicked again; keep the current choice instead.
+      onValueChange={(next) => next && onChange(next as T)}
+      className="self-start"
+    >
       {options.map((o) => (
-        <button key={o.value} type="button" aria-pressed={value === o.value} disabled={o.disabled} onClick={() => onChange(o.value)}>
+        <ToggleGroupItem key={o.value} value={o.value} disabled={o.disabled} className="px-3.5">
           {o.label}
-        </button>
+        </ToggleGroupItem>
       ))}
+    </ToggleGroup>
+  )
+}
+
+// A centred empty state for lists and tables.
+export function Empty({ title, children }: { title: string; children?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1 py-6 text-center">
+      <strong>{title}</strong>
+      {children && <span className="text-xs text-muted-foreground">{children}</span>}
     </div>
   )
 }
 
-export function Toast({ message }: { message: string | null }) {
-  if (!message) return null
+// One labelled value in a grid of tiles; `tone` tints it (e.g. a tier colour). Use inside a <dl>.
+export function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className={ui.toast} role="status">
-      ✓ {message}
+    <div className={cn('flex min-w-0 flex-col gap-0.5 rounded-md bg-muted px-3 py-2.5', tone)}>
+      <dt className="text-[10px] font-semibold tracking-wider uppercase opacity-70">{label}</dt>
+      <dd className="m-0 text-sm font-semibold [overflow-wrap:anywhere]">{value}</dd>
     </div>
   )
 }

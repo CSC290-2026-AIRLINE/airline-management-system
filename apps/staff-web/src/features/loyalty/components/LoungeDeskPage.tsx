@@ -1,10 +1,20 @@
 import { useCallback, useState, type FormEvent } from 'react'
-import type { LoungeResult } from '../api/types'
+import { CircleCheck, CircleX } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import type { LoungeResult, TierCode } from '../api/types'
 import { useStaffLoyaltyApi } from '../api/use-staff-loyalty-api'
 import { loungeLabel } from '../labels'
 import { errorMessage, useLoad } from '../use-load'
+import { Stat } from './parts'
+import { TIER_TONE } from './tones'
 import { Loaded, StaffLoyaltyLayout } from './StaffLoyaltyLayout'
-import { cx, ui } from './ui'
+
+const TIER_BY_NAME: Record<string, TierCode> = { Silver: 'silver', Gold: 'gold', Platinum: 'platinum' }
 
 // S10–S14 Lounge Desk: check a member in against their tier (Feature 11) and ticket (Feature 3b), and record guests.
 export function LoungeDeskPage() {
@@ -37,89 +47,101 @@ export function LoungeDeskPage() {
     <StaffLoyaltyLayout title="Lounge Desk" purpose="Check a member in to the lounge and record their guests.">
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.75fr)_minmax(280px,1fr)]">
         <div className="flex min-w-0 flex-col gap-4">
-          <form className={ui.card} onSubmit={(e) => void submit(e)} aria-labelledby="check-in">
-            <h2 id="check-in" className={ui.cardTitle}>
-              Check in a member
-            </h2>
-            <div className="grid grid-cols-[minmax(0,1fr)_88px] items-end gap-3 sm:grid-cols-[minmax(0,1fr)_110px_auto]">
-              <label className={ui.field}>
-                <span className={ui.label}>Member number or booking reference</span>
-                <input
-                  className={ui.input}
-                  placeholder="e.g. FL10000142 or FLY7K2"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  required
-                />
-              </label>
-              <label className={ui.field}>
-                <span className={ui.label}>Guests</span>
-                <input className={ui.input} type="number" min={0} max={9} value={guests} onChange={(e) => setGuests(e.target.value)} />
-              </label>
-              <button type="submit" className={cx(ui.buttonPrimary, 'min-h-[42px] max-sm:col-span-2 max-sm:min-h-12')} disabled={busy}>
-                {busy ? 'Checking…' : 'Check in'}
-              </button>
-            </div>
-            <p className={ui.small}>Checked against the tier (Feature 11) and the ticket (Feature 3b). One visit per member per flight.</p>
-          </form>
+          <Card aria-labelledby="check-in">
+            <CardHeader>
+              <CardTitle id="check-in">Check in a member</CardTitle>
+              <CardDescription>
+                Checked against the tier (Feature 11) and the ticket (Feature 3b). One visit per member per flight.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form
+                className="grid grid-cols-[minmax(0,1fr)_88px] items-end gap-3 sm:grid-cols-[minmax(0,1fr)_110px_auto]"
+                onSubmit={(e) => void submit(e)}
+              >
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="lounge-query">Member number or booking reference</Label>
+                  <Input
+                    id="lounge-query"
+                    placeholder="e.g. FL10000142 or FLY7K2"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="lounge-guests">Guests</Label>
+                  <Input id="lounge-guests" type="number" min={0} max={9} value={guests} onChange={(e) => setGuests(e.target.value)} />
+                </div>
+                <Button type="submit" className="max-sm:col-span-2" disabled={busy}>
+                  {busy ? 'Checking…' : 'Check in'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
 
-          <section className={ui.card} aria-labelledby="result" aria-live="polite">
-            <h2 id="result" className={ui.cardTitle}>
-              Result
-            </h2>
-            {error ? (
-              <div className={`${ui.result} ${ui.resultNo}`}>
-                <strong>Not found</strong>
-                <span>{error}</span>
-              </div>
-            ) : result ? (
-              <Result result={result} />
-            ) : (
-              <div className={`${ui.result} ${ui.resultIdle}`}>Enter a member number and press Check in.</div>
-            )}
-          </section>
+          <Card aria-labelledby="result">
+            <CardHeader>
+              <CardTitle id="result">Result</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3" aria-live="polite">
+              {error ? (
+                <Alert variant="destructive">
+                  <CircleX />
+                  <AlertTitle>Not found</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              ) : result ? (
+                <Result result={result} />
+              ) : (
+                <p className="rounded-md bg-muted px-3.5 py-3 text-sm text-muted-foreground">Enter a member number and press Check in.</p>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
-        <section className={ui.card} aria-labelledby="today">
-          <h2 id="today" className={ui.cardTitle}>
-            Today at this desk
-          </h2>
-          <Loaded state={visits} retry={reloadVisits}>
-            {(rows) =>
-              rows.length === 0 ? (
-                <p className={ui.muted}>No visits yet today.</p>
-              ) : (
-                <div className={ui.tableWrap}>
-                  <table className={cx(ui.table, 'min-w-0! [&_td]:align-top')}>
-                    <thead>
-                      <tr>
-                        <th scope="col">Time</th>
-                        <th scope="col">Member</th>
-                        <th scope="col">Flight</th>
-                        <th scope="col" className={ui.num}>
-                          Guests
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
+        <Card aria-labelledby="today">
+          <CardHeader>
+            <CardTitle id="today">Today at this desk</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Loaded state={visits} retry={reloadVisits}>
+              {(rows) =>
+                rows.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No visits yet today.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Time</TableHead>
+                        <TableHead>Member</TableHead>
+                        <TableHead>Flight</TableHead>
+                        <TableHead className="text-right">Guests</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {rows.map((v) => (
-                        <tr key={v.id}>
-                          <td>{v.time}</td>
-                          <td>
+                        <TableRow key={v.id}>
+                          <TableCell>{v.time}</TableCell>
+                          <TableCell className="whitespace-normal">
                             {v.memberName} · {v.tierName}
-                          </td>
-                          <td>{v.flightNumber}</td>
-                          <td className={ui.num}>{v.guests}</td>
-                        </tr>
+                          </TableCell>
+                          <TableCell>{v.flightNumber}</TableCell>
+                          <TableCell className="text-right tabular-nums">{v.guests}</TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            }
-          </Loaded>
-          <p className={ui.small}>Admitted visits only · simulation time. Each visit is saved in the member’s benefit history.</p>
-        </section>
+                    </TableBody>
+                  </Table>
+                )
+              }
+            </Loaded>
+          </CardContent>
+          <CardFooter>
+            <p className="text-xs text-muted-foreground">
+              Admitted visits only · simulation time. Each visit is saved in the member’s benefit history.
+            </p>
+          </CardFooter>
+        </Card>
       </div>
     </StaffLoyaltyLayout>
   )
@@ -129,6 +151,7 @@ function Result({ result }: { result: LoungeResult }) {
   const m = result.member
   const allowed = m.guestsAllowed === null ? 'No access' : `${m.guestsAllowed} guest${m.guestsAllowed === 1 ? '' : 's'}`
   const tierText = m.tierName ?? 'No tier'
+  const tierCode = m.tierName ? TIER_BY_NAME[m.tierName] : undefined
   let title: string
   let text: string
   if (result.outcome === 'admitted') {
@@ -159,39 +182,23 @@ function Result({ result }: { result: LoungeResult }) {
     }
   }
 
+  const admitted = result.outcome === 'admitted'
   return (
     <>
-      <div className={`${ui.result} ${result.outcome === 'admitted' ? ui.resultOk : ui.resultNo}`}>
-        <strong>{title}</strong>
-        <span>{text}</span>
-      </div>
-      <div className={ui.gridEven} style={{ gap: 8 }}>
-        <div className={ui.stat}>
-          <span>Member</span>
-          <strong>
-            {m.name} · {m.memberNumber}
-          </strong>
-        </div>
-        <div
-          className={cx(
-            ui.stat,
-            m.tierName === 'Gold' && ui.statGold,
-            m.tierName === 'Silver' && ui.statSilver,
-            m.tierName === 'Platinum' && ui.statPlatinum,
-          )}
-        >
-          <span>Tier</span>
-          <strong>{tierText}</strong>
-        </div>
-        <div className={ui.stat}>
-          <span>Guests allowed</span>
-          <strong>{allowed}</strong>
-        </div>
-        <div className={ui.stat}>
-          <span>Ticket</span>
-          <strong>{m.ticket ?? 'None in the next 4 hours'}</strong>
-        </div>
-      </div>
+      <Alert
+        variant={admitted ? 'default' : 'destructive'}
+        className={admitted ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : undefined}
+      >
+        {admitted ? <CircleCheck /> : <CircleX />}
+        <AlertTitle>{title}</AlertTitle>
+        <AlertDescription className={admitted ? 'text-emerald-800' : undefined}>{text}</AlertDescription>
+      </Alert>
+      <dl className="grid grid-cols-1 gap-2 md:grid-cols-2">
+        <Stat label="Member" value={`${m.name} · ${m.memberNumber}`} />
+        <Stat label="Tier" value={tierText} tone={tierCode ? TIER_TONE[tierCode] : undefined} />
+        <Stat label="Guests allowed" value={allowed} />
+        <Stat label="Ticket" value={m.ticket ?? 'None in the next 4 hours'} />
+      </dl>
     </>
   )
 }
