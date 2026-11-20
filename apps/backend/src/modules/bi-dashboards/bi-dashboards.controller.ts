@@ -178,7 +178,7 @@ export class BiDashboardsController {
     return this.financeService.forMonth(query.month)
   }
 
-  /** Fleet-wide scheduled maintenance payments, due from the simulation's current date. */
+  /** Fleet-wide scheduled payments of every category, due from the simulation's current date. */
   @Get('finance/payments')
   @BiScreens(BI_FINANCE_SCREEN)
   upcomingPayments(): Promise<BiScheduledPayment[]> {

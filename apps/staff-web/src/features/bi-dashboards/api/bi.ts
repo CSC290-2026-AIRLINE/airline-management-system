@@ -113,6 +113,7 @@ export interface BiFinanceMonth {
 
 export interface BiScheduledPayment {
   id: string
+  category: string
   payee: string
   description: string | null
   amount: number

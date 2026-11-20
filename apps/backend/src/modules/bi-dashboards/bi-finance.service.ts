@@ -34,6 +34,7 @@ export interface BiFinanceMonth {
 
 export interface BiScheduledPayment {
   id: string
+  category: string
   payee: string
   description: string | null
   amount: number
@@ -69,13 +70,13 @@ export class BiFinanceService {
     return { current, previous, months }
   }
 
-  /** Read the existing Feature 4 schedule without changing its records. */
+  /** Every Feature 4 payment still scheduled and due from `today`, any category, as F4's own month view lists them. */
   upcomingPayments(today: string): Promise<BiScheduledPayment[]> {
     return this.db.$queryRaw<BiScheduledPayment[]>`
-      SELECT id::text AS id, payee, description, amount::float8 AS amount,
+      SELECT id::text AS id, category, payee, description, amount::float8 AS amount,
         to_char(due_date, 'YYYY-MM-DD') AS due_date, status
       FROM payment_schedule
-      WHERE category = 'maintenance' AND status = 'scheduled' AND deleted_at IS NULL
+      WHERE status = 'scheduled' AND deleted_at IS NULL
         AND due_date >= ${today}::date
       ORDER BY due_date, id`
   }

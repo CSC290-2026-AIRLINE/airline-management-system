@@ -32,6 +32,13 @@ const LINES: { label: string; key: keyof BiFinanceMonth; deduct: boolean }[] = [
   { label: 'Other expenses', key: 'other', deduct: true },
   { label: 'Profit', key: 'profit', deduct: false },
 ]
+/** Feature 4's payment schedule categories, as the report lines name them. */
+const CATEGORY_LABELS: Record<string, string> = {
+  maintenance: 'Maintenance',
+  staff: 'Staff',
+  catering: 'Meal and catering',
+  other: 'Other',
+}
 
 export function FinancePage() {
   const api = useBiApi()
@@ -236,7 +243,7 @@ export function FinancePage() {
                 </div>
               </Card>
               <Card className="bi-payments">
-                <h2>Upcoming maintenance payments</h2>
+                <h2>Upcoming payments</h2>
                 <p className="bi-payments-description">
                   Scheduled payments due from today.
                   <br />
@@ -252,7 +259,7 @@ export function FinancePage() {
                 ) : payments.data === null ? (
                   <Skeleton className="h-[240px]" />
                 ) : payments.data.length === 0 ? (
-                  <p className="bi-chart-empty">No upcoming maintenance payments.</p>
+                  <p className="bi-chart-empty">No upcoming payments.</p>
                 ) : (
                   <>
                     <ul>
@@ -264,6 +271,7 @@ export function FinancePage() {
                           </div>
                           <div>
                             <span>
+                              {CATEGORY_LABELS[payment.category] ?? payment.category} ·{' '}
                               {payment.description ? `${payment.description} · ` : ''}Due{' '}
                               {new Intl.DateTimeFormat('en-GB', {
                                 day: 'numeric',

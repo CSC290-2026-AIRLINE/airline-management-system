@@ -38,10 +38,27 @@ describe('toMonth', () => {
   })
 })
 
-describe('scheduled maintenance payments', () => {
-  it('uses the simulation date and only reads live, scheduled maintenance payments in due-date order', async () => {
+describe('upcoming scheduled payments', () => {
+  it('uses the simulation date and reads every live, scheduled payment of any category in due-date order', async () => {
     const payments = [
-      { id: 'payment-1', payee: 'HS-FYE', description: 'Engine shop visit', amount: 14800000, due_date: '2026-10-14', status: 'scheduled' },
+      {
+        id: 'payment-1',
+        category: 'maintenance',
+        payee: 'HS-FYE',
+        description: 'Engine shop visit',
+        amount: 14800000,
+        due_date: '2026-10-14',
+        status: 'scheduled',
+      },
+      {
+        id: 'payment-2',
+        category: 'catering',
+        payee: 'Sky Kitchen',
+        description: null,
+        amount: 520000,
+        due_date: '2026-10-20',
+        status: 'scheduled',
+      },
     ]
     const query = jest.fn().mockResolvedValue(payments)
     const service = new BiFinanceService({ $queryRaw: query } as never)
@@ -49,7 +66,8 @@ describe('scheduled maintenance payments', () => {
     const [strings, today] = query.mock.calls[0] as [TemplateStringsArray, string]
     const sql = strings.join('?')
     expect(today).toBe('2026-10-05')
-    expect(sql).toContain("category = 'maintenance' AND status = 'scheduled' AND deleted_at IS NULL")
+    expect(sql).toContain("WHERE status = 'scheduled' AND deleted_at IS NULL")
+    expect(sql).not.toContain("category = 'maintenance'")
     expect(sql).toContain('due_date >= ?::date')
     expect(sql).toContain('ORDER BY due_date, id')
   })
