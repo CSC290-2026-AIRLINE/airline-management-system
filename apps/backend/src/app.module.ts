@@ -9,6 +9,7 @@ import { CheckinBoardingModule } from './modules/checkin-boarding/checkin-boardi
 import { validateEnv } from './config/env.validation'
 import { ScreeningModule } from './modules/screening/screening.module'
 import { PricingModule } from './modules/pricing/pricing.module'
+import { CustomerServiceModule } from './modules/customer-service/customer-service.module'
 import { PassengerProfilesModule } from '@backend/modules/passenger-profiles/passenger-profiles.module'
 import { WatchlistModule } from './modules/watchlist/watchlist.module'
 import { AircraftManagementModule } from '@backend/modules/aircraft-management/aircraft-management.module'
@@ -21,6 +22,7 @@ import { FlightSchedulingModule } from './modules/flight-scheduling/flight-sched
     AuthModule,
     AdminConsoleModule,
     PricingModule,
+    CustomerServiceModule,
     CheckinBoardingModule.register('db'),
     PassengerProfilesModule,
     ScreeningModule,

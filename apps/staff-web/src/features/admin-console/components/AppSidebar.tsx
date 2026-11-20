@@ -21,7 +21,16 @@ import flythonLogo from '../assets/flython-logo.svg'
 import flythonLogoMark from '../assets/flython-logo-mark.svg'
 import sidebarPattern from '../assets/sidebar-pattern.png'
 import { groupKey, readOpen, writeOpen } from '../hooks/persisted-open'
-import { ADMIN_ITEMS, CHECKIN_ITEMS, FLIGHT_SCHEDULING_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM, type NavItem } from '../nav-items'
+import {
+  ADMIN_ITEMS,
+  CHECKIN_ITEMS,
+  CUSTOMER_SERVICE_ITEMS,
+  FLIGHT_SCHEDULING_ITEMS,
+  GROUPS,
+  PRICING_ITEMS,
+  REPORTS_ITEM,
+  type NavItem,
+} from '../nav-items'
 
 /**
  * These screens belong to other feature teams and have no routes in this app yet, so they are listed as disabled
@@ -194,6 +203,19 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
                   tooltip={item.label}
                   className="pl-4"
                 >
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Service & Compensation">
+            {CUSTOMER_SERVICE_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton asChild isActive={pathname === item.to} tooltip={item.label} className="pl-4">
                   <Link to={item.to}>
                     <item.icon />
                     <span>{item.label}</span>
