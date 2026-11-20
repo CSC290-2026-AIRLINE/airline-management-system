@@ -356,8 +356,8 @@ export class LoyaltyAwardService {
 
   /**
    * Writes one `redeem` row per award coupon of a miles booking, inside feature 3b's hold transaction `tx`, for that
-   * cabin's `miles_cost`. A lap infant takes no seat and has no row. Refuses with 409 (and writes nothing) when the
-   * a flight is past the cutoff or not for sale, a cabin has no release or too few award seats,
+   * cabin's `miles_cost`. A lap infant takes no seat and has no row. Refuses with 409 (and writes nothing) when a
+   * flight is past the cutoff or not for sale, a cabin has no release or too few award seats,
    * or the balance is short. Safe to repeat: coupons that already have a redeem row are skipped.
    *
    * Call it after `InventoryPort.lock` and either before 3b raises `award_held_count` (the default: the seats are checked

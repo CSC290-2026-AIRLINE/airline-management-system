@@ -11,7 +11,7 @@ const now = new Date('2026-10-30T00:00:00Z')
 const none: MemberTier = { tierCode: null, tierQualifiedAt: null, tierExpiresAt: null }
 
 describe('tierStats', () => {
-  it('counts the rolling 12 months, and flights only when the member flew', () => {
+  it('counts only the member’s own flights, miles and flights alike, in the rolling 12 months', () => {
     const stats = tierStats(
       [
         { miles: 1000, occurredAt: new Date('2026-10-01T00:00:00Z'), flownBySelf: true },
@@ -21,12 +21,18 @@ describe('tierStats', () => {
       ],
       now,
     )
-    expect(stats).toEqual({ miles: 2000, flights: 1 })
+    expect(stats).toEqual({ miles: 1000, flights: 1 })
   })
 
   it('does not reach Silver by booking 20 seats on one flight', () => {
     const party = Array.from({ length: 20 }, (_, i) => ({ miles: 500, occurredAt: now, flownBySelf: i === 0 }))
     expect(qualifyingTier(tierStats(party, now), rules)).toBeNull()
+  })
+
+  it('does not reach Silver on companions’ miles alone', () => {
+    const companions = [{ miles: 19800, occurredAt: now, flownBySelf: false }]
+    expect(tierStats(companions, now)).toEqual({ miles: 0, flights: 0 })
+    expect(qualifyingTier(tierStats(companions, now), rules)).toBeNull()
   })
 })
 

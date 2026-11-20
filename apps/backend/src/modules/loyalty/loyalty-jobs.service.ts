@@ -203,12 +203,14 @@ export class LoyaltyJobsService {
         FROM booking_coupon c
         JOIN booking b            ON b.id = c.booking_id
         JOIN customer cu          ON cu.id = b.customer_id
+        JOIN "user" u             ON u.id = cu.user_id
         JOIN booking_segment s    ON s.id = c.booking_segment_id
         JOIN flight f             ON f.id = c.flight_id
        WHERE c.status = 'confirmed'
          AND f.arr_at <= ${now}
          AND s.fare_class_id IS NOT NULL
          AND cu.deleted_at IS NULL
+         AND u.deleted_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM loyalty_member m WHERE m.customer_id = b.customer_id)
          AND EXISTS (SELECT 1 FROM check_in ci
                       WHERE ci.booking_passenger_id = c.booking_passenger_id AND ci.flight_id = c.flight_id AND ci.status = 'boarded')`

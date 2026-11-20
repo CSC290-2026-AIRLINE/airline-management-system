@@ -175,13 +175,13 @@ describe('LoyaltyMemberService', () => {
     expect(await errorOf(svc.me('user-staff'))).toEqual({ status: 403, code: 'NOT_A_CUSTOMER' })
   })
 
-  it('counts companions’ miles but only the member’s own flights, within 12 months, toward the tier', async () => {
+  it('counts companions’ miles toward the balance but only the member’s own flights, within 12 months, toward the tier', async () => {
     const { svc } = makeSvc()
     const summary = await svc.me('user-1')
     expect(summary).toMatchObject({
       milesBalance: 6900,
       tier: null,
-      tierMiles: 6900,
+      tierMiles: 4600, // the companion's 2,300 go to the balance only
       tierFlights: 1,
       nextTier: { code: 'silver', minMiles: 15000, minFlights: 20 },
       asOf: NOW.toISOString(),

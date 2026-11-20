@@ -4,7 +4,7 @@ import { MemberTier, TierCode, TierRule } from './types'
 export const TIER_WINDOW_MONTHS = 12
 
 export interface TierActivity {
-  miles: number // earn rows in the window; adjustments never count toward a tier
+  miles: number // one earn row; adjustments never count toward a tier
   occurredAt: Date
   flownBySelf: boolean // the coupon's passenger is the member's own customer.passenger_id
 }
@@ -14,16 +14,16 @@ export interface TierStats {
   flights: number
 }
 
-// Miles count every earn row in the rolling window, the booker's family included. Flights count only coupons the member
-// flew themselves, so booking 20 seats on one flight does not reach a flight threshold (review row 18, to be confirmed).
+// Only coupons the member flew themselves count toward the tier, for miles and flights alike (F11 doc, Tiers): miles
+// earned on companions' seats go to the balance but not the tier, so booking 20 seats on one flight reaches no tier.
 export function tierStats(activity: readonly TierActivity[], now: Date): TierStats {
   const from = addMonths(now, -TIER_WINDOW_MONTHS)
   let miles = 0
   let flights = 0
   for (const row of activity) {
-    if (row.occurredAt <= from || row.occurredAt > now) continue
+    if (row.occurredAt <= from || row.occurredAt > now || !row.flownBySelf) continue
     miles += row.miles
-    if (row.flownBySelf) flights += 1
+    flights += 1
   }
   return { miles, flights }
 }
