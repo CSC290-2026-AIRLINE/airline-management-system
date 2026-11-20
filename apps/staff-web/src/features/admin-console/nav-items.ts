@@ -21,6 +21,7 @@ import {
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Sofa,
   Star,
   Tag,
   Ticket,
@@ -52,7 +53,6 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
       { label: 'Customer Search', icon: Search, to: '/customer-search', activePrefix: '/customer-search' },
       { label: 'Security Screening', icon: ShieldCheck, to: '/security-screening/screening-queue', activePrefix: '/security-screening' },
       { label: 'Service & Compensation', icon: MessageSquare },
-      { label: 'Loyalty Programme', icon: Star },
     ],
   },
   {
@@ -112,3 +112,11 @@ export const FLIGHT_SCHEDULING_ITEMS: readonly {
   { to: '/routes', label: 'Routes', icon: Route },
   { to: '/congestion', label: 'Congestion', icon: Gauge },
 ]
+
+/** The Feature 11 (loyalty programme) staff pages. */
+export const LOYALTY_ITEMS = [
+  { to: '/loyalty/members', label: 'Member Lookup', icon: Search },
+  { to: '/loyalty/rules', label: 'Loyalty Rules', icon: SlidersHorizontal },
+  { to: '/loyalty/award-release', label: 'Award Release', icon: Star },
+  { to: '/loyalty/lounge', label: 'Lounge Desk', icon: Sofa },
+] as const

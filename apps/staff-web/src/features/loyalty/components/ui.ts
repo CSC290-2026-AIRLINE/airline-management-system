@@ -12,15 +12,14 @@ const buttonBase = cx(
 )
 
 export const ui = {
-  // Page shell: the sidebar is a top bar on phones and small tablets, a column from md up.
+  // Page frame inside the global staff sidebar.
   shell: cx(
-    'grid min-h-svh grid-cols-1 grid-rows-[auto_1fr] bg-f11-canvas text-left font-sans text-sm leading-[1.4] tracking-normal text-f11-ink',
-    'flex-1 [color-scheme:light] lg:grid-rows-1',
+    'min-h-full flex-1 bg-f11-canvas text-left font-sans text-sm leading-[1.4] tracking-normal text-f11-ink [color-scheme:light]',
     // Preflight is off app-wide, so border-box sizing is set here: padding stays inside each element's width.
     'box-border [&_*]:box-border',
     '[&_:is(h1,h2,h3)]:m-0 [&_:is(h1,h2,h3)]:font-sans [&_:is(h1,h2,h3)]:tracking-normal [&_:is(h1,h2,h3)]:text-inherit',
   ),
-  // Fills the space beside the sidebar with a 4% gutter, and stays centred once it reaches 1440px on very wide screens.
+  // A 4% gutter beside the sidebar, and stays centred once it reaches 1440px on very wide screens.
   main: 'mx-auto flex w-full max-w-[1440px] min-w-0 flex-col gap-4 px-4 pt-4 pb-10 sm:px-6 lg:px-[4%] lg:pt-[72px] lg:pb-16',
   topRow: 'flex flex-wrap items-center justify-end gap-3',
   meta: 'w-full text-xs text-f11-muted sm:w-auto sm:text-[13px]',
