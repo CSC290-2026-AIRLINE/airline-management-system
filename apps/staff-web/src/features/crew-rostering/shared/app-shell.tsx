@@ -32,7 +32,6 @@ export function RosterRunBadge({ base, dateFrom, dateTo, status }: { base: strin
       >
         {status}
       </span>
-      <span className="px-1 text-[11px] text-border-desc">▾</span>
     </div>
   )
 }

@@ -12,6 +12,7 @@
  */
 import type { ReactNode } from 'react'
 import { Button } from '../../shared/ui'
+import { useSimNow } from '../../shared/use-sim-now'
 import { formatTime } from '../../build-pairings/types/format'
 import { countryTag, dayMonth } from '../types/labels'
 import type { CrewMember, FixBreak, LegAssignment } from '../types/types'
@@ -43,6 +44,9 @@ const HEADINGS = ['Flight', 'Route', 'Time', 'Captain', 'First officer', 'Cabin 
 
 export function RosterTable({ assignments, openBreaks, updated, onSickCall, onFindCover, embedded = false }: RosterTableProps) {
   const ordered = [...assignments].sort((a, b) => a.leg.departureAt.localeCompare(b.leg.departureAt))
+  // A leg that has left already flew with this crew, so nobody can be taken off it. Until the clock answers, every leg is open.
+  const now = useSimNow()
+  const flown = (departureAt: string) => now !== null && new Date(departureAt).getTime() <= now.getTime()
 
   return (
     <section
@@ -85,6 +89,7 @@ export function RosterTable({ assignments, openBreaks, updated, onSickCall, onFi
                 key={assignment.leg.legId}
                 assignment={assignment}
                 state={legState(assignment.leg.legId, openBreaks)}
+                flown={flown(assignment.leg.departureAt)}
                 onSickCall={onSickCall}
                 onFindCover={onFindCover}
               />
@@ -119,7 +124,13 @@ export function RosterTable({ assignments, openBreaks, updated, onSickCall, onFi
                 {assignment.police.length} of {assignment.policeRequired}
               </p>
               <div className="mt-3">
-                <ActionButton state={state} legId={assignment.leg.legId} onSickCall={onSickCall} onFindCover={onFindCover} />
+                <ActionButton
+                  state={state}
+                  legId={assignment.leg.legId}
+                  flown={flown(assignment.leg.departureAt)}
+                  onSickCall={onSickCall}
+                  onFindCover={onFindCover}
+                />
               </div>
             </li>
           )
@@ -139,11 +150,13 @@ export function RosterTable({ assignments, openBreaks, updated, onSickCall, onFi
 function RosterRow({
   assignment,
   state,
+  flown,
   onSickCall,
   onFindCover,
 }: {
   assignment: LegAssignment
   state: LegState
+  flown: boolean
   onSickCall: (legId: string) => void
   onFindCover: (legId: string) => void
 }) {
@@ -200,7 +213,7 @@ function RosterRow({
         <StatusPill state={state} />
       </td>
       <td className="px-3 py-3.5 text-center whitespace-nowrap">
-        <ActionButton state={state} legId={assignment.leg.legId} onSickCall={onSickCall} onFindCover={onFindCover} />
+        <ActionButton state={state} legId={assignment.leg.legId} flown={flown} onSickCall={onSickCall} onFindCover={onFindCover} />
       </td>
     </tr>
   )
@@ -209,14 +222,20 @@ function RosterRow({
 function ActionButton({
   state,
   legId,
+  flown,
   onSickCall,
   onFindCover,
 }: {
   state: LegState
   legId: string
+  /** Departed by the simulation clock: no sick call, which the API would refuse anyway. */
+  flown: boolean
   onSickCall: (legId: string) => void
   onFindCover: (legId: string) => void
 }) {
+  if (state.kind === 'ok' && flown) {
+    return <span className="inline-block min-w-28 text-center text-xs font-semibold text-primary-text/45">Flown</span>
+  }
   if (state.kind === 'ok') {
     return (
       <Button variant="outline" className="min-w-28 px-3! py-1.5! text-xs" onClick={() => onSickCall(legId)}>

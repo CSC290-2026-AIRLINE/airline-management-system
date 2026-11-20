@@ -69,6 +69,8 @@ export function AssignCrewPage() {
       selectedIds={state.selectedIds}
       excluded={state.uncommitted}
       canRun={canRun}
+      // A published run is crewed in Fix & publish, so there is nothing to run here and no selection to ask for.
+      showRun={state.rosterRun?.status !== 'published'}
       hasRun={hasResults}
       onToggle={state.togglePairing}
       onSelectAll={state.selectAll}
@@ -118,7 +120,9 @@ export function AssignCrewPage() {
           Build pairings
         </button>
 
-        {summary && state.assignments && <RunSummaryBanner summary={summary} onOpenFix={openFixPublish} />}
+        {summary && state.assignments && (
+          <RunSummaryBanner summary={summary} published={state.rosterRun?.status === 'published'} onOpenFix={openFixPublish} />
+        )}
         {summary && state.assignments && <NotCrewedNote pairings={state.notCrewed} />}
 
         {state.runError && (
@@ -171,7 +175,7 @@ export function AssignCrewPage() {
               Pick the dates and base, then choose which pairings to crew.
             </p>
             {fields}
-            {hasResults && (
+            {hasResults && state.rosterRun?.status !== 'published' && (
               <Button fullWidth className="mt-5 h-11" disabled={!canRun} onClick={() => setConfirming(true)}>
                 Run auto-assign
               </Button>
@@ -228,7 +232,16 @@ export function AssignCrewPage() {
  * two police counts as crewed but broken, so reading one number as the other would
  * misreport the roster.
  */
-function RunSummaryBanner({ summary, onOpenFix }: { summary: AssignmentSummary; onOpenFix: () => void }) {
+function RunSummaryBanner({
+  summary,
+  published,
+  onOpenFix,
+}: {
+  summary: AssignmentSummary
+  /** A published run's stored roster, read back on load rather than just crewed. */
+  published: boolean
+  onOpenFix: () => void
+}) {
   const clean = summary.breakCount === 0
   return (
     <div
@@ -241,7 +254,7 @@ function RunSummaryBanner({ summary, onOpenFix }: { summary: AssignmentSummary; 
         {clean ? '✓' : '!'}
       </span>
       <p className="flex-1 text-sm font-semibold">
-        Auto-assign finished · {summary.fullyCrewedLegs} of {summary.totalLegs} legs fully crewed ·{' '}
+        {published ? 'Published roster' : 'Auto-assign finished'} · {summary.fullyCrewedLegs} of {summary.totalLegs} legs fully crewed ·{' '}
         {clean ? (
           'no rule breaks.'
         ) : (

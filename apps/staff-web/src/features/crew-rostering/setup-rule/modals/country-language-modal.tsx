@@ -22,7 +22,7 @@ export function AddCountryLanguageModal({
   onCancel,
   onSubmit,
 }: {
-  countries: readonly { name: string }[]
+  countries: readonly { name: string; label?: string }[]
   languages: readonly LanguageOption[]
   takenCountries: readonly string[]
   onCancel: () => void
@@ -48,7 +48,7 @@ export function EditCountryLanguageModal({
   onSubmit,
 }: {
   mapping: CountryLanguage
-  countries: readonly { name: string }[]
+  countries: readonly { name: string; label?: string }[]
   languages: readonly LanguageOption[]
   takenCountries: readonly string[]
   onCancel: () => void
@@ -78,7 +78,7 @@ function CountryLanguageForm({
 }: {
   mode?: 'add' | 'edit'
   mapping?: CountryLanguage | null
-  countries: readonly { name: string }[]
+  countries: readonly { name: string; label?: string }[]
   languages: readonly LanguageOption[]
   takenCountries: readonly string[]
   onCancel: () => void
@@ -132,7 +132,7 @@ function CountryLanguageForm({
             error={errors.country}
             options={[
               { value: '', label: 'Select country' },
-              ...countries.map((country) => ({ value: country.name, label: country.name })),
+              ...countries.map((country) => ({ value: country.name, label: country.label ?? country.name })),
             ]}
             onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))}
           />

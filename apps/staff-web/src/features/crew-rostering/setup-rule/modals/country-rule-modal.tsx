@@ -25,7 +25,7 @@ export function AddCountryRuleModal({
   onSubmit,
 }: {
   defaults: DefaultLimits
-  countries: readonly { name: string }[]
+  countries: readonly { name: string; label?: string }[]
   takenCountries: readonly string[]
   onCancel: () => void
   onSubmit: (input: CountryLimitInput) => void
@@ -52,7 +52,7 @@ export function EditCountryRuleModal({
 }: {
   limit: CountryLimit
   defaults: DefaultLimits
-  countries: readonly { name: string }[]
+  countries: readonly { name: string; label?: string }[]
   takenCountries: readonly string[]
   onCancel: () => void
   onSubmit: (input: CountryLimitInput) => void
@@ -81,7 +81,7 @@ function CountryRuleForm({
 }: {
   mode: 'add' | 'edit'
   defaults: DefaultLimits
-  countries: readonly { name: string }[]
+  countries: readonly { name: string; label?: string }[]
   takenCountries: readonly string[]
   limit?: CountryLimit | null
   onCancel: () => void
@@ -149,7 +149,7 @@ function CountryRuleForm({
             className="col-span-2"
             options={[
               { value: '', label: 'Select country' },
-              ...countries.map((country) => ({ value: country.name, label: country.name })),
+              ...countries.map((country) => ({ value: country.name, label: country.label ?? country.name })),
             ]}
             onChange={(event) => set('country', event.target.value)}
           />

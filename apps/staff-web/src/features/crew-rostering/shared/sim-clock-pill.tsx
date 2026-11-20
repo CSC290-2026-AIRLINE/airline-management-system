@@ -6,15 +6,10 @@
  * on, so the operator can see which "now" those use. Shown in roster time. Nothing is rendered until the clock answers,
  * and a failed read leaves the pill out rather than showing a wrong time.
  */
-import { useEffect, useRef, useState } from 'react'
-import { useAppAuth } from '../../../auth/AuthProvider'
-import { createBuildPairingsApi } from '../build-pairings/types/api'
 import { formatTime, ROSTER_TIME_ZONE } from '../build-pairings/types/format'
+import { useSimNow } from './use-sim-now'
 
 const dayFormatter = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: ROSTER_TIME_ZONE })
-
-/** How often the pill redraws. The clock is read from the server once, then kept by the browser's own timer. */
-const TICK_MS = 30_000
 
 /** `14 Sep 09:00`. Newer ICU data spells September `Sept`; the design uses `Sep`. */
 function formatClock(now: Date): string {
@@ -22,37 +17,7 @@ function formatClock(now: Date): string {
 }
 
 export function SimClockPill({ className = '' }: { className?: string }) {
-  const { accessToken, fetchWithAuth } = useAppAuth()
-  // `fetchWithAuth` changes on every provider render; reading it through a ref keeps the polling effect stable.
-  const fetchRef = useRef(fetchWithAuth)
-  useEffect(() => {
-    fetchRef.current = fetchWithAuth
-  }, [fetchWithAuth])
-
-  const signedIn = accessToken !== null
-  const [now, setNow] = useState<Date | null>(null)
-
-  useEffect(() => {
-    if (!signedIn) return
-    let cancelled = false
-    let timer: number | undefined
-    // One request, not a poll: every extra authorised request is another chance to hit an expired access token, and when several
-    // do at once each of them asks for a refresh. The pill reads the clock once and then adds the time that has passed.
-    createBuildPairingsApi(fetchRef.current)
-      .getClock()
-      .then((clock) => {
-        if (cancelled) return
-        const offset = clock.getTime() - Date.now()
-        setNow(clock)
-        timer = window.setInterval(() => setNow(new Date(Date.now() + offset)), TICK_MS)
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [signedIn])
-
+  const now = useSimNow()
   if (!now) return null
   return (
     <span

@@ -97,6 +97,8 @@ export type CountryLanguageErrors = Partial<Record<keyof CountryLanguageInput, s
 export interface CountryOption {
   name: string
   code: string
+  /** What the picker shows, e.g. `Japan (JP)`. */
+  label: string
 }
 
 /** A language the operator can mark as local at a destination. */

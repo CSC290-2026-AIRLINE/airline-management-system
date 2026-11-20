@@ -104,7 +104,7 @@ export const PRICING_ITEMS = [
 
 /**
  * The crew rostering screens (Feature 8). `match` lists every path that lights the item up: "Roster runs" is one item
- * for the three wizard steps, and "Crew" covers each crew member's profile page.
+ * for the three wizard steps and the published rosters they lead to, and "Crew" covers each crew member's profile page.
  */
 export const CREW_ITEMS = [
   {
@@ -112,7 +112,7 @@ export const CREW_ITEMS = [
     code: 'f08.roster_runs',
     label: 'Roster runs',
     icon: Route,
-    match: ['/build-pairings', '/assign-crew', '/fix-publish'],
+    match: ['/build-pairings', '/assign-crew', '/fix-publish', '/published-rosters'],
   },
   { to: '/setup-crew', code: 'f08.crew', label: 'Crew', icon: IdCard, match: ['/setup-crew'] },
   { to: '/setup-rule', code: 'f08.rules', label: 'Rules', icon: ListChecks, match: ['/setup-rule'] },

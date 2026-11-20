@@ -136,7 +136,7 @@ export function PairingsPicker({
             </Button>
           )}
         </div>
-        {selectedCount === 0 && (
+        {showRun && selectedCount === 0 && pairings.length > 0 && (
           <div className="mt-3">
             <NoPairingsAlert />
           </div>
@@ -152,7 +152,7 @@ export function PairingsPicker({
         <div className="mt-1.5">
           <ExclusionFootnote excluded={excluded} withLead={false} />
         </div>
-        {selectedCount === 0 && (
+        {showRun && selectedCount === 0 && pairings.length > 0 && (
           <div className="mt-3">
             <NoPairingsAlert />
           </div>
