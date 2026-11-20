@@ -8,7 +8,7 @@ export const EMPTY_CREW_FORM: CrewProfileInput = {
   employeeNo: '',
   role: 'Captain',
   base: 'BKK',
-  fleet: 'A320',
+  fleet: 'A320-200',
   languages: [],
   licenceNumber: '',
   licenceExpiresOn: '',

@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@backend/db/generated/prisma/client'
+import { alignSeededFleet, ensureFleetType } from './fleet-type'
 
 /**
  * A small data set for walking Build pairings → Assign crew → Fix & publish for base BKK,
@@ -28,7 +29,6 @@ import type { PrismaClient } from '@backend/db/generated/prisma/client'
 /** First day of the demo window. Flights run on this day and the next three. */
 const WINDOW_START = '2026-11-02'
 const BASE = 'BKK'
-const MODEL = 'A320'
 /** Bangkok is UTC+7 all year. Times below are BKK wall-clock, which is what the roster prints. */
 const BKK_OFFSET_HOURS = 7
 
@@ -153,23 +153,8 @@ export async function seedCrewRosteringDemo(prisma: PrismaClient, windowStart: s
     await prisma.country_language.upsert({ where: { country_code_language_code: row }, update: {}, create: row })
   }
 
-  const type =
-    (await prisma.aircraft_type.findFirst({ where: { model: MODEL, deleted_at: null }, select: { id: true } })) ??
-    (await prisma.aircraft_type.create({
-      data: {
-        code: 'A320-V1',
-        manufacturer: 'Airbus',
-        model: MODEL,
-        layout: { cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 30, columns: ['A', 'B', 'C', 'D', 'E', 'F'] }] },
-        hold_weight_limit_kg: 9000,
-        max_takeoff_weight_kg: 78000,
-        max_range_km: 6100,
-        min_turnaround_minutes: 40,
-        operating_cost_per_hour: '4500.00',
-        cost_currency: 'THB',
-      },
-      select: { id: true },
-    }))
+  const type = await ensureFleetType(prisma)
+  await alignSeededFleet(prisma, type, TAILS, 'DEMO')
 
   const aircraftIds: string[] = []
   for (const tail of TAILS) {
@@ -222,14 +207,14 @@ export async function seedCrewRosteringDemo(prisma: PrismaClient, windowStart: s
         role: member.role,
         email: `${employeeNumber.toLowerCase()}@crew.example.com`,
         base_airport: BASE,
-        fleet_aircraft_type: MODEL,
+        fleet_aircraft_type: type.model,
         languages: member.languages,
         licence_number: `LIC-D${pad(index + 1, 4)}`,
         licence_expires_on: new Date('2028-12-31T00:00:00Z'),
         // Police travel as passengers, so only the pilots hold a type rating.
         crew_certification:
           member.role === 'captain' || member.role === 'first_officer'
-            ? { create: [{ name: 'Type rating', aircraft_type: MODEL, expires_on: new Date('2028-12-31T00:00:00Z') }] }
+            ? { create: [{ name: 'Type rating', aircraft_type: type.model, expires_on: new Date('2028-12-31T00:00:00Z') }] }
             : undefined,
       },
     })

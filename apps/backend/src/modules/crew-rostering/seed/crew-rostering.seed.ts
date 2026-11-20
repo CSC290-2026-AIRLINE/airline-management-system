@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@backend/db/generated/prisma/client'
+import { alignSeededFleet, ensureFleetType } from './fleet-type'
 
 /**
  * Demo data for Feature 8 (crew rostering): enough network, fleet, flights and crew to walk the whole
@@ -21,7 +22,6 @@ import type { PrismaClient } from '@backend/db/generated/prisma/client'
 
 const FIRST_DAY = '2026-09-15'
 const BASE = 'BKK'
-const MODEL = 'A320'
 
 const AIRPORTS = [
   {
@@ -259,23 +259,8 @@ export async function seedCrewRostering(prisma: PrismaClient): Promise<void> {
     await prisma.country_legality_rule.upsert({ where: { country_code: row.country_code }, update: {}, create: row })
   }
 
-  const type =
-    (await prisma.aircraft_type.findFirst({ where: { model: MODEL, deleted_at: null }, select: { id: true } })) ??
-    (await prisma.aircraft_type.create({
-      data: {
-        code: 'A320-V1',
-        manufacturer: 'Airbus',
-        model: MODEL,
-        layout: { cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 30, columns: ['A', 'B', 'C', 'D', 'E', 'F'] }] },
-        hold_weight_limit_kg: 9000,
-        max_takeoff_weight_kg: 78000,
-        max_range_km: 6100,
-        min_turnaround_minutes: 40,
-        operating_cost_per_hour: '4500.00',
-        cost_currency: 'THB',
-      },
-      select: { id: true },
-    }))
+  const type = await ensureFleetType(prisma)
+  await alignSeededFleet(prisma, type, TAILS, 'EMP')
 
   const aircraftIds: string[] = []
   for (const tail of TAILS) {
@@ -335,7 +320,7 @@ export async function seedCrewRostering(prisma: PrismaClient): Promise<void> {
         role: member.role,
         email: `${employeeNumber.toLowerCase()}@crew.example.com`,
         base_airport: BASE,
-        fleet_aircraft_type: MODEL,
+        fleet_aircraft_type: type.model,
         languages: member.languages,
         licence_number: `LIC-${pad(index + 1, 5)}`,
         licence_expires_on: new Date(`${member.licenceExpires ?? '2028-12-31'}T00:00:00Z`),
@@ -344,7 +329,11 @@ export async function seedCrewRostering(prisma: PrismaClient): Promise<void> {
           member.role === 'captain' || member.role === 'first_officer'
             ? {
                 create: [
-                  { name: 'Type rating', aircraft_type: MODEL, expires_on: new Date(`${member.ratingExpires ?? '2028-12-31'}T00:00:00Z`) },
+                  {
+                    name: 'Type rating',
+                    aircraft_type: type.model,
+                    expires_on: new Date(`${member.ratingExpires ?? '2028-12-31'}T00:00:00Z`),
+                  },
                 ],
               }
             : undefined,

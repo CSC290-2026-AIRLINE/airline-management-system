@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@backend/db/generated/prisma/client'
+import { alignSeededFleet, ensureFleetType } from './fleet-type'
 
 /**
  * Flights only, for checking that one person is never put on two pairings at once: base BKK, a window of three days.
@@ -14,7 +15,6 @@ import type { PrismaClient } from '@backend/db/generated/prisma/client'
  */
 
 const BASE = 'BKK'
-const MODEL = 'A320'
 const BKK_OFFSET_HOURS = 7
 
 type Leg = { number: string; origin: string; destination: string; day: number; dep: string; arr: string; tail: number }
@@ -46,8 +46,8 @@ export async function seedCrewRosteringOverlap(prisma: PrismaClient, windowStart
     routeIds.set(`${origin}-${destination}`, route.id)
   }
 
-  const type = await prisma.aircraft_type.findFirst({ where: { model: MODEL, deleted_at: null }, select: { id: true } })
-  if (!type) throw new Error(`No ${MODEL} aircraft type. Run the demo seed once to create it.`)
+  const type = await ensureFleetType(prisma)
+  await alignSeededFleet(prisma, type, TAILS)
 
   const aircraftIds: string[] = []
   for (const tail of TAILS) {

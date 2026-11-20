@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@backend/db/generated/prisma/client'
+import { alignSeededFleet, ensureFleetType } from './fleet-type'
 
 /**
  * Flights only, for walking Fix & publish with rule breaks that are certain to appear: base BKK, 16–20 Nov 2026.
@@ -25,7 +26,6 @@ import type { PrismaClient } from '@backend/db/generated/prisma/client'
  */
 
 const BASE = 'BKK'
-const MODEL = 'A320'
 /** First day of the window. Flights run on this day and the next. */
 const WINDOW_START = '2026-11-16'
 /** Bangkok is UTC+7 all year; the times below are BKK wall-clock. */
@@ -58,7 +58,7 @@ const bkkInstant = (date: string, hhmm: string): Date => new Date(Date.parse(`${
 
 /** `windowStart` moves the window (`--start=YYYY-MM-DD`). Flights are keyed by number and date, so the same numbers fit any new window. */
 export async function seedCrewRosteringBreaks(prisma: PrismaClient, windowStart: string = WINDOW_START): Promise<void> {
-  // The airports, routes and the A320 type already exist in the local database; fail with a clear message if one does not.
+  // The airports and routes already exist in the local database; fail with a clear message if one does not.
   const airports = await prisma.airport.findMany({ where: { iata_code: { in: ['BKK', 'ICN', 'NRT'] } }, select: { iata_code: true } })
   if (airports.length !== 3) throw new Error('BKK, ICN and NRT must exist first. Run the demo seed once to create them.')
 
@@ -74,8 +74,8 @@ export async function seedCrewRosteringBreaks(prisma: PrismaClient, windowStart:
     routeIds.set(`${origin}-${destination}`, route.id)
   }
 
-  const type = await prisma.aircraft_type.findFirst({ where: { model: MODEL, deleted_at: null }, select: { id: true } })
-  if (!type) throw new Error(`No ${MODEL} aircraft type. Run the demo seed once to create it.`)
+  const type = await ensureFleetType(prisma)
+  await alignSeededFleet(prisma, type, TAILS)
 
   const aircraftIds: string[] = []
   for (const tail of TAILS) {
