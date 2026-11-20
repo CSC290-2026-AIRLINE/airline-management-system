@@ -422,16 +422,6 @@ export function BiDashboardPage() {
               departure delay when time is made up. Revenue here is counted by flight date; the financial report counts by payment month
               (Feature 4), so the totals can differ.
             </p>
-            <details className="bi-load-preview">
-              <summary>Preview: load factor over 100%</summary>
-              <Alert>
-                <AlertTitle>Load factor over 100%</AlertTitle>
-                <AlertDescription>
-                  For example, 104 seats sold ÷ 100 available seats = 104%. A value above 100% indicates seats sold exceed capacity. Review
-                  the underlying flights before using the figure.
-                </AlertDescription>
-              </Alert>
-            </details>
             {previous.error && (
               <p className="bi-footnote" role="status">
                 Previous period comparisons are unavailable. Current figures are still shown.

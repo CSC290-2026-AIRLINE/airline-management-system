@@ -1,17 +1,17 @@
 /**
- * Demo figures for the Business intelligence screens. For local testing only.
+ * LOCAL ONLY. Demo figures for the Feature 14 operations dashboard. Never run it against a shared database.
  *
- * It writes straight into the `bi_*` copy and into `finance_monthly_summary`, because the source features (flights,
- * bookings, payments) have no data yet. Running it replaces what is in the `bi_*` copy. A Refresh rebuilds the copy from
- * the source tables, so these rows are removed when one runs. It never touches the source tables.
+ * It writes straight into the `bi_*` copy, because the source features (flights, bookings, payments) have no data yet.
+ * Running it replaces what is in the `bi_*` copy. A Refresh rebuilds the copy from the source tables, so these rows are
+ * removed when one runs. It never touches other features' tables: the finance page shows whatever Feature 4 has computed.
  *
- * Run from apps/backend:  npx tsx src/modules/bi-dashboards/bi-demo-data.ts
+ * Run from apps/backend:  npx tsx scripts/bi-demo-data.ts
  */
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { Client } from 'pg'
 
-process.loadEnvFile(path.join(__dirname, '..', '..', '..', '.env'))
+process.loadEnvFile(path.join(__dirname, '..', '.env'))
 
 const FIRST_DAY = '2026-10-01'
 const LAST_DAY = '2026-11-05'
@@ -23,43 +23,6 @@ const CABINS = [
   { cabin: 'first', seats: 4, fare: 36000 },
 ]
 const CAUSES = ['weather', 'technical', 'crew', 'air_traffic_control', 'airport_operations']
-
-/** Finance months as F4 would compute them. Costs are operating costs; pass-through and refunds are shown separately. */
-const FINANCE = [
-  {
-    month: '2026-08-01',
-    computed_at: '2026-09-01T02:00:00Z',
-    revenue: 10_800_000,
-    pass: 1_080_000,
-    refund: 540_000,
-    maint: 1_700_000,
-    staff: 2_000_000,
-    catering: 480_000,
-    other: 5_100_000,
-  },
-  {
-    month: '2026-09-01',
-    computed_at: '2026-10-01T02:00:00Z',
-    revenue: 12_100_000,
-    pass: 1_210_000,
-    refund: 600_000,
-    maint: 1_900_000,
-    staff: 2_000_000,
-    catering: 500_000,
-    other: 5_400_000,
-  },
-  {
-    month: '2026-10-01',
-    computed_at: '2026-11-01T02:00:00Z',
-    revenue: 13_300_000,
-    pass: 1_330_000,
-    refund: 620_000,
-    maint: 1_850_000,
-    staff: 2_050_000,
-    catering: 530_000,
-    other: 5_600_000,
-  },
-]
 
 // A small seeded random generator, so the same numbers come out on every run.
 let seed = 20261101
@@ -189,24 +152,8 @@ async function main(): Promise<void> {
       ) seats ON seats.flight_id = f.flight_id
       GROUP BY f.route_id, f.flight_date`)
 
-    // Finance months. The table is Feature 4's; these rows are demo figures for the Finance tab.
-    for (const m of FINANCE) {
-      await db.query('DELETE FROM finance_monthly_summary WHERE month = $1', [m.month])
-      const costs = m.maint + m.staff + m.catering + m.other
-      // The table's own rule: profit = revenue - pass-through - refunds - operating costs.
-      const profit = m.revenue - m.pass - m.refund - costs
-      await db.query(
-        `INSERT INTO finance_monthly_summary (month, revenue_amount, pass_through_amount, refund_amount, maintenance_cost,
-           staff_cost, catering_cost, other_cost, profit_amount, computed_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [m.month, m.revenue, m.pass, m.refund, m.maint, m.staff, m.catering, m.other, profit, m.computed_at],
-      )
-    }
-
     await db.query('COMMIT')
-    console.log(
-      `Demo data written: ${flights} flights on ${routes.length} routes (${delayed} delayed), ${days.length} days, 3 finance months.`,
-    )
+    console.log(`Demo data written: ${flights} flights on ${routes.length} routes (${delayed} delayed), ${days.length} days.`)
   } catch (error) {
     await db.query('ROLLBACK')
     throw error

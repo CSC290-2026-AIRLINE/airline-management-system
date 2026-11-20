@@ -8,8 +8,8 @@ import { BiFinanceService } from './bi-finance.service'
 import { BiStaffGuard } from './bi-staff.guard'
 
 /**
- * Feature 14: Business Intelligence dashboards. The backend rebuilds the `bi_*` copy (BiEtlService), reads it (BiQueryService),
- * and draws the charts as SVG (charts/). The staff app only displays the results.
+ * Feature 14: Business Intelligence dashboards. The backend rebuilds the `bi_*` copy (BiEtlService) and reads it
+ * (BiQueryService). The staff app draws the charts.
  */
 @Module({
   imports: [AdminConsoleModule],

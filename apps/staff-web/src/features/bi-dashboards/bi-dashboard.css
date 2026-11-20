@@ -177,11 +177,6 @@
   overflow-wrap: anywhere;
   font-weight: 600;
 }
-.bi-sidebar-footer > p {
-  margin: 0 6px;
-  color: #b7c1d1;
-  font-size: 12px;
-}
 .bi-signout {
   justify-content: flex-start;
   height: auto;
@@ -203,8 +198,7 @@
 .bi-collapsed .bi-sidebar .bi-brand > div,
 .bi-collapsed .bi-sidebar .bi-workspace-label,
 .bi-collapsed .bi-sidebar .bi-navigation > p,
-.bi-collapsed .bi-sidebar .bi-sidebar-info,
-.bi-collapsed .bi-sidebar .bi-sidebar-footer > p {
+.bi-collapsed .bi-sidebar .bi-sidebar-info {
   display: none;
 }
 .bi-collapsed .bi-sidebar .bi-navigation {
@@ -1061,21 +1055,6 @@
 }
 .bi-date-input:focus-within > span {
   visibility: hidden;
-}
-.bi-load-preview {
-  color: #1f408c;
-  font-size: 13px;
-  font-weight: 600;
-}
-.bi-load-preview > summary {
-  list-style: none;
-}
-.bi-load-preview > summary::-webkit-details-marker {
-  display: none;
-}
-.bi-load-preview > [role='alert'] {
-  margin-top: 12px;
-  font-weight: 400;
 }
 @media (max-width: 768px) {
   .bi-date-input {

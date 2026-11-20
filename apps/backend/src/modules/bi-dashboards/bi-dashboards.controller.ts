@@ -6,7 +6,6 @@ import {
   Header,
   HttpCode,
   NotFoundException,
-  Param,
   Post,
   Query,
   Res,
@@ -24,16 +23,6 @@ import { BiQueryService } from './bi-query.service'
 import { toFlightDto, type FlightDto } from './bi-flight-rows'
 import { periodOf, seriesByPeriod } from './bi-period'
 import { toCsv } from './bi-csv'
-import {
-  BI_CHART_NAMES,
-  buildBookingsChart,
-  buildCabinsChart,
-  buildDelayCausesChart,
-  buildLoadFactorChart,
-  buildOnTimeChart,
-  buildRevenuePerSeatChart,
-} from './charts/chart-builders'
-import type { BiChartName } from './charts/chart-builders'
 import { BiFilterDto, BiFinanceQueryDto } from './dto/bi-filter.dto'
 import type { BiDailyMetric, BiKpis, BiRouteMetric, BiRunSummary } from './dto/bi-dashboards.types'
 import { CABIN_KEYS } from './dto/bi-options'
@@ -231,28 +220,6 @@ export class BiDashboardsController {
     }
     return [...byPeriod.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([period, t]) => ({ period, ...t }))
   }
-
-  /** One chart as SVG. `:chart` is one of BI_CHART_NAMES. */
-  @Get('charts/:chart')
-  @Header('Content-Type', 'image/svg+xml; charset=utf-8')
-  @Header('Cache-Control', 'private, no-cache')
-  async chart(@Param('chart') chart: string, @Query() filter: BiFilterDto): Promise<string> {
-    if (!isChartName(chart)) throw new NotFoundException(`Unknown chart: ${chart}`)
-    switch (chart) {
-      case 'on-time':
-        return buildOnTimeChart(await this.seriesRows(filter), filter.group)
-      case 'load-factor':
-        return buildLoadFactorChart(await this.seriesRows(filter), filter.group)
-      case 'revenue-per-seat':
-        return buildRevenuePerSeatChart(await this.seriesRows(filter), filter.group)
-      case 'bookings':
-        return buildBookingsChart(await this.bookingsSeriesRows(filter), filter.group)
-      case 'delay-causes':
-        return buildDelayCausesChart(await this.query.delayCauses(filter))
-      case 'cabins':
-        return buildCabinsChart(await this.cabinRows(filter))
-    }
-  }
 }
 
 export interface CabinRowDto {
@@ -267,8 +234,4 @@ export interface PeriodBookingsDto {
   period: string
   bookings: number
   cancellations: number
-}
-
-function isChartName(value: string): value is BiChartName {
-  return (BI_CHART_NAMES as readonly string[]).includes(value)
 }

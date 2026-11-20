@@ -69,19 +69,6 @@ describe('BI endpoint contracts', () => {
     finance.forMonth.mockResolvedValue({ current: null, previous: null, months: [] })
     await expect(controller.exportFinance({}, { setHeader: jest.fn() } as never)).rejects.toBeInstanceOf(NotFoundException)
   })
-
-  it('returns 404 for unknown charts', async () => {
-    await expect(setup().controller.chart('missing', {})).rejects.toBeInstanceOf(NotFoundException)
-  })
-
-  it.each(['on-time', 'load-factor', 'revenue-per-seat', 'bookings', 'delay-causes', 'cabins'])(
-    'renders the %s endpoint with empty data without invalid SVG coordinates',
-    async (chart) => {
-      const svg = await setup().controller.chart(chart, {})
-      expect(svg).toContain('<svg')
-      expect(svg).not.toMatch(/NaN|Infinity/)
-    },
-  )
 })
 
 describe('BI query validation', () => {

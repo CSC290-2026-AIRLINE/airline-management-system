@@ -126,7 +126,6 @@ export interface BiFinanceResponse {
   months: string[]
 }
 
-export type BiChartName = 'on-time' | 'load-factor' | 'revenue-per-seat' | 'bookings' | 'delay-causes' | 'cabins'
 export type BiGroup = 'day' | 'week' | 'month'
 export type BiRevenueMode = 'after_refunds' | 'before_refunds'
 export type BiCabin = 'economy' | 'premium_economy' | 'business' | 'first'
@@ -196,10 +195,6 @@ export function useBiApi() {
     getFinance: (month: string | null) => getJson<BiFinanceResponse>(`/api/bi/finance${month ? `?month=${month}` : ''}`),
     getFinancePayments: () => getJson<BiScheduledPayment[]>('/api/bi/finance/payments'),
     refresh: () => getJson<BiRun>('/api/bi/refresh', { method: 'POST' }),
-    getChartBlob: async (name: BiChartName, filters: BiFilters): Promise<Blob> => {
-      const res = await getResponse(`/api/bi/charts/${name}?${filterQuery(filters)}`)
-      return res.blob()
-    },
     /** Downloads a CSV from the API with the login token, and saves it under the given file name. */
     downloadCsv: async (path: string, fileName: string): Promise<void> => {
       const res = await getResponse(path)

@@ -83,7 +83,6 @@ export function BiWorkspace({ view, onViewChange, name, clock, onSignOut, childr
           </span>
           <strong>{name}</strong>
         </div>
-        <p>Analyst. Navigation follows assigned staff permissions.</p>
         <Button variant="ghost" onClick={onSignOut} className="bi-signout">
           Sign out
         </Button>

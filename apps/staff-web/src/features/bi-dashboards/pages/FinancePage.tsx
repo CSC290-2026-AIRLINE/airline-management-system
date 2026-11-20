@@ -3,7 +3,6 @@ import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
 import { Card } from '@staff-web/components/ui/card'
 import { Label } from '@staff-web/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { useBiApi, type BiFinanceMonth } from '../api/bi'
@@ -115,17 +114,6 @@ export function FinancePage() {
         )}
         <Card className="bi-filter-card print:hidden">
           <div className="bi-filter-fields">
-            <div className="bi-field bi-route-field">
-              <Label htmlFor="bi-finance-route">Route</Label>
-              <Select value="all">
-                <SelectTrigger id="bi-finance-route">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All routes</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <div className="bi-field">
               <Label htmlFor="bi-month">Month</Label>
               <BiMonthPicker id="bi-month" value={month} months={months} onChange={setChosen} />
