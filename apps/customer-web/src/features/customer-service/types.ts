@@ -32,9 +32,9 @@ export interface Complaint {
   description: string
   openedAt: string
   updatedAt: string
-  bookingRef?: string
+  bookingRef?: string | null
   flightRoute?: string
-  mealDetail?: string
+  mealDetail?: string | null
   fromSource?: 'Customer' | 'No account' | 'Feature 10'
   openedLabel?: string
   events?: CaseEvent[]

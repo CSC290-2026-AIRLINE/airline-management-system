@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { CustomerNavbar } from './CustomerNavbar'
 import type { NotificationPreferenceRow } from './types'
 import { errorMessage, useComplaintsApi } from './api'
@@ -11,10 +11,11 @@ export function NotificationPreferencesPage() {
   const [error, setError] = useState<string | null>(null)
   const [isSaved, setIsSaved] = useState(false)
 
+  const fetchPreferences = useEffectEvent(() => api.getNotificationPreferences())
+
   useEffect(() => {
     let active = true
-    api
-      .getNotificationPreferences()
+    fetchPreferences()
       .then((data) => {
         if (active && Array.isArray(data)) {
           setPreferences(data)

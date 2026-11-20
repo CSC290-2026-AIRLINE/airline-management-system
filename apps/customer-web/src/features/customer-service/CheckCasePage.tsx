@@ -202,6 +202,20 @@ export function CheckCasePage() {
   const fetchList = useEffectEvent(() => api.list())
   const fetchAccountCase = useEffectEvent((n: string) => api.get(n))
   const fetchGuestCase = useEffectEvent((n: string, b?: string, s?: string) => api.getGuest(n, b, s))
+  // Opens the newest case when the list loads and none is chosen yet; reads the current URL without re-running the load.
+  const openFirstCase = useEffectEvent((rows: Complaint[]) => {
+    if (!caseNumber && rows.length > 0) {
+      void navigate({
+        to: '/complaints/check',
+        search: {
+          caseNumber: rows[0].caseNumber,
+          bookingRef: undefined,
+          surname: undefined,
+          guest: undefined,
+        },
+      })
+    }
+  })
 
   // Only load "Your complaints" when signed in AND not in guest lookup mode
   useEffect(() => {
@@ -216,17 +230,7 @@ export function CheckCasePage() {
       (rows) => {
         if (!cancelled) {
           setCases(rows)
-          if (!caseNumber && rows.length > 0) {
-            void navigate({
-              to: '/complaints/check',
-              search: {
-                caseNumber: rows[0].caseNumber,
-                bookingRef: undefined,
-                surname: undefined,
-                guest: undefined,
-              },
-            })
-          }
+          openFirstCase(rows)
         }
       },
       (e: unknown) => {

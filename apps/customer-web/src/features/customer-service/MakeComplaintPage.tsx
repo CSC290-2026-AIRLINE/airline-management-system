@@ -105,7 +105,6 @@ export function MakeComplaintPage() {
   // Flight / Food common fields
   const [flightNumber, setFlightNumber] = useState('')
   const [serviceDate, setServiceDate] = useState('')
-  const [mealSelection, setMealSelection] = useState('')
 
   // Issue & description
   const [issue, setIssue] = useState('delay')
@@ -137,7 +136,7 @@ export function MakeComplaintPage() {
       if (!location) e.location = 'Please choose where it happened.'
     } else {
       if (!flightNumber.trim()) e.flightNumber = 'Flight number is required (e.g. FY308).'
-      if (type === 'flight' && !serviceDate) e.serviceDate = 'Flight date is required.'
+      if (!serviceDate) e.serviceDate = 'Flight date is required.'
       if (!issue) e.issue = 'Please choose what went wrong.'
     }
     if (description.trim().length < MIN_DESCRIPTION) {
@@ -173,7 +172,7 @@ export function MakeComplaintPage() {
         : {
             type,
             flight_number: flightNumber.replace(/\s+/g, '').toUpperCase(),
-            service_date: serviceDate || '2026-10-12',
+            service_date: serviceDate,
             issue,
             description: description.trim(),
             ...guestFields,
@@ -321,7 +320,7 @@ export function MakeComplaintPage() {
                   textAlign: 'left',
                 }}
               >
-                Signed in as <strong>{displayName}</strong>. Your trips are filled in for you.
+                Signed in as <strong>{displayName}</strong>.
               </div>
             ) : (
               <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -460,17 +459,14 @@ export function MakeComplaintPage() {
                       style={{ ...inputStyle, textTransform: 'uppercase', textAlign: 'left' }}
                     />
                   </Field>
-                  <Field label="Which meal?" htmlFor="f-food-meal">
-                    <select
-                      id="f-food-meal"
-                      value={mealSelection}
-                      onChange={(e) => setMealSelection(e.target.value)}
+                  <Field label="Flight date" htmlFor="f-food-date" error={errors.serviceDate}>
+                    <input
+                      id="f-food-date"
+                      type="date"
+                      value={serviceDate}
+                      onChange={(e) => setServiceDate(e.target.value)}
                       style={{ ...inputStyle, textAlign: 'left' }}
-                    >
-                      <option value="FY308 · 12 Oct · Vegetarian meal (VGML)">FY308 · 12 Oct · Vegetarian meal (VGML)</option>
-                      <option value="FY308 · 12 Oct · Standard chicken rice">FY308 · 12 Oct · Standard chicken rice</option>
-                      <option value="Other flight / meal">Other flight / meal</option>
-                    </select>
+                    />
                   </Field>
                 </div>
 

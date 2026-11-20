@@ -402,8 +402,9 @@ export function TemplatesPage() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Every change is saved with the staff member in PostgreSQL (`notification_template`) and sent to the Feature 15 audit log.
-        Switched-off templates are skipped and show as Skipped in the delivery log.
+        Every change is saved with the staff member in PostgreSQL (`notification_template`) and sent to the Feature 15 audit log. Messages
+        are simulated, not really sent, and each one is recorded in the Delivery log. A switched-off template is not sent and writes no row
+        there.
       </p>
     </PageFrame>
   )

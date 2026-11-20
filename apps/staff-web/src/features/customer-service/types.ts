@@ -51,9 +51,9 @@ export interface Complaint {
   fromSource?: 'Customer' | 'No account' | 'Feature 10'
   age?: string
   unread?: boolean
-  bookingRef?: string
+  bookingRef?: string | null
   flightRoute?: string
-  mealDetail?: string
+  mealDetail?: string | null
   openedLabel?: string
   compensation?: CompensationDecision | null
   /** Only on the single-case response. */

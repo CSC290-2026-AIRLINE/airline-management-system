@@ -58,6 +58,8 @@ export function DeliveryLogPage() {
   const [statusFilter, setStatusFilter] = useState(ALL_STATUSES)
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null)
   const [retryingId, setRetryingId] = useState<string | null>(null)
+  // A failed retry shows under its own row instead of a blocking browser alert.
+  const [retryError, setRetryError] = useState<{ id: string; message: string } | null>(null)
   const [page, setPage] = useState(1)
   const [loadError, setLoadError] = useState<unknown>(null)
 
@@ -135,7 +137,7 @@ export function DeliveryLogPage() {
   return (
     <PageFrame
       title="Delivery log"
-      description="Every message the notification service sent, skipped or failed. Providers are mocked; nothing real is sent."
+      description="Every message the notification service sent or failed to send. Providers are mocked; nothing real is sent."
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Events received" value={data.kpis.eventsReceived} />
@@ -312,10 +314,11 @@ export function DeliveryLogPage() {
                                 onClick={async () => {
                                   try {
                                     setRetryingId(r.id)
+                                    setRetryError(null)
                                     await api.retryNotification(r.id)
                                     await reloadData()
                                   } catch (e) {
-                                    alert(errorMessage(e))
+                                    setRetryError({ id: r.id, message: errorMessage(e) })
                                   } finally {
                                     setRetryingId(null)
                                   }
@@ -323,6 +326,11 @@ export function DeliveryLogPage() {
                               >
                                 {retryingId === r.id ? 'Retrying…' : 'Retry send'}
                               </Button>
+                              {retryError?.id === r.id && (
+                                <div role="alert" className="mt-2 text-xs font-medium text-danger">
+                                  Retry failed: {retryError.message}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

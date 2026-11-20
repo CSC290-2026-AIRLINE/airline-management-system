@@ -14,20 +14,21 @@ const FLIGHT = {
   },
 } as const
 
+/** A booking and the flights on it, to find the booking that holds a complaint's flight. */
+const BOOKING_FLIGHTS = { select: { booking_reference: true, booking_segment: { select: { flight_id: true } } } } as const
+
 /** Everything a list row needs, loaded in one query. */
 export const CASE_INCLUDE = {
-  passenger: NAME,
+  // The complainant's name, and the bookings they travel on.
+  passenger: { select: { first_name: true, last_name: true, booking_passenger: { select: { booking: BOOKING_FLIGHTS } } } },
   staff: NAME,
   booking_passenger: {
     include: {
       booking: { select: { booking_reference: true } },
     },
   },
-  customer: {
-    include: {
-      booking: { select: { booking_reference: true }, take: 1, orderBy: { booked_at: 'desc' } },
-    },
-  },
+  // The bookings the customer made.
+  customer: { include: { booking: BOOKING_FLIGHTS } },
   employee_complaint: true,
   flight_complaint: FLIGHT,
   food_complaint: {
@@ -100,9 +101,9 @@ export interface ComplaintView {
   fromSource?: 'Customer' | 'No account' | 'Feature 10'
   age?: string
   unread?: boolean
-  bookingRef?: string
+  bookingRef?: string | null
   flightRoute?: string
-  mealDetail?: string
+  mealDetail?: string | null
   openedLabel?: string
   compensation?: CompensationDecisionView | null
   events?: CaseEventView[]
@@ -208,7 +209,11 @@ export function toComplaintView(row: CaseRow): ComplaintView {
   const isGuest = row.customer_id === null && row.source !== 'feature_10'
   const fromSource: ComplaintView['fromSource'] = row.source === 'feature_10' ? 'Feature 10' : isGuest ? 'No account' : 'Customer'
 
-  const bookingRef = row.booking_passenger?.booking?.booking_reference ?? row.customer?.booking?.[0]?.booking_reference ?? 'P4LM8T'
+  // The booking that holds the complaint's flight: one the complainant made or travels on. An employee complaint has none.
+  const flightId = details?.flight_id
+  const ownBookings = [...(row.customer?.booking ?? []), ...(row.passenger?.booking_passenger ?? []).map((bp) => bp.booking)]
+  const flightBooking = flightId ? ownBookings.find((b) => b.booking_segment.some((s) => s.flight_id === flightId)) : undefined
+  const bookingRef = row.booking_passenger?.booking?.booking_reference ?? flightBooking?.booking_reference ?? null
 
   const flightRoute = details?.flight
     ? `${details.flight.flight_number} · ${details.flight.route.origin} → ${details.flight.route.destination} · ${formatDayMonth(details.flight.service_date)}`
@@ -218,7 +223,7 @@ export function toComplaintView(row: CaseRow): ComplaintView {
 
   const mealDetail =
     row.type === 'food'
-      ? (row.food_complaint?.product?.name ?? 'Pre-ordered meal (VGML)')
+      ? (row.food_complaint?.product?.name ?? null)
       : row.type === 'employee'
         ? (row.employee_complaint?.staff_name ?? row.employee_complaint?.location ?? '—')
         : '—'
@@ -288,6 +293,6 @@ export function toComplaintDetail(row: CaseRow, audience: 'staff' | 'customer'):
 }
 
 /** The customer's copy of a case: no staff name or staff id. */
-export function withoutStaff(view: ComplaintView): ComplaintView {
+function withoutStaff(view: ComplaintView): ComplaintView {
   return { ...view, ownerName: null, ownerStaffId: undefined }
 }

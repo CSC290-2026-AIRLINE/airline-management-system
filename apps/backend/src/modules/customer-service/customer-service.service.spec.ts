@@ -581,4 +581,72 @@ describe('CustomerServiceService', () => {
       expect(db.$transaction).not.toHaveBeenCalled()
     })
   })
+
+  describe('listForCustomer', () => {
+    it('returns the customer view of each case: no internal notes, staff names, staff ids or assignment notes', async () => {
+      const assigned = {
+        id: 'e3',
+        event_type: 'assigned',
+        actor_type: 'staff',
+        staff: { first_name: 'Sam', last_name: 'Ng' },
+        from_value: 'with_supervisor',
+        to_value: 'assigned',
+        note: 'Assigned to Kenji Sato',
+        is_internal: false,
+        occurred_at: NOW,
+      }
+      const row = caseRow({ staff: { first_name: 'Kenji', last_name: 'Sato' }, owner_staff_id: STAFF_ID })
+      db.complaint_case.findMany.mockResolvedValue([{ ...row, case_event: [...row.case_event, assigned] }])
+
+      const [view] = await service.listForCustomer(USER_ID)
+
+      expect(view.events?.map((e) => e.type)).toEqual(['created', 'assigned'])
+      expect(view.events?.every((e) => e.actorName === null && e.actorLabel === 'Flython Customer Service')).toBe(true)
+      expect(view.events?.[1]).toMatchObject({ title: 'Assigned to a Customer Service agent', note: null })
+      expect(view.ownerName).toBeNull()
+      expect(view.ownerStaffId).toBeUndefined()
+      expect(JSON.stringify(view)).not.toMatch(/Kenji|Sam Ng|Called the pax/)
+    })
+  })
+
+  describe('booking and meal shown on a case', () => {
+    const FLIGHT_ID = '77777777-7777-7777-7777-777777777777'
+    const flight = { flight_number: 'FY308', service_date: NOW, route: { origin: 'BKK', destination: 'CNX' } }
+
+    it('shows the complainant’s booking that holds the complaint’s flight, not their latest booking', async () => {
+      const row = caseRow({
+        type: 'food',
+        employee_complaint: null,
+        food_complaint: { flight_id: FLIGHT_ID, flight, product: null, issue: 'missing', details: DESCRIPTION },
+        customer: {
+          booking: [
+            { booking_reference: 'LATEST', booking_segment: [{ flight_id: 'another-flight' }] },
+            { booking_reference: 'HOLDS1', booking_segment: [{ flight_id: FLIGHT_ID }] },
+          ],
+        },
+      })
+      db.complaint_case.findUnique.mockResolvedValue(row)
+
+      const view = await service.getForStaff(USER_ID, CASE_ID)
+      expect(view.bookingRef).toBe('HOLDS1')
+      expect(view.mealDetail).toBeNull()
+    })
+
+    it('finds a booking the complainant travels on, and shows none for an employee complaint', async () => {
+      const food = caseRow({
+        type: 'food',
+        employee_complaint: null,
+        food_complaint: { flight_id: FLIGHT_ID, flight, product: { name: 'Vegetarian meal' }, issue: 'missing', details: DESCRIPTION },
+        passenger: {
+          first_name: 'Ann',
+          last_name: 'Lee',
+          booking_passenger: [{ booking: { booking_reference: 'TRAVEL', booking_segment: [{ flight_id: FLIGHT_ID }] } }],
+        },
+      })
+      db.complaint_case.findUnique.mockResolvedValueOnce(food).mockResolvedValueOnce(caseRow())
+
+      expect(await service.getForStaff(USER_ID, CASE_ID)).toMatchObject({ bookingRef: 'TRAVEL', mealDetail: 'Vegetarian meal' })
+      expect((await service.getForStaff(USER_ID, CASE_ID)).bookingRef).toBeNull()
+    })
+  })
 })

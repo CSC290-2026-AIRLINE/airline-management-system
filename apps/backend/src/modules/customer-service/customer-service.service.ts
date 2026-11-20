@@ -3,7 +3,7 @@ import { DbService } from '@backend/db/db.service'
 import { SimulationClock } from '../admin-console/simulation-clock'
 import { AuditService } from '../admin-console/audit/audit.service'
 import { FLIGHT_ISSUES, FOOD_ISSUES, type CaseStatus } from './customer-service.constants'
-import { CASE_DETAIL_INCLUDE, CASE_INCLUDE, toComplaintDetail, toComplaintView, withoutStaff, type ComplaintView } from './complaint.view'
+import { CASE_DETAIL_INCLUDE, CASE_INCLUDE, toComplaintDetail, toComplaintView, type ComplaintView } from './complaint.view'
 import type { CreateComplaintDto, CreateGuestComplaintDto } from './dto/create-complaint.dto'
 import type { DecideCompensationDto, UpdateNotificationTemplateDto } from './dto/staff-actions.dto'
 import { placeholdersFor, unknownPlaceholders } from './notification-placeholders'
@@ -301,7 +301,8 @@ export class CustomerServiceService {
       include: CASE_INCLUDE,
       orderBy: { opened_at: 'desc' },
     })
-    return rows.map((row) => withoutStaff(toComplaintView(row)))
+    // The same customer view as the single case: no internal events, staff names, staff ids or assignment notes.
+    return rows.map((row) => toComplaintDetail(row, 'customer'))
   }
 
   async getForCustomer(userId: string, caseNumber: string): Promise<ComplaintView> {
