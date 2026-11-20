@@ -1,6 +1,7 @@
 import { Module, type OnModuleInit } from '@nestjs/common'
 import { AdminConsoleModule } from '@backend/modules/admin-console/admin-console.module'
 import { AdminConsoleService } from '@backend/modules/admin-console/admin-console.service'
+import { PricingModule } from '@backend/modules/pricing/pricing.module'
 import { BiDashboardsController } from './bi-dashboards.controller'
 import { BiEtlService } from './bi-etl.service'
 import { BiQueryService } from './bi-query.service'
@@ -10,10 +11,11 @@ import { BI_FINANCE_SCREEN, BI_OPERATIONS_SCREEN, BiStaffGuard } from './bi-staf
 
 /**
  * Feature 14: Business Intelligence dashboards. The backend rebuilds the `bi_*` copy (BiEtlService) and reads it
- * (BiQueryService). The staff app draws the charts.
+ * (BiQueryService); monthly finance comes from Feature 4's exported services (BiFinanceService). The staff app draws
+ * the charts.
  */
 @Module({
-  imports: [AdminConsoleModule],
+  imports: [AdminConsoleModule, PricingModule],
   controllers: [BiDashboardsController],
   providers: [BiEtlService, BiQueryService, BiFinanceService, BiStaffGuard, BiNightlyRefresh],
 })

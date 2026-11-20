@@ -1,7 +1,15 @@
 import { Injectable } from '@nestjs/common'
-import { DbService } from '@backend/db/db.service'
+import { FinanceSummaryService } from '@backend/modules/pricing/finance/summary/finance-summary.service'
+import { PaymentScheduleService } from '@backend/modules/pricing/finance/payment-schedule/payment-schedule.service'
 
-interface FinanceRow {
+/** A wide enough window to list every month Feature 4 has computed; `findRange` returns only months that exist. */
+const FIRST_MONTH = '2000-01'
+const LAST_MONTH = '2099-12'
+
+type SummaryRow = Awaited<ReturnType<FinanceSummaryService['findRange']>>[number]
+type ScheduleRow = Awaited<ReturnType<PaymentScheduleService['findAll']>>[number]
+
+export interface FinanceRow {
   month: string
   revenue: number
   pass_through: number
@@ -43,60 +51,75 @@ export interface BiScheduledPayment {
 }
 
 /**
- * Monthly finance from `finance_monthly_summary`, which Feature 4 owns and fills. This service only reads it.
- * The table has no route column, so finance is for the whole airline.
+ * Monthly finance, read through Feature 4's services (it owns and computes the figures). This service only reads.
+ * Feature 4's summary has no route column, so finance is for the whole airline.
  */
 @Injectable()
 export class BiFinanceService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly summaries: FinanceSummaryService,
+    private readonly schedules: PaymentScheduleService,
+  ) {}
 
-  /** Months that have been computed, oldest first. */
-  async months(): Promise<string[]> {
-    const rows = await this.db.$queryRaw<{ month: string }[]>`
-      SELECT to_char(month, 'YYYY-MM') AS month FROM finance_monthly_summary ORDER BY month`
-    return rows.map((r) => r.month)
-  }
-
-  /** The chosen month, and the month before it for the change figures. `month` is `YYYY-MM`, or the latest month. */
+  /**
+   * The chosen month, the month before it for the change figures, and every computed month, oldest first. `month` is
+   * `YYYY-MM`, or the latest computed month. A month Feature 4 has not computed yet comes back as null.
+   */
   async forMonth(
     month: string | undefined,
   ): Promise<{ current: BiFinanceMonth | null; previous: BiFinanceMonth | null; months: string[] }> {
-    const months = await this.months()
+    const rows = (await this.summaries.findRange(FIRST_MONTH, LAST_MONTH)).map(fromSummary)
+    const months = rows.map((r) => r.month)
     const chosen = month ?? months.at(-1) ?? null
     if (chosen === null) return { current: null, previous: null, months }
 
-    const current = await this.row(chosen)
-    const previous = await this.row(previousMonth(chosen))
-    return { current, previous, months }
+    const byMonth = new Map(rows.map((r) => [r.month, r]))
+    const pick = (m: string) => {
+      const row = byMonth.get(m)
+      return row ? toMonth(row) : null
+    }
+    return { current: pick(chosen), previous: pick(previousMonth(chosen)), months }
   }
 
-  /** Every Feature 4 payment still scheduled and due from `today`, any category, as F4's own month view lists them. */
-  upcomingPayments(today: string): Promise<BiScheduledPayment[]> {
-    return this.db.$queryRaw<BiScheduledPayment[]>`
-      SELECT id::text AS id, category, payee, description, amount::float8 AS amount,
-        to_char(due_date, 'YYYY-MM-DD') AS due_date, status
-      FROM payment_schedule
-      WHERE status = 'scheduled' AND deleted_at IS NULL
-        AND due_date >= ${today}::date
-      ORDER BY due_date, id`
+  /**
+   * Every Feature 4 payment still scheduled and due from `today` (the simulation date), any category, in due-date order.
+   * The date filter stays here because Feature 4's own "today" does not read the simulation clock yet.
+   */
+  async upcomingPayments(today: string): Promise<BiScheduledPayment[]> {
+    const rows = await this.schedules.findAll({ status: 'scheduled' })
+    return rows
+      .map(fromSchedule)
+      .filter((p) => p.due_date >= today)
+      .sort((a, b) => a.due_date.localeCompare(b.due_date) || a.id.localeCompare(b.id))
   }
+}
 
-  private async row(month: string): Promise<BiFinanceMonth | null> {
-    const rows = await this.db.$queryRaw<FinanceRow[]>`
-      SELECT
-        to_char(month, 'YYYY-MM') AS month,
-        revenue_amount::float8 AS revenue,
-        pass_through_amount::float8 AS pass_through,
-        refund_amount::float8 AS refund,
-        maintenance_cost::float8 AS maintenance,
-        staff_cost::float8 AS staff,
-        catering_cost::float8 AS catering,
-        other_cost::float8 AS other,
-        profit_amount::float8 AS profit,
-        to_char(computed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS computed_at
-      FROM finance_monthly_summary
-      WHERE month = ${`${month}-01`}::date`
-    return rows[0] ? toMonth(rows[0]) : null
+/** Feature 4's summary row (Decimals and Dates) as plain numbers and strings. */
+export function fromSummary(row: SummaryRow): FinanceRow {
+  return {
+    month: row.month.toISOString().slice(0, 7),
+    revenue: Number(row.revenue_amount),
+    pass_through: Number(row.pass_through_amount),
+    refund: Number(row.refund_amount),
+    maintenance: Number(row.maintenance_cost),
+    staff: Number(row.staff_cost),
+    catering: Number(row.catering_cost),
+    other: Number(row.other_cost),
+    profit: Number(row.profit_amount),
+    // Whole seconds, as the page has always received it.
+    computed_at: row.computed_at.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+  }
+}
+
+export function fromSchedule(row: ScheduleRow): BiScheduledPayment {
+  return {
+    id: row.id,
+    category: row.category,
+    payee: row.payee,
+    description: row.description,
+    amount: Number(row.amount),
+    due_date: row.due_date.toISOString().slice(0, 10),
+    status: 'scheduled',
   }
 }
 
