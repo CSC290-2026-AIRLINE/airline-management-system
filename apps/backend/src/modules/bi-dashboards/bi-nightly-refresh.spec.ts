@@ -1,5 +1,5 @@
 import { ConflictException, InternalServerErrorException, Logger } from '@nestjs/common'
-import { BiNightlyRefresh, msUntilNextRun } from './bi-nightly-refresh'
+import { BiNightlyRefresh, NIGHTLY_HOUR_UTC, msUntilNextRun } from './bi-nightly-refresh'
 
 jest.mock('./bi-etl.service', () => ({ BiEtlService: class {} }))
 
@@ -10,14 +10,26 @@ function setup() {
   return { etl, nightly: new BiNightlyRefresh(etl as never) }
 }
 
+// UTC instants, so the spec gives the same answer on a laptop in Bangkok and in UTC CI.
+const utc = (day: number, hour: number, minute = 0) => new Date(Date.UTC(2026, 10, day, hour, minute))
+
 describe('msUntilNextRun', () => {
-  it('waits until 02:00 later the same night', () => {
-    expect(msUntilNextRun(new Date(2026, 10, 20, 0, 30), 2)).toBe(1.5 * HOUR)
+  it('runs at 19:00 UTC, which is 02:00 in Bangkok', () => {
+    expect(NIGHTLY_HOUR_UTC).toBe(19)
+    expect(new Date(utc(20, 0).getTime() + msUntilNextRun(utc(20, 0))).toISOString()).toBe('2026-11-20T19:00:00.000Z')
   })
 
-  it('waits until tomorrow once 02:00 has passed, including exactly at 02:00', () => {
-    expect(msUntilNextRun(new Date(2026, 10, 20, 14, 0), 2)).toBe(12 * HOUR)
-    expect(msUntilNextRun(new Date(2026, 10, 20, 2, 0), 2)).toBe(24 * HOUR)
+  it('waits until 19:00 UTC later the same day', () => {
+    expect(msUntilNextRun(utc(20, 17, 30))).toBe(1.5 * HOUR)
+  })
+
+  it('waits until the next day once 19:00 UTC has passed, including exactly at 19:00', () => {
+    expect(msUntilNextRun(utc(20, 21))).toBe(22 * HOUR)
+    expect(msUntilNextRun(utc(20, 19))).toBe(24 * HOUR)
+  })
+
+  it('rolls over the end of a month', () => {
+    expect(new Date(utc(30, 20).getTime() + msUntilNextRun(utc(30, 20))).toISOString()).toBe('2026-12-01T19:00:00.000Z')
   })
 })
 
@@ -55,8 +67,8 @@ describe('BiNightlyRefresh', () => {
     expect(error).toHaveBeenCalledWith(expect.stringContaining('REFRESH_FAILED'))
   })
 
-  it('fires at 02:00, runs again the next night, and stops when the module is destroyed', async () => {
-    jest.useFakeTimers({ now: new Date(2026, 10, 20, 1, 0) })
+  it('fires at 19:00 UTC, runs again the next night, and stops when the module is destroyed', async () => {
+    jest.useFakeTimers({ now: utc(20, 18) })
     const { etl, nightly } = setup()
     nightly.onModuleInit()
 

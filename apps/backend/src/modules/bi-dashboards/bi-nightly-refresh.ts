@@ -1,14 +1,18 @@
 import { ConflictException, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common'
 import { BiEtlService } from './bi-etl.service'
 
-/** The hour (server time) of the nightly run, when nobody is reading the dashboards. */
-export const NIGHTLY_HOUR = 2
+/**
+ * The nightly run's hour in UTC: 19:00 UTC is 02:00 in Bangkok (UTC+7, no daylight saving), when nobody is reading the
+ * dashboards. UTC on purpose, because the backend image sets no time zone and server-local time would differ between a
+ * laptop and the deployed container.
+ */
+export const NIGHTLY_HOUR_UTC = 19
 
-/** Milliseconds from `now` to the next `hour`:00 in server time; tomorrow's if that hour has passed today. */
-export function msUntilNextRun(now: Date, hour = NIGHTLY_HOUR): number {
+/** Milliseconds from `now` to the next `hour`:00 UTC; tomorrow's if that hour has passed today. */
+export function msUntilNextRun(now: Date, hour = NIGHTLY_HOUR_UTC): number {
   const next = new Date(now)
-  next.setHours(hour, 0, 0, 0)
-  if (next <= now) next.setDate(next.getDate() + 1)
+  next.setUTCHours(hour, 0, 0, 0)
+  if (next <= now) next.setUTCDate(next.getUTCDate() + 1)
   return next.getTime() - now.getTime()
 }
 
