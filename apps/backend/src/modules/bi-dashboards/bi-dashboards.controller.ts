@@ -22,7 +22,7 @@ import { BiEtlService } from './bi-etl.service'
 import { BiQueryService } from './bi-query.service'
 import { toFlightDto, type FlightDto } from './bi-flight-rows'
 import { periodOf, seriesByPeriod } from './bi-period'
-import { toCsv } from './bi-csv'
+import { metricsCsv, toCsv } from './bi-csv'
 import { BiFilterDto, BiFinanceQueryDto } from './dto/bi-filter.dto'
 import type { BiDailyMetric, BiKpis, BiRouteMetric, BiRunSummary } from './dto/bi-dashboards.types'
 import { CABIN_KEYS } from './dto/bi-options'
@@ -116,6 +116,15 @@ export class BiDashboardsController {
       ['booking_date', 'origin', 'destination', 'bookings', 'cancellations'],
       rows.map((row) => [row.booking_date, row.origin, row.destination, row.booking_count, row.cancellation_count]),
     )
+  }
+
+  /** The dashboard's figures per period, built from the same queries and filters as `/bi/series` and `/bi/bookings-series`. */
+  @Get('export/metrics.csv')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  async exportMetrics(@Query() filter: BiFilterDto, @Res({ passthrough: true }) res: Response): Promise<string> {
+    res.setHeader('Content-Disposition', 'attachment; filename="metrics.csv"')
+    const [series, bookings] = await Promise.all([this.seriesRows(filter), this.bookingsSeriesRows(filter)])
+    return metricsCsv(series, bookings, filter.revenue_mode ?? 'after_refunds')
   }
 
   /** One row per route with its rates, for the route table. */

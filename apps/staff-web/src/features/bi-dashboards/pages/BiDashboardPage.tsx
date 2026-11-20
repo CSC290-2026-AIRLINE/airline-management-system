@@ -199,7 +199,7 @@ function OperationsView({ onClock }: { onClock: (clock: string | null) => void }
   async function exportCsv() {
     setExportError(null)
     try {
-      await api.downloadCsv(`/api/bi/export/flights.csv?${filterQuery(filters)}`, 'flights.csv')
+      await api.downloadCsv(`/api/bi/export/metrics.csv?${filterQuery(filters)}`, 'metrics.csv')
     } catch (error) {
       setExportError(error instanceof Error ? error.message : 'Export failed. Please try again.')
     }

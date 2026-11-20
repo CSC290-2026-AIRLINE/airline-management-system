@@ -52,6 +52,7 @@ describe('BI staff access', () => {
     ['flights', BI_OPERATIONS_SCREEN],
     ['refresh', BI_OPERATIONS_SCREEN],
     ['exportFlights', BI_OPERATIONS_SCREEN],
+    ['exportMetrics', BI_OPERATIONS_SCREEN],
     ['finance', BI_FINANCE_SCREEN],
     ['upcomingPayments', BI_FINANCE_SCREEN],
     ['exportFinance', BI_FINANCE_SCREEN],

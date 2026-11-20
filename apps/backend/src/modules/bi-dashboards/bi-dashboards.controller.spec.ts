@@ -55,6 +55,33 @@ describe('BI endpoint contracts', () => {
     expect(response.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="bookings.csv"')
   })
 
+  it('exports metrics rows that match /bi/series for the same filters', async () => {
+    const { controller, query } = setup()
+    const day = (flight_date: string, departed: number, onTime: number) => ({
+      flight_date,
+      flight_count: departed,
+      cancelled_count: 0,
+      departed_count: departed,
+      on_time_count: onTime,
+      delay_minutes: 0,
+      seat_available: 100 * departed,
+      seat_sold: 80 * departed,
+      revenue_amount: 10_000 * departed,
+      refund_amount: 0,
+    })
+    query.dailyMetrics.mockResolvedValue([day('2026-10-05', 1, 1), day('2026-10-06', 3, 0)])
+    query.bookingDays.mockResolvedValue([{ booking_date: '2026-10-06', booking_count: 9, cancellation_count: 2 }])
+    const filter = { from: '2026-10-05', to: '2026-10-11', group: 'week' as const }
+    const response = { setHeader: jest.fn() }
+
+    const series = await controller.series(filter)
+    const rows = (await controller.exportMetrics(filter, response as never)).trim().split('\r\n').slice(1)
+
+    expect(series).toHaveLength(1)
+    expect(rows).toEqual([`${series[0].period},4,0,4,25.0,80.0,100.00,9,2,7`])
+    expect(response.setHeader).toHaveBeenCalledWith('Content-Disposition', 'attachment; filename="metrics.csv"')
+  })
+
   it('groups booking dates across month boundaries into ISO weeks', async () => {
     const { controller, query } = setup()
     query.bookingDays.mockResolvedValue([
