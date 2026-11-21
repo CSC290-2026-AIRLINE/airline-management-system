@@ -17,7 +17,8 @@ import { LoyaltyUpgradeService } from './loyalty-upgrade.service'
 /** The jobs `POST /staff/loyalty/jobs/:name/run` accepts. */
 export const JOB_NAMES = ['earn', 'tier', 'expire', 'return-to-cash', 'upgrade'] as const
 export type JobName = (typeof JOB_NAMES)[number]
-const AVAILABLE_JOBS: readonly JobName[] = ['earn', 'tier', 'expire', 'return-to-cash', 'upgrade']
+/** `upgrade` stays off until feature 3b exports `upgradeCoupon`; until then it answers 501 JOB_NOT_AVAILABLE. */
+const AVAILABLE_JOBS: readonly JobName[] = ['earn', 'tier', 'expire', 'return-to-cash']
 
 export const isJobName = (name: string): name is JobName => (JOB_NAMES as readonly string[]).includes(name)
 
@@ -62,7 +63,8 @@ const passengerName = (m: { customer: { passenger: { first_name: string; last_na
  *   - expire: one `expire` row per credit past its `expires_at` (UNIQUE (expired_transaction_id, member_id)), then one
  *             `miles_expiring` reminder per member and expiry date. Messages go through feature 13's `inbound_event`,
  *             whose UNIQUE (source, source_event_id) makes a repeat a no-op, so Feature 11 records nothing.
- *   - upgrade: complimentary one-cabin upgrades for flights in the next 24 hours (`LoyaltyUpgradeService`).
+ *   - upgrade: complimentary one-cabin upgrades for flights in the next 24 hours (`LoyaltyUpgradeService`). Off until
+ *             feature 3b exports `upgradeCoupon`; until then it answers 501 JOB_NOT_AVAILABLE.
  *
  *   - return-to-cash: inside `award_cutoff_hours` of departure, lowers `award_limit` to the award seats in use
  *             (`LoyaltyAwardService.returnToCash`), so unredeemed award seats sell for cash.

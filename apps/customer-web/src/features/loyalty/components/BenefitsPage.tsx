@@ -109,8 +109,7 @@ export function BenefitsPage({ member, tiers, uses }: { member: MemberSummary; t
 
       <BenefitHistory uses={uses} />
       <p className="text-[11px] text-muted-foreground">
-        Upgrades are given automatically within 24 hours of departure when a higher cabin has unsold seats. Insurance is a record on your
-        booking only. No real insurer is contacted.
+        Complimentary upgrades are coming soon. Insurance is a record on your booking only. No real insurer is contacted.
       </p>
     </>
   )

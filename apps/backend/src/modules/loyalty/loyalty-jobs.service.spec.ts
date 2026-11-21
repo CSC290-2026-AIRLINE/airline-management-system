@@ -370,11 +370,10 @@ describe('LoyaltyJobsService', () => {
   })
 
   describe('run', () => {
-    it('runs the upgrade job at the simulated time', async () => {
+    it('refuses the upgrade job until feature 3b ships upgradeCoupon', async () => {
       const { svc, upgrades } = makeSvc()
-      const result = await svc.run('upgrade')
-      expect(upgrades.run).toHaveBeenCalledWith(NOW)
-      expect(result).toMatchObject({ job: 'upgrade', counts: { upgraded: 0 } })
+      expect(await errorOf(svc.run('upgrade'))).toEqual({ status: 501, code: 'JOB_NOT_AVAILABLE' })
+      expect(upgrades.run).not.toHaveBeenCalled()
     })
 
     it('runs return-to-cash at the simulated time', async () => {
@@ -402,24 +401,24 @@ describe('LoyaltyJobsService', () => {
 })
 
 describe('LoyaltyJobScheduler', () => {
-  it('runs earn every tick, return-to-cash and upgrade once per simulated hour and the daily jobs once per simulated day', async () => {
+  it('runs earn every tick, return-to-cash once per simulated hour and the daily jobs once per simulated day', async () => {
     const { svc, clock } = makeSvc()
     const run = jest.spyOn(svc, 'run').mockResolvedValue({ job: 'x', ranAt: NOW.toISOString(), counts: {} })
     const scheduler = new LoyaltyJobScheduler(svc, clock, testConfig)
 
     await scheduler.tick()
     await scheduler.tick()
-    expect(run.mock.calls.map(([name]) => name)).toEqual(['earn', 'return-to-cash', 'upgrade', 'tier', 'expire', 'earn'])
+    expect(run.mock.calls.map(([name]) => name)).toEqual(['earn', 'return-to-cash', 'tier', 'expire', 'earn'])
 
     jest.spyOn(clock, 'now').mockReturnValue(new Date('2026-11-08T04:05:00Z'))
     run.mockClear()
     await scheduler.tick()
-    expect(run.mock.calls.map(([name]) => name)).toEqual(['earn', 'return-to-cash', 'upgrade'])
+    expect(run.mock.calls.map(([name]) => name)).toEqual(['earn', 'return-to-cash'])
 
     jest.spyOn(clock, 'now').mockReturnValue(new Date('2026-11-09T00:10:00Z'))
     run.mockClear()
     await scheduler.tick()
-    expect(run.mock.calls.map(([name]) => name)).toEqual(['earn', 'return-to-cash', 'upgrade', 'tier', 'expire'])
+    expect(run.mock.calls.map(([name]) => name)).toEqual(['earn', 'return-to-cash', 'tier', 'expire'])
   })
 
   it('keeps going when a job fails', async () => {
@@ -427,6 +426,6 @@ describe('LoyaltyJobScheduler', () => {
     const run = jest.spyOn(svc, 'run').mockRejectedValueOnce(new Error('db down'))
     run.mockResolvedValue({ job: 'x', ranAt: NOW.toISOString(), counts: {} })
     await new LoyaltyJobScheduler(svc, clock, testConfig).tick()
-    expect(run).toHaveBeenCalledTimes(5)
+    expect(run).toHaveBeenCalledTimes(4)
   })
 })
