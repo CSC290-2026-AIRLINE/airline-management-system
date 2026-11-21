@@ -11,8 +11,16 @@
 				"body-parser": "^2.4.0"
 			}
 		},
+		"@prisma/client": {
+			"prisma": {
+				"@prisma/config": {
+					"effect": "^3.22.5"
+				}
+			}
+		},
 		"body-parser": "^2.4.0",
-		"multer": "^2.5.0"
+		"multer": "^2.5.0",
+		"effect": "^3.22.5"
 	},
 	"engines": {
 		"node": ">=24.0.0"

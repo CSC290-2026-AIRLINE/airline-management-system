@@ -2,6 +2,7 @@ import path from 'node:path'
 import { faker } from '@faker-js/faker'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/prisma/client'
+import { seedFeature6 } from './seed-f6'
 
 try {
   process.loadEnvFile(path.join(__dirname, '..', '..', '.env'))
@@ -437,7 +438,7 @@ async function seedRefreshTokens(userId: string) {
 
 async function main() {
   console.log(
-    `Seeding ${STAFF_ROLES.length} roles, the Feature 2, 4, 5, 6, 10 and 11 demo data, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`,
+    `Seeding ${STAFF_ROLES.length} roles, the Feature 2, 4, 5, 6, 10 and 11 demo data, the Feature 6 demo flights and bookings, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`,
   )
 
   const roleIds = await seedRoles()
@@ -447,6 +448,7 @@ async function main() {
   await seedPricingSettings()
   await seedPricingCatalog()
   await seedCheckIn()
+  await seedFeature6(prisma)
   await seedLostAndFound()
   await seedLoyalty()
   await seedCrewPay()
