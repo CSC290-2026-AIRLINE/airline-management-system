@@ -2,13 +2,13 @@ import {
   Calendar,
   CalendarClock,
   Globe,
-  Route,
   Gauge,
   ChartColumn,
   ClipboardCheck,
   CreditCard,
   DoorOpen,
   FileText,
+  IdCard,
   KeyRound,
   ListChecks,
   Luggage,
@@ -19,6 +19,7 @@ import {
   PlaneLanding,
   PlaneTakeoff,
   Receipt,
+  Route,
   ScrollText,
   Search,
   ShieldCheck,
@@ -99,6 +100,22 @@ export const PRICING_ITEMS = [
   { to: '/pricing/taxes-promos', code: 'f04.taxes_promos', label: 'Taxes, Currency & Promos', icon: Percent },
   { to: '/pricing/expenses-payments', code: 'f04.expenses_payments', label: 'Expenses & Payments', icon: Receipt },
   { to: '/pricing/monthly-report', code: 'f04.monthly_report', label: 'Monthly Report', icon: FileText },
+] as const
+
+/**
+ * The crew rostering screens (Feature 8). `match` lists every path that lights the item up: "Roster runs" is one item
+ * for the three wizard steps and the published rosters they lead to, and "Crew" covers each crew member's profile page.
+ */
+export const CREW_ITEMS = [
+  {
+    to: '/build-pairings',
+    code: 'f08.roster_runs',
+    label: 'Roster runs',
+    icon: Route,
+    match: ['/build-pairings', '/assign-crew', '/fix-publish', '/published-rosters'],
+  },
+  { to: '/setup-crew', code: 'f08.crew', label: 'Crew', icon: IdCard, match: ['/setup-crew'] },
+  { to: '/setup-rule', code: 'f08.rules', label: 'Rules', icon: ListChecks, match: ['/setup-rule'] },
 ] as const
 
 /** The check-in and gate screens of the Check-in & Boarding feature (F6). */

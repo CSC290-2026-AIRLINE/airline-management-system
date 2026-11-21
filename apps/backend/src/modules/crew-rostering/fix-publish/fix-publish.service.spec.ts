@@ -1,0 +1,574 @@
+import { ConflictException } from '@nestjs/common'
+import type { DbService } from '@backend/db/db.service'
+import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import type { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
+import type { AssignCrewService } from '@backend/modules/crew-rostering/assign-crew/assign-crew.service'
+import { Prisma } from '@backend/db/generated/prisma/client'
+import { FixPublishService, inFlightOrder } from './fix-publish.service'
+
+// The services only need these for types; the real modules are ESM.
+jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
+jest.mock('@backend/db/generated/prisma/client', () => ({ Prisma: { PrismaClientKnownRequestError: class extends Error {} } }))
+
+const RUN = '7c1b9d2e-3a44-4c1f-8f0a-5b6d7e8f9a00'
+
+const fakeClock = () => ({ now: () => new Date() })
+
+/** Stands in for Feature 15's `AuditService`: the actor is resolved up front and every row goes through `write`. */
+function fakeAudit() {
+  return {
+    resolveActor: jest.fn().mockResolvedValue({ type: 'staff', id: 'user-1', role: 'ops' }),
+    write: jest.fn().mockResolvedValue({ id: 'audit-1', seq: '1' }),
+  }
+}
+
+/** Just enough of `DbService` for `publish`, with the order of lock, re-check and writes recorded. */
+function setupPublish(
+  options: { locked?: { status: string }; open?: number; pairings?: number; flipped?: number; inRun?: string[]; crewed?: string[] } = {},
+) {
+  const { locked = { status: 'draft' }, open = 0, pairings = 3, flipped = 1, inRun = ['p-1', 'p-2', 'p-3'], crewed = inRun } = options
+  const calls: string[] = []
+  const tx = {
+    $queryRaw: jest.fn(() => {
+      calls.push('lock')
+      return Promise.resolve([locked])
+    }),
+    roster_run_pairing: {
+      count: jest.fn().mockResolvedValue(pairings),
+      findMany: jest.fn().mockResolvedValue(inRun.map((id) => ({ pairing_id: id }))),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    rule_break: { count: jest.fn().mockResolvedValue(open), deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    roster_run: {
+      updateMany: jest.fn().mockResolvedValue({ count: flipped }),
+      findUniqueOrThrow: jest
+        .fn()
+        .mockResolvedValue({ base_airport: 'BKK', date_from: new Date('2026-09-15'), date_to: new Date('2026-09-19') }),
+      create: jest.fn().mockResolvedValue({ id: 'next-run' }),
+    },
+  }
+  const db = {
+    roster_run: { findUnique: jest.fn().mockResolvedValue({ id: RUN, status: 'draft' }) },
+    $transaction: jest.fn(async (run: (client: typeof tx) => Promise<void>) => run(tx)),
+  }
+  const assign = {
+    check: jest.fn(() => {
+      calls.push('check')
+      return Promise.resolve()
+    }),
+    scopeIds: jest.fn().mockResolvedValue(new Set(crewed)),
+  }
+  const audit = fakeAudit()
+  const service = new FixPublishService(
+    db as unknown as DbService,
+    assign as unknown as AssignCrewService,
+    audit as unknown as AuditService,
+    fakeClock() as unknown as SimulationClock,
+  )
+  jest
+    .spyOn(service as unknown as { buildState: () => Promise<unknown> }, 'buildState')
+    .mockResolvedValue({ rosterRun: { status: 'published' } })
+  return { service, tx, calls, audit, assign }
+}
+
+/**
+ * `swap` with the world and plan stubbed, and the transaction recorded. `resolvedUnderLock` is what the break looks like
+ * when it is read again under the run lock: closed if another operator got there first.
+ */
+function swapSetup(world: unknown, plan: unknown, options: { resolvedUnderLock?: boolean } = {}) {
+  const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    rule_break: { findUnique: jest.fn().mockResolvedValue({ resolved_at: options.resolvedUnderLock ? new Date() : null }) },
+    pairing_leg_assignment: { updateMany: jest.fn(), createMany: jest.fn() },
+  }
+  const db = { $transaction: jest.fn((write: (client: typeof tx) => Promise<unknown>) => write(tx)) }
+  const service = new FixPublishService(
+    db as unknown as DbService,
+    {} as AssignCrewService,
+    fakeAudit() as unknown as AuditService,
+    fakeClock() as unknown as SimulationClock,
+  )
+  const internals = service as unknown as Record<'readBreak' | 'loadWorld' | 'planFor' | 'candidateFor', unknown>
+  jest.spyOn(internals as { readBreak: () => Promise<unknown> }, 'readBreak').mockResolvedValue({
+    id: 'brk-1',
+    roster_run_id: 'run-1',
+    pairing_id: 'p-1',
+    pairing_leg_id: 'leg-1',
+    rule: 'NO_LOCAL_CREW',
+    role: null,
+    crew_id: null,
+    detail: 'x',
+    resolved_at: null,
+  })
+  jest.spyOn(internals as { loadWorld: () => Promise<unknown> }, 'loadWorld').mockResolvedValue(world)
+  jest.spyOn(internals as { planFor: () => unknown }, 'planFor').mockReturnValue(plan)
+  jest.spyOn(service, 'check').mockResolvedValue({ breaks: [] } as never)
+  return { service, tx }
+}
+
+describe('FixPublishService.publish', () => {
+  it('locks the run, re-checks it under the lock, then flips it once', async () => {
+    const { service, tx, calls, audit, assign } = setupPublish()
+
+    await service.publish(RUN, 'user-1')
+
+    expect(calls).toEqual(['lock', 'check'])
+    // On the publish transaction, so the check and the flip see and commit the same roster.
+    expect(assign.check).toHaveBeenCalledWith(RUN, tx)
+    expect(assign.scopeIds).toHaveBeenCalledWith(RUN, tx)
+    expect(tx.roster_run.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: RUN, status: 'draft' } }))
+    expect(audit.resolveActor).toHaveBeenCalledWith('user-1')
+    expect(audit.write).toHaveBeenCalledTimes(1)
+    expect(audit.write).toHaveBeenCalledWith(expect.objectContaining({ sourceFeature: '8', action: 'status_change' }), tx)
+  })
+
+  it('publishes only the pairings somebody crewed and moves the rest into a new draft run for the same window', async () => {
+    const { service, tx } = setupPublish({ inRun: ['p-1', 'p-2', 'p-3', 'p-4'], crewed: ['p-1', 'p-2'] })
+
+    await service.publish(RUN, 'user-1')
+
+    expect(tx.roster_run.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ base_airport: 'BKK', status: 'draft' }) }),
+    )
+    expect(tx.rule_break.deleteMany).toHaveBeenCalledWith({ where: { roster_run_id: RUN, pairing_id: { in: ['p-3', 'p-4'] } } })
+    expect(tx.roster_run_pairing.updateMany).toHaveBeenCalledWith({
+      where: { roster_run_id: RUN, pairing_id: { in: ['p-3', 'p-4'] } },
+      data: { roster_run_id: 'next-run' },
+    })
+    expect(tx.roster_run.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: RUN, status: 'draft' } }))
+  })
+
+  it('makes no second run when every pairing in the run was crewed', async () => {
+    const { service, tx } = setupPublish({ inRun: ['p-1', 'p-2'], crewed: ['p-1', 'p-2'] })
+
+    await service.publish(RUN, 'user-1')
+
+    expect(tx.roster_run.create).not.toHaveBeenCalled()
+    expect(tx.roster_run_pairing.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('refuses while a break is open, and does not flip the run', async () => {
+    const { service, tx } = setupPublish({ open: 2 })
+
+    await expect(service.publish(RUN, 'user-1')).rejects.toMatchObject({
+      response: { error: { code: 'ROSTER_HAS_BREAKS', message: 'close 2 open breaks to publish' } },
+    })
+    expect(tx.roster_run.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('finds a run published by someone else while it waited for the lock, and stops before re-checking', async () => {
+    const { service, calls, audit } = setupPublish({ locked: { status: 'published' } })
+
+    await expect(service.publish(RUN, 'user-1')).rejects.toThrow(ConflictException)
+    expect(calls).toEqual(['lock'])
+    expect(audit.write).not.toHaveBeenCalled()
+  })
+
+  it('writes no second audit line when the guarded flip changes nothing', async () => {
+    const { service, audit } = setupPublish({ flipped: 0 })
+
+    await expect(service.publish(RUN, 'user-1')).rejects.toThrow('already published')
+    expect(audit.write).not.toHaveBeenCalled()
+  })
+})
+
+/** The rules a cover has to pass, called directly: the page filters on role and presence, so only a direct swap reaches them. */
+describe('FixPublishService cover rules', () => {
+  const leg = {
+    id: 'leg-1',
+    pairingId: 'p-1',
+    flightNumber: 'TX103',
+    serviceDate: '2026-09-17',
+    aircraftType: 'A320',
+    dep: new Date('2026-09-17T04:30:00Z'),
+    arr: new Date('2026-09-17T05:55:00Z'),
+  }
+  const limits = { minRestHours: 10, maxFlightHours28d: 100, reportMinutes: 60, releaseMinutes: 0 }
+  const captainSeat = { mode: 'add', role: 'captain', scope: [leg], languages: [] }
+
+  function member(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'crew-1',
+      first_name: 'Test',
+      last_name: 'Captain',
+      role: 'captain',
+      licence_expires_on: new Date('2030-01-01'),
+      fleet_aircraft_type: 'A320',
+      languages: [],
+      crew_certification: [{ aircraft_type: 'A320', expires_on: new Date('2030-01-01') }],
+      ...overrides,
+    }
+  }
+
+  function judge(who: ReturnType<typeof member>, world: Record<string, unknown> = {}) {
+    const service = new FixPublishService(
+      {} as DbService,
+      {} as AssignCrewService,
+      {} as AuditService,
+      fakeClock() as unknown as SimulationClock,
+    )
+    const candidateFor = (
+      service as unknown as {
+        candidateFor: (m: unknown, p: unknown, w: unknown) => { allowed: boolean; checks: { ok: boolean; reason?: string }[] }
+      }
+    ).candidateFor
+    const fullWorld = { pairings: [], context: { defaults: limits }, busy: new Map(), assignments: [], removed: new Map(), ...world }
+    return candidateFor.call(service, who, captainSeat, fullWorld)
+  }
+
+  const reasonOf = (result: ReturnType<typeof judge>) => result.checks.find((check) => !check.ok)?.reason
+
+  it('allows a free, rated captain', () => {
+    expect(judge(member()).allowed).toBe(true)
+  })
+
+  it('refuses someone whose role is not the seat', () => {
+    const result = judge(member({ role: 'cabin_crew' }))
+
+    expect(result.allowed).toBe(false)
+    expect(reasonOf(result)).toContain('not')
+  })
+
+  it('refuses someone already crewed on the flight', () => {
+    const result = judge(member(), {
+      assignments: [{ id: 'a-1', legId: 'leg-1', crewId: 'crew-1', pairingId: 'p-1', role: 'first_officer' }],
+    })
+
+    expect(result.allowed).toBe(false)
+    expect(reasonOf(result)).toContain('already crewed')
+  })
+
+  it('refuses the person who came off the seat', () => {
+    const removed = new Map([['leg-1|captain', { crewId: 'crew-1', name: 'T. Captain', role: 'captain', reason: 'Sick: fever' }]])
+    const result = judge(member(), { removed })
+
+    expect(result.allowed).toBe(false)
+    expect(reasonOf(result)).toContain('came off this seat')
+  })
+})
+
+/** Who a swap takes off the roster, and that a swap really takes off that many. */
+describe('FixPublishService swap, who comes off', () => {
+  const leg = {
+    id: 'leg-1',
+    pairingId: 'p-1',
+    flightNumber: 'TX301',
+    serviceDate: '2026-09-17',
+    aircraftType: 'A320',
+    destinationCountry: 'jp',
+    dep: new Date('2026-09-17T01:00:00Z'),
+    arr: new Date('2026-09-17T08:00:00Z'),
+  }
+  const limits = { minRestHours: 10, maxFlightHours28d: 100, reportMinutes: 60, releaseMinutes: 0 }
+
+  const person = (id: string, last: string, role: string, languages: string[]) => ({
+    id,
+    first_name: 'T',
+    last_name: last,
+    role,
+    languages,
+    licence_expires_on: new Date('2030-01-01'),
+    fleet_aircraft_type: 'A320',
+    crew_certification: [{ aircraft_type: 'A320', expires_on: new Date('2030-01-01') }],
+  })
+  const row = (id: string, crewId: string, role: string) => ({ id, crewId, pairingId: 'p-1', legId: 'leg-1', role })
+
+  // Four cabin crew, none of whom speak Japanese, and a captain who must never be touched.
+  const crew = [
+    person('c-zed', 'Zed', 'cabin_crew', ['th']),
+    person('c-ann', 'Ann', 'cabin_crew', ['th']),
+    person('c-bob', 'Bob', 'cabin_crew', ['th']),
+    person('c-cat', 'Cat', 'cabin_crew', ['th']),
+    person('c-cap', 'Aaron', 'captain', ['th']),
+  ]
+  const speaker = person('c-speaker', 'Sato', 'cabin_crew', ['ja', 'th'])
+  const assignments = [
+    row('a-zed', 'c-zed', 'cabin_crew'),
+    row('a-ann', 'c-ann', 'cabin_crew'),
+    row('a-bob', 'c-bob', 'cabin_crew'),
+    row('a-cat', 'c-cat', 'cabin_crew'),
+    row('a-cap', 'c-cap', 'captain'),
+  ]
+  const world = {
+    pairings: [],
+    context: { defaults: limits },
+    legs: new Map([['leg-1', leg]]),
+    pairingById: new Map([['p-1', { code: 'P-1' }]]),
+    assignments,
+    pool: [speaker],
+    crewById: new Map([...crew, speaker].map((member) => [member.id, member])),
+    busy: new Map(),
+    removed: new Map(),
+  }
+  const nonSpeakerPlan = { mode: 'replace-non-speaker', role: 'cabin_crew', scope: [leg], languages: ['ja'] }
+
+  type Internals = { leavingRows: (plan: unknown, world: unknown) => { id: string }[] }
+  const leaving = (plan: unknown, over: Record<string, unknown> = {}) => {
+    const service = new FixPublishService(
+      {} as DbService,
+      {} as AssignCrewService,
+      {} as AuditService,
+      fakeClock() as unknown as SimulationClock,
+    )
+    return (service as unknown as Internals).leavingRows(plan, { ...world, ...over }).map((item) => item.id)
+  }
+
+  it('takes one cabin crew member off, not every one who does not speak the language', () => {
+    // Four do not speak it, one comes off: the first by name, so the same swap always lets the same person go.
+    expect(leaving(nonSpeakerPlan)).toEqual(['a-ann'])
+  })
+
+  it('never takes a pilot off, and keeps people who do speak the language', () => {
+    const withSpeaker = [...assignments, row('a-speaker', 'c-speaker', 'cabin_crew')]
+    const crewById = new Map([...world.crewById, ['c-speaker', speaker]])
+
+    expect(leaving(nonSpeakerPlan, { assignments: withSpeaker, crewById })).toEqual(['a-ann'])
+    expect(leaving(nonSpeakerPlan, { assignments: [row('a-cap', 'c-cap', 'captain')] })).toEqual([])
+  })
+
+  it('takes off nobody when everyone already speaks it', () => {
+    const allSpeak = new Map(world.crewById)
+    for (const member of crew) allSpeak.set(member.id, { ...member, languages: ['ja'] })
+
+    expect(leaving(nonSpeakerPlan, { crewById: allSpeak })).toEqual([])
+  })
+
+  it('takes off only the person a swap is replacing, and nobody when it only adds', () => {
+    expect(leaving({ mode: 'replace-subject', role: 'cabin_crew', scope: [leg], languages: [], subjectId: 'c-bob' })).toEqual(['a-bob'])
+    expect(leaving({ mode: 'add', role: 'cabin_crew', scope: [leg], languages: [] })).toEqual([])
+  })
+
+  it('writes one unassignment and one new seat when a NO_LOCAL_CREW swap is made', async () => {
+    const { service, tx } = swapSetup(world, nonSpeakerPlan)
+
+    await service.swap('brk-1', 'c-speaker', 'user-1')
+
+    expect(tx.pairing_leg_assignment.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['a-ann'] } } }))
+    expect(tx.pairing_leg_assignment.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ pairing_leg_id: 'leg-1', crew_id: 'c-speaker', role: 'cabin_crew' })],
+    })
+  })
+
+  describe('two operators on one item', () => {
+    /** A NO_LEGAL_CREW cabin seat on a leg that needs four cabin crew. */
+    const addPlan = { mode: 'add', role: 'cabin_crew', scope: [{ ...leg, cabinCrewRequired: 4 }], languages: [] }
+    const withCabin = (count: number) => ({
+      ...world,
+      pairings: [{ id: 'p-1', limits: { minPoliceInternational: 2 } }],
+      assignments: Array.from({ length: count }, (_, index) => row(`a-${index}`, `c-${index}`, 'cabin_crew')),
+    })
+
+    it('refuses, and writes nothing, when the other operator closed the item first', async () => {
+      const { service, tx } = swapSetup(withCabin(3), addPlan, { resolvedUnderLock: true })
+
+      await expect(service.swap('brk-1', 'c-speaker', 'user-1')).rejects.toThrow('Someone else fixed this item')
+      expect(tx.pairing_leg_assignment.createMany).not.toHaveBeenCalled()
+    })
+
+    it('refuses, and writes nothing, when the seat was filled while the item was still open', async () => {
+      const { service, tx } = swapSetup(withCabin(4), addPlan)
+
+      await expect(service.swap('brk-1', 'c-speaker', 'user-1')).rejects.toThrow('Someone else fixed this item')
+      expect(tx.pairing_leg_assignment.createMany).not.toHaveBeenCalled()
+    })
+
+    it('turns a unique-index clash on a one-person seat into a 409, not a 500', async () => {
+      const { service, tx } = swapSetup(withCabin(3), addPlan)
+      const clash = Object.assign(new Prisma.PrismaClientKnownRequestError('unique', { code: 'P2002', clientVersion: 'test' }), {
+        code: 'P2002',
+      })
+      tx.pairing_leg_assignment.createMany.mockRejectedValue(clash)
+
+      await expect(service.swap('brk-1', 'c-speaker', 'user-1')).rejects.toBeInstanceOf(ConflictException)
+    })
+  })
+})
+
+describe('FixPublishService.raiseSickCall', () => {
+  const NOW = new Date('2026-11-21T00:00:00Z')
+
+  function sickCallSetup(depAt: Date) {
+    const tx = { $queryRaw: jest.fn(), pairing_leg_assignment: { update: jest.fn() } }
+    const db = {
+      pairing_leg_assignment: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'a-1',
+          role: 'cabin_crew',
+          crew: { first_name: 'Ann', last_name: 'Lee' },
+          pairing_leg: { flight: { flight_number: 'FD210', dep_at: depAt } },
+        }),
+      },
+      $transaction: jest.fn((write: (client: typeof tx) => Promise<unknown>) => write(tx)),
+    }
+    const service = new FixPublishService(
+      db as unknown as DbService,
+      {} as AssignCrewService,
+      fakeAudit() as unknown as AuditService,
+      { now: () => NOW } as unknown as SimulationClock,
+    )
+    jest.spyOn(service, 'check').mockResolvedValue({} as never)
+    return { service, tx }
+  }
+  const input = { legId: 'leg-1', memberId: 'c-1', reason: 'Sick' }
+
+  it('refuses a leg that departed before the simulation clock’s now, and changes nothing', async () => {
+    const { service, tx } = sickCallSetup(new Date('2026-11-02T12:30:00Z'))
+
+    await expect(service.raiseSickCall(RUN, input, 'user-1')).rejects.toThrow('FD210 has already departed')
+    expect(tx.pairing_leg_assignment.update).not.toHaveBeenCalled()
+  })
+
+  it('takes the person off a leg that has not left yet', async () => {
+    const { service, tx } = sickCallSetup(new Date('2026-11-22T12:30:00Z'))
+
+    await service.raiseSickCall(RUN, input, 'user-1')
+    expect(tx.pairing_leg_assignment.update).toHaveBeenCalledWith({
+      where: { id: 'a-1' },
+      data: expect.objectContaining({ reason: 'Sick' }),
+    })
+  })
+})
+
+describe('FixPublishService.seatsToFill', () => {
+  const service = new FixPublishService(
+    {} as unknown as DbService,
+    {} as unknown as AssignCrewService,
+    fakeAudit() as unknown as AuditService,
+    fakeClock() as unknown as SimulationClock,
+  )
+  const seatsToFill = (plan: unknown, world: unknown): number =>
+    (service as unknown as { seatsToFill: (plan: unknown, world: unknown) => number }).seatsToFill(plan, world)
+
+  const world = (assigned: { role: string }[]) => ({
+    pairings: [{ id: 'p-1', limits: { cabinCrewPerLeg: 4, minPoliceInternational: 2 } }],
+    assignments: assigned.map((item) => ({ legId: 'leg-1', role: item.role })),
+  })
+  const plan = (role: string, languages: string[] = [], cabinCrewRequired = 4) => ({
+    mode: 'add',
+    role,
+    scope: [{ id: 'leg-1', pairingId: 'p-1', cabinCrewRequired }],
+    languages,
+  })
+
+  it('counts the cabin crew a leg is short, so three can be added in one go', () => {
+    expect(seatsToFill(plan('cabin_crew'), world([{ role: 'cabin_crew' }]))).toBe(3)
+    expect(seatsToFill(plan('cabin_crew'), world([]))).toBe(4)
+  })
+
+  it("goes by the leg's own aircraft, not the biggest one in the pairing", () => {
+    expect(seatsToFill(plan('cabin_crew', [], 2), world([]))).toBe(2)
+    expect(seatsToFill(plan('cabin_crew', [], 2), world([{ role: 'cabin_crew' }]))).toBe(1)
+  })
+
+  it('swaps a speaker in when the leg is full, even if a bigger leg in the pairing needs more', () => {
+    const leg = { id: 'leg-1', pairingId: 'p-1', cabinCrewRequired: 2, localLanguages: ['ja'] }
+    const planFor = (service as unknown as { planFor: (row: unknown, world: unknown) => { mode: string } }).planFor.bind(service)
+    const result = planFor(
+      { rule: 'NO_LOCAL_CREW', pairing_leg_id: 'leg-1', pairing_id: 'p-1' },
+      {
+        ...world([{ role: 'cabin_crew' }, { role: 'cabin_crew' }]),
+        legs: new Map([['leg-1', leg]]),
+        pairingById: new Map([['p-1', { id: 'p-1', limits: { cabinCrewPerLeg: 4 } }]]),
+      },
+    )
+    expect(result.mode).toBe('replace-non-speaker')
+  })
+
+  it('counts the police a leg is short', () => {
+    expect(seatsToFill(plan('police'), world([{ role: 'police' }]))).toBe(1)
+    expect(seatsToFill(plan('police'), world([]))).toBe(2)
+  })
+
+  it('is one seat for a pilot, a local-language speaker, or a swap', () => {
+    expect(seatsToFill(plan('captain'), world([]))).toBe(1)
+    expect(seatsToFill(plan('cabin_crew', ['th']), world([]))).toBe(1)
+    expect(seatsToFill({ ...plan('cabin_crew'), mode: 'replace-subject' }, world([]))).toBe(1)
+  })
+})
+
+describe('FixPublishService history', () => {
+  function setupHistory(runs: unknown[], counts: unknown[], found: unknown = { id: RUN }) {
+    const db = {
+      roster_run: { findMany: jest.fn().mockResolvedValue(runs), findUnique: jest.fn().mockResolvedValue(found) },
+      rule_break: { groupBy: jest.fn().mockResolvedValue(counts) },
+    }
+    const service = new FixPublishService(
+      db as unknown as DbService,
+      {} as unknown as AssignCrewService,
+      fakeAudit() as unknown as AuditService,
+      fakeClock() as unknown as SimulationClock,
+    )
+    return { service, db }
+  }
+
+  it('lists published runs with their legs and how each break was closed', async () => {
+    const { service, db } = setupHistory(
+      [
+        {
+          id: RUN,
+          base_airport: 'BKK',
+          date_from: new Date('2026-09-15'),
+          date_to: new Date('2026-09-19'),
+          published_at: new Date('2026-09-14T02:00:00Z'),
+          roster_run_pairing: [{ pairing: { _count: { pairing_leg: 2 } } }, { pairing: { _count: { pairing_leg: 2 } } }],
+        },
+      ],
+      [
+        { roster_run_id: RUN, resolution: 'fixed', _count: { _all: 2 } },
+        { roster_run_id: RUN, resolution: 'overridden', _count: { _all: 1 } },
+      ],
+    )
+
+    const [row] = await service.listPublished()
+
+    expect(db.roster_run.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { status: 'published' } }))
+    expect(row).toEqual({
+      id: RUN,
+      base: 'BKK',
+      dateFrom: '2026-09-15',
+      dateTo: '2026-09-19',
+      publishedAt: '2026-09-14T02:00:00.000Z',
+      pairings: 2,
+      legs: 4,
+      fixed: 2,
+      overridden: 1,
+      open: 0,
+    })
+  })
+
+  it('asks for no break counts when nothing is published', async () => {
+    const { service, db } = setupHistory([], [])
+
+    expect(await service.listPublished()).toEqual([])
+    expect(db.rule_break.groupBy).not.toHaveBeenCalled()
+  })
+
+  it('refuses a run id that does not exist', async () => {
+    const { service } = setupHistory([], [], null)
+
+    await expect(service.getRun(RUN)).rejects.toThrow('not found')
+  })
+})
+
+describe('inFlightOrder', () => {
+  const at = (hhmm: string) => ({ dep: new Date(`2026-11-20T${hhmm}:00Z`) })
+  const legs = new Map([
+    ['early', at('01:00')],
+    ['late', at('09:00')],
+  ])
+  const pairings = new Map([
+    ['p9', { code: 'P-9' }],
+    ['p10', { code: 'P-10' }],
+  ])
+  const row = (id: string, leg: string, pairing: string) => ({ id, pairing_leg_id: leg, pairing_id: pairing })
+
+  it('lists breaks by departure, then pairing code in number order, keeping ties as found', () => {
+    const rows = [row('a', 'late', 'p9'), row('b', 'early', 'p10'), row('c', 'early', 'p9'), row('d', 'early', 'p10')]
+    expect(inFlightOrder(rows, legs, pairings).map((item) => item.id)).toEqual(['c', 'b', 'd', 'a'])
+  })
+
+  it('puts a break whose leg is gone last', () => {
+    const rows = [row('gone', 'missing', 'p9'), row('a', 'late', 'p9')]
+    expect(inFlightOrder(rows, legs, pairings).map((item) => item.id)).toEqual(['a', 'gone'])
+  })
+})
