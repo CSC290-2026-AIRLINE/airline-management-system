@@ -8,6 +8,8 @@ import type { EnvConfig } from './config/env.validation'
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: ['error', 'warn'],
+    // Keeps the raw request bytes on req.rawBody: Stripe signs the raw body, so the payments webhook verifies that.
+    rawBody: true,
   })
   const configService = app.get(ConfigService<EnvConfig, true>)
 

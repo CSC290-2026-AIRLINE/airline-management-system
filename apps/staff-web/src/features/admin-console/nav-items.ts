@@ -40,7 +40,19 @@ export interface NavItem {
   label: string
   icon: LucideIcon
   /** Set once the owning team has a route. Items without one stay disabled in the live sidebar. */
-  to?: '/customer-search' | '/security-screening/screening-queue' | '/aircraft' | '/aircraft-types' | '/readiness'
+  to?:
+    | '/customer-search'
+    | '/security-screening/screening-queue'
+    | '/aircraft'
+    | '/aircraft-types'
+    | '/readiness'
+    // Feature 5 (Payments & Refunds), shown as a sub-group in the sidebar.
+    | '/payments/lookup'
+    | '/payments/refunds'
+    | '/payments/compensation'
+    | '/payments/exceptions'
+    | '/payments/pay-runs'
+    | '/payments/my-pay'
   /** Path prefix that keeps the item highlighted on the feature's other pages. */
   activePrefix?: string
 }

@@ -156,3 +156,38 @@
     background: var(--code-bg);
   }
 }
+
+/*
+ * Feature 5 (the receipts, refunds, vouchers and payment result pages): the brand colours and breakpoints those pages use.
+ * Additive on purpose: these are names the rest of the theme does not define, so no other page changes.
+ */
+@theme {
+  --breakpoint-phone: 37.5625rem; /* max-phone: is 600px and below */
+  --breakpoint-tablet: 48.0625rem; /* max-tablet: is 768px and below */
+  --breakpoint-laptop: 64.0625rem;
+  --breakpoint-wide: 68.8125rem;
+
+  --color-navy: #14213d;
+  --color-navy-active: #2a4372;
+  --color-ink: #0a1424;
+  --color-page: #f7f9fc;
+  --color-line: #e6e8ef;
+  --color-gold: #f2a800;
+  --color-success: #2fa568;
+  --color-success-strong: #1f8a4c;
+  --color-success-soft: #e4f5e9;
+  --color-warning: #94651c;
+  --color-warning-soft: #fef4de;
+  --color-danger: #b8171f;
+  --color-danger-soft: #fdecec;
+  --color-danger-line: #e5484d;
+}
+
+/*
+ * The starter styles set the root font size to 18px on a desktop, which makes every rem-based Tailwind size 12.5% bigger.
+ * The Feature 5 pages are designed in px (a 16px root), so while one of them is on screen the root is 16px. Only then: the
+ * pages of other teams keep the root they were built on.
+ */
+:root:has(.customer-shell) {
+  font-size: 16px;
+}

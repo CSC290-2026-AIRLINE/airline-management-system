@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { ChevronRight, LogOut } from 'lucide-react'
+import { Banknote, ChevronRight, CreditCard, Gift, LogOut, Search, TriangleAlert, Undo2, Wallet } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@staff-web/components/ui/collapsible'
 import { ScrollArea } from '@staff-web/components/ui/scroll-area'
 import {
@@ -103,6 +103,45 @@ function NavGroup({ label, children }: { label: string; children: ReactNode }) {
       </SidebarGroup>
       {/* Collapsed rail: a bar under the group, since its header is hidden. */}
       <div aria-hidden="true" className="mx-2 my-1 hidden h-px bg-sidebar-foreground/25 group-data-[collapsible=icon]:block" />
+    </Collapsible>
+  )
+}
+
+/** The Payments & Refunds screens (Feature 5), in the F5 frames' order. Pay Runs and My Pay are Feature 5c's (crew pay). */
+const PAYMENTS_ITEMS: (NavItem & { to: NonNullable<NavItem['to']> })[] = [
+  { label: 'Payment Lookup', icon: Search, to: '/payments/lookup' },
+  { label: 'Refund Queue', icon: Undo2, to: '/payments/refunds' },
+  { label: 'Compensation & Vouchers', icon: Gift, to: '/payments/compensation' },
+  { label: 'Payment Exceptions', icon: TriangleAlert, to: '/payments/exceptions' },
+  { label: 'Pay Runs', icon: Banknote, to: '/payments/pay-runs' },
+  { label: 'My Pay', icon: Wallet, to: '/payments/my-pay' },
+]
+
+/**
+ * "Payments & Refunds" inside Commercial: a heading that opens and closes its screens. It opens by itself when one of
+ * them is the current page, so the active item is never hidden.
+ */
+function PaymentsSubGroup({ pathname }: { pathname: string }) {
+  const hasActive = PAYMENTS_ITEMS.some((item) => pathname === item.to || pathname.startsWith(item.to + '/'))
+
+  return (
+    <Collapsible defaultOpen={hasActive} className="group/payments">
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton className="pl-4" tooltip="Payments & Refunds">
+            <CreditCard />
+            <span className="truncate">Payments & Refunds</span>
+            <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/payments:rotate-90 motion-reduce:transition-none" />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+      </SidebarMenuItem>
+      <CollapsibleContent className="group-data-[collapsible=icon]:block!">
+        <SidebarMenu className="pl-4">
+          {PAYMENTS_ITEMS.map((item) => (
+            <LinkedItem key={item.label} item={item} pathname={pathname} indent />
+          ))}
+        </SidebarMenu>
+      </CollapsibleContent>
     </Collapsible>
   )
 }
@@ -233,7 +272,9 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
           {GROUPS.map((group) => (
             <NavGroup key={group.label} label={group.label}>
               {group.items.map((item) =>
-                item.to ? (
+                item.label === 'Payments & Refunds' ? (
+                  <PaymentsSubGroup key={item.label} pathname={pathname} />
+                ) : item.to ? (
                   <LinkedItem key={item.label} item={{ ...item, to: item.to }} pathname={pathname} indent />
                 ) : (
                   <PendingItem key={item.label} item={item} indent />
