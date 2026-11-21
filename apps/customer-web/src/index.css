@@ -28,6 +28,30 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+@theme {
+  --font-sans: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;
+  --font-mono: ui-monospace, 'SF Mono', Consolas, monospace;
+
+  /* Flython / FlySmiles palette, from the F11 Figma file. Grey text uses shadcn's text-muted-foreground: a --color-muted
+     here would override shadcn's muted background colour app-wide. */
+  --color-ink: #0a1424;
+  --color-line: #e0e5ed;
+  --color-divider: #e8edf3;
+  --color-field: #dbe2ea;
+  --color-navy: #13264a;
+  --color-link: #1f408c;
+  --color-teal: #0e7490;
+  --color-mint: #d5f1f2;
+  --color-soft: #f7f9fc;
+  --color-canvas: #f6f8fc;
+  --color-gold: #c9a227;
+  --color-gold-ink: #6b4e00;
+  --color-ok: #087338;
+  --color-warn: #995c05;
+  --color-danger: #b42318;
+}
+
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
@@ -106,6 +130,13 @@
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
+  }
+
+  /* Pages marked data-full-bleed (the Feature 11 loyalty pages) fill the window and lay out from the left. */
+  #root:has([data-full-bleed]) {
+    width: auto;
+    border-inline: 0;
+    text-align: left;
   }
 
   body {
