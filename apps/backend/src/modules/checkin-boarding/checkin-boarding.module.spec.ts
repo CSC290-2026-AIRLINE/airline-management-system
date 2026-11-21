@@ -28,22 +28,23 @@ describe('CheckinBoardingModule screen registration', () => {
   })
 
   it('registers the screens on boot in db mode', async () => {
-    const upsert = jest.fn().mockResolvedValue({
-      id: 'screen-id',
-      feature_no: '6',
-      code: 'f06.counter',
-      name: 'Check-in counter',
-      kind: 'assignable',
-      is_active: true,
-    })
+    // An empty registry: no screens yet, none edited by an admin (audit_log), so every screen is created.
+    const create = jest
+      .fn()
+      .mockImplementation(({ data }: { data: { code: string; name: string; kind: string; feature_no: string } }) =>
+        Promise.resolve({ id: `id-${data.code}`, ...data, is_active: true }),
+      )
     const moduleRef = await Test.createTestingModule({ imports: [CheckinBoardingModule.register('db')] })
       .overrideProvider(DbService)
-      .useValue({ screen: { upsert } })
+      .useValue({
+        screen: { findUnique: jest.fn().mockResolvedValue(null), create, findMany: jest.fn().mockResolvedValue([]) },
+        audit_log: { findMany: jest.fn().mockResolvedValue([]) },
+      })
       .compile()
 
     await moduleRef.init()
 
-    const codes = upsert.mock.calls.map((call) => call[0].where.code)
+    const codes = create.mock.calls.map(([args]: [{ data: { code: string } }]) => args.data.code)
     expect(codes).toEqual(expect.arrayContaining(F06_SCREENS.map((s) => s.code)))
     await moduleRef.close()
   })

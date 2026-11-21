@@ -27,6 +27,7 @@ import {
   CREW_ITEMS,
   FLIGHT_SCHEDULING_ITEMS,
   GROUPS,
+  LOYALTY_ITEMS,
   PRICING_ITEMS,
   REPORTS_ITEM,
   type NavItem,
@@ -218,6 +219,24 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
                   isActive={
                     pathname === item.to || item.ownsPrefixes?.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/'))
                   }
+                  tooltip={item.label}
+                  className="pl-4"
+                >
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Loyalty Programme">
+            {LOYALTY_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === item.to || pathname.startsWith(item.to + '/')}
                   tooltip={item.label}
                   className="pl-4"
                 >

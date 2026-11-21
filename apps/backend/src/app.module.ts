@@ -5,6 +5,7 @@ import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
+import { LoyaltyModule } from './modules/loyalty/loyalty.module'
 import { CheckinBoardingModule } from './modules/checkin-boarding/checkin-boarding.module'
 import { validateEnv } from './config/env.validation'
 import { AssignCrewModule } from './modules/crew-rostering/assign-crew/assign-crew.module'
@@ -37,6 +38,7 @@ import { FlightSchedulingModule } from './modules/flight-scheduling/flight-sched
     WatchlistModule,
     AircraftManagementModule,
     FlightSchedulingModule,
+    LoyaltyModule,
   ],
   controllers: [AppController],
   providers: [AppService],
