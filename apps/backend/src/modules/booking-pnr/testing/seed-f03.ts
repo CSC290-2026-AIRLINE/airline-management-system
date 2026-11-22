@@ -39,14 +39,13 @@ const SMOKE_PRICING_RULE_ID = 'f0300000-0000-4000-8000-000000000001'
 // The demo aircraft type. A type's layout cannot change, so a new layout gets a new code (F03A320-V2).
 const AIRCRAFT_TYPE_CODE = 'F03A320'
 
-// The service dates the demo flights fly on. The last one is far enough ahead for the Q class, which can only be
-// bought seven days before departure, so it flies on its own aircraft.
-const SERVICE_DAYS = [
-  { offset: 1, aircraft: 'primary' },
-  { offset: 2, aircraft: 'primary' },
-  { offset: 3, aircraft: 'primary' },
-  { offset: 10, aircraft: 'farAhead' },
-] as const
+// The service dates the demo flights fly on: every day from today to 11 days ahead, so any date in the next two weeks
+// can be searched. Day 10 is far enough ahead for the Q class, which can only be bought seven days before departure,
+// so it keeps its own aircraft.
+const SERVICE_DAYS: ReadonlyArray<{ offset: number; aircraft: 'primary' | 'farAhead' }> = Array.from({ length: 12 }, (_, offset) => ({
+  offset,
+  aircraft: offset === 10 ? 'farAhead' : 'primary',
+}))
 
 // The demo fare classes' base fares, in the base currency. Same amounts as the pricing smoke.
 const BASE_FARES: Record<'Y' | 'Q' | 'W' | 'J' | 'F', string> = {
@@ -374,6 +373,12 @@ async function seedCustomer() {
       nationality: 'th',
       passport_number: EXTRA_PASSENGER_PASSPORT,
     },
+  })
+  // Bookings only accept the customer's own passenger or a saved traveller, so save the second traveller to the account.
+  await prisma.customer_passenger.upsert({
+    where: { customer_id_passenger_id: { customer_id: customer.id, passenger_id: extraPassenger.id } },
+    update: {},
+    create: { customer_id: customer.id, passenger_id: extraPassenger.id, relationship_type: 'child' },
   })
 
   return { customer, passenger, extraPassenger }

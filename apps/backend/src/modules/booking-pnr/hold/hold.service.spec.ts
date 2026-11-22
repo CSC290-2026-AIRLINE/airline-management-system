@@ -280,6 +280,27 @@ describe('HoldService', () => {
     expect(db.customer.findFirst).toHaveBeenCalledWith({ where: { user_id: 'signed-in-user', deleted_at: null }, select: { id: true } })
   })
 
+  it.each([
+    ['a customer', (service: HoldService) => service.createForUser('user', 'key', request)],
+    ['staff for a customer', (service: HoldService) => service.createForStaff('staff-user', 'customer', 'key', request)],
+  ])('only loads passengers that belong to the booking customer when %s books', async (_, book) => {
+    const { service, tx, inventory } = fixture()
+    await book(service)
+    expect(tx.passenger.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['adult'] },
+        deleted_at: null,
+        OR: [{ customer: { id: 'customer' } }, { customer_passenger: { some: { customer_id: 'customer' } } }],
+      },
+    })
+    // A passenger outside that set comes back missing: 422 and nothing held.
+    tx.passenger.findMany.mockResolvedValueOnce([])
+    inventory.hold.mockClear()
+    await expect(book(service)).rejects.toMatchObject({ status: 422, code: 'INVALID_BOOKING_STATE' })
+    expect(inventory.hold).not.toHaveBeenCalled()
+    expect(tx.booking.create).toHaveBeenCalledTimes(1)
+  })
+
   it('rejects missing passenger DOB and cabin/fare mismatches before inventory writes', async () => {
     const { service, tx, inventory } = fixture()
     tx.passenger.findMany.mockResolvedValueOnce([])

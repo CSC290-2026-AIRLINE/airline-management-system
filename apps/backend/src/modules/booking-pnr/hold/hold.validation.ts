@@ -54,7 +54,7 @@ export function validateHoldPassengers(request: HoldBookingDto, rows: passenger[
   const lastDate = flights[flights.length - 1].service_date
   for (const person of request.passengers) {
     const row = rows.find((candidate) => candidate.id === person.passengerId)
-    if (!row?.date_of_birth) invalidHold('Every passenger must exist and have a date of birth')
+    if (!row?.date_of_birth) invalidHold("Every passenger must be one of the customer's travellers and have a date of birth")
     const birth = row!.date_of_birth!
     const age = ageOn(birth, firstDate)
     if (age < 0) invalidHold('Passenger date of birth is after departure')

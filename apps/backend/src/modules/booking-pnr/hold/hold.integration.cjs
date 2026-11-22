@@ -20,10 +20,9 @@ const { HoldService } = load('modules/booking-pnr/hold/hold.service')
 const { HoldController } = load('modules/booking-pnr/hold/hold.controller')
 const { StaffBookingController } = load('modules/booking-pnr/staff/staff-booking.controller')
 const { StaffBookingLookupService } = load('modules/booking-pnr/staff/staff-booking-lookup.service')
-const { DemoBookingCustomerController } = load('modules/booking-pnr/staff/demo-booking-customer.controller')
-const { DemoBookingCustomerService } = load('modules/booking-pnr/staff/demo-booking-customer.service')
-const { DemoPassengerController } = load('modules/booking-pnr/hold/demo-passenger.controller')
-const { DemoPassengerService } = load('modules/booking-pnr/hold/demo-passenger.service')
+const { BookingStatusService } = load('modules/booking-pnr/common/booking-status.service')
+const { ConfirmService } = load('modules/booking-pnr/confirm/confirm.service')
+const { ReleaseService } = load('modules/booking-pnr/confirm/release.service')
 const { JwtAuthGuard } = load('auth/guards/jwt-auth.guard')
 const { BookingErrorFilter } = load('modules/booking-pnr/common/booking-error.filter')
 const { BookingError } = load('modules/booking-pnr/common/booking-error')
@@ -72,7 +71,18 @@ async function main() {
   const url = 'postgresql://postgres:postgrespassword@localhost:5432/' + database
   pool = new Pool({ connectionString: url })
   const schema = fs.readFileSync(root + '/apps/backend/src/db/prisma/schema.prisma', 'utf8')
-  for (const model of ['user', 'customer', 'staff', 'passenger', 'route', 'flight', 'fare_class']) {
+  for (const model of [
+    'user',
+    'customer',
+    'customer_passenger',
+    'staff',
+    'passenger',
+    'route',
+    'flight',
+    'fare_class',
+    'fare_quote',
+    'promo_code',
+  ]) {
     const ddl = fixtureTable(model, schema)
     await pool.query(ddl)
   }
@@ -116,8 +126,25 @@ async function main() {
     }),
   }
   const holds = new HoldService(db, inventory, pricing, seats, { createForHold: async () => {} }, clock, layouts)
-  const demoConfig = new ConfigService({ NODE_ENV: 'development' })
-  const demos = new DemoPassengerService(db, demoConfig)
+  // Confirm and release run for real against PostgreSQL; only the ports outside this database are doubles.
+  const refunds = []
+  const confirms = new ConfirmService(
+    db,
+    new BookingStatusService(clock),
+    clock,
+    inventory,
+    { assignHeldForBooking: async () => {} },
+    { record: async (refund) => refunds.push(refund) },
+    { redeem: async () => {} },
+    { screen: async () => ({ result: 'clear', reasons: [] }) },
+    { publish: async () => {}, subscribe: () => () => {} },
+    { issue: async () => null },
+  )
+  // The expiry job runs after the 15-minute holds have run out.
+  const afterExpiry = { now: () => new Date(now.getTime() + 20 * 60000) }
+  const releases = new ReleaseService(db, new BookingStatusService(afterExpiry), afterExpiry, inventory, {
+    releaseForBooking: async () => {},
+  })
   const jwt = new JwtService({ secret: randomBytes(32).toString('hex') })
   const lookupCalls = [],
     detailCalls = []
@@ -133,12 +160,10 @@ async function main() {
   }
   class TestModule {}
   Module({
-    controllers: [HoldController, DemoPassengerController, StaffBookingController, DemoBookingCustomerController],
+    controllers: [HoldController, StaffBookingController],
     providers: [
       { provide: HoldService, useValue: holds },
       { provide: StaffBookingLookupService, useValue: new StaffBookingLookupService(db, lookupPort) },
-      { provide: DemoBookingCustomerService, useValue: new DemoBookingCustomerService(db, demoConfig) },
-      { provide: DemoPassengerService, useValue: demos },
     ],
   })(TestModule)
   app = await NestFactory.create(TestModule, { logger: false })
@@ -148,14 +173,27 @@ async function main() {
   await app.init()
   const users = [randomUUID(), randomUUID()]
   const passengers = [randomUUID(), randomUUID()]
+  // Each customer's own passenger is their profile, so each may book themselves.
   for (const index of [0, 1]) {
     await pool.query('INSERT INTO "user" (id, type, email) VALUES ($1, $2, $3)', [users[index], 'customer', 'fixture@example.com'])
-    await pool.query('INSERT INTO customer (user_id, user_type) VALUES ($1, $2)', [users[index], 'customer'])
     await pool.query("INSERT INTO passenger (id, date_of_birth, passport_number) VALUES ($1, '1990-01-01', $2)", [
       passengers[index],
       `F03SEED00${index + 1}`,
     ])
+    await pool.query('INSERT INTO customer (user_id, user_type, passenger_id) VALUES ($1, $2, $3)', [
+      users[index],
+      'customer',
+      passengers[index],
+    ])
   }
+  const customerIds = (await pool.query('SELECT id, user_id FROM customer')).rows
+  const customerOf = (index) => customerIds.find((row) => row.user_id === users[index]).id
+  /** Saves a passenger as one of a customer's travellers, as Feature 7 does. */
+  const saveTraveller = (index, passengerId) =>
+    pool.query('INSERT INTO customer_passenger (customer_id, passenger_id, is_saved) VALUES ($1, $2, true)', [
+      customerOf(index),
+      passengerId,
+    ])
   const fare = randomUUID(),
     route = randomUUID()
   await pool.query("INSERT INTO fare_class (id, code, cabin, is_active) VALUES ($1, 'Y', 'economy', true)", [fare])
@@ -186,44 +224,12 @@ async function main() {
     if (key) call = call.set('Idempotency-Key', key)
     return call.send(data)
   }
-  const anonymousDemo = await http(app.getHttpServer()).get('/api/dev/booking-passengers')
-  assert.equal(anonymousDemo.status, 401)
-  const token = jwt.sign({ sub: users[0], email: 'fixture@example.com' })
-  const demoList = await http(app.getHttpServer())
-    .get('/api/dev/booking-passengers')
-    .set('Authorization', 'Bearer ' + token)
-  assert.equal(demoList.status, 200, JSON.stringify(demoList.body))
-  assert.deepEqual(demoList.body.map((person) => person.id).sort(), [...passengers].sort())
-  demoConfig.set('NODE_ENV', 'production')
-  const blockedDemo = await http(app.getHttpServer())
-    .get('/api/dev/booking-passengers')
-    .set('Authorization', 'Bearer ' + token)
-  assert.equal(blockedDemo.status, 404)
-  demoConfig.set('NODE_ENV', 'development')
-  console.log('PASS: real JWT guard protects demo lookup, returns actual seeded IDs, and blocks the endpoint in production')
   const staffUser = randomUUID(),
     staffId = randomUUID()
   await pool.query('INSERT INTO "user" (id, type, email) VALUES ($1, $2, $3)', [staffUser, 'staff', 'agent@example.com'])
   await pool.query('INSERT INTO staff (id, user_id, user_type) VALUES ($1, $2, $3)', [staffId, staffUser, 'staff'])
   const staffToken = jwt.sign({ sub: staffUser, email: 'agent@example.com' })
   const customer = await db.customer.findFirst({ where: { user_id: users[0] } })
-  await pool.query('UPDATE "user" SET clerk_user_id = $1 WHERE id = $2', ['f03-seed-customer', users[0]])
-  await pool.query('UPDATE customer SET passenger_id = $1 WHERE id = $2', [passengers[0], customer.id])
-  const listCustomers = (token) =>
-    http(app.getHttpServer())
-      .get('/api/dev/staff/booking-customers')
-      .set('Authorization', 'Bearer ' + token)
-  assert.equal((await listCustomers(jwt.sign({ sub: users[0], email: 'fixture@example.com' }))).status, 403)
-  const staffCustomers = await listCustomers(staffToken)
-  assert.equal(staffCustomers.status, 200, JSON.stringify(staffCustomers.body))
-  assert.deepEqual(
-    staffCustomers.body.map((row) => row.id),
-    [customer.id],
-  )
-  demoConfig.set('NODE_ENV', 'production')
-  assert.equal((await listCustomers(staffToken)).status, 404)
-  demoConfig.set('NODE_ENV', 'development')
-  console.log('PASS: staff customer selector exposes only the seeded customer, rejects customer tokens and is unavailable in production')
   const lookup = (url) =>
     http(app.getHttpServer())
       .get(url)
@@ -313,6 +319,8 @@ async function main() {
   assert.equal(price.body.error.code, 'PRICE_CHANGED')
   assert.equal(await inventory.seatsLeft(priceFlight, 'economy'), 1)
   console.log('PASS: PRICE_CHANGED holds nothing')
+  // Customer 0 books the other customer's passenger only once that passenger is one of their saved travellers.
+  await saveTraveller(0, passengers[1])
   const seatPriceFlight = await newFlight(2)
   const seatRequest = {
     ...body(seatPriceFlight),
@@ -345,6 +353,7 @@ async function main() {
   const infant = randomUUID(),
     infantFlight = await newFlight()
   await pool.query("INSERT INTO passenger (id, date_of_birth) VALUES ($1, '2025-01-01')", [infant])
+  await saveTraveller(0, infant)
   const infantBody = body(infantFlight)
   infantBody.passengers.push({ passengerId: infant, passengerType: 'infant', lapOfPassengerId: passengers[0] })
   const infantResult = await post(0, 'infant', infantBody)
@@ -397,6 +406,61 @@ async function main() {
   const invalid = await post(0, 'invalid', { ...body(priceFlight), expectedTotal: 'not money' })
   assert.equal(invalid.status, 422)
   console.log('PASS: missing idempotency header and malformed DTOs use the agreed error response')
+
+  const stranger = randomUUID(),
+    strangerFlight = await newFlight()
+  await pool.query("INSERT INTO passenger (id, date_of_birth, passport_number) VALUES ($1, '1985-05-05', 'STRANGER1')", [stranger])
+  const strangerBody = { ...body(strangerFlight), passengers: [{ passengerId: stranger, passengerType: 'adult' }] }
+  const foreign = await post(0, 'foreign-passenger', strangerBody)
+  assert.equal(foreign.status, 422, JSON.stringify(foreign.body))
+  const foreignByStaff = await staffPost(staffToken, 'foreign-passenger-staff', { ...strangerBody, customerId: customer.id })
+  assert.equal(foreignByStaff.status, 422, JSON.stringify(foreignByStaff.body))
+  assert.equal(await inventory.seatsLeft(strangerFlight, 'economy'), 1)
+  console.log("PASS: a passenger who is not the customer's own or saved traveller gets 422 and nothing is held, for customers and staff")
+
+  /** The flight's seat counts, as PostgreSQL holds them. */
+  const counts = async (flightId) =>
+    (await pool.query('SELECT held_count, sold_count FROM seat_inventory WHERE flight_id = $1', [flightId])).rows[0]
+  const statusOf = async (bookingId) => (await db.booking.findUnique({ where: { id: bookingId } })).status
+
+  const lateFree = await newFlight()
+  const lateFreeHold = await post(0, 'late-free', body(lateFree))
+  assert.equal(lateFreeHold.status, 201, JSON.stringify(lateFreeHold.body))
+  await releases.releaseStale()
+  assert.equal(await statusOf(lateFreeHold.body.bookingId), 'expired')
+  const lateFreeConfirm = await confirms.confirmBooking(lateFreeHold.body.reference)
+  assert.equal(lateFreeConfirm.status, 'confirmed')
+  assert.deepEqual(await counts(lateFree), { held_count: 0, sold_count: 1 })
+  console.log('PASS: a late payment on an expired booking whose seat is still free confirms, and the counts are right')
+
+  const lateTaken = await newFlight()
+  const lateExpired = await post(0, 'late-taken', body(lateTaken))
+  assert.equal(lateExpired.status, 201, JSON.stringify(lateExpired.body))
+  await releases.releaseStale()
+  const lastSeat = await post(1, 'late-taken-other', body(lateTaken, 1))
+  assert.equal(lastSeat.status, 201, JSON.stringify(lastSeat.body))
+  const refundsBefore = refunds.length
+  await assert.rejects(confirms.confirmBooking(lateExpired.body.reference), (error) => error.code === 'HOLD_EXPIRED_REFUNDED')
+  assert.equal(refunds.length, refundsBefore + 1)
+  assert.deepEqual(await counts(lateTaken), { held_count: 1, sold_count: 0 })
+  await releases.releaseStale()
+  assert.equal(await statusOf(lastSeat.body.bookingId), 'expired')
+  assert.deepEqual(await counts(lateTaken), { held_count: 0, sold_count: 0 })
+  console.log('PASS: a late payment while another booking holds the last seat refunds, and the other hold still expires cleanly')
+
+  const brokenFlight = await newFlight(),
+    healthyFlight = await newFlight()
+  const broken = await post(0, 'stale-broken', body(brokenFlight))
+  const healthy = await post(1, 'stale-healthy', body(healthyFlight, 1))
+  assert.equal(broken.status, 201, JSON.stringify(broken.body))
+  assert.equal(healthy.status, 201, JSON.stringify(healthy.body))
+  // Corrupt one hold's inventory so its release fails with "Inventory transition exceeds the source count".
+  await pool.query('UPDATE seat_inventory SET held_count = 0 WHERE flight_id = $1', [brokenFlight])
+  await releases.releaseStale()
+  assert.equal(await statusOf(broken.body.bookingId), 'held')
+  assert.equal(await statusOf(healthy.body.bookingId), 'expired')
+  assert.deepEqual(await counts(healthyFlight), { held_count: 0, sold_count: 0 })
+  console.log('PASS: one broken stale hold does not stop the other stale holds from being released')
 }
 main()
   .catch((e) => {

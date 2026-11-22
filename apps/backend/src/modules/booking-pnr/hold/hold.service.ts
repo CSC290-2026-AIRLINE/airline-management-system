@@ -105,8 +105,14 @@ export class HoldService {
       include: { route: true },
     })
     const flights = validateHoldFlights(request, flightRows, this.clock.now())
+    // Only the customer's own profile or a traveller linked to them may be booked. Anyone else's passenger is treated as
+    // missing, so the answer does not reveal that the id exists, and nothing is held.
     const passengerRows = await tx.passenger.findMany({
-      where: { id: { in: request.passengers.map((person) => person.passengerId) }, deleted_at: null },
+      where: {
+        id: { in: request.passengers.map((person) => person.passengerId) },
+        deleted_at: null,
+        OR: [{ customer: { id: customerId } }, { customer_passenger: { some: { customer_id: customerId } } }],
+      },
     })
     const types = validateHoldPassengers(request, passengerRows, flights)
     const fareClasses = await tx.fare_class.findMany({
