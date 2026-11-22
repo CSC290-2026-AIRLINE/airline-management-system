@@ -1895,6 +1895,8 @@ describe('PassengerProfilesService.getAccountHolder', () => {
 
     expect(profile.id).toBe(holderRow().id)
     expect(profile.type).toBe('accountHolder')
+    // Booking on the customer's behalf (Feature 3) addresses the account by its customer id.
+    expect(profile.customerId).toBe('c1')
 
     const { data } = db.audit_log.create.mock.calls[0][0] as { data: { action: string; before: Record<string, unknown> } }
     expect(data.action).toBe('view_sensitive')

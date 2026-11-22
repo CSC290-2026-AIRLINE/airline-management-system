@@ -1,4 +1,4 @@
-import type { DemoPassenger } from './demo-passengers'
+import { GENDER_OPTIONS, fillFromSaved, type SavedTraveller } from './saved-travellers'
 import { Input } from '@customer-web/components/ui/input'
 import type { FormEvent, ReactNode } from 'react'
 import type { SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
@@ -26,10 +26,11 @@ interface Props {
   onContactChange: (contact: BookingContact) => void
   onBack: () => void
   onContinue: () => void
-  demoProfiles?: DemoPassenger[]
-  demoLoading?: boolean
-  demoError?: string | null
-  /** Whether the passenger details are read-only. Defaults to read-only when demo travellers are offered. */
+  /** The customer and their saved travellers (Feature 7), offered to fill each passenger. */
+  savedTravellers?: SavedTraveller[]
+  savedLoading?: boolean
+  savedError?: string | null
+  /** Whether the passenger details are read-only, so every passenger must be a saved traveller (the staff console). */
   lockDetails?: boolean
   renderAssistance?: (traveller: TravellerDraft) => ReactNode
   /** What is wrong with the details, with a message for every field that is wrong. */
@@ -45,9 +46,9 @@ export function PassengersPage({
   onBack,
   onContinue,
   error,
-  demoProfiles,
-  demoLoading,
-  demoError,
+  savedTravellers,
+  savedLoading,
+  savedError,
   lockDetails,
   renderAssistance,
   issues,
@@ -57,7 +58,7 @@ export function PassengersPage({
     onContinue()
   }
   const departure = itinerary.request.legs[0].date
-  const locked = lockDetails ?? !!demoProfiles
+  const locked = lockDetails ?? false
   /** The message under a field, when that field is the one that is wrong. */
   const problemFor = (id: string) => issues?.fields[id]
   return (
@@ -68,16 +69,19 @@ export function PassengersPage({
           {issues.message}
         </p>
       )}
-      {demoProfiles && (
+      {savedTravellers && (
         <div className="rounded-lg border border-link/20 bg-link/5 px-4 py-3 text-sm text-link [&_p]:mt-1" role="status">
-          <strong>Development demo travellers</strong>
+          <strong>Saved travellers</strong>
           <p>
             {locked
-              ? 'Choose a seeded demo traveller for each passenger. Options match ages on the first departure. Demo details are read-only.'
-              : 'Pick a seeded demo traveller to fill the details, or type them yourself. The options match the ages on the first departure.'}
+              ? "Choose one of the customer's saved travellers for each passenger. The options match ages on the first departure. Details are read-only."
+              : 'Pick a saved traveller to fill the details, or type new ones. New travellers are saved to your account when you hold the booking.'}
           </p>
-          {demoLoading && <p>Loading demo travellers…</p>}
-          {demoError && <p>{demoError}</p>}
+          {savedLoading && <p>Loading saved travellers…</p>}
+          {savedError && <p>{savedError}</p>}
+          {!savedLoading && !savedError && savedTravellers.length === 0 && (
+            <p>{locked ? 'This customer has no saved travellers yet.' : 'You have no saved travellers yet.'}</p>
+          )}
         </div>
       )}
       {travellers.map((person, index) => {
@@ -86,8 +90,10 @@ export function PassengersPage({
         const familyId = travellerFieldId(index, 'familyName')
         const birthId = travellerFieldId(index, 'dateOfBirth')
         const passportId = travellerFieldId(index, 'passportNumber')
+        const genderId = travellerFieldId(index, 'gender')
+        const nationalityId = travellerFieldId(index, 'nationality')
         const lapId = travellerFieldId(index, 'lapOfKey')
-        const demoId = `pax-${index}-demo`
+        const savedId = `pax-${index}-saved`
         return (
           <fieldset
             className="rounded-xl border bg-card text-card-foreground shadow-sm grid min-w-0 gap-4 p-5 sm:p-6 [&>p]:text-sm [&>p]:text-muted-foreground"
@@ -105,36 +111,29 @@ export function PassengersPage({
                 </p>
                 <h2>{[person.givenName, person.familyName].filter(Boolean).join(' ') || 'Traveller details'}</h2>
               </div>
-              {demoProfiles && (
-                <Field id={demoId} label="Fill from demo traveller" className="w-full sm:w-56 sm:shrink-0">
+              {savedTravellers && (
+                <Field id={savedId} label="Fill from saved traveller" className="w-full sm:w-56 sm:shrink-0">
                   <Select
-                    value={person.demoPassengerId ?? ''}
-                    disabled={demoLoading}
-                    onValueChange={(value) => {
-                      const profile = demoProfiles.find((candidate) => candidate.id === value)
-                      onTravellerChange(person.key, {
-                        demoPassengerId: profile?.id,
-                        givenName: profile?.givenName ?? '',
-                        familyName: profile?.familyName ?? '',
-                        dateOfBirth: profile?.dateOfBirth ?? '',
-                        passportNumber: profile?.passportNumber ?? '',
-                      })
-                    }}
+                    value={person.savedPassengerId ?? ''}
+                    disabled={savedLoading}
+                    onValueChange={(value) =>
+                      onTravellerChange(person.key, fillFromSaved(savedTravellers.find((candidate) => candidate.id === value)))
+                    }
                   >
-                    <SelectTrigger id={demoId} aria-labelledby={`${demoId}-label`}>
+                    <SelectTrigger id={savedId} aria-labelledby={`${savedId}-label`}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Choose a demo traveller</SelectItem>
-                      {demoProfiles
+                      <SelectItem value="">{locked ? 'Choose a saved traveller' : 'New traveller'}</SelectItem>
+                      {savedTravellers
                         .filter((profile) => passengerType(profile.dateOfBirth, departure) === person.expectedType)
                         .map((profile) => (
                           <SelectItem
                             key={profile.id}
                             value={profile.id}
-                            disabled={travellers.some((other) => other.key !== person.key && other.demoPassengerId === profile.id)}
+                            disabled={travellers.some((other) => other.key !== person.key && other.savedPassengerId === profile.id)}
                           >
-                            {profile.givenName} {profile.familyName}
+                            {profile.givenName} {profile.familyName} · {profile.label}
                           </SelectItem>
                         ))}
                     </SelectContent>
@@ -197,6 +196,39 @@ export function PassengersPage({
                   aria-describedby={problemFor(passportId) ? `${passportId}-error` : undefined}
                   value={person.passportNumber}
                   onChange={(event) => onTravellerChange(person.key, { passportNumber: event.target.value })}
+                />
+              </Field>
+              <Field id={genderId} label="Gender (as on passport)" error={problemFor(genderId)}>
+                <Select value={person.gender} disabled={locked} onValueChange={(value) => onTravellerChange(person.key, { gender: value })}>
+                  <SelectTrigger
+                    id={genderId}
+                    aria-labelledby={`${genderId}-label`}
+                    aria-invalid={problemFor(genderId) ? true : undefined}
+                    aria-describedby={problemFor(genderId) ? `${genderId}-error` : undefined}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Choose</SelectItem>
+                    {GENDER_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field id={nationalityId} label="Nationality (country code, like TH)" error={problemFor(nationalityId)}>
+                <Input
+                  id={nationalityId}
+                  readOnly={locked}
+                  autoComplete="off"
+                  name={`nationality-${index}`}
+                  maxLength={2}
+                  aria-invalid={problemFor(nationalityId) ? true : undefined}
+                  aria-describedby={problemFor(nationalityId) ? `${nationalityId}-error` : undefined}
+                  value={person.nationality}
+                  onChange={(event) => onTravellerChange(person.key, { nationality: event.target.value.toUpperCase() })}
                 />
               </Field>
             </div>

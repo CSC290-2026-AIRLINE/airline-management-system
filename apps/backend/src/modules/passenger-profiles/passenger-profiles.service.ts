@@ -32,6 +32,8 @@ type PersonTypeFilter = Exclude<PersonType, 'all'>
 export interface PassengerSummary {
   id: string
   type: PersonTypeFilter
+  /** The account's customer id for an account holder, null for a traveller. Booking on a customer's behalf needs it. */
+  customerId: string | null
   firstName: string
   lastName: string
   localFirstName: string | null
@@ -202,6 +204,7 @@ function toSummary(row: SummaryRow, fullPassport = false): PassengerSummary {
   return {
     id: row.id,
     type: row.customer ? 'accountHolder' : 'traveller',
+    customerId: row.customer?.id ?? null,
     firstName: row.first_name,
     lastName: row.last_name,
     localFirstName: row.local_first_name,

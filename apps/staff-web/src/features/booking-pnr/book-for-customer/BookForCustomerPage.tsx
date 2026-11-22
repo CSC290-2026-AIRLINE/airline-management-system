@@ -3,7 +3,8 @@ import { Card, CardContent, CardTitle } from '@staff-web/components/ui/card'
 import { Field, FieldLabel } from '@staff-web/components/ui/field'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
-import { CircleAlert, Info } from 'lucide-react'
+import { CircleAlert } from 'lucide-react'
+import { Input } from '@staff-web/components/ui/input'
 import { Link } from '@tanstack/react-router'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { FlightSearchPage, type SearchItinerary } from '@customer-web/features/booking-search/pages/FlightSearchPage'
@@ -11,11 +12,11 @@ import type { FlightSearchUrlState } from '@customer-web/features/booking-search
 import { PassengersPage } from '@customer-web/features/booking-pnr/passengers/PassengersPage'
 import { travellersFor, validateTravellers, type BookingContact, type TravellerDraft } from '@customer-web/features/booking-pnr/flow/draft'
 import { validateSeatChoices, type SeatChoice } from '@customer-web/features/booking-pnr/flow/integration'
-import { resolveDemoPassengers } from '@customer-web/features/booking-pnr/passengers/demo-passengers'
+import { resolveSavedTravellers } from '@customer-web/features/booking-pnr/passengers/saved-travellers'
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { BookForCustomerRequest, HoldBookingResponse } from '../api/types'
 import { lookupMoney as money } from '../booking-lookup/lookup-utils'
-import { useDemoStaffBooking } from './useDemoStaffBooking'
+import { useCustomerSearch, useStaffCustomer, type StaffBookingCustomer } from './useStaffCustomers'
 import { clearBookingDraft, readBookingDraft, saveBookingDraft, type StaffBookingStep } from './booking-draft'
 import { STAFF_BOOKING_STAGES } from './booking-stages'
 import { StaffBookingStepper } from './StaffBookingStepper'
@@ -63,10 +64,12 @@ export function BookForCustomerPage() {
 }
 
 function StaffBookingContent() {
-  const data = useDemoStaffBooking()
   const { bookForCustomer } = useBookingPnrApi()
   const [restored] = useState(readBookingDraft)
-  const [customerId, setCustomerId] = useState(restored?.customerId ?? '')
+  const [accountId, setAccountId] = useState(restored?.accountId ?? '')
+  const [searchTerm, setSearchTerm] = useState('')
+  const account = useStaffCustomer(accountId)
+  const search = useCustomerSearch(searchTerm)
   const [step, setStep] = useState<StaffBookingStep>(restored?.step ?? 'search')
   const [searchState, setSearchState] = useState<FlightSearchUrlState | null>(restored?.search ?? null)
   const [itinerary, setItinerary] = useState<SearchItinerary | null>(restored?.itinerary ?? null)
@@ -78,8 +81,8 @@ function StaffBookingContent() {
   const [held, setHeld] = useState<HoldBookingResponse | null>(restored?.held ?? null)
   const [attempt, setAttempt] = useState<{ body: string; key: string } | null>(restored?.attempt ?? null)
   const inFlight = useRef(false)
-  const customer = data.customers.find((row) => row.id === customerId)
-  const customerMissing = !data.loading && !data.error && !!customerId && !customer
+  const customer = account.customer
+  const customerMissing = account.missing
   const activeStep: StaffBookingStep = customerMissing && step !== 'held' ? 'search' : step
   const tripCurrency = held?.currency ?? itinerary?.selections[0]?.fare.currency ?? 'USD'
   /* The stepper starts at the passengers step, because the flights are already chosen when it appears. */
@@ -88,17 +91,17 @@ function StaffBookingContent() {
 
   /* Keeps the draft in this tab so a refresh comes back to the same step. */
   useEffect(() => {
-    if (!customerId && !itinerary && !held && !searchState && step === 'search') {
+    if (!accountId && !itinerary && !held && !searchState && step === 'search') {
       clearBookingDraft()
       return
     }
-    saveBookingDraft({ version: 1, customerId, step, search: searchState, itinerary, travellers, contact, choices, held, attempt })
-  }, [customerId, step, searchState, itinerary, travellers, contact, choices, held, attempt])
+    saveBookingDraft({ version: 2, accountId, step, search: searchState, itinerary, travellers, contact, choices, held, attempt })
+  }, [accountId, step, searchState, itinerary, travellers, contact, choices, held, attempt])
 
-  function chooseCustomer(id: string) {
-    const next = data.customers.find((row) => row.id === id)
-    setCustomerId(id)
-    setContact({ email: next?.email ?? '', phone: next?.phone ?? '', promoCode: '' })
+  function chooseCustomer(next: StaffBookingCustomer) {
+    setAccountId(next.accountId)
+    setSearchTerm('')
+    setContact({ email: next.email, phone: next.phone, promoCode: '' })
     setTravellers([])
     setItinerary(null)
     setChoices([])
@@ -108,7 +111,8 @@ function StaffBookingContent() {
     setAttempt(null)
   }
   function startNewBooking() {
-    setCustomerId('')
+    setAccountId('')
+    setSearchTerm('')
     setStep('search')
     setSearchState(null)
     setItinerary(null)
@@ -141,11 +145,11 @@ function StaffBookingContent() {
       return
     }
     try {
-      resolveDemoPassengers(travellers, data.profiles)
+      resolveSavedTravellers(travellers, account.travellers)
       setError(null)
       setStep('seats')
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Choose a demo traveller for every passenger.')
+      setError(cause instanceof Error ? cause.message : "Choose one of the customer's saved travellers for every passenger.")
     }
   }
   async function createHold(expectedTotal: number, selectedSeats: SeatChoice[]) {
@@ -157,10 +161,10 @@ function StaffBookingContent() {
       const validation = validateTravellers(travellers, contact, itinerary)
       if (validation) throw new Error(validation.message)
       validateSeatChoices(selectedSeats, travellers, itinerary)
-      const ids = resolveDemoPassengers(travellers, data.profiles)
+      const ids = resolveSavedTravellers(travellers, account.travellers)
       const idFor = (key: string) => ids.find((person) => person.key === key)!.passengerId
       const request: BookForCustomerRequest = {
-        customerId: customer.id,
+        customerId: customer.customerId,
         tripType: itinerary.request.tripType,
         paymentType: 'cash',
         passengers: travellers.map((person) => ({
@@ -189,8 +193,8 @@ function StaffBookingContent() {
       const next = attempt && attempt.body === body ? attempt : { body, key: crypto.randomUUID() }
       setAttempt(next)
       saveBookingDraft({
-        version: 1,
-        customerId,
+        version: 2,
+        accountId,
         step,
         search: searchState,
         itinerary,
@@ -229,19 +233,17 @@ function StaffBookingContent() {
           </div>
         </div>
         <p className="m-0 text-muted-foreground">Select a customer, then choose flights and enter the booking details on their behalf.</p>
-        {import.meta.env.DEV && (
-          <Alert>
-            <Info />
-            <AlertDescription className="flex flex-wrap items-center gap-2">
-              <strong>Development demo booking</strong>
-              <p>Only the seeded demo customer and travellers are available. Bookings use the real inventory hold.</p>
-            </AlertDescription>
-          </Alert>
-        )}
-        {data.error && (
+        {(account.error || search.error) && (
           <Alert variant="destructive">
             <CircleAlert />
-            <AlertDescription className="flex flex-wrap items-center gap-2">{data.error}</AlertDescription>
+            <AlertDescription className="flex flex-wrap items-center gap-2">
+              {account.error ?? search.error}
+              {account.error && (
+                <Button variant="outline" size="sm" onClick={account.retry}>
+                  Try again
+                </Button>
+              )}
+            </AlertDescription>
           </Alert>
         )}
         {customerMissing && (
@@ -255,28 +257,50 @@ function StaffBookingContent() {
         <Card>
           <CardContent className="space-y-2.5">
             <Field className="max-w-xl">
-              <FieldLabel htmlFor="staff-booking-customer">Customer</FieldLabel>
-              <Select
-                value={customerMissing ? '' : customerId}
-                disabled={data.loading || !!data.error || busy || activeStep === 'held'}
-                onValueChange={(value) => chooseCustomer(value)}
-                required
-              >
-                <SelectTrigger id="staff-booking-customer" className="w-full">
-                  <SelectValue placeholder={data.loading ? 'Loading demo customers…' : 'Choose a demo customer'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {data.customers.map((row) => (
-                    <SelectItem key={row.id} value={row.id}>
-                      {row.name} · {row.email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FieldLabel htmlFor="staff-booking-customer-search">Find a customer</FieldLabel>
+              <Input
+                id="staff-booking-customer-search"
+                type="search"
+                placeholder="Name, email or phone"
+                autoComplete="off"
+                value={searchTerm}
+                disabled={busy || activeStep === 'held'}
+                onChange={(event) => setSearchTerm(event.target.value)}
+              />
             </Field>
+            {searchTerm.trim().length >= 2 && (
+              <Field className="max-w-xl">
+                <FieldLabel htmlFor="staff-booking-customer">Customer</FieldLabel>
+                <Select
+                  value=""
+                  disabled={search.loading || busy || activeStep === 'held' || search.results.length === 0}
+                  onValueChange={(value) => {
+                    const next = search.results.find((row) => row.accountId === value)
+                    if (next) chooseCustomer(next)
+                  }}
+                >
+                  <SelectTrigger id="staff-booking-customer" className="w-full">
+                    <SelectValue
+                      placeholder={
+                        search.loading ? 'Searching…' : search.results.length ? 'Choose a customer' : 'No customers match this search'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {search.results.map((row) => (
+                      <SelectItem key={row.accountId} value={row.accountId}>
+                        {row.name} · {row.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            )}
+            {account.loading && <p className="text-sm text-muted-foreground">Loading the customer…</p>}
             {customer && (
               <p className="text-sm text-muted-foreground">
-                {customer.email} · {customer.phone}
+                Booking for <strong className="text-foreground">{customer.name}</strong> · {customer.email}
+                {customer.phone ? ` · ${customer.phone}` : ''}
               </p>
             )}
           </CardContent>
@@ -287,7 +311,7 @@ function StaffBookingContent() {
           urlState={searchState ?? undefined}
           onUrlChange={setSearchState}
           initialItinerary={searchState ? undefined : (itinerary ?? undefined)}
-          onContinue={customer && !data.error ? chooseFlights : undefined}
+          onContinue={customer && !account.error ? chooseFlights : undefined}
         />
       )}
       {activeStep !== 'search' && itinerary && (
@@ -314,9 +338,10 @@ function StaffBookingContent() {
                   }}
                   onContinue={continueToSeats}
                   error={error}
-                  demoProfiles={data.profiles}
-                  demoLoading={data.loading}
-                  demoError={data.error}
+                  savedTravellers={account.travellers}
+                  savedLoading={account.loading}
+                  savedError={account.error}
+                  lockDetails
                 />
               )}
               {activeStep === 'seats' && (

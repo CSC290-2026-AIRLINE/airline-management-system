@@ -1,4 +1,4 @@
-import { useDemoPassengers } from '../passengers/useDemoPassengers'
+import { useSavedTravellers } from '../passengers/useSavedTravellers'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { FlightSearchPage, type SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
@@ -58,8 +58,15 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
   const resolved = useRef<{ signature: string; ids: Array<{ key: string; passengerId: string }> } | null>(null)
   const inFlight = useRef(false)
   const { holdBooking } = useBookingPnrApi()
-  const demo = useDemoPassengers(!resolvePassengers)
-  const passengerResolver = resolvePassengers ?? demo.resolve
+  const saved = useSavedTravellers(!resolvePassengers)
+  const passengerResolver = resolvePassengers ?? saved.resolve
+  /* The contact starts with the account email once it has loaded, unless an email is already there. Done once, so
+     clearing the field to type another address does not bring it back. */
+  const [emailPrefilled, setEmailPrefilled] = useState(false)
+  if (!emailPrefilled && saved.email) {
+    setEmailPrefilled(true)
+    if (!contact.email.trim()) setContact({ ...contact, email: saved.email })
+  }
 
   /* The flow is kept in the session, so a refresh does not wipe the passenger details, the seats and the contact.
      The details stay in sessionStorage, never in the address bar. */
@@ -324,9 +331,9 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                 onContinue={continueToSeats}
                 error={error}
                 issues={attempted ? validateTravellers(travellers, contact, itinerary) : null}
-                demoProfiles={!resolvePassengers && demo.enabled ? demo.profiles : undefined}
-                demoLoading={demo.loading}
-                demoError={demo.error}
+                savedTravellers={!resolvePassengers && saved.enabled ? saved.profiles : undefined}
+                savedLoading={saved.loading}
+                savedError={saved.error}
                 lockDetails={false}
                 renderAssistance={
                   AssistanceFields

@@ -11,12 +11,17 @@ import { isDateKey } from '@customer-web/components/ui/date-keys'
 import type { SeatChoice } from './integration'
 export interface TravellerDraft {
   key: string
-  demoPassengerId?: string
+  /** The saved traveller (Feature 7) picked for this passenger. Kept only while the details still match it. */
+  savedPassengerId?: string
   expectedType: PassengerType
   givenName: string
   familyName: string
   dateOfBirth: string
   passportNumber: string
+  /** M, F or X. Feature 7 needs it to save a new traveller. */
+  gender: string
+  /** ISO 3166-1 alpha-2 code. Feature 7 needs it to save a new traveller. */
+  nationality: string
   lapOfKey: string
 }
 export interface BookingContact {
@@ -90,6 +95,8 @@ function blankTraveller(expectedType: PassengerType): TravellerDraft {
     familyName: '',
     dateOfBirth: '',
     passportNumber: '',
+    gender: '',
+    nationality: '',
     lapOfKey: '',
   }
 }
@@ -107,7 +114,7 @@ export function passengerType(birth: string, departure: string): PassengerType |
 }
 
 /** The fields of the passenger form that can carry a message. */
-export type TravellerField = 'givenName' | 'familyName' | 'dateOfBirth' | 'passportNumber' | 'lapOfKey'
+export type TravellerField = 'givenName' | 'familyName' | 'dateOfBirth' | 'passportNumber' | 'gender' | 'nationality' | 'lapOfKey'
 /** The fields of the contact card that can carry a message. */
 export type ContactField = 'email' | 'phone' | 'promoCode'
 
@@ -154,6 +161,13 @@ export function validateTravellers(
     if (!person.givenName.trim()) fail(travellerFieldId(index, 'givenName'), 'Enter the given name as on the passport', passenger)
     if (!person.familyName.trim()) fail(travellerFieldId(index, 'familyName'), 'Enter the family name as on the passport', passenger)
     if (!person.passportNumber.trim()) fail(travellerFieldId(index, 'passportNumber'), 'Enter the passport number', passenger)
+    // A traveller who is not a saved one is saved to the account first, and Feature 7 needs these two for that.
+    if (!person.savedPassengerId) {
+      if (!['M', 'F', 'X'].includes(person.gender))
+        fail(travellerFieldId(index, 'gender'), 'Choose the gender as on the passport', passenger)
+      if (!/^[A-Za-z]{2}$/.test(person.nationality.trim()))
+        fail(travellerFieldId(index, 'nationality'), 'Enter the nationality as a two-letter country code, like TH', passenger)
+    }
 
     const type = passengerType(person.dateOfBirth, first)
     if (!person.dateOfBirth) fail(travellerFieldId(index, 'dateOfBirth'), 'Pick the date of birth', passenger)
@@ -227,11 +241,13 @@ function sanitiseTraveller(value: unknown): TravellerDraft | null {
   return {
     key,
     expectedType,
-    ...(typeof raw.demoPassengerId === 'string' ? { demoPassengerId: raw.demoPassengerId } : {}),
+    ...(typeof raw.savedPassengerId === 'string' ? { savedPassengerId: raw.savedPassengerId } : {}),
     givenName: readText(raw.givenName, 100),
     familyName: readText(raw.familyName, 100),
     dateOfBirth: readText(raw.dateOfBirth, 10),
     passportNumber: readText(raw.passportNumber, 30),
+    gender: readText(raw.gender, 1),
+    nationality: readText(raw.nationality, 2),
     lapOfKey: typeof raw.lapOfKey === 'string' ? raw.lapOfKey : '',
   }
 }

@@ -18,8 +18,9 @@ export interface StaffBookingAttempt {
 }
 
 export interface StaffBookingDraft {
-  version: 1
-  customerId: string
+  version: 2
+  /** The account holder's passenger id: Feature 7's staff routes address the customer by it. */
+  accountId: string
   step: StaffBookingStep
   search: FlightSearchUrlState | null
   itinerary: SearchItinerary | null
@@ -32,7 +33,7 @@ export interface StaffBookingDraft {
 }
 
 const STORAGE_KEY = 'f03-staff-booking-draft'
-const VERSION = 1
+const VERSION = 2
 const STEPS: StaffBookingStep[] = ['search', 'passengers', 'seats', 'held']
 const PASSENGER_TYPES: PassengerType[] = ['adult', 'child', 'infant']
 
@@ -73,9 +74,9 @@ function isTraveller(value: unknown): value is TravellerDraft {
   if (!isRecord(value)) return false
   if (!isText(value.key) || !value.key) return false
   if (!isText(value.expectedType) || !PASSENGER_TYPES.includes(value.expectedType as PassengerType)) return false
-  const fields = ['givenName', 'familyName', 'dateOfBirth', 'passportNumber', 'lapOfKey']
+  const fields = ['givenName', 'familyName', 'dateOfBirth', 'passportNumber', 'gender', 'nationality', 'lapOfKey']
   if (!fields.every((field) => isText(value[field]))) return false
-  return value.demoPassengerId === undefined || isText(value.demoPassengerId)
+  return value.savedPassengerId === undefined || isText(value.savedPassengerId)
 }
 
 function isHeld(value: unknown): value is HoldBookingResponse {
@@ -157,7 +158,7 @@ export function readBookingDraft(): StaffBookingDraft | null {
     if (!stored) return null
     const value: unknown = JSON.parse(stored)
     if (!isRecord(value) || value.version !== VERSION) return null
-    const customerId = isText(value.customerId) ? value.customerId : ''
+    const accountId = isText(value.accountId) ? value.accountId : ''
     const itinerary = isItinerary(value.itinerary) ? value.itinerary : null
     const held = isHeld(value.held) ? value.held : null
     const restored = Array.isArray(value.travellers) ? value.travellers.filter(isTraveller) : []
@@ -172,8 +173,8 @@ export function readBookingDraft(): StaffBookingDraft | null {
       : []
     return {
       version: VERSION,
-      customerId,
-      step: customerId ? parseStep(value.step, itinerary, held) : 'search',
+      accountId,
+      step: accountId ? parseStep(value.step, itinerary, held) : 'search',
       search: parseSearch(value.search),
       itinerary,
       travellers,

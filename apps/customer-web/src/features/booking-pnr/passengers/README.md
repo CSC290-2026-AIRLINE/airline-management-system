@@ -1,13 +1,13 @@
-# Temporary passenger adapter
+# Passenger adapter (Feature 7)
 
-In frontend development builds, the booking flow loads `GET /api/dev/booking-passengers` through the existing authenticated API helper. The backend accepts this route only when `NODE_ENV=development` and returns live, non-deleted passengers marked `F03SEED001` or `F03SEED002` by the Feature 3 seed. The endpoint requires the normal JWT access token and never creates or updates passengers.
+The booking flow takes its travellers from Feature 7. `useSavedTravellers` loads the signed-in customer (`GET /api/customers/me`, whose `passengerId` is their own passenger record) and their saved travellers (`GET /api/customers/me/passengers`). The passenger form offers them in **Fill from saved traveller**; the options match the ages on the first departure.
 
-Use `npm run db:seed:f03 -w apps/backend` to load the local demo travellers and flights. Search for one adult, or one adult and one child, within the seeded dates. Pick a demo traveller in the passenger form to fill the details, or type them yourself. The picker is a convenience only: the details stay editable, and a traveller that no longer matches the demo traveller that was picked for it gets a passenger record of its own. Enter the booking contact, continue to Seats and choose **Skip, choose seats later**. No hold is sent before leaving the Seat step.
+A traveller who is picked and left unchanged is booked with that record. Anyone typed in, or a picked traveller whose details were changed, is saved to the customer's account first with `POST /api/customers/me/passengers`, so Feature 7 owns every profile write. Feature 7 needs a gender and a nationality (a two-letter country code) for that, so the form asks for both, and they are required for any passenger that is not a saved traveller.
 
-The typed details are turned into passenger records by `POST /api/dev/booking-passengers`, which the backend accepts only when `NODE_ENV=development`. It creates one `passenger` row per traveller that was not filled from a demo traveller, so a local database collects a few rows per manual booking. The hold still validates the records: every passenger needs a date of birth, and the date of birth must match the passenger type that was chosen in the search.
+The backend only accepts the customer's own passenger or one of their saved travellers on a booking (`HoldService`), so the adapter must never book a passenger id it did not get from these routes.
 
-The birth dates determine which demo options fit a party on the selected departure date. The current fixtures contain one adult and a traveller born on 1 January 2015; that traveller becomes an adult from 2027. There is no demo infant profile.
+For local testing, `npm run db:seed:f03 -w apps/backend` loads flights, the Feature 3 customer and a saved child traveller born on 1 January 2015 (an adult from 2027). There is no infant profile; type one in.
 
-When Feature 7 is merged into dev, provide its adapter through `BookingFlowPage`'s `resolvePassengers` prop and replace the demo picker with Feature 7's create/select UI. Supplying a real resolver disables the development adapter automatically. Remove `useDemoPassengers`, `demo-passengers.ts`, the demo-only draft field and both backend development endpoints when switching fully. Keep profile writes with Feature 7.
+`EditPassengersDialog` corrects a held booking's passenger names the same way: a changed passenger is saved as a new traveller, carrying over gender and nationality from the current one, and the booking is held again.
 
-This adapter covers only passenger resolution. C's seat/assistance components and B's review/payment components remain separate integrations.
+This adapter covers only passenger resolution. Seat, assistance, review and payment components are separate integrations.

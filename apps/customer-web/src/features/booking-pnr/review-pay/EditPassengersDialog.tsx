@@ -6,7 +6,7 @@ import { useBookingPnrApi, ApiError } from '../api/client'
 import type { BookingDetail } from '../api/types'
 import { Dialog } from '../components/Dialog'
 import { formatMoney } from '../lib/format'
-import { useDemoPassengers } from '../passengers/useDemoPassengers'
+import { useSavedTravellers } from '../passengers/useSavedTravellers'
 import type { TravellerDraft } from '../flow/draft'
 import { priceChangedDetails } from '../flow/integration'
 import controls from '../styles/controls'
@@ -55,7 +55,7 @@ function detailsOf(booking: BookingDetail): Record<string, PassengerDetails> {
  */
 export function EditPassengersDialog({ open, booking, onClose, onRebooked }: EditPassengersDialogProps) {
   const api = useBookingPnrApi()
-  const demo = useDemoPassengers()
+  const saved = useSavedTravellers()
   const [details, setDetails] = useState<Record<string, PassengerDetails>>(() => detailsOf(booking))
   /* The dialog element, so the calendar of the date fields is rendered inside the dialog and not under it. */
   const [dialog, setDialog] = useState<HTMLElement | null>(null)
@@ -109,9 +109,11 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
     }
     if (changed.length === 0) return records
 
-    if (!demo.resolve) throw new Error('Passenger records are temporarily unavailable. Your details are kept on this page.')
+    if (!saved.resolve) throw new Error('Passenger records are temporarily unavailable. Your details are kept on this page.')
     const travellers: TravellerDraft[] = changed.map((passenger) => {
       const value = details[passenger.bookingPassengerId]
+      // The corrected traveller is saved as a new record; gender and nationality carry over from the current one.
+      const current = saved.profiles.find((profile) => profile.id === passenger.passengerId)
       return {
         key: passenger.bookingPassengerId,
         expectedType: passenger.passengerType,
@@ -119,10 +121,12 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
         familyName: value.familyName.trim(),
         dateOfBirth: value.dateOfBirth,
         passportNumber: value.passportNumber.trim(),
+        gender: current?.gender ?? '',
+        nationality: current?.nationality ?? '',
         lapOfKey: passenger.lapOfBookingPassengerId ?? '',
       }
     })
-    const resolved = await demo.resolve(travellers)
+    const resolved = await saved.resolve(travellers)
     for (const entry of resolved) {
       records.set(entry.key, entry.passengerId)
     }
