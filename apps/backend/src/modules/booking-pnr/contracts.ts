@@ -24,7 +24,7 @@ export const SEAT_MAP_PORT = Symbol('SEAT_MAP_PORT')
 export const INSURANCE_PORT = Symbol('INSURANCE_PORT')
 export const BOOKING_READ_PORT = Symbol('BOOKING_READ_PORT')
 export const CANCEL_FOR_FLIGHT_PORT = Symbol('CANCEL_FOR_FLIGHT_PORT')
-export const FLIGHT_EVENT_BUS = Symbol('FLIGHT_EVENT_BUS')
+export const FLIGHT_EVENT_SOURCE = Symbol('FLIGHT_EVENT_SOURCE')
 export const BOOKING_EVENT_BUS = Symbol('BOOKING_EVENT_BUS')
 export const BOOKING_PROVIDER = Symbol('BOOKING_PROVIDER')
 
@@ -505,9 +505,10 @@ export interface CancelForFlightPort {
   cancelBookingsForFlight: (tx: BookingTransaction, flightId: string, event: FlightEvent) => Promise<CancelForFlightResult>
 }
 
-export interface FlightEventBus {
+// Live flight events from Feature 2's FlightEventBus, mapped to FlightEvent. Subscribe only: Feature 3 never publishes on
+// Feature 2's shared bus, so its own replays cannot reach other subscribers.
+export interface FlightEventSource {
   subscribe: (handler: (event: FlightEvent) => Promise<void>) => () => void
-  publish: (event: FlightEvent) => Promise<void>
 }
 
 // Booking events are published after commit (B1, B6). Feature 13 is the consumer that notifies customers; it finds the

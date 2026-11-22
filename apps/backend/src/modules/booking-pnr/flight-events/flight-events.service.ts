@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common'
-import { FLIGHT_EVENT_BUS, type FlightEventBus } from '../contracts'
+import { FLIGHT_EVENT_SOURCE, type FlightEventSource } from '../contracts'
 import { FlightEventCatchupService } from './flight-event-catchup.service'
 import { FlightEventDispatcher } from './flight-event-dispatcher'
 import { FlightEventHandlerService } from './flight-event-handler.service'
@@ -13,16 +13,22 @@ export class FlightEventsService implements OnApplicationBootstrap, OnModuleDest
   private restarting = false
   private stopped = false
   constructor(
-    @Inject(FLIGHT_EVENT_BUS) private readonly bus: FlightEventBus,
+    @Inject(FLIGHT_EVENT_SOURCE) private readonly source: FlightEventSource,
     private readonly catchup: FlightEventCatchupService,
     private readonly handler: FlightEventHandlerService,
   ) {
-    this.dispatcher = new FlightEventDispatcher(bus, catchup, (event) => handler.handle(event))
+    this.dispatcher = new FlightEventDispatcher(source, catchup, (event) => handler.handle(event))
   }
   async onApplicationBootstrap(): Promise<void> {
-    await this.dispatcher.start()
-    // The durable event table is the recovery source even when the scheduling module is in another process or its
-    // in-memory notification is missed. Publish through the same dispatcher to retain ordering and receipt checks.
+    // One bad pending event must not take the whole API down. The dispatcher has stopped, so poll() restarts it.
+    try {
+      await this.dispatcher.start()
+    } catch (error) {
+      this.restarting = true
+      this.logger.error('Could not replay pending flight events at startup', error instanceof Error ? error.stack : undefined)
+    }
+    // The durable event table is the recovery source when a live event from Feature 2 is missed or fails. Deliver
+    // through the same dispatcher to keep ordering and receipt checks, never by publishing on Feature 2's shared bus.
     this.timer = setInterval(() => {
       void this.poll()
     }, 5000)
@@ -38,11 +44,12 @@ export class FlightEventsService implements OnApplicationBootstrap, OnModuleDest
     this.polling = true
     try {
       if (this.restarting || this.dispatcher.isStopped) {
-        this.dispatcher = new FlightEventDispatcher(this.bus, this.catchup, (event) => this.handler.handle(event))
+        this.dispatcher = new FlightEventDispatcher(this.source, this.catchup, (event) => this.handler.handle(event))
         await this.dispatcher.start()
         this.restarting = false
       }
-      await this.catchup.replay((event) => this.bus.publish(event))
+      const dispatcher = this.dispatcher
+      await this.catchup.replay((event) => dispatcher.deliver(event))
     } catch (error) {
       this.dispatcher.stop(error)
       this.restarting = true

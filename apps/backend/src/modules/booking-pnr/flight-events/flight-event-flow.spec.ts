@@ -1,6 +1,7 @@
 import type { DbService } from '@backend/db/db.service'
 import type { BookingEventBus, BookingReadPort, BookingTransaction, FlightEvent, InventoryPort, SeatMapPort } from '../contracts'
-import { LocalFlightEventBus } from '../stubs/flight-event-bus.stub'
+import { FlightEventBus, type FlightStatusEvent } from '@backend/modules/flight-scheduling/operations/flight-event-bus'
+import { SchedulingFlightEventSource } from '../providers/scheduling-flight-events.adapter'
 import type { AircraftChangeProcessor } from './aircraft-change.processor'
 import { FlightCancellationProcessor } from './flight-cancellation.processor'
 import { FlightEventDispatcher } from './flight-event-dispatcher'
@@ -10,7 +11,7 @@ import { FlightEventNotificationsService } from './flight-event-notifications.se
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 
 describe('flight cancellation event flow', () => {
-  it('applies a replayed and redelivered cancellation once, then publishes after commit', async () => {
+  it('applies a replayed cancellation once when Feature 2 delivers it again live, then publishes after commit', async () => {
     const now = new Date('2026-11-11T00:00:00Z')
     const event: FlightEvent = {
       id: 'event',
@@ -41,13 +42,25 @@ describe('flight cancellation event flow', () => {
       seat_assignment: { updateMany: releaseSeats },
     } as unknown as BookingTransaction
     const committed = jest.fn()
+    const storedEvent = {
+      id: event.id,
+      seq: event.seq,
+      flight_id: event.flightId,
+      type: 'cancelled',
+      occurred_at: now,
+      old_aircraft_id: null,
+      new_aircraft_id: null,
+      resolution: 'refund',
+      partner_airline: null,
+    }
     const db = {
+      flight_event: { findUnique: jest.fn().mockResolvedValue(storedEvent) },
       $transaction: async (callback: (transaction: BookingTransaction) => Promise<unknown>) => {
         const result = await callback(tx)
         committed()
         return result
       },
-    } as unknown as DbService
+    }
     const policy = {
       cancelBookingsForFlight: jest
         .fn()
@@ -67,7 +80,7 @@ describe('flight cancellation event flow', () => {
       clock,
     )
     const handler = new FlightEventHandlerService(
-      db,
+      db as unknown as DbService,
       cancellation,
       {} as AircraftChangeProcessor,
       notifications,
@@ -75,9 +88,10 @@ describe('flight cancellation event flow', () => {
       {} as InventoryPort,
       {} as SeatMapPort,
     )
-    const bus = new LocalFlightEventBus()
+    // Feature 2's real bus, as Feature 2 publishes on it after commit.
+    const bus = new FlightEventBus()
     const dispatcher = new FlightEventDispatcher(
-      bus,
+      new SchedulingFlightEventSource(bus, db as unknown as DbService),
       {
         replay: async (handle) => {
           await handle(event)
@@ -87,8 +101,12 @@ describe('flight cancellation event flow', () => {
     )
 
     await dispatcher.start()
-    await bus.publish(event)
+    await bus.publish({ event_id: event.id, type: 'flight.cancelled', flight_id: event.flightId } as unknown as FlightStatusEvent)
+    // Events this feature does not handle are ignored without a lookup.
+    await bus.publish({ event_id: 'other', type: 'flight.delayed', flight_id: event.flightId } as unknown as FlightStatusEvent)
     dispatcher.stop()
+
+    expect(db.flight_event.findUnique).toHaveBeenCalledTimes(1)
 
     expect(policy.cancelBookingsForFlight).toHaveBeenCalledTimes(1)
     expect(releaseSeats).toHaveBeenCalledTimes(1)

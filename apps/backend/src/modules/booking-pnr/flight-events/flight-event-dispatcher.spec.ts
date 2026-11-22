@@ -1,4 +1,4 @@
-import type { FlightEvent, FlightEventBus } from '../contracts'
+import type { FlightEvent, FlightEventSource } from '../contracts'
 import { FlightEventDispatcher } from './flight-event-dispatcher'
 
 describe('FlightEventDispatcher', () => {
@@ -16,7 +16,8 @@ describe('FlightEventDispatcher', () => {
   })
   let listener: ((value: FlightEvent) => Promise<void>) | undefined
   const unsubscribe = jest.fn()
-  const bus: FlightEventBus = {
+  // A source plus a publish helper that plays the live producer.
+  const bus: FlightEventSource & { publish: (event: FlightEvent) => Promise<void> } = {
     subscribe: (handler) => {
       listener = handler
       return unsubscribe

@@ -1,4 +1,4 @@
-import type { FlightEvent, FlightEventBus } from '../contracts'
+import type { FlightEvent, FlightEventSource } from '../contracts'
 import type { FlightEventCatchupService } from './flight-event-catchup.service'
 
 interface PendingEvent {
@@ -16,7 +16,7 @@ export class FlightEventDispatcher {
   private stopped = false
 
   constructor(
-    private readonly bus: FlightEventBus,
+    private readonly source: FlightEventSource,
     private readonly catchup: Pick<FlightEventCatchupService, 'replay'>,
     private readonly handle: (event: FlightEvent) => Promise<void>,
   ) {}
@@ -24,7 +24,7 @@ export class FlightEventDispatcher {
   async start(): Promise<void> {
     if (this.unsubscribe || this.stopped) throw new Error('Flight event dispatcher cannot be started twice')
     // Subscribe first: an event committed while replay is reading must not be lost.
-    this.unsubscribe = this.bus.subscribe((event) => this.enqueue(event))
+    this.unsubscribe = this.source.subscribe((event) => this.deliver(event))
     try {
       await this.catchup.replay(this.handle)
       if (this.stopped) return
@@ -47,10 +47,11 @@ export class FlightEventDispatcher {
     return this.stopped
   }
 
-  private enqueue(event: FlightEvent): Promise<void> {
+  /** Queues one event for in-order handling. Live events arrive here from the source, and the durable poll calls it too. */
+  deliver(event: FlightEvent): Promise<void> {
     if (this.stopped) return Promise.reject(new Error('Flight event dispatcher stopped'))
     const result = new Promise<void>((resolve, reject) => this.queue.push({ event, resolve, reject }))
-    // The individual publish promise receives the error; consume the background drain rejection.
+    // The individual delivery promise receives the error; consume the background drain rejection.
     if (this.ready) void this.drain().catch(() => undefined)
     return result
   }

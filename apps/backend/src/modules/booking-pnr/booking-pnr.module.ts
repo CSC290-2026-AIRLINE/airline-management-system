@@ -1,9 +1,5 @@
 import { StaffBookingLookupService } from './staff/staff-booking-lookup.service'
-import { DemoBookingCustomerController } from './staff/demo-booking-customer.controller'
-import { DemoBookingCustomerService } from './staff/demo-booking-customer.service'
 import { StaffBookingController } from './staff/staff-booking.controller'
-import { DemoPassengerController } from './hold/demo-passenger.controller'
-import { DemoPassengerService } from './hold/demo-passenger.service'
 import { Module } from '@nestjs/common'
 import { HoldController } from './hold/hold.controller'
 import { HoldService } from './hold/hold.service'
@@ -33,7 +29,7 @@ import {
   BOOKING_READ_PORT,
   CANCEL_FOR_FLIGHT_PORT,
   CHECKOUT_PORT,
-  FLIGHT_EVENT_BUS,
+  FLIGHT_EVENT_SOURCE,
   INVENTORY_PORT,
   LOYALTY_PORT,
   PRICING_PORT,
@@ -45,7 +41,8 @@ import {
   SERVICE_REQUEST_PORT,
 } from './contracts'
 import { CheckoutStub } from './stubs/checkout.stub'
-import { LocalFlightEventBus } from './stubs/flight-event-bus.stub'
+import { SchedulingFlightEventSource } from './providers/scheduling-flight-events.adapter'
+import { FlightSchedulingModule } from '@backend/modules/flight-scheduling/flight-scheduling.module'
 import { InventoryService } from './inventory/inventory.service'
 import { LoyaltyStub } from './stubs/loyalty.stub'
 import { RefundStub } from './stubs/refund.stub'
@@ -85,7 +82,7 @@ import { BookingInsuranceService } from './insurance/insurance.service'
   // Feature 15's audit writer, for the staff cancellation entry (B7).
   // Feature 4's pricing module, so the pricing port is the real adapter.
   // Feature 11's loyalty module, for the travel insurance policy.
-  imports: [AuditModule, PricingModule, LoyaltyModule],
+  imports: [AuditModule, PricingModule, LoyaltyModule, FlightSchedulingModule],
   controllers: [
     DevSeatPaymentController,
     DevConfirmController,
@@ -94,9 +91,7 @@ import { BookingInsuranceService } from './insurance/insurance.service'
     CustomerBookingsController,
     CancelController,
     HoldController,
-    DemoPassengerController,
     StaffBookingController,
-    DemoBookingCustomerController,
     SeatMapController,
     SeatChangeController,
     StaffAssistanceController,
@@ -123,8 +118,6 @@ import { BookingInsuranceService } from './insurance/insurance.service'
     SeatHoldExpiryService,
     HoldService,
     StaffBookingLookupService,
-    DemoBookingCustomerService,
-    DemoPassengerService,
     BookingStatusService,
     ConfirmService,
     ReleaseService,
@@ -150,7 +143,7 @@ import { BookingInsuranceService } from './insurance/insurance.service'
     BookingInsuranceService,
     { provide: BOOKING_READ_PORT, useExisting: BookingReadService },
     { provide: CANCEL_FOR_FLIGHT_PORT, useExisting: CancelForFlightService },
-    { provide: FLIGHT_EVENT_BUS, useClass: LocalFlightEventBus },
+    { provide: FLIGHT_EVENT_SOURCE, useClass: SchedulingFlightEventSource },
     { provide: BOOKING_PROVIDER, useClass: BookingProviderAdapter },
   ],
   exports: [
@@ -173,7 +166,6 @@ import { BookingInsuranceService } from './insurance/insurance.service'
     INSURANCE_PORT,
     BOOKING_READ_PORT,
     CANCEL_FOR_FLIGHT_PORT,
-    FLIGHT_EVENT_BUS,
     BOOKING_PROVIDER,
     FlightImpactService,
   ],
