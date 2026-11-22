@@ -257,8 +257,13 @@ export function BookingSeatStep({
                 </p>
               )}
               <p className="flex justify-between gap-3 text-sm font-medium tabular-nums">
-                <span>Seat fees</span>
+                <span>Seat fees (before tax)</span>
                 <strong>{maps ? formatMoney(seatFees, currency) : '—'}</strong>
+              </p>
+              {/* The seat fees above are Feature 4's fee table; taxes apply on top of them, so show the quoted total as well. */}
+              <p className="flex justify-between gap-3 text-sm font-medium tabular-nums">
+                <span>Booking total, incl. taxes</span>
+                <strong>{quote.total !== null ? formatMoney(quote.total, currency) : quote.loading ? 'Updating…' : '—'}</strong>
               </p>
               {quote.error && (
                 <div
