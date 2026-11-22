@@ -2,7 +2,7 @@ import { Transform } from 'class-transformer'
 import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator'
 
 /**
- * The body of `PATCH /bookings/:ref/contact`.
+ * The body of `PUT /bookings/:ref/contact`.
  *
  * The contact details are written when the hold is created, so a customer who typed the wrong email has to correct it
  * before paying. The details are not part of the fare quote, so changing them never moves the price.

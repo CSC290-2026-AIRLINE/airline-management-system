@@ -85,6 +85,7 @@ function makeHarness() {
   const screening = { screen: jest.fn().mockResolvedValue({ result: 'clear', reasons: [] }) }
   const events = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() }
   const clock = { now: () => NOW }
+  const insurance = { offer: jest.fn(), issue: jest.fn().mockResolvedValue(null), cancel: jest.fn() }
 
   const service = new ConfirmService(
     db as never,
@@ -96,9 +97,10 @@ function makeHarness() {
     pricing as never,
     screening,
     events,
+    insurance,
   )
 
-  return { booking, coupons, flights, tx, db, inventory, seats, refunds, pricing, screening, events, service }
+  return { booking, coupons, flights, tx, db, inventory, seats, refunds, pricing, screening, events, insurance, service }
 }
 
 describe('ConfirmService.confirmBooking', () => {
@@ -134,6 +136,14 @@ describe('ConfirmService.confirmBooking', () => {
       data: { last_booked_at: NOW, updated_at: expect.any(Date) },
     })
     expect(result).toMatchObject({ bookingId: 'booking-1', reference: 'ABC123', status: 'confirmed', total: 297, confirmedAt: NOW })
+  })
+
+  it('asks feature 11 for the travel insurance policy after the confirm, and never fails the confirm over it', async () => {
+    const h = makeHarness()
+    h.insurance.issue.mockRejectedValue(new Error('loyalty down'))
+
+    await expect(h.service.confirmBooking('ABC123')).resolves.toMatchObject({ status: 'confirmed' })
+    expect(h.insurance.issue).toHaveBeenCalledWith(h.booking.id)
   })
 
   it('returns the same result when the booking is already confirmed', async () => {

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { BookingError } from '../common/booking-error'
@@ -7,6 +7,7 @@ import { AIRLINE_TICKET_NUMBER, nextTicketNumber } from '../common/ticket-number
 import {
   BOOKING_CLOCK,
   BOOKING_EVENT_BUS,
+  INSURANCE_PORT,
   INVENTORY_PORT,
   PRICING_PORT,
   REFUND_PORT,
@@ -21,6 +22,7 @@ import {
   type RefundPort,
   type ScreeningPort,
   type SeatPort,
+  type InsurancePort,
 } from '../contracts'
 
 const SELLABLE_FLIGHT_STATUSES = new Set(['scheduled', 'delayed'])
@@ -106,6 +108,7 @@ export class ConfirmService {
     @Inject(PRICING_PORT) private readonly pricing: PricingPort,
     @Inject(SCREENING_PORT) private readonly screening: ScreeningPort,
     @Inject(BOOKING_EVENT_BUS) private readonly events: BookingEventBus,
+    @Optional() @Inject(INSURANCE_PORT) private readonly insurance?: InsurancePort,
   ) {}
 
   /**
@@ -235,6 +238,13 @@ export class ConfirmService {
       })
     } catch (error) {
       this.logger.error(`Could not record last_booked_at for booking ${booking.booking_reference}`, error as Error)
+    }
+
+    // Feature 11 issues the travel insurance policy (included in the tier, or a paid add-on). Never blocks the confirm.
+    try {
+      await this.insurance?.issue(booking.id)
+    } catch (error) {
+      this.logger.error(`Could not issue travel insurance for booking ${booking.booking_reference}`, error as Error)
     }
 
     try {

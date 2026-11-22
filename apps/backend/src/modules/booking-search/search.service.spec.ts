@@ -26,7 +26,12 @@ function flight(id = 'flight-a', hour = 12) {
     service_date: new Date('2026-11-10T00:00:00Z'),
     dep_at: new Date(`2026-11-10T${hour}:00:00Z`),
     arr_at: new Date(`2026-11-10T${hour + 1}:30:00Z`),
-    route: { origin: 'BKK', destination: 'HKT' },
+    route: {
+      origin: 'BKK',
+      destination: 'HKT',
+      airport_route_originToairport: { timezone: 'Asia/Bangkok' },
+      airport_route_destinationToairport: { timezone: 'Asia/Bangkok' },
+    },
     seat_inventory: [{ cabin: 'economy' }],
     aircraft: { aircraft_type: { id: 'type', layout: { rows: 30, columns: ['A', 'B', 'C', 'D', 'E', 'F'] } } },
   }
@@ -126,7 +131,15 @@ describe('SearchService', () => {
   })
 
   it('groups outbound and return options by leg and date', async () => {
-    const inbound = { ...flight('inbound'), route: { origin: 'HKT', destination: 'BKK' } }
+    const inbound = {
+      ...flight('inbound'),
+      route: {
+        origin: 'HKT',
+        destination: 'BKK',
+        airport_route_originToairport: { timezone: 'Asia/Bangkok' },
+        airport_route_destinationToairport: { timezone: 'Asia/Bangkok' },
+      },
+    }
     const { service } = fixture([flight(), inbound])
     const result = await service.search({
       ...request,

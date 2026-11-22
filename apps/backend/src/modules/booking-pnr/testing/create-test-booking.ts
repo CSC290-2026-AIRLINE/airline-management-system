@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto'
 import type { PrismaClient } from '@backend/db/generated/prisma/client'
 import { isUniqueConstraintError, newBookingReference } from '../common/booking-reference'
 import { nextTicketNumber } from '../common/ticket-number'
+import type { DbService } from '@backend/db/db.service'
 import type { BookingStatus, PassengerType } from '../contracts'
+import { InventoryService } from '../inventory/inventory.service'
 
 export interface CreateTestBookingPassenger {
   passengerId: string
@@ -63,6 +65,8 @@ export async function createTestBooking(db: PrismaClient, options: CreateTestBoo
   const holdExpiresAt = new Date(bookedAt.getTime() + (options.holdMinutes ?? 15) * 60_000)
   const confirmedAt = status === 'confirmed' ? bookedAt : null
   const airlineNumber = options.airlineNumber ?? DEFAULT_AIRLINE_NUMBER
+  // Only tx is used by hold and sell; the clock stamps updated_at.
+  const inventory = new InventoryService(db as unknown as DbService, { now: () => bookedAt })
 
   for (let attempt = 0; attempt < 10; attempt++) {
     try {
@@ -152,6 +156,12 @@ export async function createTestBooking(db: PrismaClient, options: CreateTestBoo
             },
           })
         }
+
+        // Take the seats through the inventory service like a real hold (and confirm), so seat_inventory always
+        // matches the bookings. Without this, releasing or cancelling the test booking fails on the counts.
+        const keys = options.segments.map((segment) => ({ flightId: segment.flightId, cabin: segment.cabin }))
+        await inventory.hold(tx, keys, options.passengers.length)
+        if (status === 'confirmed') await inventory.sell(tx, keys, options.passengers.length)
 
         return { bookingId: booking.id, reference: booking.booking_reference, couponIdsByPassenger }
       })

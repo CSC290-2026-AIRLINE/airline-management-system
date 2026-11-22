@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { ForbiddenException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common'
 import { AuditService, type AuditActor } from '@backend/modules/admin-console/audit/audit.service'
 import { DbService } from '@backend/db/db.service'
 import type { Prisma } from '@backend/db/generated/prisma/client'
@@ -9,6 +9,7 @@ import { BookingReadService } from '../manage/booking-read.service'
 import {
   BOOKING_CLOCK,
   BOOKING_EVENT_BUS,
+  INSURANCE_PORT,
   INVENTORY_PORT,
   PRICING_PORT,
   REFUND_PORT,
@@ -23,6 +24,7 @@ import {
   type PricingPort,
   type RefundPort,
   type SeatPort,
+  type InsurancePort,
 } from '../contracts'
 import type { CancelBookingResult, CancellationPreview, StaffCancelBookingResult, StaffCancellationPreview } from './cancel.types'
 
@@ -104,6 +106,7 @@ export class CancelService {
     @Inject(PRICING_PORT) private readonly pricing: PricingPort,
     @Inject(REFUND_PORT) private readonly refunds: RefundPort,
     @Inject(BOOKING_EVENT_BUS) private readonly events: BookingEventBus,
+    @Optional() @Inject(INSURANCE_PORT) private readonly insurance?: InsurancePort,
   ) {}
 
   /** B6: the fee and refund come from Feature 4's cancelQuote; B6 never prices a refund itself. */
@@ -470,6 +473,13 @@ export class CancelService {
       } catch (error) {
         this.logger.error(`Could not record refund for booking ${detail.reference}`, error as Error)
       }
+    }
+
+    // Feature 11 cancels the booking's travel insurance policy, if it has one.
+    try {
+      await this.insurance?.cancel(detail.bookingId)
+    } catch (error) {
+      this.logger.error(`Could not cancel travel insurance for booking ${detail.reference}`, error as Error)
     }
 
     try {

@@ -41,14 +41,14 @@ describe('BookingsController', () => {
   })
 
   it('requires authentication', async () => {
-    await request(app.getHttpServer()).patch(url).send({ contactEmail: 'new@example.com' }).expect(401)
+    await request(app.getHttpServer()).put(url).send({ contactEmail: 'new@example.com' }).expect(401)
     expect(updateContactForUser).not.toHaveBeenCalled()
   })
 
   it('derives identity from the access token and forwards a valid contact', async () => {
     updateContactForUser.mockResolvedValue({ contactEmail: 'new@example.com', contactPhone: '+66 2 123 4567' })
     await request(app.getHttpServer())
-      .patch(url)
+      .put(url)
       .set('Authorization', 'Bearer token')
       .send({ contactEmail: 'new@example.com', contactPhone: '+66 2 123 4567' })
       .expect(200)
@@ -58,7 +58,7 @@ describe('BookingsController', () => {
   it('trims the contact details', async () => {
     updateContactForUser.mockResolvedValue({ contactEmail: 'new@example.com', contactPhone: null })
     await request(app.getHttpServer())
-      .patch(url)
+      .put(url)
       .set('Authorization', 'Bearer token')
       .send({ contactEmail: '  new@example.com  ' })
       .expect(200)
@@ -66,9 +66,9 @@ describe('BookingsController', () => {
   })
 
   it('rejects an invalid email and unexpected fields', async () => {
-    await request(app.getHttpServer()).patch(url).set('Authorization', 'Bearer token').send({ contactEmail: 'nope' }).expect(422)
+    await request(app.getHttpServer()).put(url).set('Authorization', 'Bearer token').send({ contactEmail: 'nope' }).expect(422)
     await request(app.getHttpServer())
-      .patch(url)
+      .put(url)
       .set('Authorization', 'Bearer token')
       .send({ contactEmail: 'new@example.com', staff: true })
       .expect(422)
@@ -80,7 +80,7 @@ describe('BookingsController', () => {
       new BookingError('BOOKING_CLOSED', 'This booking is no longer on hold, so its contact details can no longer be changed.', 409),
     )
     const response = await request(app.getHttpServer())
-      .patch(url)
+      .put(url)
       .set('Authorization', 'Bearer token')
       .send({ contactEmail: 'new@example.com' })
       .expect(409)

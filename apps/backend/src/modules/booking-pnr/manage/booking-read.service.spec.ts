@@ -81,7 +81,12 @@ function detailSegment(segmentOrder: number, origin: string, destination: string
         service_date: new Date('2026-11-10T00:00:00Z'),
         dep_at: depAt,
         arr_at: new Date(depAt.getTime() + 2 * 60 * 60 * 1000),
-        route: { origin, destination },
+        route: {
+          origin,
+          destination,
+          airport_route_originToairport: { timezone: 'Asia/Bangkok' },
+          airport_route_destinationToairport: { timezone: 'Asia/Bangkok' },
+        },
       },
     },
   }
@@ -99,6 +104,7 @@ function listSegment(segmentOrder: number, origin: string, destination: string, 
 function detailRow(overrides: Record<string, unknown> = {}) {
   return {
     ...summaryRow(),
+    customer: { passenger_id: 'pax-account-holder' },
     booking_passenger: [
       detailPassenger('bp-2', 'adult', 'Somchai', 'Wongchai', new Date('2026-11-01T00:00:00Z'), null),
       detailPassenger('bp-1', 'infant', 'Mia', 'Wongchai', new Date('2026-11-01T00:01:00Z'), 'bp-2'),
@@ -248,17 +254,19 @@ describe('BookingReadService detail reads', () => {
 })
 
 describe('BookingReadService customer lists', () => {
-  it('lists a customer booking with lead passenger, trip, total and open requests, newest departure first', async () => {
+  it('lists a customer booking with lead passenger, trip, total and open requests, most recently booked first', async () => {
     const h = makeHarness()
     h.db.booking.findMany.mockResolvedValue([
       listRow({
         id: 'booking-old',
         booking_reference: 'OLD123',
+        booked_at: new Date('2026-11-01T00:00:00Z'),
         booking_segment: [listSegment(1, 'BKK', 'NRT', new Date('2026-11-10T02:00:00Z'))],
       }),
       listRow({
         id: 'booking-new',
         booking_reference: 'NEW123',
+        booked_at: new Date('2026-11-02T00:00:00Z'),
         booking_segment: [listSegment(1, 'BKK', 'HKT', new Date('2026-11-12T02:00:00Z'))],
       }),
     ])
@@ -292,6 +300,7 @@ describe('BookingReadService customer lists', () => {
       }),
       listRow({
         id: 'booking-multi',
+        booked_at: new Date('2026-11-02T00:00:00Z'),
         booking_segment: [
           listSegment(1, 'BKK', 'NRT', new Date('2026-11-11T02:00:00Z')),
           listSegment(2, 'NRT', 'LAX', new Date('2026-11-11T10:00:00Z')),
@@ -318,18 +327,21 @@ describe('BookingReadService customer lists', () => {
       listRow({
         id: 'departed',
         booking_reference: 'DEP123',
+        booked_at: new Date('2026-11-01T00:00:00Z'),
         status: 'confirmed',
         booking_segment: [listSegment(1, 'BKK', 'NRT', new Date('2026-11-07T02:00:00Z'))],
       }),
       listRow({
         id: 'cancelled',
         booking_reference: 'CAN123',
+        booked_at: new Date('2026-11-03T00:00:00Z'),
         status: 'cancelled',
         booking_segment: [listSegment(1, 'BKK', 'NRT', new Date('2026-11-12T02:00:00Z'))],
       }),
       listRow({
         id: 'checked-in',
         booking_reference: 'CHK123',
+        booked_at: new Date('2026-11-02T00:00:00Z'),
         status: 'confirmed',
         booking_segment: [listSegment(1, 'BKK', 'NRT', new Date('2026-11-12T02:00:00Z'))],
       }),
@@ -438,7 +450,7 @@ describe('BookingReadService staff list', () => {
     expect(page.items[0]).toMatchObject({ reference: 'ABC123', leadPassengerName: 'Somchai Wongchai' })
   })
 
-  it('searches reference, passenger name, passport and ticket while ignoring filters, and clamps paging', async () => {
+  it('searches reference, passenger name, passport, flight number and ticket while ignoring filters, and clamps paging', async () => {
     const h = makeHarness()
     h.db.booking.findMany.mockResolvedValue([])
     h.db.booking.count.mockResolvedValue(0)
@@ -453,9 +465,12 @@ describe('BookingReadService staff list', () => {
 
     const where = h.db.booking.findMany.mock.calls[0][0].where
     expect(where.AND).toBeUndefined()
-    expect(where.OR).toHaveLength(3)
+    expect(where.OR).toHaveLength(4)
     expect(where.OR[0]).toEqual({ booking_reference: { contains: '217-4400123456', mode: 'insensitive' } })
     expect(where.OR[2]).toEqual({
+      booking_segment: { some: { seat_inventory: { flight: { flight_number: { contains: '217-4400123456', mode: 'insensitive' } } } } },
+    })
+    expect(where.OR[3]).toEqual({
       booking_passenger: { some: { booking_coupon: { some: { ticket_number: { contains: '2174400123456' } } } } },
     })
     expect(h.db.booking.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 0, take: 100 }))
@@ -464,7 +479,7 @@ describe('BookingReadService staff list', () => {
     await h.service.listStaffBookings({ search: 'Somchai', status: 'cancelled' })
     const nameWhere = h.db.booking.findMany.mock.calls[1][0].where
     expect(nameWhere.AND).toBeUndefined()
-    expect(nameWhere.OR).toHaveLength(2)
+    expect(nameWhere.OR).toHaveLength(3)
   })
 })
 

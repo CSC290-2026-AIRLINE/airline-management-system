@@ -37,19 +37,25 @@ describe('SeatMapController', () => {
   })
 
   it('requires a signed-in user', async () => {
-    await request(app.getHttpServer()).get(`/api/flights/${flightId}/seat-map`).expect(401)
+    await request(app.getHttpServer()).get(`/api/bookings/flights/${flightId}/seat-map`).expect(401)
     expect(getSeatMap).not.toHaveBeenCalled()
   })
 
   it('returns the seat map for a signed-in user', async () => {
     const map = { flightId, cabins: [], rows: [] }
     getSeatMap.mockResolvedValue(map)
-    await request(app.getHttpServer()).get(`/api/flights/${flightId}/seat-map`).set('Authorization', 'Bearer test-token').expect(200, map)
+    await request(app.getHttpServer())
+      .get(`/api/bookings/flights/${flightId}/seat-map`)
+      .set('Authorization', 'Bearer test-token')
+      .expect(200, map)
     expect(getSeatMap).toHaveBeenCalledWith(flightId)
   })
 
   it('rejects a malformed flight ID', async () => {
-    await request(app.getHttpServer()).get('/api/flights/not-a-uuid/seat-map').set('Authorization', 'Bearer test-token').expect(400)
+    await request(app.getHttpServer())
+      .get('/api/bookings/flights/not-a-uuid/seat-map')
+      .set('Authorization', 'Bearer test-token')
+      .expect(400)
     expect(getSeatMap).not.toHaveBeenCalled()
   })
 })

@@ -191,6 +191,7 @@ function makeHarness() {
   const refunds = { record: jest.fn().mockResolvedValue(undefined) }
   const events = { publish: jest.fn().mockResolvedValue(undefined) }
   const clock = { now: () => NOW }
+  const insurance = { offer: jest.fn(), issue: jest.fn(), cancel: jest.fn().mockResolvedValue(null) }
 
   const service = new CancelService(
     db as never,
@@ -204,6 +205,7 @@ function makeHarness() {
     pricing as never,
     refunds,
     events as never,
+    insurance,
   )
 
   return {
@@ -218,6 +220,7 @@ function makeHarness() {
     pricing,
     refunds,
     events,
+    insurance,
     setDetail: (next: BookingDetail | null) => {
       detail = next
     },
@@ -300,6 +303,14 @@ describe('CancelService.getPreview', () => {
 })
 
 describe('CancelService.cancelBooking', () => {
+  it('asks feature 11 to cancel the travel insurance policy after the cancel, and never fails the cancel over it', async () => {
+    const h = makeHarness()
+    h.insurance.cancel.mockRejectedValue(new Error('loyalty down'))
+
+    await expect(h.service.cancelBooking(REFERENCE, 'user-1')).resolves.toMatchObject({ status: 'cancelled' })
+    expect(h.insurance.cancel).toHaveBeenCalledTimes(1)
+  })
+
   it('cancels a confirmed booking and returns the seats, then records the refund and publishes', async () => {
     const h = makeHarness()
 

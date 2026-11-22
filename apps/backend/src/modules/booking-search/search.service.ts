@@ -31,6 +31,9 @@ export interface SearchOption {
   destination: string
   depAt: string
   arrAt: string
+  // IANA time zones of the two airports; the page shows each time in its airport's local time.
+  originTimeZone: string
+  destinationTimeZone: string
   durationMinutes: number
   cabins: SearchFare[]
 }
@@ -64,7 +67,16 @@ export class SearchService {
           route: { origin: leg.origin, destination: leg.destination },
         })),
       },
-      include: { route: true, seat_inventory: true, aircraft: { select: { aircraft_type: { select: { id: true, layout: true } } } } },
+      include: {
+        route: {
+          include: {
+            airport_route_originToairport: { select: { timezone: true } },
+            airport_route_destinationToairport: { select: { timezone: true } },
+          },
+        },
+        seat_inventory: true,
+        aircraft: { select: { aircraft_type: { select: { id: true, layout: true } } } },
+      },
     })
     const keys = flights.flatMap((flight) =>
       flight.seat_inventory
@@ -145,6 +157,8 @@ export class SearchService {
         destination: flight.route.destination,
         depAt: flight.dep_at.toISOString(),
         arrAt: flight.arr_at.toISOString(),
+        originTimeZone: flight.route.airport_route_originToairport.timezone,
+        destinationTimeZone: flight.route.airport_route_destinationToairport.timezone,
         durationMinutes: Math.round((flight.arr_at.getTime() - flight.dep_at.getTime()) / 60000),
         cabins,
       })

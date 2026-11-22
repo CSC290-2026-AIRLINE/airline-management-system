@@ -63,6 +63,18 @@ export class CheckoutStub implements CheckoutPort {
         },
         select: { id: true },
       })
+      if (request.line) {
+        await tx.payment_line.create({
+          data: {
+            payment_id: payment.id,
+            booking_id: request.bookingId,
+            line_type: request.line.lineType,
+            source_ref: request.line.sourceRef,
+            description: request.line.description,
+            amount: request.amount,
+          },
+        })
+      }
       return { paymentId: payment.id, amount: request.amount, currency: request.currency }
     }
     return transaction ? charge(transaction) : this.db.$transaction(charge)

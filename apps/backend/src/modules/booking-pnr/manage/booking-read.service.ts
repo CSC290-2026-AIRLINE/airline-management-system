@@ -35,6 +35,14 @@ const LIVE_REQUEST_STATUSES = ['requested', 'accepted']
 const ACTIVE_SEAT_STATUSES = ['held', 'assigned']
 const CHECKED_IN_STATUSES = new Set(['checked_in', 'boarded', 'no_show'])
 
+// The route and its airports' time zones, so pages show each time in the airport's local time.
+const ROUTE_SELECT = {
+  origin: true,
+  destination: true,
+  airport_route_originToairport: { select: { timezone: true } },
+  airport_route_destinationToairport: { select: { timezone: true } },
+} satisfies Prisma.routeSelect
+
 const SUMMARY_SELECT = {
   id: true,
   booking_reference: true,
@@ -75,7 +83,7 @@ const LIST_SELECT = {
               flight_number: true,
               dep_at: true,
               arr_at: true,
-              route: { select: { origin: true, destination: true } },
+              route: { select: ROUTE_SELECT },
             },
           },
         },
@@ -87,6 +95,7 @@ const LIST_SELECT = {
 
 const DETAIL_SELECT = {
   ...SUMMARY_SELECT,
+  customer: { select: { passenger_id: true } },
   booking_passenger: {
     select: {
       id: true,
@@ -114,7 +123,7 @@ const DETAIL_SELECT = {
               service_date: true,
               dep_at: true,
               arr_at: true,
-              route: { select: { origin: true, destination: true } },
+              route: { select: ROUTE_SELECT },
             },
           },
         },
@@ -191,7 +200,7 @@ const UPCOMING_SELECT = {
             select: {
               flight_number: true,
               dep_at: true,
-              route: { select: { origin: true, destination: true } },
+              route: { select: ROUTE_SELECT },
             },
           },
         },
@@ -481,20 +490,8 @@ export class BookingReadService implements BookingReadPort {
       return { item, past: closed || departed || extra.checkedIn }
     })
 
-    return entries.sort((a, b) => {
-      const left = a.item.travelDate
-      const right = b.item.travelDate
-      if (!left && !right) {
-        return 0
-      }
-      if (!left) {
-        return 1
-      }
-      if (!right) {
-        return -1
-      }
-      return right.getTime() - left.getTime()
-    })
+    // The doc's order: by booked_at, newest first. Upcoming and past are separate tabs, so upcoming comes first.
+    return entries.sort((a, b) => b.item.bookedAt.getTime() - a.item.bookedAt.getTime())
   }
 
   private async loadListExtras(rows: ListRow[]): Promise<Map<string, ListExtras>> {
@@ -553,6 +550,8 @@ export class BookingReadService implements BookingReadPort {
       destination: segment.seat_inventory.flight.route.destination,
       depAt: segment.seat_inventory.flight.dep_at,
       arrAt: segment.seat_inventory.flight.arr_at,
+      originTimeZone: segment.seat_inventory.flight.route.airport_route_originToairport.timezone,
+      destinationTimeZone: segment.seat_inventory.flight.route.airport_route_destinationToairport.timezone,
       serviceDate: segment.seat_inventory.flight.service_date.toISOString().slice(0, 10),
     }))
 
@@ -594,6 +593,7 @@ export class BookingReadService implements BookingReadPort {
         requestedAt: request.requested_at,
       })),
       history: this.history(row),
+      accountHolderPassengerId: row.customer.passenger_id,
       serverNow: this.clock.now(),
     }
   }
@@ -602,6 +602,8 @@ export class BookingReadService implements BookingReadPort {
     const flights = row.booking_segment.map((segment) => segment.seat_inventory.flight)
     const travelDate = flights.length > 0 ? flights[0].dep_at : null
     const travelEndDate = flights.length > 0 ? flights[flights.length - 1].dep_at : null
+    const travelTimeZone = flights.length > 0 ? flights[0].route.airport_route_originToairport.timezone : null
+    const travelEndTimeZone = flights.length > 0 ? flights[flights.length - 1].route.airport_route_originToairport.timezone : null
 
     return {
       ...this.toSummary(row, extra.total),
@@ -609,6 +611,8 @@ export class BookingReadService implements BookingReadPort {
       trip: this.tripLabel(row),
       travelDate,
       travelEndDate,
+      travelTimeZone,
+      travelEndTimeZone,
       passengerCounts: this.passengerCounts(row),
       flightNumbers: flights.map((flight) => flight.flight_number),
       flightCount: flights.length,
@@ -713,6 +717,8 @@ export class BookingReadService implements BookingReadPort {
           },
         },
       },
+      // A flight number ("F30901", "ZT 101"): every booking with a segment on that flight.
+      { booking_segment: { some: { seat_inventory: { flight: { flight_number: { contains: search, mode: 'insensitive' } } } } } },
     ]
 
     if (ticketLike) {

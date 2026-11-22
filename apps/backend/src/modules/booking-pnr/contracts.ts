@@ -21,6 +21,7 @@ export const CHECKOUT_PORT = Symbol('CHECKOUT_PORT')
 export const REFUND_PORT = Symbol('REFUND_PORT')
 export const SCREENING_PORT = Symbol('SCREENING_PORT')
 export const SEAT_MAP_PORT = Symbol('SEAT_MAP_PORT')
+export const INSURANCE_PORT = Symbol('INSURANCE_PORT')
 export const BOOKING_READ_PORT = Symbol('BOOKING_READ_PORT')
 export const CANCEL_FOR_FLIGHT_PORT = Symbol('CANCEL_FOR_FLIGHT_PORT')
 export const FLIGHT_EVENT_BUS = Symbol('FLIGHT_EVENT_BUS')
@@ -177,6 +178,8 @@ export interface ChargeRequest {
   currency: string
   idempotencyKey: string
   purchaseRef?: string
+  // A line of the payment that another feature reads back, for example feature 11's `insurance:<booking id>`.
+  line?: { lineType: 'insurance'; sourceRef: string; description: string }
 }
 
 export interface PaymentResult {
@@ -301,6 +304,9 @@ export interface BookingSegmentDto {
   destination: string
   depAt: Date
   arrAt: Date
+  // IANA time zones of the departure and arrival airports; times are shown in these.
+  originTimeZone: string
+  destinationTimeZone: string
   // The day the flight leaves (flight.service_date), as YYYY-MM-DD. The search form asks for this date.
   serviceDate: string
 }
@@ -344,6 +350,8 @@ export interface BookingDetail extends BookingSummary {
   coupons: BookingCouponDto[]
   serviceRequests: BookingServiceRequestDto[]
   history: BookingHistoryEntry[]
+  // The passenger profile of the customer who owns the booking, so the page can mark them as the account holder.
+  accountHolderPassengerId: string
   // The simulation clock's now, so the page can show the hold countdown (B4, B9).
   serverNow: Date
 }
@@ -376,6 +384,9 @@ export interface BookingListItem extends BookingSummary {
   travelDate: Date | null
   // Last departure of the booking (the return leg); null for a booking without segments.
   travelEndDate: Date | null
+  // IANA time zones of the departure airports of travelDate and travelEndDate.
+  travelTimeZone: string | null
+  travelEndTimeZone: string | null
   // Passengers on the booking, by type.
   passengerCounts: PassengerCounts
   // The flights of the booking, in segment order (for example ["FL203", "FL204"]).
@@ -535,4 +546,25 @@ export interface ReleaseBookingResult {
   bookingId: string
   reference: string
   status: 'expired'
+}
+
+// Travel insurance (feature 11's tier benefit). 3b shows the offer on Review & Pay, and asks feature 11 to issue the
+// policy at confirm and to cancel it at cancel. Feature 11 decides the policy; a paid add-on goes through feature 5a.
+export type InsuranceOffer =
+  { kind: 'none' } | { kind: 'included'; tierName: string } | { kind: 'member_price'; tierName: string; price: number; currency: string }
+
+export interface InsurancePolicySummary {
+  policyNumber: string
+  price: number
+  currency: string
+  status: 'active' | 'cancelled'
+}
+
+export interface InsurancePort {
+  // What the booker's tier offers for this booking.
+  offer(bookingId: string): Promise<InsuranceOffer>
+  // Issue the policy for a confirmed booking; null when it gets none. Safe to repeat.
+  issue(bookingId: string): Promise<InsurancePolicySummary | null>
+  // Cancel the booking's active policy; null when it has none. Safe to repeat.
+  cancel(bookingId: string): Promise<InsurancePolicySummary | null>
 }

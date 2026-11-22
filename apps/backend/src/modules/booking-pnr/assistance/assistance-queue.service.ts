@@ -54,7 +54,10 @@ export class AssistanceQueueService {
         )
         if (filters.flightId && segments.length === 0) return []
         const flight = request.booking_segment_id ? segments[0] : undefined
-        const departure = segments.length ? new Date(Math.min(...segments.map((segment) => segment.depAt.getTime()))) : null
+        const first = segments.reduce<(typeof segments)[number] | undefined>(
+          (earliest, segment) => (!earliest || segment.depAt < earliest.depAt ? segment : earliest),
+          undefined,
+        )
         return [
           {
             serviceRequestId: request.id,
@@ -69,7 +72,8 @@ export class AssistanceQueueService {
             passengerName: `${passenger.firstName} ${passenger.lastName}`,
             passengerType: passenger.passengerType,
             flightNumber: flight?.flightNumber ?? null,
-            depAt: departure?.toISOString() ?? null,
+            depAt: first?.depAt.toISOString() ?? null,
+            depTimeZone: first?.originTimeZone ?? null,
           },
         ]
       })

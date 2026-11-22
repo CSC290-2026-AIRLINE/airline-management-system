@@ -1,4 +1,4 @@
-import { Body, Controller, Get, NotFoundException, Param, Patch, ValidationPipe } from '@nestjs/common'
+import { Body, Controller, Get, NotFoundException, Param, Put, ValidationPipe } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { BookingError } from '../common/booking-error'
@@ -25,7 +25,7 @@ export class BookingsController {
   }
 
   /** The contact details of a booking that is still on hold, so a customer can correct them before paying. */
-  @Patch(':ref/contact')
+  @Put(':ref/contact')
   async updateContact(
     @CurrentUser() user: AuthenticatedUser,
     @Param('ref') ref: string,

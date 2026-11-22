@@ -40,6 +40,7 @@ import {
   REFUND_PORT,
   SCREENING_PORT,
   SEAT_MAP_PORT,
+  INSURANCE_PORT,
   SEAT_PORT,
   SERVICE_REQUEST_PORT,
 } from './contracts'
@@ -75,13 +76,20 @@ import { FlightCancellationProcessor } from './flight-events/flight-cancellation
 import { AircraftChangeProcessor } from './flight-events/aircraft-change.processor'
 import { FlightEventNotificationsService } from './flight-events/flight-event-notifications.service'
 
+import { LoyaltyModule } from '@backend/modules/loyalty/loyalty.module'
+import { LoyaltyInsuranceAdapter } from './providers/loyalty-insurance.adapter'
+import { BookingInsuranceController } from './insurance/insurance.controller'
+import { BookingInsuranceService } from './insurance/insurance.service'
+
 @Module({
   // Feature 15's audit writer, for the staff cancellation entry (B7).
   // Feature 4's pricing module, so the pricing port is the real adapter.
-  imports: [AuditModule, PricingModule],
+  // Feature 11's loyalty module, for the travel insurance policy.
+  imports: [AuditModule, PricingModule, LoyaltyModule],
   controllers: [
     DevSeatPaymentController,
     DevConfirmController,
+    BookingInsuranceController,
     BookingsController,
     CustomerBookingsController,
     CancelController,
@@ -138,6 +146,8 @@ import { FlightEventNotificationsService } from './flight-events/flight-event-no
     { provide: REFUND_PORT, useClass: RefundStub },
     { provide: SCREENING_PORT, useClass: ScreeningStub },
     { provide: SEAT_MAP_PORT, useClass: AircraftSeatMapAdapter },
+    { provide: INSURANCE_PORT, useClass: LoyaltyInsuranceAdapter },
+    BookingInsuranceService,
     { provide: BOOKING_READ_PORT, useExisting: BookingReadService },
     { provide: CANCEL_FOR_FLIGHT_PORT, useExisting: CancelForFlightService },
     { provide: FLIGHT_EVENT_BUS, useClass: LocalFlightEventBus },
@@ -160,6 +170,7 @@ import { FlightEventNotificationsService } from './flight-events/flight-event-no
     REFUND_PORT,
     SCREENING_PORT,
     SEAT_MAP_PORT,
+    INSURANCE_PORT,
     BOOKING_READ_PORT,
     CANCEL_FOR_FLIGHT_PORT,
     FLIGHT_EVENT_BUS,
