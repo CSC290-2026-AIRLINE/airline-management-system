@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- shadcn exports helpers beside the components */
 'use client'
 
 import * as React from 'react'

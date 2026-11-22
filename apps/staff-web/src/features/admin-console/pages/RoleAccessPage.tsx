@@ -1,0 +1,663 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { CircleAlert, CircleCheck, Eye, Plus, X } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@staff-web/components/ui/dialog'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
+import { TooltipProvider } from '@staff-web/components/ui/tooltip'
+import { cn } from '@staff-web/lib/utils'
+import { useListScreens } from '../api/screens'
+import { useRoleApi, type CreateRoleBody } from '../api/roles'
+import { errorText } from '../api/fetch'
+import { useStaffApi } from '../api/staff'
+import { useRoleAccess } from '../hooks/useRoleAccess'
+import { buildGroups, filterGroups } from '../screen-groups'
+import { AdminErrorCard } from '../components/AdminErrorCard'
+import { CreateRoleDialog } from '../components/CreateRoleDialog'
+import { DeleteRoleDialog } from '../components/DeleteRoleDialog'
+import { NoAccessScreen } from '../components/NoAccessScreen'
+import { RoleList } from '../components/RoleList'
+import { ScreenMatrix } from '../components/ScreenMatrix'
+import { SidebarPreview } from '../components/SidebarPreview'
+import type { RoleSummary, ScreenKind, StaffRow, StaffScreensResponse } from '../types'
+
+/* Helpers --------------------------------------------------------------- */
+
+/** Mirrors `MIN_REASON_LENGTH` in the backend's `ReplaceRoleScreensDto` — the same number, checked on both sides. */
+const MIN_REASON_LENGTH = 10
+
+function setsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false
+  for (const v of a) if (!b.has(v)) return false
+  return true
+}
+
+function setsDiff(a: Set<string>, b: Set<string>): { added: string[]; removed: string[] } {
+  const added: string[] = []
+  const removed: string[] = []
+  for (const v of b) if (!a.has(v)) added.push(v)
+  for (const v of a) if (!b.has(v)) removed.push(v)
+  return { added, removed }
+}
+
+/* Shared class lists ------------------------------------------------------ */
+
+/** What the save panel under the card is showing. */
+type Panel = { kind: 'idle' } | { kind: 'saved'; reason: string; previous: string[]; staffCount: number }
+
+/** The banner above the card: a green line after a create or delete, a red one when something went wrong. */
+interface Notice {
+  tone: 'success' | 'error'
+  title: string
+  body: string
+}
+
+/* Component ------------------------------------------------------------- */
+
+/**
+ * Role access page. The left column lists the roles; the right column shows the screens of the selected role.
+ * Ticking a box marks the row "Unsaved" and opens the Save changes panel under the card; saving PUTs the whole grant
+ * set for the selected role and the backend writes the audit row in the same transaction. After a save the panel turns
+ * green and offers a revert, which puts the previous set back as unsaved changes (it still needs a reason to save).
+ *
+ * Both access gates live in `routes/_authenticated/admin/route.tsx`, one level up: it owns `RequireStaff` (one
+ * `GET /api/me/screens` for all three tabs). Do not add another gate in here.
+ */
+export function RoleAccessPage() {
+  const listScreens = useListScreens()
+  const roleApi = useRoleApi()
+  const staffApi = useStaffApi()
+
+  /* Role selection. The first role is picked once the roles load — see the render-time adjustment below. */
+  const [roleId, setRoleId] = useState<string | null>(null)
+
+  /* Edit state — pending = null means "no unsaved changes" */
+  const [pending, setPending] = useState<Set<string> | null>(null)
+  const [reason, setReason] = useState('')
+  /** Set when Save was pressed without a long-enough reason: the panel turns red until the reason is fixed. */
+  const [reasonMissing, setReasonMissing] = useState(false)
+  /** The screen search box. */
+  const [search, setSearch] = useState('')
+
+  /* Create and delete */
+  const [createOpen, setCreateOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<RoleSummary | null>(null)
+  const [notice, setNotice] = useState<Notice | null>(null)
+  /* A create or delete can start far down the page; bring its result banner into view when it appears. */
+  const noticeRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!notice) return
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    noticeRef.current?.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' })
+  }, [notice])
+
+  /* "Preview as user" dialog — the staff list is fetched when it opens, not with the page. */
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [previewStaff, setPreviewStaff] = useState<StaffRow[]>([])
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const [previewStaffId, setPreviewStaffId] = useState<string | null>(null)
+  /** The chosen person's menu, from `GET /api/admin/staff/:id/screens`. `id` says whose answer it is. */
+  const [previewMenu, setPreviewMenu] = useState<{
+    id: string | null
+    loading: boolean
+    data: StaffScreensResponse | null
+    error: string | null
+  }>({ id: null, loading: false, data: null, error: null })
+
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [panel, setPanel] = useState<Panel>({ kind: 'idle' })
+
+  const registry = useRoleAccess(roleId, listScreens, roleApi.list, roleApi.screens)
+  const groups = useMemo(() => buildGroups(registry.screens), [registry.screens])
+  const visibleGroups = useMemo(() => filterGroups(groups, search), [groups, search])
+  /** The role list is A–Z by name; the API answers with the admin roles first. */
+  const roles = useMemo(() => [...registry.roles].sort((a, b) => a.name.localeCompare(b.name)), [registry.roles])
+
+  const dirty = pending !== null && !setsEqual(pending, registry.granted)
+  const diff = useMemo(() => {
+    if (pending === null) return { added: [], removed: [] }
+    return setsDiff(registry.granted, pending)
+  }, [pending, registry.granted])
+  const changeCount = diff.added.length + diff.removed.length
+  /* Screen names for the save panel's "Gains / Loses" lists. */
+  const screenNames = useMemo(() => {
+    const names = new Map<string, string>()
+    for (const g of registry.screens) for (const s of g.screens) names.set(s.id, s.name)
+    return names
+  }, [registry.screens])
+  const nameOf = (id: string) => screenNames.get(id) ?? id
+
+  /* The backend rejects a shorter reason with a 400 (`MIN_REASON_LENGTH` in the DTO). Mirror it here so the panel can
+     say so before a request that can only fail. */
+  const reasonOk = reason.trim().length >= MIN_REASON_LENGTH
+
+  /* Pick the first role once the roles load — render-time adjustment. */
+  if (roleId === null && !registry.loading && roles.length > 0) {
+    setRoleId(roles[0].id)
+  }
+
+  const currentRole = roles.find((r) => r.id === roleId) ?? null
+
+  /** Reset the edit state. Shared by undo, role switch, and a successful save. */
+  function resetEdits() {
+    setPending(null)
+    setReason('')
+    setReasonMissing(false)
+    setSaveError(null)
+  }
+
+  function selectRole(newRoleId: string | null) {
+    setRoleId(newRoleId)
+    resetEdits()
+    setPanel({ kind: 'idle' })
+    setNotice(null)
+  }
+
+  function toggle(screenId: string, kind: ScreenKind) {
+    if (kind !== 'assignable' || !roleId || currentRole?.is_admin || currentRole?.is_system) return
+    const base = pending ?? new Set(registry.granted)
+    const next = new Set(base)
+    if (next.has(screenId)) next.delete(screenId)
+    else next.add(screenId)
+    setPending(next)
+    // A "Saved" or a failed-save message no longer describes what is on screen once a box moves.
+    setSaveError(null)
+    setPanel({ kind: 'idle' })
+  }
+
+  /** After a save, Revert brings the previous set back as unsaved changes — reverting is a change too, with its own reason. */
+  function undoSaved(previous: string[]) {
+    setPanel({ kind: 'idle' })
+    setPending(new Set(previous))
+    setReason('')
+    setReasonMissing(false)
+  }
+
+  /* Open the "Preview as user" dialog and fetch the staff list for it. The list is loaded here rather than with the
+     page: most admins never open it, and `GET /api/admin/staff` is admin-only and not cheap. */
+  async function openPreview() {
+    setPreviewOpen(true)
+    setPreviewLoading(true)
+    setPreviewError(null)
+    try {
+      const list = await staffApi.list()
+      setPreviewStaff(list.staff)
+      const first = list.staff.find((s) => s.role.id === roleId)
+      setPreviewStaffId((id) => (id && list.staff.some((s) => s.id === id && s.role.id === roleId) ? id : (first?.id ?? null)))
+    } catch (e: unknown) {
+      setPreviewError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  /* What a staff member with this role can actually open, mirroring the policy `GET /api/me/screens` applies on the
+     server: core screens for everyone, admin screens for an `is_admin` role, assignable screens only with a grant.
+     Saved grants only — the dialog says unsaved changes are not included. This is the fallback for the role itself;
+     the chosen person's real menu (below) wins when there is one. */
+  const roleScreens = useMemo(() => {
+    const role = currentRole
+    if (!role) return []
+    return registry.screens.flatMap((g) =>
+      g.screens.filter((s) => (s.kind === 'core' || role.is_admin ? true : s.kind === 'admin' ? false : registry.granted.has(s.id))),
+    )
+  }, [currentRole, registry.granted, registry.screens])
+
+  /* The chosen person's own menu, worked out on the server (`GET /api/admin/staff/:id/screens`) with the same rules
+     as their own `GET /api/me/screens`. A new person resets the answer while rendering; the effect fetches it. */
+  const previewWanted = previewOpen ? previewStaffId : null
+  if (previewWanted !== previewMenu.id) {
+    setPreviewMenu({ id: previewWanted, loading: !!previewWanted, data: null, error: null })
+  }
+  useEffect(() => {
+    if (!previewWanted) return
+    let cancelled = false
+    staffApi
+      .screens(previewWanted)
+      .then((data) => {
+        if (!cancelled) setPreviewMenu({ id: previewWanted, loading: false, data, error: null })
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setPreviewMenu({ id: previewWanted, loading: false, data: null, error: errorText(e) })
+      })
+    return () => {
+      cancelled = true
+    }
+    // `staffApi` closes over `fetchWithAuth`, recreated every render; see `useStaffApi`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewWanted])
+
+  /** The person's own menu when the server answered, the role's screens otherwise. */
+  const previewSees = previewMenu.data?.screens ?? roleScreens
+  /** A switched-off account cannot sign in, so it opens nothing — the server says so in `active`. */
+  const previewDisabled = previewMenu.data !== null && !previewMenu.data.active
+
+  /* Save — the whole grant set goes to the server; there is no per-screen PATCH. */
+  async function save() {
+    if (!roleId || !pending || saving) return
+    if (!reasonOk) {
+      setReasonMissing(true)
+      return
+    }
+    setSaving(true)
+    setSaveError(null)
+    const previous = [...registry.granted]
+    const savedReason = reason.trim()
+    try {
+      const res = await roleApi.replaceScreens(roleId, { screen_ids: [...pending], reason: savedReason })
+      // Take the server's set rather than our own: it is de-duplicated and sorted.
+      registry.setGranted(res.role_id, res.screen_ids)
+      resetEdits()
+      if (!res.changed) {
+        setNotice({ tone: 'success', title: 'Nothing to save', body: 'That role already had exactly these screens.' })
+      } else {
+        setPanel({ kind: 'saved', reason: savedReason, previous, staffCount: currentRole?.staff_count ?? 0 })
+      }
+    } catch (e: unknown) {
+      setSaveError(errorText(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /* Create a role — the dialog owns the form; this does the request and puts the new role in the list. */
+  async function createRole(body: CreateRoleBody) {
+    const created = await roleApi.create(body)
+    // The role is saved. The dialog closes before the list is refreshed, so a failed reload cannot make a successful
+    // create look like a failure — pressing Create again would only produce "that name already exists".
+    setCreateOpen(false)
+    selectRole(created.id)
+    try {
+      await registry.reloadRoles()
+      setNotice({ tone: 'success', title: 'Role created', body: `${created.name} is ready to be given to staff.` })
+    } catch {
+      setNotice({
+        tone: 'error',
+        title: 'Role created, but the list did not refresh',
+        body: `${created.name} was saved. Reload the page to see it in the list.`,
+      })
+    }
+  }
+
+  /* Delete a role — offered for every role except Admin roles and No access. Its staff move to `moveTo` (No access when
+     none was picked). */
+  async function deleteRole(deleteReason: string, moveTo: RoleSummary | undefined) {
+    const target = deleteTarget
+    if (!target) return
+    await roleApi.remove(target.id, { reason: deleteReason, ...(moveTo ? { move_to_role_id: moveTo.id } : {}) })
+    const moved =
+      target.staff_count > 0
+        ? ` ${target.staff_count} staff member${target.staff_count === 1 ? ' was' : 's were'} moved to ${moveTo?.name ?? 'No access'}.`
+        : ''
+    // The role is gone. The dialog closes before the list is refreshed, so a failed reload cannot make a successful
+    // delete look like a failure — deleting again would only produce "role not found".
+    setDeleteTarget(null)
+    // Move the selection to the next role in the list.
+    const next = roles.find((r) => r.id !== target.id)
+    selectRole(next?.id ?? null)
+    try {
+      await registry.reloadRoles()
+      setNotice({ tone: 'success', title: 'Role deleted', body: `${target.name} was removed.${moved}` })
+    } catch {
+      setNotice({
+        tone: 'error',
+        title: 'Role deleted, but the list did not refresh',
+        body: `${target.name} was removed.${moved} Reload the page to see the new list.`,
+      })
+    }
+  }
+
+  /* Render ------------------------------------------------------------ */
+
+  /* A user with no staff row never reaches this point — the layout route answers that case first. */
+
+  if (registry.loading) {
+    return (
+      <Card className="pt-7 pb-6" role="status" aria-live="polite" aria-busy="true">
+        <CardContent className="flex flex-col gap-4 px-6 max-tablet:px-4">
+          <span className="sr-only">Loading role access…</span>
+          <Skeleton className="h-7 w-56" />
+          <Skeleton className="h-4 w-full max-w-prose" />
+          <Skeleton className="h-9 w-56 max-tablet:w-full" />
+          <div className="mt-2 flex flex-col gap-2">
+            {Array.from({ length: 6 }, (_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+  if (registry.error) {
+    /* A signed-in non-admin gets 403 from AdminConsoleGuard. That is an authorization answer, not a broken setup,
+       so it renders the shared access-denied card rather than the setup checklist. */
+    if (registry.status === 403) {
+      return <NoAccessScreen screenName="Role access" homeTo="/" />
+    }
+    return <AdminErrorCard page="Role access" error={registry.error} status={registry.status} onRetry={registry.reload} />
+  }
+
+  const previewCandidates = previewStaff.filter((s) => s.role.id === currentRole?.id)
+  const previewPerson = previewCandidates.find((s) => s.id === previewStaffId) ?? null
+  /** Whose menu is on show — the chosen person, or the role when nobody is chosen. */
+  const previewName = previewPerson ? `${previewPerson.first_name} ${previewPerson.last_name}` : (currentRole?.name ?? 'This role')
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      {/* Banner ------------------------------------------------------- */}
+      {notice && (
+        <div ref={noticeRef} className="relative mb-4 scroll-mt-4">
+          <Alert
+            role={notice.tone === 'error' ? 'alert' : 'status'}
+            variant={notice.tone === 'error' ? 'destructive' : 'default'}
+            className={cn(
+              'pr-12',
+              notice.tone === 'error' ? 'border-danger-line/40 bg-danger-soft' : 'border-success/30 bg-success-soft text-success-strong',
+            )}
+          >
+            {notice.tone === 'error' ? <CircleAlert aria-hidden="true" /> : <CircleCheck aria-hidden="true" />}
+            <AlertTitle>{notice.title}</AlertTitle>
+            <AlertDescription className="text-current">{notice.body}</AlertDescription>
+          </Alert>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="absolute top-2 right-2 text-current hover:bg-black/5"
+            onClick={() => setNotice(null)}
+            aria-label="Dismiss"
+          >
+            <X aria-hidden="true" />
+          </Button>
+        </div>
+      )}
+
+      {registry.missingRoleId && registry.missingRoleId === roleId && (
+        <Alert variant="destructive" className="mb-4 border-danger-line/40 bg-danger-soft">
+          <CircleAlert aria-hidden="true" />
+          <AlertDescription className="flex flex-wrap items-center gap-3 text-current">
+            Role not found. It may have been removed since this page loaded.
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                selectRole(null)
+                registry.reload()
+              }}
+            >
+              Reload roles
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Roles &amp; screen access</CardTitle>
+          <CardDescription>
+            Create roles and choose which screens each role can open. Screen access only: what a screen allows is set by its own feature.
+          </CardDescription>
+          <CardAction>
+            <Button type="button" variant="outline" onClick={() => void openPreview()}>
+              <Eye aria-hidden="true" />
+              <span className="max-phone:hidden">Preview as user</span>
+              <span className="hidden max-phone:inline">Preview</span>
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-8 max-tablet:flex-col max-tablet:gap-5">
+            {/* Role list — stays in view while the long screen list scrolls */}
+            <div className="flex w-70 shrink-0 flex-col gap-4 tablet:sticky tablet:top-6 tablet:self-start max-tablet:w-full">
+              <Button type="button" variant="outline" className="w-fit" onClick={() => setCreateOpen(true)} disabled={dirty || saving}>
+                <Plus aria-hidden="true" />
+                Create role
+              </Button>
+              {dirty && (
+                <p className="m-0 -mb-2 px-1 text-xs text-muted-foreground" id="roles-locked-hint">
+                  Save or cancel your changes to switch roles.
+                </p>
+              )}
+              <RoleList
+                roles={roles}
+                selectedId={roleId}
+                onSelect={(id) => selectRole(id)}
+                onDelete={(role) => setDeleteTarget(role)}
+                disabled={dirty}
+              />
+            </div>
+
+            {/* Screens -------------------------------------------------- */}
+            <div className="flex min-w-0 flex-1 flex-col gap-3">
+              <div>
+                <h3 className="m-0 text-xl font-bold text-foreground">Screens for {currentRole?.name ?? '—'}</h3>
+                <p className="mt-1 mb-0 text-sm text-muted-foreground tabular-nums" aria-live="polite">
+                  {currentRole?.staff_count ?? 0} staff who can sign in have this role
+                  {changeCount > 0 && (
+                    <>
+                      {' · '}
+                      <span className="font-medium text-warning">
+                        {changeCount} unsaved change{changeCount === 1 ? '' : 's'}
+                      </span>
+                    </>
+                  )}
+                </p>
+                {currentRole?.is_system && (
+                  <p className="mt-1 mb-0 text-sm text-muted-foreground">
+                    Managed by the system: accounts that can’t sign in are kept here. Its screens can’t be changed.
+                  </p>
+                )}
+              </div>
+              <ScreenMatrix
+                groups={visibleGroups}
+                granted={registry.granted}
+                pending={pending}
+                isAdminRole={!!currentRole?.is_admin}
+                readOnly={!!currentRole?.is_system}
+                onToggle={toggle}
+                search={search}
+                onSearchChange={setSearch}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Save bar — pinned to the bottom of the viewport, so Save is in reach wherever the box was ticked */}
+      {roleId && dirty && (
+        <section
+          className="sticky bottom-4 z-20 mt-5 rounded-xl border border-warning/30 bg-warning-soft px-5 py-4 shadow-lg max-tablet:px-4"
+          aria-label="Save changes"
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
+            <h3 className="m-0 text-base font-bold text-warning">
+              {changeCount} unsaved change{changeCount === 1 ? '' : 's'} to {currentRole?.name}
+            </h3>
+            <p className="m-0 text-xs text-foreground/75 tabular-nums">
+              Applies to {currentRole?.staff_count ?? 0} staff who can sign in with this role.
+            </p>
+          </div>
+          <dl className="mt-2 mb-0 flex flex-col gap-0.5 text-sm" aria-label="Screens changing">
+            {diff.added.length > 0 && (
+              <div className="flex min-w-0 gap-2">
+                <dt className="shrink-0 font-semibold text-success-strong">Gains</dt>
+                <dd className="m-0 min-w-0 truncate text-foreground" title={diff.added.map(nameOf).join(', ')}>
+                  {diff.added.map(nameOf).join(', ')}
+                </dd>
+              </div>
+            )}
+            {diff.removed.length > 0 && (
+              <div className="flex min-w-0 gap-2">
+                <dt className="shrink-0 font-semibold text-danger">Loses</dt>
+                <dd className="m-0 min-w-0 truncate text-foreground" title={diff.removed.map(nameOf).join(', ')}>
+                  {diff.removed.map(nameOf).join(', ')}
+                </dd>
+              </div>
+            )}
+          </dl>
+          {/* Phone: stacked and stretched (the default). Wider: one row aligned to the input's baseline. */}
+          <div className="mt-3 flex gap-2.5 max-phone:flex-col phone:items-end">
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <Label htmlFor="access-reason" className="text-xs text-foreground/75">
+                Reason (saved in the audit log)
+              </Label>
+              <Input
+                id="access-reason"
+                className={cn('bg-background text-sm md:text-sm', reasonMissing && 'border-danger-line focus-visible:border-danger-line')}
+                aria-invalid={reasonMissing || undefined}
+                aria-describedby={reasonMissing ? 'access-reason-error' : undefined}
+                placeholder={`Why is this changing? (at least ${MIN_REASON_LENGTH} characters)`}
+                value={reason}
+                maxLength={500}
+                onChange={(e) => {
+                  setReason(e.target.value)
+                  if (reasonMissing && e.target.value.trim().length >= MIN_REASON_LENGTH) setReasonMissing(false)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void save()
+                }}
+              />
+            </div>
+            <div className="flex gap-2.5 max-phone:*:flex-1">
+              <Button type="button" variant="outline" className="bg-background" onClick={resetEdits} disabled={saving}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={() => void save()} disabled={saving}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </Button>
+            </div>
+          </div>
+          {reasonMissing && (
+            <p id="access-reason-error" className="mt-1.5 mb-0 text-xs text-danger" role="alert">
+              Add a reason of at least {MIN_REASON_LENGTH} characters before saving.
+            </p>
+          )}
+          {saveError && (
+            <p className="mt-3 mb-0 rounded-lg bg-danger-soft px-4 py-2.5 text-sm text-danger" role="alert">
+              {saveError}
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* Saved — takes the save bar's place, so the confirmation shows where the Save button was */}
+      {roleId && !dirty && panel.kind === 'saved' && (
+        <section
+          className="sticky bottom-4 z-20 mt-5 flex items-center gap-3 rounded-xl border border-success/30 bg-success-soft px-5 py-3.5 shadow-lg max-tablet:px-4 max-phone:flex-wrap"
+          role="status"
+        >
+          <CircleCheck className="size-5 shrink-0 text-success-strong" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p className="m-0 text-sm font-semibold text-foreground">
+              Saved. Applies to {panel.staffCount} staff with this role on their next page load.
+            </p>
+            <p className="m-0 truncate text-xs text-foreground/75" title={panel.reason}>
+              Reason: {panel.reason}
+            </p>
+          </div>
+          <Button type="button" variant="outline" size="sm" className="bg-background" onClick={() => undoSaved(panel.previous)}>
+            Revert this save
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="text-foreground/75"
+            onClick={() => setPanel({ kind: 'idle' })}
+            aria-label="Dismiss"
+          >
+            <X aria-hidden="true" />
+          </Button>
+        </section>
+      )}
+
+      <p className="mt-4 text-xs text-muted-foreground">Core and Admin screens are locked; only assignable screens can change.</p>
+
+      {/* Create role ------------------------------------------------- */}
+      {createOpen && <CreateRoleDialog groups={groups} onCancel={() => setCreateOpen(false)} onSubmit={createRole} />}
+
+      {/* Delete role ------------------------------------------------- */}
+      {deleteTarget && <DeleteRoleDialog role={deleteTarget} roles={roles} onCancel={() => setDeleteTarget(null)} onSubmit={deleteRole} />}
+
+      {/* Preview as user --------------------------------------------- */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent showCloseButton={false} className="flex w-130 flex-col gap-3.5 border-0 bg-background p-6 font-sans text-foreground">
+          <header className="flex items-center gap-2">
+            <DialogTitle className="flex-1 text-xl font-bold text-foreground">Preview as user</DialogTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => setPreviewOpen(false)}
+              aria-label="Close"
+            >
+              <X className="size-5" />
+            </Button>
+          </header>
+          <DialogDescription className="text-sm text-muted-foreground">
+            See exactly the menu a staff member gets. It follows their role.
+          </DialogDescription>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-foreground" htmlFor="preview-staff">
+              Staff member
+            </Label>
+            {previewError ? (
+              <p className="text-sm text-danger">Could not load the staff list — {previewError}</p>
+            ) : previewLoading ? (
+              <p className="text-sm text-muted-foreground">Loading staff…</p>
+            ) : previewCandidates.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nobody has the {currentRole?.name} role yet.</p>
+            ) : (
+              <Select value={previewStaffId ?? undefined} onValueChange={setPreviewStaffId}>
+                <SelectTrigger
+                  id="preview-staff"
+                  className="h-auto w-full border-input bg-background px-3.5 py-3 text-sm font-medium text-foreground"
+                >
+                  <SelectValue placeholder="Choose a staff member" />
+                </SelectTrigger>
+                <SelectContent position="popper" className="font-sans">
+                  {previewCandidates.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.first_name} {s.last_name} · {s.role.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          <p className="text-xs font-semibold text-muted-foreground uppercase">
+            {previewDisabled ? `${previewName} is switched off` : `${previewName} sees`}
+          </p>
+          {previewMenu.error ? (
+            <p className="text-sm text-danger">Could not load that person’s menu — {previewMenu.error}</p>
+          ) : previewMenu.loading ? (
+            <p className="text-sm text-muted-foreground">Working out their menu…</p>
+          ) : previewDisabled ? (
+            <>
+              <p className="text-sm text-foreground">This account is switched off — it cannot sign in, so it opens nothing.</p>
+              <SidebarPreview screens={[]} roleName={currentRole?.name ?? 'This role'} />
+            </>
+          ) : (
+            <SidebarPreview screens={previewSees} roleName={currentRole?.name ?? 'This role'} />
+          )}
+          <p className="text-xs text-muted-foreground">Unsaved changes on this page aren’t included until you save.</p>
+          <div className="flex justify-end">
+            <Button type="button" className="h-auto bg-primary py-3 text-sm text-white" onClick={() => setPreviewOpen(false)}>
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </TooltipProvider>
+  )
+}

@@ -6,12 +6,9 @@ import { ErrorBoundary } from '../components/ErrorBoundary'
 import { Separator } from '../components/ui/separator'
 
 export const Route = createFileRoute('/_authenticated')({
-  beforeLoad: ({ context, location }) => {
+  beforeLoad: ({ context }) => {
     if (!context.auth.isSignedIn) {
-      throw redirect({
-        to: '/login',
-        search: { redirect: location.href },
-      })
+      throw redirect({ to: '/login' })
     }
   },
   component: AuthenticatedLayout,

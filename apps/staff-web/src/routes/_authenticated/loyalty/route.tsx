@@ -1,0 +1,20 @@
+import { createFileRoute, Outlet } from '@tanstack/react-router'
+import { Toaster } from '@staff-web/components/ui/sonner'
+import { AppShell } from '@staff-web/features/admin-console/AppShell'
+import { RequireStaff } from '@staff-web/features/admin-console/components/RequireStaff'
+
+/** Layout for every `/loyalty/*` page: the global staff sidebar around the page. */
+export const Route = createFileRoute('/_authenticated/loyalty')({
+  component: LoyaltyWorkspace,
+})
+
+function LoyaltyWorkspace() {
+  return (
+    <RequireStaff>
+      <AppShell>
+        <Outlet />
+        <Toaster position="top-center" />
+      </AppShell>
+    </RequireStaff>
+  )
+}
