@@ -40,7 +40,7 @@ export interface Complaint {
   events?: CaseEvent[]
 }
 
-/** The body of POST /api/complaints and POST /api/complaints/guest. */
+/** The body of POST /api/complaints. */
 export interface NewComplaint {
   type: ComplaintType
   location?: string

@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer'
-import { IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator'
+import { IsIn, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator'
 import { COMPLAINT_TYPES, EMPLOYEE_LOCATIONS, FLIGHT_ISSUES, FOOD_ISSUES, type ComplaintType } from '../customer-service.constants'
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value)
@@ -67,35 +67,4 @@ export class CreateComplaintDto {
   @IsString()
   @MaxLength(50)
   contact_phone?: string
-}
-
-/**
- * Payload for a passenger without an account ("I'm a passenger without an account").
- * Verified against booking_passenger (booking.booking_reference + passenger.last_name)
- * and stored in complaint_case with customer_id = NULL and booking_passenger_id set.
- */
-export class CreateGuestComplaintDto extends CreateComplaintDto {
-  @Transform(upperTrim)
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(12)
-  declare booking_reference: string
-
-  @Transform(trim)
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  declare surname: string
-
-  @IsOptional()
-  @Transform(trim)
-  @IsString()
-  @MaxLength(200)
-  declare contact_email?: string
-
-  @IsOptional()
-  @Transform(trim)
-  @IsString()
-  @MaxLength(50)
-  declare contact_phone?: string
 }

@@ -4,7 +4,7 @@ import { SimulationClock } from '../admin-console/simulation-clock'
 import { AuditService } from '../admin-console/audit/audit.service'
 import { FLIGHT_ISSUES, FOOD_ISSUES, type CaseStatus } from './customer-service.constants'
 import { CASE_DETAIL_INCLUDE, CASE_INCLUDE, toComplaintDetail, toComplaintView, type ComplaintView } from './complaint.view'
-import type { CreateComplaintDto, CreateGuestComplaintDto } from './dto/create-complaint.dto'
+import type { CreateComplaintDto } from './dto/create-complaint.dto'
 import type { DecideCompensationDto, UpdateNotificationTemplateDto } from './dto/staff-actions.dto'
 import { placeholdersFor, unknownPlaceholders } from './notification-placeholders'
 import type { InboundEventInput } from './notification-events'
@@ -395,141 +395,6 @@ export class CustomerServiceService {
     return this.getForCustomer(userId, caseNumber)
   }
 
-  // ── Customer (Guest / Passenger without an account) ─────────────────────
-
-  async createGuest(dto: CreateGuestComplaintDto): Promise<ComplaintView> {
-    const bookingReference = dto.booking_reference?.trim().toUpperCase()
-    const surname = dto.surname?.trim()
-
-    if (!bookingReference || !surname) {
-      throw new BadRequestException('Booking reference and surname are required')
-    }
-
-    const bp = await this.db.booking_passenger.findFirst({
-      where: {
-        booking: { booking_reference: bookingReference },
-        passenger: { last_name: { equals: surname, mode: 'insensitive' }, deleted_at: null },
-      },
-      include: {
-        passenger: true,
-        booking: {
-          include: {
-            booking_segment: { select: { flight_id: true } },
-          },
-        },
-      },
-    })
-
-    if (!bp) {
-      throw new NotFoundException('BOOKING_NOT_FOUND')
-    }
-
-    let flightId: string | null = null
-    if (dto.type !== 'employee') {
-      const issues: readonly string[] = dto.type === 'flight' ? FLIGHT_ISSUES : FOOD_ISSUES
-      if (!dto.issue || !issues.includes(dto.issue)) {
-        throw new BadRequestException(`issue must be one of: ${issues.join(', ')}`)
-      }
-
-      const [flight] = await this.db.$queryRaw<{ id: string }[]>`
-        SELECT id FROM flight
-        WHERE replace(upper(flight_number), ' ', '') = ${dto.flight_number} AND service_date = ${dto.service_date}::date
-        LIMIT 1`
-      if (!flight) throw new NotFoundException(`No flight ${dto.flight_number} on ${dto.service_date}`)
-      flightId = flight.id
-
-      const hasSegment = bp.booking?.booking_segment?.some((s) => s.flight_id === flight.id)
-      if (!hasSegment) {
-        throw new BadRequestException('FLIGHT_NOT_ON_BOOKING')
-      }
-    }
-
-    const contactEmail = dto.contact_email?.trim() || bp.booking?.contact_email || null
-    const contactPhone = dto.contact_phone?.trim() || bp.booking?.contact_phone || null
-    if (!contactEmail && !contactPhone) {
-      throw new BadRequestException('Contact email or phone number is required')
-    }
-
-    const now = this.clock.now()
-    const passengerName = `${bp.passenger.first_name} ${bp.passenger.last_name}`.trim()
-    const { caseNumber, caseId, eventId } = await this.db.$transaction(async (tx) => {
-      const [{ n }] = await tx.$queryRaw<{ n: bigint }[]>`SELECT nextval('complaint_case_seq') AS n`
-      const case_number = `CS-${now.getUTCFullYear()}-${String(n).padStart(6, '0')}`
-      const row = await tx.complaint_case.create({
-        data: {
-          case_number,
-          type: dto.type,
-          passenger_id: bp.passenger_id,
-          customer_id: null,
-          booking_passenger_id: bp.id,
-          contact_email: contactEmail,
-          contact_phone: contactPhone,
-          opened_at: now,
-        },
-        select: { id: true },
-      })
-      if (dto.type === 'employee') {
-        await tx.employee_complaint.create({
-          data: { case_id: row.id, location: dto.location!, staff_name: dto.staff_name || null, description: dto.description },
-        })
-      } else if (dto.type === 'flight') {
-        await tx.flight_complaint.create({ data: { case_id: row.id, flight_id: flightId!, issue: dto.issue!, details: dto.description } })
-      } else {
-        await tx.food_complaint.create({ data: { case_id: row.id, flight_id: flightId!, issue: dto.issue!, details: dto.description } })
-      }
-      const event = await tx.case_event.create({
-        data: { case_id: row.id, event_type: 'created', actor_type: 'complainant', occurred_at: now },
-      })
-      return { caseNumber: case_number, caseId: row.id, eventId: event.id }
-    })
-
-    if (this.notificationService) {
-      await this.notify({
-        source: '13',
-        sourceEventId: eventId,
-        eventType: 'complaint_received',
-        caseId,
-        payload: {
-          case_number: caseNumber,
-          passenger_name: passengerName,
-        },
-        recipients: [
-          {
-            passengerName,
-            email: contactEmail,
-            phone: contactPhone,
-            customerId: null,
-          },
-        ],
-      })
-    }
-
-    return this.getGuestCase(caseNumber, bookingReference, surname)
-  }
-
-  async getGuestCase(caseNumber: string, bookingReference: string, surname: string): Promise<ComplaintView> {
-    const normalizedCase = caseNumber.trim().toUpperCase()
-    const normalizedRef = bookingReference.trim().toUpperCase()
-    const normalizedSurname = surname.trim()
-
-    const row = await this.db.complaint_case.findFirst({
-      where: {
-        case_number: normalizedCase,
-        booking_passenger: {
-          booking: { booking_reference: normalizedRef },
-          passenger: { last_name: { equals: normalizedSurname, mode: 'insensitive' } },
-        },
-      },
-      include: CASE_DETAIL_INCLUDE,
-    })
-
-    if (!row) {
-      throw new NotFoundException(`Case ${caseNumber} not found for this booking`)
-    }
-
-    return toComplaintDetail(row, 'customer')
-  }
-
   // ── Staff ────────────────────────────────────────────────────────────────
 
   async listForStaff(userId: string): Promise<ComplaintView[]> {
@@ -601,9 +466,12 @@ export class CustomerServiceService {
     const callerStaffId = await this.staffIdFor(userId)
     const targetStaff = await this.db.staff.findFirst({
       where: { id: targetStaffId, deleted_at: null },
-      select: { id: true, first_name: true, last_name: true },
+      select: { id: true, first_name: true, last_name: true, role: { select: { code: true } } },
     })
     if (!targetStaff) throw new NotFoundException(`Staff ${targetStaffId} not found`)
+    if (targetStaff.role?.code !== 'cs-agent' && targetStaff.role?.code !== 'cs-supervisor') {
+      throw new BadRequestException('Target staff must have role cs-agent or cs-supervisor')
+    }
 
     const current = await this.db.complaint_case.findUnique({
       where: { id },
@@ -784,9 +652,16 @@ export class CustomerServiceService {
   }
 
   async addNote(userId: string, id: string, note: string): Promise<ComplaintView> {
-    const staffId = await this.staffIdFor(userId)
-    const current = await this.db.complaint_case.findUnique({ where: { id }, select: { id: true, case_number: true } })
+    const staff = await this.staffFor(userId)
+    const staffId = staff.id
+    const current = await this.db.complaint_case.findUnique({
+      where: { id },
+      select: { id: true, case_number: true, owner_staff_id: true },
+    })
     if (!current) throw new NotFoundException(`Case ${id} not found`)
+    if (!staff.isSupervisor && current.owner_staff_id !== staffId) {
+      throw new ForbiddenException('NOT_CASE_OWNER')
+    }
     const now = this.clock.now()
 
     await this.db.$transaction(async (tx) => {
@@ -1087,6 +962,10 @@ export class CustomerServiceService {
     const staffId = await this.staffIdFor(userId)
     const type = await this.db.notification_type.findUnique({ where: { code } })
     if (!type) throw new NotFoundException(`Notification type ${code} not found`)
+
+    if (type.is_mandatory && dto.channel === 'email' && dto.isActive === false) {
+      throw new BadRequestException('MANDATORY_EMAIL_REQUIRED')
+    }
 
     await this.db.$transaction(async (tx) => {
       const existing = await tx.notification_template.findUnique({

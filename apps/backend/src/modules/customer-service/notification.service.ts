@@ -239,6 +239,15 @@ export class NotificationService implements OnModuleInit {
     const sentKeys = new Set<string>()
     let sentCount = 0
 
+    const recipientNames: Record<string, string> = { ...((input.payload?.recipient_names as Record<string, string>) || {}) }
+    for (const r of recipients) {
+      if (r.passengerName) {
+        if (r.email?.trim()) recipientNames[r.email.trim()] = r.passengerName
+        if (r.phone?.trim()) recipientNames[r.phone.trim()] = r.passengerName
+        if (r.customerId) recipientNames[r.customerId] = r.passengerName
+      }
+    }
+
     for (const r of recipients) {
       // 3. Respect notification_preference. With no row: email on, SMS and push off.
       let emailOn = true
@@ -345,10 +354,16 @@ export class NotificationService implements OnModuleInit {
       }
     }
 
-    // 9. Set processed_at on the event
+    // 9. Set processed_at on the event and record recipient names map in payload so retry keeps passenger name
     await this.db.inbound_event.update({
       where: { id: savedEvent.id },
-      data: { processed_at: this.clock.now() },
+      data: {
+        payload: {
+          ...input.payload,
+          recipient_names: recipientNames,
+        },
+        processed_at: this.clock.now(),
+      },
     })
 
     return { ignored: false, eventId: savedEvent.id, sentCount }
@@ -532,8 +547,39 @@ export class NotificationService implements OnModuleInit {
       }
 
       const payload = (notif.inbound_event.payload as Record<string, any>) ?? {}
-      const subject = renderTemplate(tpl.subject_template, payload)
-      const body = renderTemplate(tpl.body_template, payload) ?? ''
+      const recipientNames = (payload.recipient_names as Record<string, string>) ?? {}
+      let passengerName = recipientNames[notif.recipient] ?? payload.passenger_name
+
+      if (!passengerName && notif.customer_id && db.customer) {
+        const cust = await db.customer.findUnique({
+          where: { id: notif.customer_id },
+          include: { passenger: true },
+        })
+        if (cust?.passenger) {
+          passengerName = `${cust.passenger.first_name} ${cust.passenger.last_name}`.trim()
+        }
+      }
+
+      if (!passengerName && db.booking_passenger) {
+        const bp = await db.booking_passenger.findFirst({
+          where: {
+            booking: {
+              OR: [{ contact_email: notif.recipient }, { contact_phone: notif.recipient }],
+            },
+          },
+          include: { passenger: true },
+        })
+        if (bp?.passenger) {
+          passengerName = `${bp.passenger.first_name} ${bp.passenger.last_name}`.trim()
+        }
+      }
+
+      const placeholderData = {
+        ...payload,
+        ...(passengerName ? { passenger_name: passengerName } : {}),
+      }
+      const subject = renderTemplate(tpl.subject_template, placeholderData)
+      const body = renderTemplate(tpl.body_template, placeholderData) ?? ''
 
       if (this.mockFailure) {
         return db.notification.update({

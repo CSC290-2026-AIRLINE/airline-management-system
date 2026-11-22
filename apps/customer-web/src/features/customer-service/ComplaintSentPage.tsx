@@ -15,16 +15,14 @@ const TRACKER_STEPS: { status: CaseStatus; label: string }[] = [
 ]
 
 export function ComplaintSentPage() {
-  const { caseNumber, bookingRef, surname, guest } = useSearch({ from: '/complaints/sent' })
+  const { caseNumber } = useSearch({ from: '/complaints/sent' })
   const navigate = useNavigate()
   const { user } = useAppAuth()
   const api = useComplaintsApi()
   const [complaint, setComplaint] = useState<Complaint | null>(null)
   const [error, setError] = useState<string | null>(caseNumber ? null : 'No case number was given.')
 
-  const isGuest = !user || guest === '1' || sessionStorage.getItem('f13_guest_mode') === '1' || complaint?.fromSource === 'No account'
-
-  const fetchCase = useEffectEvent((n: string) => (isGuest ? api.getGuest(n, bookingRef, surname) : api.get(n, bookingRef, surname)))
+  const fetchCase = useEffectEvent((n: string) => api.get(n))
 
   useEffect(() => {
     if (!caseNumber) return
@@ -42,15 +40,13 @@ export function ComplaintSentPage() {
     }
   }, [caseNumber])
 
-  const activeBookingRef = complaint?.bookingRef || bookingRef || ''
-  const activeSurname = surname || (complaint?.passengerName ? complaint.passengerName.trim().split(/\s+/).pop() : undefined) || ''
   const currentStepIdx = Math.max(
     0,
     TRACKER_STEPS.findIndex((s) => s.status === (complaint?.status ?? 'with_supervisor')),
   )
 
   return (
-    <ComplaintPage isGuest={isGuest}>
+    <ComplaintPage>
       {/* Page Header */}
       <div style={{ marginBottom: '24px', textAlign: 'left' }}>
         <h1 style={{ margin: '0 0 6px', fontSize: '26px', fontWeight: 700, color: '#0A1424', letterSpacing: '-0.02em', textAlign: 'left' }}>
@@ -67,7 +63,7 @@ export function ComplaintSentPage() {
         </div>
       )}
 
-      {/* Two Column Layout matching Figma 05 & 05c */}
+      {/* Two Column Layout matching Figma 05 */}
       <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
         {/* Left Column: Complaint Sent Card (784px) */}
         <div
@@ -86,9 +82,7 @@ export function ComplaintSentPage() {
         >
           {/* Green Success Banner */}
           <div style={successStyle}>
-            {isGuest
-              ? `Thank you. Your complaint was sent. We emailed a copy to the address on booking ${activeBookingRef}.`
-              : `Thank you. Your complaint was sent. We emailed a copy to ${complaint?.contactEmail || user?.email || 'somchai.w@example.com'}.`}
+            {`Thank you. Your complaint was sent. We emailed a copy to ${complaint?.contactEmail || user?.email || 'your account email'}.`}
           </div>
 
           {/* Case Number Display */}
@@ -123,11 +117,7 @@ export function ComplaintSentPage() {
               }}
             >
               <span style={{ color: '#677287', flex: 1 }}>From</span>
-              <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>
-                {isGuest
-                  ? `${complaint?.passengerName || activeSurname || '—'} · Passenger (booking ${activeBookingRef})`
-                  : `${complaint?.passengerName || '—'} · Customer`}
-              </span>
+              <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>{complaint?.passengerName || '—'} · Customer</span>
             </div>
             {complaint?.flightNumber && (
               <div
@@ -187,22 +177,20 @@ export function ComplaintSentPage() {
               <span style={{ color: '#677287', flex: 1 }}>Sent to</span>
               <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>Customer Service supervisor</span>
             </div>
-            {!isGuest && (
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  padding: '10px 0',
-                  borderTop: '1px solid #E8EDF3',
-                  fontSize: '14px',
-                }}
-              >
-                <span style={{ color: '#677287', flex: 1 }}>Opened</span>
-                <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>
-                  {complaint ? formatDateTime(complaint.openedAt) : 'Just now'}
-                </span>
-              </div>
-            )}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '10px 0',
+                borderTop: '1px solid #E8EDF3',
+                fontSize: '14px',
+              }}
+            >
+              <span style={{ color: '#677287', flex: 1 }}>Opened</span>
+              <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>
+                {complaint ? formatDateTime(complaint.openedAt) : 'Just now'}
+              </span>
+            </div>
           </div>
 
           {/* Status Tracker matching Figma 05 / 05c */}
@@ -256,12 +244,6 @@ export function ComplaintSentPage() {
             </div>
           </div>
 
-          {isGuest && (
-            <div style={{ fontSize: '13px', color: '#677287' }}>
-              Save your case number. Without an account, you check your case with the case number and your surname.
-            </div>
-          )}
-
           {/* Action Buttons */}
           <div style={{ display: 'flex', gap: '16px', justifyContent: 'flex-end', marginTop: '4px' }}>
             <button type="button" onClick={() => void navigate({ to: '/complaints' })} style={btnSecondary}>
@@ -274,9 +256,6 @@ export function ComplaintSentPage() {
                   to: '/complaints/check',
                   search: {
                     caseNumber: caseNumber || complaint?.caseNumber,
-                    bookingRef: isGuest ? activeBookingRef : undefined,
-                    surname: isGuest ? activeSurname : undefined,
-                    guest: isGuest ? '1' : undefined,
                   },
                 })
               }

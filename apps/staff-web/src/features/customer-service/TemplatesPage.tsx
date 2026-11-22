@@ -78,6 +78,7 @@ interface ChannelSectionProps {
   draftSubject: string
   draftBody: string
   saving: boolean
+  isSupervisor: boolean
   onDraftSubject: (value: string) => void
   onDraftBody: (value: string) => void
   onEdit: () => void
@@ -86,7 +87,7 @@ interface ChannelSectionProps {
 }
 
 function ChannelSection(props: ChannelSectionProps) {
-  const { title, control, text, hasSubject, placeholders, editing, draftSubject, draftBody, saving } = props
+  const { title, control, text, hasSubject, placeholders, editing, draftSubject, draftBody, saving, isSupervisor } = props
   const problem = editing ? draftProblem(props.channel, draftSubject, draftBody, placeholders) : null
   return (
     <section className="flex flex-col gap-2.5 border-t pt-3.5">
@@ -94,10 +95,14 @@ function ChannelSection(props: ChannelSectionProps) {
         <h3 className="text-[15px] font-bold text-foreground">{title}</h3>
         <div className="flex items-center gap-2.5">
           {control}
-          <span className="h-4 w-px bg-border" aria-hidden="true" />
-          <Button variant="link" size="sm" className="h-auto px-0" onClick={props.onEdit}>
-            Edit
-          </Button>
+          {isSupervisor && (
+            <>
+              <span className="h-4 w-px bg-border" aria-hidden="true" />
+              <Button variant="link" size="sm" className="h-auto px-0" onClick={props.onEdit}>
+                Edit
+              </Button>
+            </>
+          )}
         </div>
       </div>
       {editing ? (
@@ -148,6 +153,7 @@ function ChannelSection(props: ChannelSectionProps) {
 export function TemplatesPage() {
   const api = useComplaintsApi()
   const [templates, setTemplates] = useState<StaffTemplateItemView[] | null>(null)
+  const [isSupervisor, setIsSupervisor] = useState(false)
   const [loadError, setLoadError] = useState<unknown>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [selectedCode, setSelectedCode] = useState('flight_delayed')
@@ -159,9 +165,15 @@ export function TemplatesPage() {
   const [saving, setSaving] = useState(false)
 
   const fetchTemplates = useEffectEvent(() => api.getTemplates())
+  const fetchMe = useEffectEvent(() => api.getMe())
 
   useEffect(() => {
     let active = true
+    fetchMe()
+      .then((me) => {
+        if (active) setIsSupervisor(Boolean(me.isSupervisor))
+      })
+      .catch(() => {})
     fetchTemplates()
       .then((res) => {
         if (active) setTemplates(res)
@@ -260,13 +272,16 @@ export function TemplatesPage() {
       text: savedText(selected, ch),
       hasSubject: HAS_SUBJECT[ch],
       placeholders: selected.placeholders,
-      editing: editingChannel === ch,
+      editing: isSupervisor && editingChannel === ch,
       draftSubject,
       draftBody,
       saving,
+      isSupervisor,
       onDraftSubject: setDraftSubject,
       onDraftBody: setDraftBody,
-      onEdit: () => startEdit(ch),
+      onEdit: () => {
+        if (isSupervisor) startEdit(ch)
+      },
       onCancel: () => setEditingChannel(null),
       onSave: () => void saveEdit(),
     }
@@ -282,7 +297,7 @@ export function TemplatesPage() {
         <Switch
           aria-label={`${label} on or off`}
           checked={on}
-          disabled={missing}
+          disabled={missing || !isSupervisor}
           onCheckedChange={() => void toggleChannel(selected.code, key)}
           className="data-[state=checked]:bg-success-strong"
         />

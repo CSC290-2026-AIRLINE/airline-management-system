@@ -80,21 +80,6 @@ export function MakeComplaintPage() {
   const displayName = clerkUser?.fullName || user?.email || 'your account'
   const api = useComplaintsApi()
 
-  // Account mode: 'account' = signed in passenger, 'guest' = passenger without an account
-  const [manualGuestChoice, setManualGuestChoice] = useState(false)
-  const accountMode: 'account' | 'guest' = !user || manualGuestChoice ? 'guest' : 'account'
-
-  // Guest fields
-  const [bookingRef, setBookingRef] = useState('')
-  const [surname, setSurname] = useState('')
-  const [guestEmail, setGuestEmail] = useState('')
-  const [guestPhone, setGuestPhone] = useState('')
-
-  // Right column quick lookup fields
-  const [checkCaseNumber, setCheckCaseNumber] = useState('')
-  const [checkBookingRef, setCheckBookingRef] = useState('')
-  const [checkSurname, setCheckSurname] = useState('')
-
   // Type selection
   const [type, setType] = useState<ComplaintType>('employee')
 
@@ -128,10 +113,6 @@ export function MakeComplaintPage() {
 
   function validate(): boolean {
     const e: Record<string, string> = {}
-    if (accountMode === 'guest') {
-      if (!bookingRef.trim()) e.bookingRef = 'Booking reference is required.'
-      if (!surname.trim()) e.surname = 'Surname is required.'
-    }
     if (type === 'employee') {
       if (!location) e.location = 'Please choose where it happened.'
     } else {
@@ -147,16 +128,11 @@ export function MakeComplaintPage() {
   }
 
   async function submit() {
+    if (!user) {
+      void navigate({ to: '/login', search: { redirect: '/complaints' } })
+      return
+    }
     if (!validate()) return
-    const guestFields =
-      accountMode === 'guest'
-        ? {
-            booking_reference: bookingRef.trim().toUpperCase(),
-            surname: surname.trim(),
-            contact_email: guestEmail.trim() || undefined,
-            contact_phone: guestPhone.trim() || undefined,
-          }
-        : {}
 
     const body: NewComplaint =
       type === 'employee'
@@ -167,7 +143,6 @@ export function MakeComplaintPage() {
             flight_number: flightNumber.replace(/\s+/g, '').toUpperCase() || undefined,
             service_date: serviceDate || undefined,
             description: description.trim(),
-            ...guestFields,
           }
         : {
             type,
@@ -175,36 +150,18 @@ export function MakeComplaintPage() {
             service_date: serviceDate,
             issue,
             description: description.trim(),
-            ...guestFields,
           }
 
     setSubmitting(true)
     setSubmitError(null)
     try {
-      const created = accountMode === 'guest' ? await api.createGuest(body) : await api.create(body)
-      if (accountMode === 'guest') {
-        sessionStorage.setItem('f13_guest_mode', '1')
-        void navigate({
-          to: '/complaints/sent',
-          search: {
-            caseNumber: created.caseNumber,
-            bookingRef: bookingRef.trim().toUpperCase() || undefined,
-            surname: surname.trim() || undefined,
-            guest: '1',
-          },
-        })
-      } else {
-        sessionStorage.removeItem('f13_guest_mode')
-        void navigate({
-          to: '/complaints/sent',
-          search: {
-            caseNumber: created.caseNumber,
-            bookingRef: undefined,
-            surname: undefined,
-            guest: undefined,
-          },
-        })
-      }
+      const created = await api.create(body)
+      void navigate({
+        to: '/complaints/sent',
+        search: {
+          caseNumber: created.caseNumber,
+        },
+      })
     } catch (e) {
       setSubmitError(errorMessage(e))
       setSubmitting(false)
@@ -213,22 +170,8 @@ export function MakeComplaintPage() {
 
   const issuesList = type === 'food' ? FOOD_ISSUES : FLIGHT_ISSUES
 
-  function selectAccountOption() {
-    sessionStorage.removeItem('f13_guest_mode')
-    if (!user) {
-      void navigate({ to: '/login', search: { redirect: '/complaints' } })
-      return
-    }
-    setManualGuestChoice(false)
-  }
-
-  function selectGuestOption() {
-    sessionStorage.setItem('f13_guest_mode', '1')
-    setManualGuestChoice(true)
-  }
-
   return (
-    <ComplaintPage isGuest={accountMode === 'guest'} onSignInClick={selectAccountOption}>
+    <ComplaintPage>
       {/* Page Header */}
       <div style={{ marginBottom: '24px', textAlign: 'left' }}>
         <h1 style={{ margin: '0 0 6px', fontSize: '26px', fontWeight: 700, color: '#0A1424', letterSpacing: '-0.02em', textAlign: 'left' }}>
@@ -265,87 +208,43 @@ export function MakeComplaintPage() {
           {/* Section 1: Who are you */}
           <div>
             <h2 style={{ margin: '0 0 14px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>1. Who are you?</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              {/* Option: I have an account */}
+            {user ? (
               <div
-                onClick={selectAccountOption}
                 style={{
                   padding: '16px 18px',
                   borderRadius: '12px',
-                  backgroundColor: accountMode === 'account' ? '#EEF4FF' : '#FFFFFF',
-                  border: `1.5px solid ${accountMode === 'account' ? '#2563EB' : '#DBE2EA'}`,
-                  cursor: 'pointer',
+                  backgroundColor: '#EEF4FF',
+                  border: '1.5px solid #2563EB',
                   textAlign: 'left',
-                  transition: 'all 0.15s ease',
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: '15px', color: '#0A1424', textAlign: 'left' }}>I have an account</div>
+                <div style={{ fontWeight: 600, fontSize: '15px', color: '#0A1424', textAlign: 'left' }}>Signed in</div>
                 <div style={{ fontSize: '13px', color: '#677287', marginTop: '2px', textAlign: 'left' }}>
-                  {accountMode === 'account' ? 'Use your Flython account' : 'Sign in to fill in your trips'}
+                  Signed in as <strong>{displayName}</strong>
+                  {user.email ? ` (${user.email})` : ''}.
                 </div>
-              </div>
-
-              {/* Option: I'm a passenger without an account */}
-              <div
-                onClick={selectGuestOption}
-                style={{
-                  padding: '16px 18px',
-                  borderRadius: '12px',
-                  backgroundColor: accountMode === 'guest' ? '#EEF4FF' : '#FFFFFF',
-                  border: `1.5px solid ${accountMode === 'guest' ? '#2563EB' : '#DBE2EA'}`,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <div style={{ fontWeight: 600, fontSize: '15px', color: '#0A1424', textAlign: 'left' }}>
-                  I'm a passenger without an account
-                </div>
-                <div style={{ fontSize: '13px', color: '#677287', marginTop: '2px', textAlign: 'left' }}>
-                  Use your booking reference and surname
-                </div>
-              </div>
-            </div>
-
-            {/* Account Mode Conditional Content */}
-            {accountMode === 'account' ? (
-              <div
-                style={{
-                  marginTop: '12px',
-                  padding: '12px 16px',
-                  borderRadius: '8px',
-                  backgroundColor: '#E8EEF7',
-                  fontSize: '13.5px',
-                  color: '#1F408C',
-                  textAlign: 'left',
-                }}
-              >
-                Signed in as <strong>{displayName}</strong>.
               </div>
             ) : (
-              <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <Field label="Booking reference" htmlFor="guest-booking-ref" error={errors.bookingRef}>
-                    <input
-                      id="guest-booking-ref"
-                      type="text"
-                      value={bookingRef}
-                      onChange={(e) => setBookingRef(e.target.value.toUpperCase())}
-                      placeholder="e.g. P4LM8T"
-                      style={{ ...inputStyle, textTransform: 'uppercase', textAlign: 'left' }}
-                    />
-                  </Field>
-                  <Field label="Surname" htmlFor="guest-surname" error={errors.surname}>
-                    <input
-                      id="guest-surname"
-                      type="text"
-                      value={surname}
-                      onChange={(e) => setSurname(e.target.value)}
-                      placeholder="e.g. Prasert"
-                      style={{ ...inputStyle, textAlign: 'left' }}
-                    />
-                  </Field>
+              <div
+                style={{
+                  padding: '16px 18px',
+                  borderRadius: '12px',
+                  backgroundColor: '#FFFBEB',
+                  border: '1.5px solid #F59E0B',
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: '15px', color: '#B45309', textAlign: 'left' }}>Sign in required</div>
+                <div style={{ fontSize: '13px', color: '#78350F', marginTop: '4px', textAlign: 'left' }}>
+                  Complaints require a Flython account so you can track case status and history.
                 </div>
+                <button
+                  type="button"
+                  onClick={() => void navigate({ to: '/login', search: { redirect: '/complaints' } })}
+                  style={{ ...btnPrimary, marginTop: '12px' }}
+                >
+                  Sign in to Flython
+                </button>
               </div>
             )}
           </div>
@@ -591,40 +490,6 @@ export function MakeComplaintPage() {
                 />
               </Field>
             </div>
-
-            {/* Section 4 (Guest Mode only): Where should we send updates? */}
-            {accountMode === 'guest' && (
-              <div style={{ marginTop: '20px', textAlign: 'left' }}>
-                <h2 style={{ margin: '0 0 6px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>
-                  4. Where should we send updates?
-                </h2>
-                <p style={{ margin: '0 0 12px', fontSize: '13px', color: '#677287', textAlign: 'left' }}>
-                  Enter an email address or a phone number so we can send your case number and status updates.
-                </p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <Field label="Email" htmlFor="guest-email">
-                    <input
-                      id="guest-email"
-                      type="email"
-                      value={guestEmail}
-                      onChange={(e) => setGuestEmail(e.target.value)}
-                      placeholder="somchai@example.com"
-                      style={{ ...inputStyle, textAlign: 'left' }}
-                    />
-                  </Field>
-                  <Field label="Phone" htmlFor="guest-phone">
-                    <input
-                      id="guest-phone"
-                      type="tel"
-                      value={guestPhone}
-                      onChange={(e) => setGuestPhone(e.target.value)}
-                      placeholder="+66 81 234 5678"
-                      style={{ ...inputStyle, textAlign: 'left' }}
-                    />
-                  </Field>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Form Actions Footer */}
@@ -639,22 +504,16 @@ export function MakeComplaintPage() {
             }}
           >
             <div style={{ fontSize: '13px', color: '#677287', textAlign: 'left' }}>
-              {accountMode === 'account' ? (
-                <>
-                  We email a copy to <strong>somchai.w@example.com</strong>.
-                </>
-              ) : (
-                'We email a copy to the address on your booking.'
-              )}
+              We email a copy to <strong>{user?.email || 'your account email'}</strong>.
             </div>
             <button
               type="button"
-              disabled={submitting}
+              disabled={submitting || !user}
               onClick={() => void submit()}
               style={{
                 ...btnPrimary,
-                opacity: submitting ? 0.7 : 1,
-                cursor: submitting ? 'not-allowed' : 'pointer',
+                opacity: submitting || !user ? 0.7 : 1,
+                cursor: submitting || !user ? 'not-allowed' : 'pointer',
               }}
             >
               {submitting ? 'Sending complaint…' : 'Send complaint'}
@@ -709,115 +568,41 @@ export function MakeComplaintPage() {
             </div>
           </div>
 
-          {/* Conditional Right Card based on accountMode */}
-          {accountMode === 'account' ? (
-            /* Card: Already sent a complaint? */
-            <div
+          {/* Card: Already sent a complaint? */}
+          <div
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: '16px',
+              border: '1px solid #DBE2EA',
+              padding: '24px',
+              boxShadow: '0 2px 8px rgba(10, 20, 36, 0.04)',
+              textAlign: 'left',
+            }}
+          >
+            <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>
+              Already sent a complaint?
+            </h3>
+            <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#677287', lineHeight: 1.4, textAlign: 'left' }}>
+              See the status and full history of your cases.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                void navigate({
+                  to: '/complaints/check',
+                  search: { caseNumber: undefined },
+                })
+              }}
               style={{
-                backgroundColor: '#FFFFFF',
-                borderRadius: '16px',
-                border: '1px solid #DBE2EA',
-                padding: '24px',
-                boxShadow: '0 2px 8px rgba(10, 20, 36, 0.04)',
-                textAlign: 'left',
+                ...btnSecondary,
+                width: '100%',
+                justifyContent: 'center',
+                boxSizing: 'border-box',
               }}
             >
-              <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>
-                Already sent a complaint?
-              </h3>
-              <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#677287', lineHeight: 1.4, textAlign: 'left' }}>
-                See the status and full history of your cases.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  sessionStorage.removeItem('f13_guest_mode')
-                  void navigate({
-                    to: '/complaints/check',
-                    search: { caseNumber: undefined, bookingRef: undefined, surname: undefined, guest: undefined },
-                  })
-                }}
-                style={{
-                  ...btnSecondary,
-                  width: '100%',
-                  justifyContent: 'center',
-                  boxSizing: 'border-box',
-                }}
-              >
-                Your complaints →
-              </button>
-            </div>
-          ) : (
-            /* Card: Check a case (Passenger without an account lookup - Figma 4051:16390) */
-            <div
-              style={{
-                backgroundColor: '#FFFFFF',
-                borderRadius: '16px',
-                border: '1px solid #DBE2EA',
-                padding: '24px',
-                boxShadow: '0 2px 8px rgba(10, 20, 36, 0.04)',
-                textAlign: 'left',
-              }}
-            >
-              <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>Check a case</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'left' }}>
-                <Field label="Case number" htmlFor="check-case-no">
-                  <input
-                    id="check-case-no"
-                    type="text"
-                    value={checkCaseNumber}
-                    onChange={(e) => setCheckCaseNumber(e.target.value.toUpperCase())}
-                    placeholder="e.g. CS-2026-000124"
-                    style={{ ...inputStyle, textTransform: 'uppercase', textAlign: 'left' }}
-                  />
-                </Field>
-                <Field label="Booking reference" htmlFor="check-book-ref">
-                  <input
-                    id="check-book-ref"
-                    type="text"
-                    value={checkBookingRef}
-                    onChange={(e) => setCheckBookingRef(e.target.value.toUpperCase())}
-                    placeholder="e.g. P4LM8T"
-                    style={{ ...inputStyle, textTransform: 'uppercase', textAlign: 'left' }}
-                  />
-                </Field>
-                <Field label="Surname" htmlFor="check-surname">
-                  <input
-                    id="check-surname"
-                    type="text"
-                    value={checkSurname}
-                    onChange={(e) => setCheckSurname(e.target.value)}
-                    placeholder="e.g. Prasert"
-                    style={{ ...inputStyle, textAlign: 'left' }}
-                  />
-                </Field>
-                <button
-                  type="button"
-                  onClick={() => {
-                    sessionStorage.setItem('f13_guest_mode', '1')
-                    void navigate({
-                      to: '/complaints/check',
-                      search: {
-                        caseNumber: checkCaseNumber.trim().toUpperCase() || undefined,
-                        bookingRef: checkBookingRef.trim().toUpperCase() || undefined,
-                        surname: checkSurname.trim() || undefined,
-                        guest: '1',
-                      },
-                    })
-                  }}
-                  style={{
-                    ...btnPrimary,
-                    width: '100%',
-                    justifyContent: 'center',
-                    marginTop: '6px',
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  Find case →
-                </button>
-              </div>
-            </div>
-          )}
+              Your complaints →
+            </button>
+          </div>
         </div>
       </div>
     </ComplaintPage>

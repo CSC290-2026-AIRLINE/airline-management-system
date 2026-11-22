@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -9,16 +8,14 @@ import {
   Patch,
   Post,
   Put,
-  Query,
   UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
-import { Public } from '@backend/auth/decorators/public.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { CustomerServiceService } from './customer-service.service'
-import { CreateComplaintDto, CreateGuestComplaintDto } from './dto/create-complaint.dto'
+import { CreateComplaintDto } from './dto/create-complaint.dto'
 import { UpdateNotificationPreferencesDto } from './dto/preferences.dto'
 import {
   AddCaseNoteDto,
@@ -42,33 +39,6 @@ export class CustomerComplaintsController {
   @Post()
   create(@Body() dto: CreateComplaintDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.create(user.id, user.email, dto)
-  }
-
-  /**
-   * Public endpoint for "I'm a passenger without an account".
-   * Requires booking_reference + surname and verifies against booking_passenger.
-   */
-  @Public()
-  @Post('guest')
-  createGuest(@Body() dto: CreateGuestComplaintDto) {
-    return this.service.createGuest(dto)
-  }
-
-  /**
-   * Public endpoint for checking a case without an account.
-   * Requires booking_reference + surname to match the booking_passenger on the case.
-   */
-  @Public()
-  @Get('guest/:caseNumber')
-  findOneGuest(
-    @Param('caseNumber') caseNumber: string,
-    @Query('booking_reference') bookingReference?: string,
-    @Query('surname') surname?: string,
-  ) {
-    if (!bookingReference?.trim() || !surname?.trim()) {
-      throw new BadRequestException('Booking reference and surname are required')
-    }
-    return this.service.getGuestCase(caseNumber, bookingReference.trim().toUpperCase(), surname.trim())
   }
 
   @Get()

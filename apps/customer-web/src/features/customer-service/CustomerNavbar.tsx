@@ -193,7 +193,7 @@ export function CustomerNavbar({ isGuest = false, onSignInClick }: CustomerNavba
                     setMenuOpen(false)
                     void navigate({
                       to: '/complaints/check',
-                      search: { caseNumber: undefined, bookingRef: undefined, surname: undefined, guest: undefined },
+                      search: { caseNumber: undefined },
                     })
                   }}
                   style={{

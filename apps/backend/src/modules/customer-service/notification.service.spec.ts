@@ -38,6 +38,12 @@ describe('NotificationService', () => {
       booking_segment: {
         findMany: jest.fn(),
       },
+      customer: {
+        findUnique: jest.fn(),
+      },
+      booking_passenger: {
+        findFirst: jest.fn(),
+      },
     }
     service = new NotificationService(db, clock as unknown as SimulationClock)
   })
@@ -390,7 +396,7 @@ describe('NotificationService', () => {
 
       expect(db.inbound_event.update).toHaveBeenCalledWith({
         where: { id: 'ev-9' },
-        data: { processed_at: NOW },
+        data: expect.objectContaining({ processed_at: NOW }),
       })
     })
 
@@ -649,6 +655,45 @@ describe('NotificationService', () => {
       expect(db.notification.update).toHaveBeenCalledWith({
         where: { id: 'notif-fail-3' },
         data: expect.objectContaining({ subject: 'Push token timeout', body: 'Case CS-2026-000001: Resolved.', status: 'sent' }),
+      })
+    })
+
+    it('restores the passenger name on retry from inbound_event.payload.recipient_names', async () => {
+      db.notification.findUnique.mockResolvedValue({
+        id: 'notif-fail-flight',
+        status: 'failed',
+        attempts: 1,
+        recipient: 'ann@example.com',
+        subject: null,
+        body: null,
+        type_code: 'flight_delayed',
+        channel: 'email',
+        inbound_event: {
+          payload: {
+            flight_number: 'FY308',
+            service_date: '2026-11-12',
+            recipient_names: {
+              'ann@example.com': 'Ann Lee',
+            },
+          },
+        },
+      })
+      db.notification_template.findUnique.mockResolvedValue({
+        is_active: true,
+        subject_template: 'Flight {{flight_number}} delayed',
+        body_template: 'Dear {{passenger_name}}, your flight {{flight_number}} on {{service_date}} is delayed.',
+      })
+      clock.now.mockReturnValue(LATER)
+
+      await service.retryFailedNotification('notif-fail-flight')
+
+      expect(db.notification.update).toHaveBeenCalledWith({
+        where: { id: 'notif-fail-flight' },
+        data: expect.objectContaining({
+          subject: 'Flight FY308 delayed',
+          body: 'Dear Ann Lee, your flight FY308 on 2026-11-12 is delayed.',
+          status: 'sent',
+        }),
       })
     })
 

@@ -349,7 +349,9 @@ describe('CustomerServiceService', () => {
 
   describe('addNote', () => {
     it('stores the note as an internal staff event and audits it in the same transaction', async () => {
-      db.complaint_case.findUnique.mockResolvedValueOnce({ id: CASE_ID, case_number: 'CS-2026-000001' }).mockResolvedValue(caseRow())
+      db.complaint_case.findUnique
+        .mockResolvedValueOnce({ id: CASE_ID, case_number: 'CS-2026-000001', owner_staff_id: STAFF_ID })
+        .mockResolvedValue(caseRow())
       tx.case_event.create.mockResolvedValue({ id: 'event-1' })
       audit.resolveActor.mockResolvedValue({ kind: 'staff' })
 
@@ -360,6 +362,64 @@ describe('CustomerServiceService', () => {
         select: { id: true },
       })
       expect(audit.write).toHaveBeenCalledWith(expect.objectContaining({ entityType: 'case_event', entityId: 'event-1' }), tx)
+    })
+
+    it('refuses an agent who is not the case owner with 403 NOT_CASE_OWNER', async () => {
+      db.complaint_case.findUnique.mockResolvedValueOnce({ id: CASE_ID, case_number: 'CS-2026-000001', owner_staff_id: SUPERVISOR.id })
+      await expect(service.addNote(USER_ID, CASE_ID, 'Unauthorized note')).rejects.toThrow(new ForbiddenException('NOT_CASE_OWNER'))
+      expect(tx.case_event.create).not.toHaveBeenCalled()
+    })
+
+    it('allows a supervisor to add a note to a case they do not own', async () => {
+      db.staff.findFirst.mockResolvedValue(SUPERVISOR)
+      db.complaint_case.findUnique
+        .mockResolvedValueOnce({ id: CASE_ID, case_number: 'CS-2026-000001', owner_staff_id: STAFF_ID })
+        .mockResolvedValue(caseRow({ owner_staff_id: STAFF_ID }))
+      tx.case_event.create.mockResolvedValue({ id: 'event-sup' })
+      audit.resolveActor.mockResolvedValue({ kind: 'staff' })
+
+      await service.addNote(USER_ID, CASE_ID, 'Supervisor note')
+      expect(tx.case_event.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          event_type: 'note_added',
+          actor_staff_id: SUPERVISOR.id,
+          note: 'Supervisor note',
+          is_internal: true,
+        }),
+        select: { id: true },
+      })
+    })
+  })
+
+  describe('assignOwner', () => {
+    it('refuses assigning to staff who is not cs-agent or cs-supervisor with 400', async () => {
+      db.staff.findFirst
+        .mockResolvedValueOnce(SUPERVISOR)
+        .mockResolvedValueOnce({ id: 'other-staff', first_name: 'Pilot', last_name: 'Bob', role: { code: 'pilot' } })
+      await expect(service.assignOwner(USER_ID, CASE_ID, 'other-staff')).rejects.toThrow(
+        new BadRequestException('Target staff must have role cs-agent or cs-supervisor'),
+      )
+      expect(tx.complaint_case.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('assigns to a valid cs-agent and records the assigned event', async () => {
+      db.staff.findFirst
+        .mockResolvedValueOnce(SUPERVISOR)
+        .mockResolvedValueOnce({ id: STAFF_ID, first_name: 'Kenji', last_name: 'Sato', role: { code: 'cs-agent' } })
+      db.complaint_case.findUnique
+        .mockResolvedValueOnce({ id: CASE_ID, status: 'with_supervisor', owner_staff_id: null, case_number: 'CS-2026-000001' })
+        .mockResolvedValue(caseRow({ status: 'assigned', owner_staff_id: STAFF_ID }))
+      tx.complaint_case.updateMany.mockResolvedValue({ count: 1 })
+      tx.case_event.create.mockResolvedValue({ id: 'assign-evt' })
+
+      await service.assignOwner(USER_ID, CASE_ID, STAFF_ID)
+      expect(tx.complaint_case.updateMany).toHaveBeenCalledWith({
+        where: { id: CASE_ID, status: 'with_supervisor' },
+        data: expect.objectContaining({ status: 'assigned', owner_staff_id: STAFF_ID }),
+      })
+      expect(tx.case_event.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ event_type: 'assigned', actor_type: 'staff', note: 'Assigned to Kenji Sato' }),
+      })
     })
   })
 
@@ -504,7 +564,7 @@ describe('CustomerServiceService', () => {
       expect(tx.notification_template.update).not.toHaveBeenCalled()
     })
 
-    it('rejects placeholders the message type does not fill', async () => {
+    it('refuses placeholders the message type does not fill', async () => {
       tx.notification_template.findUnique.mockResolvedValue(savedSms)
       const update = service.updateTemplateForStaff(USER_ID, 'complaint_received', {
         channel: 'sms',
@@ -512,6 +572,14 @@ describe('CustomerServiceService', () => {
       })
       await expect(update).rejects.toBeInstanceOf(BadRequestException)
       await expect(update).rejects.toMatchObject({ response: { message: 'INVALID_PLACEHOLDER', placeholders: ['first_name'] } })
+      expect(tx.notification_template.update).not.toHaveBeenCalled()
+    })
+
+    it('refuses switching off the email channel for a mandatory notification type with 400 MANDATORY_EMAIL_REQUIRED', async () => {
+      db.notification_type.findUnique.mockResolvedValue({ code: 'complaint_received', is_mandatory: true })
+      await expect(service.updateTemplateForStaff(USER_ID, 'complaint_received', { channel: 'email', isActive: false })).rejects.toThrow(
+        new BadRequestException('MANDATORY_EMAIL_REQUIRED'),
+      )
       expect(tx.notification_template.update).not.toHaveBeenCalled()
     })
   })
