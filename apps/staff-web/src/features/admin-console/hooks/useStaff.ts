@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useListRoles } from '../api/roles'
+import { ApiError, errorText } from '../api/fetch'
 import { StaffApiError, useStaffApi, type StaffCreateBody, type StaffStatusBody, type StaffUpdateBody } from '../api/staff'
 import type { RoleSummary, StaffRow } from '../types'
 
@@ -17,7 +18,8 @@ interface StaffState {
 
 function asStaffError(e: unknown): StaffApiError {
   if (e instanceof StaffApiError) return e
-  // `useListRoles` throws plain `Error("403 Forbidden: …")`; keep its status so the page can tell 403 from a crash.
+  // The roles list comes from the shared client, which throws the same `ApiError` as everything else.
+  if (e instanceof ApiError) return new StaffApiError(e.status, `HTTP_${e.status}`, errorText(e))
   const msg = e instanceof Error ? e.message : String(e)
   const status = Number(/\b(\d{3})\b/.exec(msg)?.[1] ?? 0)
   return new StaffApiError(status, `HTTP_${status}`, msg)

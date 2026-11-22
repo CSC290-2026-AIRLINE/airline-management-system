@@ -1,5 +1,5 @@
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
-import type { StaffErrorCode, StaffListResponse, StaffRow } from '../types'
+import type { StaffErrorCode, StaffListResponse, StaffRow, StaffScreensResponse } from '../types'
 
 /**
  * Thrown for any non-2xx answer from `/api/admin/staff*`. The backend answers `{ error: { code, message } }`, and the
@@ -65,6 +65,8 @@ export function useStaffApi() {
 
   return {
     list: () => send<StaffListResponse>('/api/admin/staff'),
+    /** The menu this person gets, worked out on the server by the same rules as their own `GET /api/me/screens`. */
+    screens: (id: string) => send<StaffScreensResponse>(`/api/admin/staff/${id}/screens`),
     create: (body: StaffCreateBody) => send<StaffRow>('/api/admin/staff', { method: 'POST', body: JSON.stringify(body) }),
     update: (id: string, body: StaffUpdateBody) => send<StaffRow>(`/api/admin/staff/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
     setStatus: (id: string, body: StaffStatusBody) =>

@@ -1,0 +1,47 @@
+import { HttpException } from '@nestjs/common'
+import type { ApiError } from './api-types'
+
+export type ErrorCode =
+  | 'VALIDATION'
+  | 'NOT_FOUND'
+  | 'FORBIDDEN'
+  | 'WINDOW_CLOSED'
+  | 'NOT_ELIGIBLE'
+  | 'MRZ_INVALID'
+  | 'PASSPORT_EXPIRING'
+  | 'VISA_REQUIRED'
+  | 'DUPLICATE_DOCUMENT'
+  | 'ON_HOLD'
+  | 'SEAT_TAKEN'
+  | 'LOCK_EXPIRED'
+  | 'EXCESS_UNPAID'
+  | 'BAG_REFUSED'
+  | 'INVALID_STATE'
+  | 'HEADCOUNT_MISMATCH'
+  | 'INVALID_GATE_CODE'
+  | 'GATE_EXISTS'
+  | 'GATE_IN_USE'
+  | 'GATE_TAKEN'
+  | 'GATE_INACTIVE'
+
+export class CheckInError extends HttpException {
+  readonly code: ErrorCode
+  readonly details?: Record<string, unknown>
+
+  constructor(status: number, code: ErrorCode, message: string, details?: Record<string, unknown>) {
+    const body: ApiError = { error: { code, message } }
+    if (details) {
+      body.error.details = details
+    }
+    super(body, status)
+    this.code = code
+    this.details = details
+  }
+}
+
+export const notFound = (what: string) => new CheckInError(404, 'NOT_FOUND', `${what} not found`)
+export const validation = (message: string, details?: Record<string, unknown>) => new CheckInError(400, 'VALIDATION', message, details)
+export const invalidState = (message: string) => new CheckInError(409, 'INVALID_STATE', message)
+/** The request is fine, but the world says no: the gate is taken, in use or already there. */
+export const conflict = (code: ErrorCode, message: string, details?: Record<string, unknown>) =>
+  new CheckInError(409, code, message, details)
