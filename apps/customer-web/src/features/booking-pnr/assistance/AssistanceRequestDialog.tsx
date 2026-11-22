@@ -1,9 +1,9 @@
-import { useEffect, useId, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import type { AssistanceValue } from '../components/contracts'
 import { AssistanceFields } from './AssistanceFields'
-import controls from '../styles/controls.module.css'
-import './assistance-request-dialog.css'
+import { Button } from '@customer-web/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@customer-web/components/ui/dialog'
 
 interface AssistanceRequestDialogProps {
   open: boolean
@@ -14,9 +14,8 @@ interface AssistanceRequestDialogProps {
 }
 
 export function AssistanceRequestDialog({ open, onClose, onSubmit, passengerName, flightLabel }: AssistanceRequestDialogProps) {
-  const [dialog, setDialog] = useState<HTMLDialogElement | null>(null)
-  const titleId = useId()
-  const descriptionId = useId()
+  // The dialog's content element, so the dropdown of the fields is rendered inside the dialog.
+  const [dialog, setDialog] = useState<HTMLElement | null>(null)
   const [value, setValue] = useState<AssistanceValue>({ serviceCode: null, note: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -31,12 +30,6 @@ export function AssistanceRequestDialog({ open, onClose, onSubmit, passengerName
     setAttempted(false)
     onClose()
   }
-
-  useEffect(() => {
-    if (!dialog) return
-    if (open && !dialog.open) dialog.showModal()
-    if (!open && dialog.open) dialog.close()
-  }, [open, dialog])
 
   /** The message under each field that is wrong. */
   function problems(current: AssistanceValue): { type?: string; note?: string } {
@@ -76,48 +69,39 @@ export function AssistanceRequestDialog({ open, onClose, onSubmit, passengerName
   const found = attempted ? problems(value) : {}
 
   return (
-    <dialog
-      ref={setDialog}
-      className="assistance-request-dialog"
-      aria-labelledby={titleId}
-      aria-describedby={descriptionId}
-      onClick={(event) => {
-        const bounds = event.currentTarget.getBoundingClientRect()
-        if (
-          event.target === event.currentTarget &&
-          (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom)
-        )
-          close()
-      }}
-      onCancel={(event) => {
-        event.preventDefault()
-        close()
-      }}
-    >
-      <h2 id={titleId}>Request assistance</h2>
-      <p id={descriptionId} className="assistance-request-dialog__context">
-        {passengerName ? `${passengerName} · ` : ''}
-        {flightLabel ?? 'Staff will review your request and update its status in your booking.'}
-      </p>
-      <form onSubmit={(event) => void submit(event)} noValidate>
-        <AssistanceFields
-          value={value}
-          onChange={setValue}
-          disabled={saving}
-          popupContainer={dialog}
-          typeError={found.type}
-          noteError={found.note}
-        />
-        {error && <p role="alert">{error}</p>}
-        <div className="assistance-request-dialog__actions">
-          <button className={controls.secondary} type="button" onClick={close} disabled={saving}>
-            Cancel
-          </button>
-          <button className={controls.primary} type="submit" disabled={saving}>
-            {saving ? 'Submitting…' : 'Submit request'}
-          </button>
-        </div>
-      </form>
-    </dialog>
+    <Dialog open={open} onOpenChange={(next) => (next ? undefined : close())}>
+      <DialogContent ref={setDialog} className="text-left sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Request assistance</DialogTitle>
+          <DialogDescription>
+            {passengerName ? `${passengerName} · ` : ''}
+            {flightLabel ?? 'Staff will review your request and update its status in your booking.'}
+          </DialogDescription>
+        </DialogHeader>
+        <form className="grid gap-4" onSubmit={(event) => void submit(event)} noValidate>
+          <AssistanceFields
+            value={value}
+            onChange={setValue}
+            disabled={saving}
+            popupContainer={dialog}
+            typeError={found.type}
+            noteError={found.note}
+          />
+          {error && (
+            <p className="text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={close} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Submitting…' : 'Submit request'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

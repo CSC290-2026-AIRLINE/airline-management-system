@@ -1,4 +1,5 @@
 import type { DemoPassenger } from './demo-passengers'
+import { Input } from '@customer-web/components/ui/input'
 import type { FormEvent, ReactNode } from 'react'
 import type { SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/cw-select'
@@ -61,14 +62,14 @@ export function PassengersPage({
   const problemFor = (id: string) => issues?.fields[id]
   return (
     /* `noValidate` turns off the browser's own bubbles, so every message on this form is one we wrote. */
-    <form onSubmit={submit} className="f3-passengers-form" aria-label="Passenger details" noValidate>
+    <form onSubmit={submit} className="grid min-w-0 gap-4" aria-label="Passenger details" noValidate>
       {issues && (
-        <p className="f3-flow-error" role="alert">
+        <p className="rounded-lg border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
           {issues.message}
         </p>
       )}
       {demoProfiles && (
-        <div className="f3-demo-notice" role="status">
+        <div className="rounded-lg border border-link/20 bg-link/5 px-4 py-3 text-sm text-link [&_p]:mt-1" role="status">
           <strong>Development demo travellers</strong>
           <p>
             {locked
@@ -88,21 +89,24 @@ export function PassengersPage({
         const lapId = travellerFieldId(index, 'lapOfKey')
         const demoId = `pax-${index}-demo`
         return (
-          <fieldset className="f3-passenger-card" key={person.key}>
-            <legend className="f3-passenger-legend">
+          <fieldset
+            className="rounded-xl border bg-card text-card-foreground shadow-sm grid min-w-0 gap-4 p-5 sm:p-6 [&>p]:text-sm [&>p]:text-muted-foreground"
+            key={person.key}
+          >
+            <legend className="sr-only">
               Passenger {index + 1} · {type ?? person.expectedType}
               {type === 'child' ? ` (age ${ageAt(person.dateOfBirth, departure)})` : ''}
             </legend>
-            <div className="f3-passenger-heading">
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row [&>div]:min-w-0 [&_h2]:mt-1.5 [&_h2]:text-lg [&_h2]:[overflow-wrap:anywhere]">
               <div>
-                <p className="f3-search-eyebrow">
+                <p className="w-fit rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
                   PASSENGER {index + 1} · {type ?? person.expectedType}
                   {type === 'child' ? ` (AGE ${ageAt(person.dateOfBirth, departure)})` : ''}
                 </p>
                 <h2>{[person.givenName, person.familyName].filter(Boolean).join(' ') || 'Traveller details'}</h2>
               </div>
               {demoProfiles && (
-                <Field id={demoId} label="Fill from demo traveller" className="f3-demo-picker">
+                <Field id={demoId} label="Fill from demo traveller" className="w-full sm:w-56 sm:shrink-0">
                   <Select
                     value={person.demoPassengerId ?? ''}
                     disabled={demoLoading}
@@ -138,9 +142,9 @@ export function PassengersPage({
                 </Field>
               )}
             </div>
-            <div className="f3-passenger-fields">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field id={givenId} label="Given name (as on passport)" error={problemFor(givenId)}>
-                <input
+                <Input
                   id={givenId}
                   readOnly={locked}
                   autoComplete="given-name"
@@ -154,7 +158,7 @@ export function PassengersPage({
                 />
               </Field>
               <Field id={familyId} label="Family name" error={problemFor(familyId)}>
-                <input
+                <Input
                   id={familyId}
                   readOnly={locked}
                   autoComplete="family-name"
@@ -182,7 +186,7 @@ export function PassengersPage({
                 />
               </Field>
               <Field id={passportId} label="Passport number" error={problemFor(passportId)}>
-                <input
+                <Input
                   id={passportId}
                   readOnly={locked}
                   autoComplete="off"
@@ -197,7 +201,7 @@ export function PassengersPage({
               </Field>
             </div>
             {(type ?? person.expectedType) === 'infant' && (
-              <Field id={lapId} label="Travels on the lap of" error={problemFor(lapId)} className="f3-lap-field">
+              <Field id={lapId} label="Travels on the lap of" error={problemFor(lapId)} className="">
                 <Select value={person.lapOfKey} onValueChange={(value) => onTravellerChange(person.key, { lapOfKey: value })}>
                   <SelectTrigger
                     id={lapId}
@@ -224,12 +228,12 @@ export function PassengersPage({
           </fieldset>
         )
       })}
-      <fieldset className="f3-passenger-card">
-        <legend className="f3-passenger-legend">Contact for this booking</legend>
-        <h2 className="f3-passenger-section-title">Contact for this booking</h2>
-        <div className="f3-passenger-fields">
+      <fieldset className="rounded-xl border bg-card text-card-foreground shadow-sm grid min-w-0 gap-4 p-5 sm:p-6 [&>p]:text-sm [&>p]:text-muted-foreground">
+        <legend className="sr-only">Contact for this booking</legend>
+        <h2 className="text-base font-semibold">Contact for this booking</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field id={contactFieldId('email')} label="Email" error={problemFor(contactFieldId('email'))}>
-            <input
+            <Input
               id={contactFieldId('email')}
               type="email"
               autoComplete="email"
@@ -241,12 +245,11 @@ export function PassengersPage({
               onChange={(event) => onContactChange({ ...contact, email: event.target.value })}
             />
           </Field>
-          <Field id={contactFieldId('phone')} label="Phone" error={problemFor(contactFieldId('phone'))}>
-            <input
+          <Field id={contactFieldId('phone')} label="Phone (optional)" error={problemFor(contactFieldId('phone'))}>
+            <Input
               id={contactFieldId('phone')}
               type="tel"
               autoComplete="tel"
-              required
               maxLength={50}
               aria-invalid={problemFor(contactFieldId('phone')) ? true : undefined}
               aria-describedby={problemFor(contactFieldId('phone')) ? `${contactFieldId('phone')}-error` : undefined}
@@ -256,11 +259,11 @@ export function PassengersPage({
           </Field>
         </div>
       </fieldset>
-      <fieldset className="f3-passenger-card">
-        <legend className="f3-passenger-legend">Promo code</legend>
-        <h2 className="f3-passenger-section-title">Promo code</h2>
+      <fieldset className="rounded-xl border bg-card text-card-foreground shadow-sm grid min-w-0 gap-4 p-5 sm:p-6 [&>p]:text-sm [&>p]:text-muted-foreground">
+        <legend className="sr-only">Promo code</legend>
+        <h2 className="text-base font-semibold">Promo code</h2>
         <Field id={contactFieldId('promoCode')} label="Code (optional)">
-          <input
+          <Input
             id={contactFieldId('promoCode')}
             autoComplete="off"
             maxLength={100}
@@ -268,21 +271,28 @@ export function PassengersPage({
             onChange={(event) => onContactChange({ ...contact, promoCode: event.target.value })}
           />
         </Field>
-        <p className="f3-passenger-info">
+        <p className="rounded-md border border-link/20 bg-link/5 px-3 py-2 text-xs text-link">
           The code is checked when you create the booking hold. If the total changes, you can review it before continuing. It is used up
           only when payment succeeds.
         </p>
       </fieldset>
       {error && (
-        <p className="f3-flow-error" role="alert">
+        <p className="rounded-lg border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
           {error}
         </p>
       )}
-      <div className="f3-flow-actions">
-        <button type="button" className="f3-search-secondary" onClick={onBack}>
+      <div className="flex flex-col-reverse items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+        <button
+          type="button"
+          className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border bg-background px-4 text-sm font-medium whitespace-nowrap shadow-xs transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+          onClick={onBack}
+        >
           Back to flights
         </button>
-        <button type="submit" className="f3-search-primary">
+        <button
+          type="submit"
+          className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium whitespace-nowrap text-primary-foreground shadow-xs transition-all outline-none hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+        >
           Continue to seats
         </button>
       </div>

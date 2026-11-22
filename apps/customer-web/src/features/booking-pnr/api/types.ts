@@ -37,6 +37,9 @@ export interface BookingSegment {
   destination: string
   depAt: string
   arrAt: string
+  // IANA time zones of the two airports; times are shown in the airport's local time.
+  originTimeZone: string
+  destinationTimeZone: string
   // The day the flight leaves, as YYYY-MM-DD. The search form asks for this date.
   serviceDate: string
 }
@@ -104,6 +107,8 @@ export interface BookingDetail extends BookingSummary {
   coupons: BookingCoupon[]
   serviceRequests: BookingServiceRequest[]
   history: BookingHistoryEntry[]
+  // The passenger profile of the customer who owns the booking (shown as the account holder).
+  accountHolderPassengerId: string
   // The simulation clock's now: countdown = holdExpiresAt - serverNow.
   serverNow: string
 }
@@ -115,6 +120,9 @@ export interface BookingListItem extends BookingSummary {
   travelDate: string | null
   // Last departure of the booking (the return leg).
   travelEndDate: string | null
+  // Time zones of the departure airports of travelDate and travelEndDate.
+  travelTimeZone: string | null
+  travelEndTimeZone: string | null
   passengerCounts: PassengerCounts
   // The flights of the booking, in segment order.
   flightNumbers: string[]
@@ -137,7 +145,7 @@ export interface CustomerTrips {
   serverNow: string
 }
 
-// One seat of GET /flights/:id/seat-map (C1).
+// One seat of GET /bookings/flights/:id/seat-map (C1).
 export interface SeatDefinition {
   seatCode: string
   row: number
@@ -220,6 +228,19 @@ export interface ConfirmBookingResult {
   total: number
   holdExpiresAt: string
   confirmedAt: string
+  // The travel insurance policy feature 11 issued, or null when the booking has none.
+  insurancePolicy?: InsurancePolicySummary | null
+}
+
+// GET /bookings/:ref/insurance: what the booker's loyalty tier offers (feature 11).
+export type InsuranceOffer =
+  { kind: 'none' } | { kind: 'included'; tierName: string } | { kind: 'member_price'; tierName: string; price: number; currency: string }
+
+export interface InsurancePolicySummary {
+  policyNumber: string
+  price: number
+  currency: string
+  status: 'active' | 'cancelled'
 }
 
 // `details` of 409 PRICE_CHANGED: nothing is held; send the hold again with expectedTotal = newTotal.

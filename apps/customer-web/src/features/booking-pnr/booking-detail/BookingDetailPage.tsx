@@ -8,7 +8,6 @@ import { ApiErrorBanner } from '../components/ApiErrorBanner'
 import { HoldBanner } from '../components/HoldBanner'
 import { StatusChip } from '../components/StatusChip'
 import { formatDateWithYear, formatMoney } from '../lib/format'
-import controls from '../styles/controls.module.css'
 import { CancelBookingDialog } from './CancelBookingDialog'
 import { FeatureAction } from './FeatureAction'
 import { FlightsCard } from './FlightsCard'
@@ -25,8 +24,11 @@ import {
   orderingWindow,
   partyLabel,
 } from './booking-detail-model'
-import styles from './BookingDetailPage.module.css'
-import '../styles/tokens.css'
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
+import { Badge } from '@customer-web/components/ui/badge'
+import { Button } from '@customer-web/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@customer-web/components/ui/card'
+import { MessageCard, PageShell } from '../components/PageShell'
 import { BookingSeatChangesPanel } from '../seats/BookingSeatChangesPanel'
 import { BookingAssistancePanel } from '../assistance/BookingAssistancePanel'
 
@@ -112,140 +114,147 @@ function BookingDetailView({ booking, onReload }: { booking: BookingDetail; onRe
 
   return (
     <>
-      <main className={styles.page}>
-        <div className={styles.shell}>
-          <Link to="/bookings" className={styles.backLink}>
-            <ArrowLeft aria-hidden="true" size={16} strokeWidth={2.25} />
+      <PageShell>
+        <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" asChild>
+          <Link to="/bookings">
+            <ArrowLeft aria-hidden="true" />
             My Trips
           </Link>
+        </Button>
 
-          <header className={styles.header}>
-            <div className={styles.titleBlock}>
-              <div className={styles.titleRow}>
-                <h1>Booking {booking.reference}</h1>
-                <StatusChip label={chip.label} tone={chip.tone} />
-              </div>
-              <p className={styles.muted}>
-                Booked {formatDateWithYear(booking.bookedAt)} · {partyLabel(booking.passengers)} ·{' '}
-                {formatMoney(booking.total, booking.currency)}
-              </p>
-              {booking.cancelledAt ? <p className={styles.muted}>Cancelled on {formatDateWithYear(booking.cancelledAt)}.</p> : null}
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="m-0 text-2xl font-semibold tracking-tight">Booking {booking.reference}</h1>
+              <StatusChip label={chip.label} tone={chip.tone} />
             </div>
+            <p className="text-muted-foreground">
+              Booked {formatDateWithYear(booking.bookedAt)} · {partyLabel(booking.passengers)} ·{' '}
+              {formatMoney(booking.total, booking.currency)}
+            </p>
+            {booking.cancelledAt ? (
+              <p className="text-sm text-muted-foreground">Cancelled on {formatDateWithYear(booking.cancelledAt)}.</p>
+            ) : null}
+          </div>
 
-            <div className={styles.headerActions}>
-              {status === 'held' ? (
-                <Link to="/review-pay/$reference" params={{ reference: booking.reference }} className={controls.primary}>
+          <div className="flex flex-wrap items-center gap-2">
+            {status === 'held' ? (
+              <Button asChild>
+                <Link to="/review-pay/$reference" params={{ reference: booking.reference }}>
                   Complete payment
                 </Link>
-              ) : null}
-              <FeatureAction label="Change booking" reason={CHANGE_BOOKING_DISABLED} className={controls.secondary} />
-              <FeatureAction label="Report a problem" reason={COMPLAINT_DISABLED} className={controls.secondary} />
-              {cancellable ? (
-                <button type="button" className={controls.dangerOutline} onClick={() => setIsCancelOpen(true)}>
-                  Cancel booking
-                </button>
-              ) : null}
-            </div>
-          </header>
-
-          {status === 'held' ? (
-            <HoldBanner
-              reference={booking.reference}
-              holdExpiresAt={booking.holdExpiresAt}
-              serverNow={booking.serverNow}
-              onExpire={handleExpiry}
-            />
-          ) : null}
-
-          {status === 'expired' ? (
-            <section className={styles.expiredNotice}>
-              <p className={styles.text}>{notice ?? 'This hold expired and its seats are back on sale. Nothing was charged.'}</p>
-              <div className={styles.expiredActions}>
-                <Link to="/search" className={controls.primary}>
-                  Search again
-                </Link>
-                <Link to="/bookings" className={controls.secondary}>
-                  Go to My Trips
-                </Link>
-              </div>
-            </section>
-          ) : null}
-
-          {notice && status !== 'expired' ? <p className={styles.notice}>{notice}</p> : null}
-          {cancelled ? <p className={styles.notice}>{cancelNotice(cancelled)}</p> : null}
-
-          <FlightsCard booking={booking} status={status} />
-          {/* The seat of a held booking can still be changed, so the panel works on a hold too. */}
-          {(status === 'held' || status === 'confirmed') && (
-            <BookingSeatChangesPanel reference={booking.reference} onChanged={() => void onReload()} />
-          )}
-          {(status === 'held' || status === 'confirmed') && (
-            <BookingAssistancePanel reference={booking.reference} onChanged={() => void onReload()} />
-          )}
-
-          <section>
-            <h2 className={styles.sectionTitle}>Check-in and boarding pass</h2>
-            <div className={styles.card}>
-              <div className={styles.boarding}>
-                <div>
-                  <h3 className={styles.boardingTitle}>Digital Boarding Pass</h3>
-                  <p className={styles.muted}>Available once check-in is complete. Scan the QR code at the gate.</p>
-                  <div className={styles.boardingActions}>
-                    <FeatureAction label="Download boarding pass" reason={CHECK_IN_DISABLED} className={controls.primary} />
-                    <FeatureAction label="Add to wallet" reason={CHECK_IN_DISABLED} className={controls.primary} />
-                  </div>
-                </div>
-                <div className={styles.qrPlaceholder} aria-hidden="true" />
-              </div>
-            </div>
-          </section>
-
-          <div className={styles.columns}>
-            <section>
-              <h2 className={styles.sectionTitle}>Passengers</h2>
-              <PassengersCard booking={booking} />
-            </section>
-
-            <section>
-              <h2 className={styles.sectionTitle}>Meals &amp; Onboard Shop</h2>
-              <div className={styles.card}>
-                <p className={styles.text}>Add meals, snacks and duty-free to this booking.</p>
-                <FeatureAction label="Browse onboard shop" reason={MEALS_DISABLED} className={controls.primary} />
-                <div className={styles.mealButtons}>
-                  <FeatureAction label="Pre-order meals" reason={MEALS_DISABLED} className={controls.secondary} />
-                  <FeatureAction label="Snacks and drinks" reason={MEALS_DISABLED} className={controls.secondary} />
-                  <FeatureAction label="Duty-free" reason={MEALS_DISABLED} className={controls.secondary} />
-                </div>
-                <p className={ordering.open ? styles.orderingOpen : styles.orderingClosed}>{orderingLabel(ordering)}</p>
-              </div>
-            </section>
+              </Button>
+            ) : null}
+            {status === 'confirmed' ? <FeatureAction label="Change booking" reason={CHANGE_BOOKING_DISABLED} variant="outline" /> : null}
+            <FeatureAction label="Report a problem" reason={COMPLAINT_DISABLED} variant="outline" />
+            {cancellable ? (
+              <Button
+                variant="outline"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setIsCancelOpen(true)}
+              >
+                Cancel booking
+              </Button>
+            ) : null}
           </div>
+        </header>
 
-          <PaymentCard booking={booking} />
+        {status === 'held' ? (
+          <HoldBanner
+            reference={booking.reference}
+            holdExpiresAt={booking.holdExpiresAt}
+            serverNow={booking.serverNow}
+            onExpire={handleExpiry}
+          />
+        ) : null}
 
-          <div className={styles.bottomCards}>
-            <section className={styles.card}>
-              <h3 className={styles.cardTitle}>
-                Lost or delayed baggage? <span className={styles.featureChip}>F10</span>
-              </h3>
-              <p className={styles.muted}>Report a lost bag or follow a bag case for this booking.</p>
-              <div className={styles.cardActions}>
-                <FeatureAction label="Report a lost bag →" reason={LOST_BAG_DISABLED} className={controls.link} />
+        {status === 'expired' ? (
+          <MessageCard title="This hold has expired">
+            <p className="text-sm text-muted-foreground">
+              {notice ?? 'This hold expired and its seats are back on sale. Nothing was charged.'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild>
+                <Link to="/search">Search again</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link to="/bookings">Go to My Trips</Link>
+              </Button>
+            </div>
+          </MessageCard>
+        ) : null}
+
+        {notice && status !== 'expired' ? (
+          <Alert>
+            <AlertDescription>{notice}</AlertDescription>
+          </Alert>
+        ) : null}
+        {cancelled ? (
+          <Alert>
+            <AlertDescription>{cancelNotice(cancelled)}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <FlightsCard booking={booking} status={status} />
+        {/* The seat of a held booking can still be changed, so the panel works on a hold too. */}
+        {(status === 'held' || status === 'confirmed') && (
+          <BookingSeatChangesPanel reference={booking.reference} onChanged={() => void onReload()} />
+        )}
+        {(status === 'held' || status === 'confirmed') && (
+          <BookingAssistancePanel reference={booking.reference} onChanged={() => void onReload()} />
+        )}
+
+        {/* A boarding pass only exists for a confirmed booking. */}
+        {status === 'confirmed' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Check-in and boarding pass</CardTitle>
+              <CardDescription>Available once check-in is complete. Scan the QR code at the gate.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap gap-2">
+                <FeatureAction label="Download boarding pass" reason={CHECK_IN_DISABLED} />
+                <FeatureAction label="Add to wallet" reason={CHECK_IN_DISABLED} variant="outline" />
               </div>
-            </section>
+              <div className="size-20 rounded-md border border-dashed bg-muted" aria-hidden="true" />
+            </CardContent>
+          </Card>
+        )}
 
-            <section className={styles.card}>
-              <h3 className={styles.cardTitle}>
-                Something went wrong? <span className={styles.featureChip}>F13</span>
-              </h3>
-              <p className={styles.muted}>Tell us about the flight, the food or a staff member.</p>
-              <div className={styles.cardActions}>
-                <FeatureAction label="Report a problem →" reason={COMPLAINT_DISABLED} className={controls.link} />
-              </div>
-            </section>
-          </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          <PassengersCard booking={booking} />
+
+          {/* Feature 12 sells meals for confirmed bookings only. */}
+          {status === 'confirmed' && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Meals &amp; Onboard Shop</CardTitle>
+                <CardDescription>Add meals, snacks and duty-free to this booking.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <FeatureAction label="Browse onboard shop" reason={MEALS_DISABLED} />
+                <div className="flex flex-wrap gap-2">
+                  <FeatureAction label="Pre-order meals" reason={MEALS_DISABLED} variant="outline" size="sm" />
+                  <FeatureAction label="Snacks and drinks" reason={MEALS_DISABLED} variant="outline" size="sm" />
+                  <FeatureAction label="Duty-free" reason={MEALS_DISABLED} variant="outline" size="sm" />
+                </div>
+                <p className={`text-sm ${ordering.open ? 'text-ok' : 'text-muted-foreground'}`}>{orderingLabel(ordering)}</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
-      </main>
+
+        <PaymentCard booking={booking} />
+
+        <div className="grid gap-6 md:grid-cols-2">
+          <HelpCard title="Lost or delayed baggage?" feature="F10" text="Report a lost bag or follow a bag case for this booking.">
+            <FeatureAction label="Report a lost bag" reason={LOST_BAG_DISABLED} variant="link" />
+          </HelpCard>
+          <HelpCard title="Something went wrong?" feature="F13" text="Tell us about the flight, the food or a staff member.">
+            <FeatureAction label="Report a problem" reason={COMPLAINT_DISABLED} variant="link" />
+          </HelpCard>
+        </div>
+      </PageShell>
 
       {isCancelOpen ? (
         <CancelBookingDialog
@@ -267,7 +276,10 @@ function cancelNotice(result: CancelBookingResult): string {
   if (result.refund > 0) {
     return `Booking cancelled. A refund of ${formatMoney(result.refund, result.currency)} will be returned to your original payment method.`
   }
-  return 'Booking cancelled. Nothing was charged.'
+  if (result.fee > 0) {
+    return `Booking cancelled. The cancellation fee of ${formatMoney(result.fee, result.currency)} covered the full fare, so no refund is due.`
+  }
+  return 'Booking cancelled.'
 }
 
 /**
@@ -291,56 +303,66 @@ function statusOfError(error: ApiError): string | null {
   return typeof status === 'string' ? status : null
 }
 
+/** A link to another feature's page about this booking. */
+function HelpCard({ title, feature, text, children }: { title: string; feature: string; text: string; children: React.ReactNode }) {
+  return (
+    <Card className="gap-3">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          {title}
+          <Badge variant="secondary" className="font-mono">
+            {feature}
+          </Badge>
+        </CardTitle>
+        <CardDescription>{text}</CardDescription>
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
+  )
+}
+
 function LoadingState() {
   return (
-    <main className={styles.page}>
-      <div className={styles.shell}>
-        <section className={styles.messageCard} aria-busy="true">
-          <h1>Loading booking…</h1>
-          <p className={styles.muted}>Checking your itinerary, your seats and your tickets.</p>
-        </section>
-      </div>
-    </main>
+    <PageShell>
+      <MessageCard title="Loading booking…" busy>
+        <p className="text-sm text-muted-foreground">Checking your itinerary, your seats and your tickets.</p>
+      </MessageCard>
+    </PageShell>
   )
 }
 
 function NotFoundState({ reference }: { reference: string }) {
   return (
-    <main className={styles.page}>
-      <div className={styles.shell}>
-        <section className={styles.messageCard}>
-          <h1>We couldn&apos;t find booking {reference}</h1>
-          <p className={styles.muted}>Check the reference or go back to your trips.</p>
-          <div className={styles.messageActions}>
-            <Link to="/bookings" className={controls.primary}>
-              Go to My Trips
-            </Link>
-            <Link to="/search" className={controls.secondary}>
-              Search flights
-            </Link>
-          </div>
-        </section>
-      </div>
-    </main>
+    <PageShell>
+      <MessageCard title={`We couldn't find booking ${reference}`}>
+        <p className="text-sm text-muted-foreground">Check the reference or go back to your trips.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild>
+            <Link to="/bookings">Go to My Trips</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/search">Search flights</Link>
+          </Button>
+        </div>
+      </MessageCard>
+    </PageShell>
   )
 }
 
 function ErrorState({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
   return (
-    <main className={styles.page}>
-      <div className={styles.shell}>
-        <section className={styles.messageCard}>
-          <ApiErrorBanner error={error} />
-          <div className={styles.messageActions}>
-            <button type="button" className={controls.secondary} onClick={onRetry}>
-              Try again
-            </button>
-            <Link to="/bookings" className={controls.secondary}>
-              Go to My Trips
-            </Link>
-          </div>
-        </section>
-      </div>
-    </main>
+    <PageShell>
+      <MessageCard title="We could not load this booking">
+        <ApiErrorBanner error={error} />
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={onRetry}>
+            Try again
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/bookings">Go to My Trips</Link>
+          </Button>
+        </div>
+      </MessageCard>
+    </PageShell>
   )
 }

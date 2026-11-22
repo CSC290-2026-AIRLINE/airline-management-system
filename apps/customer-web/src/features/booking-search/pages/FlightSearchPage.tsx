@@ -7,7 +7,6 @@ import type { FlightSearchFormValue } from '../components/contracts'
 import { useBookingSearchApi } from '../api/client'
 import type { CabinAvailability, FlightOption, FlightSearchRequest, FlightSearchResponse } from '../api/types'
 import { defaultFlightSearchValue, type FlightSearchPick, type FlightSearchSort, type FlightSearchUrlState } from '../search-params'
-import '../search.css'
 
 export interface SelectedFlight {
   flight: FlightOption
@@ -32,8 +31,11 @@ type Sort = FlightSearchSort
 type SearchOutcome = { status: 'found'; response: FlightSearchResponse } | { status: 'failed'; message: string } | { status: 'stale' }
 const money = (value: number, currency: string) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency, currencyDisplay: 'code' }).format(value)
-const time = (value: string) =>
-  new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(new Date(value))
+// Each time is shown in its own airport's local time.
+const time = (value: string, timeZone: string) =>
+  new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone }).format(new Date(value))
+/** The local calendar day (YYYY-MM-DD) of an instant at an airport. */
+const localDay = (value: string, timeZone: string) => new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date(value))
 const day = (value: string) =>
   new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(
     new Date(`${value}T12:00:00Z`),
@@ -75,10 +77,13 @@ class SearchBoundary extends Component<{ children: ReactNode }, { failed: boolea
   }
   render() {
     return this.state.failed ? (
-      <main className="f3-search f3-search-page">
+      <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-left md:py-10 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
         <h1>Flight search is unavailable</h1>
         <p>Refresh the page to try again.</p>
-        <button className="f3-search-primary" onClick={() => window.location.reload()}>
+        <button
+          className="inline-flex h-10 w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm sm:h-9 sm:w-auto font-medium whitespace-nowrap text-primary-foreground shadow-xs transition-all outline-none hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+          onClick={() => window.location.reload()}
+        >
           Refresh page
         </button>
       </main>
@@ -210,7 +215,8 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
   }, [])
   const party = (submitted?.adults ?? 0) + (submitted?.children ?? 0)
   const total = selected.reduce((sum, selection) => sum + (selection?.fare.pricePerPassenger ?? 0), 0) * party
-  const tripCurrency = selected.find((selection) => !!selection)?.fare.currency ?? 'USD'
+  // Before anything is picked, the total shows in the results' currency rather than a fixed USD.
+  const tripCurrency = selected.find((selection) => !!selection)?.fare.currency ?? result?.legs[0]?.options[0]?.cabins[0]?.currency ?? 'USD'
   const picked = selected.filter(Boolean).length
   const complete = !!submitted && picked === submitted.legs.length
   const noResults = result?.legs.some((leg) => leg.options.length === 0)
@@ -246,38 +252,40 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
     ['duration', 'Duration'],
   ]
   return (
-    <main className="f3-search f3-search-page">
-      <div className="f3-search-heading">
+    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-left md:py-10 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1>Find a flight</h1>
-          <p className="f3-search-intro">Direct flights only. Seats and prices are checked live; nothing is reserved until you continue.</p>
+          <p className="text-muted-foreground">
+            Direct flights only. Seats and prices are checked live; nothing is reserved until you continue.
+          </p>
         </div>
         {tripLink && (
-          <a className="f3-search-trip-link" href={tripLink.href}>
+          <a className="text-sm font-medium text-link underline-offset-4 hover:underline" href={tripLink.href}>
             {tripLink.label}
           </a>
         )}
       </div>
-      <div className="f3-search-route-bar">
+      <div className="">
         <BookingRouteBar currentStep={1} />
       </div>
       <FlightSearchForm value={form} onChange={changeForm} onSubmit={submit} isLoading={isLoading} errorMessage={error} />
       <div aria-live="polite" aria-busy={isLoading}>
         {isLoading && (
-          <section className="f3-search-card f3-search-empty">
-            <div className="f3-search-spinner" />
+          <section className="rounded-xl border bg-card text-card-foreground shadow-sm px-5 py-11 text-center [&_p]:mx-auto [&_p]:mt-2 [&_p]:max-w-[520px] [&_p]:text-muted-foreground">
+            <div className="mx-auto mb-4 size-6 animate-spin rounded-full border-[3px] border-border border-t-primary motion-reduce:animate-none" />
             <h2>Checking flights and availability…</h2>
             <p>This may take a moment.</p>
           </section>
         )}
         {!isLoading && !result && !error && (
-          <section className="f3-search-card f3-search-empty">
+          <section className="rounded-xl border bg-card text-card-foreground shadow-sm px-5 py-11 text-center [&_p]:mx-auto [&_p]:mt-2 [&_p]:max-w-[520px] [&_p]:text-muted-foreground">
             <h2>Find your flight</h2>
             <p>Choose where you are flying and when, then press Search flights to see the available flights.</p>
           </section>
         )}
         {noResults && submitted && (
-          <section className="f3-search-card f3-search-no-results">
+          <section className="rounded-xl border bg-card text-card-foreground shadow-sm space-y-2 p-6 [&>p]:text-muted-foreground">
             <h2>
               No direct flights with {party} {party === 1 ? 'seat' : 'seats'} on {day(submitted.legs[0].date)}
             </h2>
@@ -285,16 +293,18 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
               Flights that match the route and date are sold out in this cabin or have fewer seats left than your party needs. Try another
               day or fewer passengers.
             </p>
-            <p className="f3-search-banner">
+            <p className="rounded-lg border border-link/20 bg-link/5 px-4 py-3 text-sm text-link">
               Search returns only flights that are on sale and not yet departed. Cancelled and departed flights are hidden.
             </p>
           </section>
         )}
         {result && !noResults && (
-          <>
-            <div className="f3-search-result-tools">
-              <span className="f3-search-price-note">Prices and availability checked live</span>
-              <div className="f3-search-sort">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="rounded-md border bg-background px-2.5 py-1 text-xs text-muted-foreground">
+                Prices and availability checked live
+              </span>
+              <div className="flex flex-wrap items-center gap-2 [&>span]:text-xs [&>span]:font-medium [&>span]:text-muted-foreground [&_button]:h-8 [&_button]:cursor-pointer [&_button]:rounded-md [&_button]:border [&_button]:bg-background [&_button]:px-3 [&_button]:text-sm [&_button]:font-medium [&_button]:shadow-xs [&_button:hover]:bg-accent [&_button[aria-pressed=true]]:border-primary [&_button[aria-pressed=true]]:bg-primary [&_button[aria-pressed=true]]:text-primary-foreground">
                 <span>Sort</span>
                 {sortOptions.map(([value, label]) => (
                   <button key={value} type="button" aria-pressed={sort === value} onClick={() => changeSort(value)}>
@@ -325,13 +335,17 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                     : null
               return (
                 <section
-                  className="f3-search-card f3-search-results"
+                  className="rounded-xl border bg-card text-card-foreground shadow-sm overflow-hidden [&_header]:flex [&_header]:flex-wrap [&_header]:items-start [&_header]:justify-between [&_header]:gap-x-4 [&_header]:gap-y-1 [&_header]:px-4 [&_header]:py-3 [&_header>span]:self-center [&_header>span]:text-sm [&_header>span]:text-muted-foreground"
                   key={legIndex}
                   aria-label={legLabel ? `${legLabel} results` : 'Flight results'}
                 >
                   <header>
                     <div>
-                      {legLabel && <p className="f3-search-eyebrow">{legLabel}</p>}
+                      {legLabel && (
+                        <p className="w-fit rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                          {legLabel}
+                        </p>
+                      )}
                       <h2>
                         {airportCity(leg.leg.origin)} → {airportCity(leg.leg.destination)} · {day(leg.leg.date)}
                       </h2>
@@ -339,9 +353,15 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                     <span>Price per passenger</span>
                   </header>
                   {filtered.length > 0 && (
-                    <div className="f3-search-cabin-headings" aria-hidden="true">
+                    <div
+                      className="hidden gap-5 border-t bg-muted/40 px-4 py-2.5 md:grid md:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[385px_minmax(0,1fr)] [&_span]:text-xs [&_span]:font-medium [&_span]:text-muted-foreground"
+                      aria-hidden="true"
+                    >
                       <span>Flight</span>
-                      <div className="f3-search-cabin-columns" style={columnStyle}>
+                      <div
+                        className="grid grid-cols-2 gap-3 md:max-w-[calc(var(--f3-cabin-count)*250px+(var(--f3-cabin-count)-1)*12px)] md:grid-cols-[repeat(var(--f3-cabin-count),minmax(0,1fr))]"
+                        style={columnStyle}
+                      >
                         {cabinColumns.map((cabin) => (
                           <span key={cabin}>{cabins[cabin]}</span>
                         ))}
@@ -349,13 +369,23 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                     </div>
                   )}
                   {filtered.map((flight) => (
-                    <article className="f3-search-flight" key={flight.flightId}>
-                      <div className="f3-search-flight-time">
+                    <article
+                      className="grid grid-cols-1 gap-4 border-t px-4 py-3 md:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[385px_minmax(0,1fr)]"
+                      key={flight.flightId}
+                    >
+                      <div className="flex flex-col justify-center gap-1 [&>strong]:text-lg [&>strong]:font-semibold [&>strong]:tabular-nums [&>strong_span]:mx-1.5 [&>strong_span]:text-muted-foreground [&>strong_small]:ml-1.5 [&>strong_small]:text-xs [&>strong_small]:font-medium [&>strong_small]:text-muted-foreground [&>span]:text-sm [&>span]:text-muted-foreground">
                         <strong>
-                          {time(flight.depAt)} <span aria-hidden="true">→</span> {time(flight.arrAt)}
-                          {flight.arrAt.slice(0, 10) > flight.depAt.slice(0, 10) && (
+                          {time(flight.depAt, flight.originTimeZone)} <span aria-hidden="true">→</span>{' '}
+                          {time(flight.arrAt, flight.destinationTimeZone)}
+                          {localDay(flight.arrAt, flight.destinationTimeZone) > localDay(flight.depAt, flight.originTimeZone) && (
                             <small>
-                              +{Math.round((Date.parse(flight.arrAt.slice(0, 10)) - Date.parse(flight.depAt.slice(0, 10))) / 86400000)} day
+                              +
+                              {Math.round(
+                                (Date.parse(localDay(flight.arrAt, flight.destinationTimeZone)) -
+                                  Date.parse(localDay(flight.depAt, flight.originTimeZone))) /
+                                  86400000,
+                              )}{' '}
+                              day
                             </small>
                           )}
                         </strong>
@@ -363,11 +393,16 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                           {flight.flightNumber} · {Math.floor(flight.durationMinutes / 60)} h {flight.durationMinutes % 60} m · direct
                         </span>
                       </div>
-                      <div className="f3-search-cabin-columns" style={columnStyle} role="group" aria-label={`${flight.flightNumber} fares`}>
+                      <div
+                        className="grid grid-cols-2 gap-3 md:max-w-[calc(var(--f3-cabin-count)*250px+(var(--f3-cabin-count)-1)*12px)] md:grid-cols-[repeat(var(--f3-cabin-count),minmax(0,1fr))]"
+                        style={columnStyle}
+                        role="group"
+                        aria-label={`${flight.flightNumber} fares`}
+                      >
                         {cabinColumns.map((cabin) => (
-                          <div className="f3-search-cabin-cell" key={cabin}>
+                          <div className="flex min-w-0 flex-col gap-2" key={cabin}>
                             {!flight.cabins.some((fare) => fare.cabin === cabin) && (
-                              <div className="f3-search-unavailable">
+                              <div className="flex min-h-14 flex-col gap-1 rounded-lg border border-dashed px-3 py-2.5 [&_strong]:text-sm [&_strong]:font-semibold [&_strong]:text-muted-foreground [&_span]:text-xs [&_span]:text-muted-foreground">
                                 <strong>Not available</strong>
                                 <span>Not offered on this flight</span>
                               </div>
@@ -381,7 +416,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                                 return (
                                   <button
                                     key={`${fare.cabin}/${fare.fareClassId}`}
-                                    className={`f3-search-fare ${pickedFare ? 'is-selected' : ''}`}
+                                    className={`flex min-h-14 cursor-pointer flex-col items-start gap-0.5 rounded-lg border bg-background px-3 py-2 text-left outline-none transition-colors hover:border-primary hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:border-dashed disabled:bg-transparent disabled:text-muted-foreground disabled:hover:border-border [&>small]:text-xs [&>small]:text-muted-foreground [&>strong]:text-sm [&>strong]:font-semibold [&>strong]:tabular-nums ${pickedFare ? 'border-primary bg-primary/5 ring-1 ring-primary' : ''}`}
                                     disabled={!!fare.unavailableReason}
                                     aria-pressed={pickedFare}
                                     onClick={() => pickFare(legIndex, flight, fare)}
@@ -389,7 +424,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                                     <strong>
                                       {fare.unavailableReason ? 'Not available' : money(fare.pricePerPassenger, fare.currency)}
                                     </strong>
-                                    <small className={fare.seatsLeft <= 4 ? 'f3-search-low' : ''}>
+                                    <small className={fare.seatsLeft <= 4 ? '!text-warn' : undefined}>
                                       {fare.unavailableReason
                                         ? fare.unavailableReason
                                         : `${fare.seatsLeft > 9 ? '9+' : fare.seatsLeft} seats left`}
@@ -405,9 +440,12 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                 </section>
               )
             })}
-            <section className={`f3-search-card f3-search-summary ${picked ? 'is-picked' : ''}`} aria-label="Selected itinerary">
+            <section
+              className={`flex flex-col gap-4 rounded-xl border bg-card px-5 py-4 text-card-foreground shadow-sm sm:flex-row sm:items-center sm:justify-between [&_p:not(:first-child)]:mt-1 [&_p:not(:first-child)]:text-sm [&_p:not(:first-child)]:text-muted-foreground ${picked ? 'border-primary/50' : ''}`}
+              aria-label="Selected itinerary"
+            >
               <div>
-                <p className="f3-search-eyebrow">Your trip</p>
+                <p className="w-fit rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">Your trip</p>
                 <strong>
                   {selected
                     .filter(Boolean)
@@ -416,14 +454,14 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                 </strong>
                 {picked > 0 && <p>{partyLabel} · price per passenger shown</p>}
               </div>
-              <div className="f3-search-total">
+              <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3 sm:flex-nowrap sm:justify-end [&>div]:flex [&>div]:flex-col [&>div]:items-start sm:[&>div]:items-end [&>div>span]:text-xs [&>div>span]:text-muted-foreground [&>div>strong]:text-xl [&>div>strong]:whitespace-nowrap [&>div>strong]:tabular-nums">
                 <div>
                   <span>Total</span>
                   <strong>{money(total, tripCurrency)}</strong>
                 </div>
                 {onContinue && (
                   <button
-                    className="f3-search-primary"
+                    className="inline-flex h-10 w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm sm:h-9 sm:w-auto font-medium whitespace-nowrap text-primary-foreground shadow-xs transition-all outline-none hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
                     disabled={!complete}
                     onClick={() =>
                       onContinue({
@@ -438,7 +476,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                 )}
               </div>
             </section>
-          </>
+          </div>
         )}
       </div>
     </main>

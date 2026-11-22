@@ -1,7 +1,6 @@
 import { ApiError } from '../api/client'
 import { Dialog } from '../components/Dialog'
-import controls from '../styles/controls.module.css'
-import './review-pay-dialogs.css'
+import controls from '../styles/controls'
 
 interface ChangeFlightsDialogProps {
   open: boolean
@@ -38,7 +37,7 @@ export function ChangeFlightsDialog({ open, reference, seatLabel, isReleasing, e
       }
     >
       {error ? (
-        <p className="rp-dialog-error" role="alert">
+        <p className="text-sm text-destructive" role="alert">
           {error.message}
         </p>
       ) : null}

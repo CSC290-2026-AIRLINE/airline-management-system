@@ -10,6 +10,7 @@ import type {
   HoldBookingRequest,
   HoldBookingResponse,
   ServiceCode,
+  InsuranceOffer,
 } from './types'
 
 export class ApiError extends Error {
@@ -58,12 +59,25 @@ export function useBookingPnrApi() {
     return (await response.json()) as HoldBookingResponse
   }
 
-  async function devConfirmBooking(reference: string): Promise<ConfirmBookingResult> {
-    const response = await fetchWithAuth(`/api/dev/bookings/${encodeURIComponent(reference)}/confirm`, { method: 'POST' })
+  async function devConfirmBooking(reference: string, options: { addInsurance?: boolean } = {}): Promise<ConfirmBookingResult> {
+    const response = await fetchWithAuth(`/api/dev/bookings/${encodeURIComponent(reference)}/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ addInsurance: options.addInsurance === true }),
+    })
     if (!response.ok) {
       throw await readError(response)
     }
     return (await response.json()) as ConfirmBookingResult
+  }
+
+  /** What the booker's loyalty tier offers for travel insurance on this booking. */
+  async function getInsuranceOffer(reference: string): Promise<InsuranceOffer> {
+    const response = await fetchWithAuth(`/api/bookings/${encodeURIComponent(reference)}/insurance`)
+    if (!response.ok) {
+      throw await readError(response)
+    }
+    return (await response.json()) as InsuranceOffer
   }
 
   async function getCancelPreview(reference: string): Promise<CancelPreview> {
@@ -93,7 +107,7 @@ export function useBookingPnrApi() {
   /** The contact details of a booking that is still on hold. */
   async function updateContact(reference: string, input: { contactEmail: string; contactPhone?: string }): Promise<BookingContact> {
     const response = await fetchWithAuth(`/api/bookings/${encodeURIComponent(reference)}/contact`, {
-      method: 'PATCH',
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     })
@@ -122,6 +136,7 @@ export function useBookingPnrApi() {
     getBooking,
     holdBooking,
     devConfirmBooking,
+    getInsuranceOffer,
     getCancelPreview,
     cancelBooking,
     getCustomerTrips,

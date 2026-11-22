@@ -5,9 +5,11 @@ import { ApiErrorBanner } from '../components/ApiErrorBanner'
 import { Dialog } from '../components/Dialog'
 import { toApiError } from '../lib/errors'
 import { formatMoney } from '../lib/format'
-import controls from '../styles/controls.module.css'
+import controls from '../styles/controls'
 import { seatCount } from './booking-detail-model'
-import styles from './CancelBookingDialog.module.css'
+import { Skeleton } from '@customer-web/components/ui/skeleton'
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
+import { Button } from '@customer-web/components/ui/button'
 
 interface CancelBookingDialogProps {
   booking: BookingDetail
@@ -149,22 +151,29 @@ export function CancelBookingDialog({ booking, onClose, onCancelled, onInvalidSt
       }
     >
       {isClosed ? (
-        <p className={styles.closed}>This booking can no longer be cancelled because a passenger has already checked in.</p>
+        <p className="rounded-lg border border-warn/25 bg-warn/10 px-3 py-2 text-sm text-warn">
+          This booking can no longer be cancelled because a passenger has already checked in.
+        </p>
       ) : null}
 
       {previewError ? (
-        <div className={styles.previewError} role="alert">
-          <span>{previewError.message}</span>
-          <button type="button" className={styles.retry} onClick={handleRetryPreview}>
-            Try again
-          </button>
-        </div>
+        <Alert variant="destructive">
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+            <span>{previewError.message}</span>
+            <Button type="button" variant="outline" size="sm" onClick={handleRetryPreview}>
+              Try again
+            </Button>
+          </AlertDescription>
+        </Alert>
       ) : null}
 
       {error ? <ApiErrorBanner error={error} /> : null}
 
       {!unpaid && !isClosed ? (
-        <table className={styles.table} aria-busy={!preview && !previewError}>
+        <table
+          className="w-full overflow-hidden rounded-lg border bg-muted/40 text-sm [&_td]:px-4 [&_td]:py-2.5 [&_td:last-child]:text-right [&_td:last-child]:tabular-nums [&_tr+tr]:border-t"
+          aria-busy={!preview && !previewError}
+        >
           <tbody>
             <tr>
               <td>Total paid</td>
@@ -172,23 +181,23 @@ export function CancelBookingDialog({ booking, onClose, onCancelled, onInvalidSt
                 {preview ? (
                   formatMoney(booking.total, preview.currency || booking.currency)
                 ) : (
-                  <span className={styles.skeleton} aria-hidden="true" />
+                  <Skeleton className="ml-auto h-4 w-20" aria-hidden="true" />
                 )}
               </td>
             </tr>
             <tr>
               <td>Cancellation fee</td>
-              <td className={styles.fee}>
+              <td className="text-danger">
                 {preview ? (
                   `− ${formatMoney(preview.fee, preview.currency || booking.currency)}`
                 ) : (
-                  <span className={styles.skeleton} aria-hidden="true" />
+                  <Skeleton className="ml-auto h-4 w-20" aria-hidden="true" />
                 )}
               </td>
             </tr>
             <tr>
               <td>{booking.paymentType === 'miles' ? 'Miles returned' : 'Refund to card'}</td>
-              <td className={styles.refund}>
+              <td className="font-semibold">
                 {preview ? (
                   booking.paymentType === 'miles' && preview.milesReturned !== null && preview.milesReturned !== undefined ? (
                     `${preview.milesReturned} miles`
@@ -196,7 +205,7 @@ export function CancelBookingDialog({ booking, onClose, onCancelled, onInvalidSt
                     formatMoney(preview.refund, preview.currency || booking.currency)
                   )
                 ) : (
-                  <span className={styles.skeleton} aria-hidden="true" />
+                  <Skeleton className="ml-auto h-4 w-20" aria-hidden="true" />
                 )}
               </td>
             </tr>

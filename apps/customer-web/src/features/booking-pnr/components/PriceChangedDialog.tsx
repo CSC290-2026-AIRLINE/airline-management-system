@@ -1,8 +1,7 @@
 import type { PriceChangedDialogProps } from './contracts'
 import { Dialog } from './Dialog'
 import { formatMoney } from '../lib/format'
-import controls from '../styles/controls.module.css'
-import styles from './PriceChangedDialog.module.css'
+import controls from '../styles/controls'
 
 export function PriceChangedDialog({ open, previousTotal, newTotal, currency, onContinue, onCancel }: PriceChangedDialogProps) {
   return (
@@ -22,14 +21,14 @@ export function PriceChangedDialog({ open, previousTotal, newTotal, currency, on
         </>
       }
     >
-      <dl className={styles.amounts}>
-        <div className={styles.row}>
-          <dt className={styles.term}>Price you saw</dt>
-          <dd className={styles.value}>{formatMoney(previousTotal, currency)}</dd>
+      <dl className="divide-y rounded-lg border bg-muted/40 text-sm">
+        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+          <dt className="text-muted-foreground">Price you saw</dt>
+          <dd className="tabular-nums line-through decoration-muted-foreground/60">{formatMoney(previousTotal, currency)}</dd>
         </div>
-        <div className={styles.row}>
-          <dt className={styles.term}>New total</dt>
-          <dd className={styles.newTotal}>{formatMoney(newTotal, currency)}</dd>
+        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+          <dt className="font-medium">New total</dt>
+          <dd className="text-base font-semibold tabular-nums">{formatMoney(newTotal, currency)}</dd>
         </div>
       </dl>
     </Dialog>

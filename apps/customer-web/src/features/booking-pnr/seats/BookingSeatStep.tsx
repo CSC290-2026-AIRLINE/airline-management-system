@@ -2,12 +2,10 @@ import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import type { SeatMap } from '../api/types'
-import type { BookingSeatStepProps, SeatChoice } from '../flow/integration'
+import type { BookingSeatStepProps } from '../flow/integration'
 import { formatMoney } from '../lib/format'
-import { ConfirmSeatsDialog, type PendingHold } from './ConfirmSeatsDialog'
 import { SeatPicker } from './SeatPicker'
-import controls from '../styles/controls.module.css'
-import './seat-selection.css'
+import controls from '../styles/controls'
 import { useSeatQuote } from './useSeatQuote'
 
 export function BookingSeatStep({
@@ -33,7 +31,6 @@ export function BookingSeatStep({
   const [skipping, setSkipping] = useState(false)
   const [skipError, setSkipError] = useState<string | null>(null)
   /* What the customer is about to hold. The hold is only made when the dialog is confirmed. */
-  const [pending, setPending] = useState<PendingHold | null>(null)
 
   // A failed hold can mean someone else took a seat; refresh when the flow reports an error.
   useEffect(() => {
@@ -42,7 +39,7 @@ export function BookingSeatStep({
       try {
         const results = await Promise.all(
           itinerary.selections.map(async ({ flight }) => {
-            const response = await fetchWithAuth(`/api/flights/${encodeURIComponent(flight.flightId)}/seat-map`, {
+            const response = await fetchWithAuth(`/api/bookings/flights/${encodeURIComponent(flight.flightId)}/seat-map`, {
               signal: controller.signal,
             })
             if (!response.ok) throw new Error('Seat map unavailable')
@@ -81,13 +78,6 @@ export function BookingSeatStep({
         total + (maps?.[choice.flightId]?.rows.flatMap((row) => row.seats).find((seat) => seat.seatCode === choice.seatCode)?.fee ?? 0),
       0,
     )
-  /** The fees of the seats in a list of choices, over every flight. */
-  const seatFeesFor = (list: SeatChoice[]) =>
-    list.reduce(
-      (total, choice) =>
-        total + (maps?.[choice.flightId]?.rows.flatMap((row) => row.seats).find((seat) => seat.seatCode === choice.seatCode)?.fee ?? 0),
-      0,
-    )
   const selectedSeat = allSeats.find((seat) => seat.seatCode === selected?.seatCode)
   const unavailableChoices = maps
     ? choices.filter((choice) => {
@@ -105,29 +95,31 @@ export function BookingSeatStep({
   )
   const exitSelected = selectedSeat?.type === 'exit'
 
-  /** The customer confirmed what the booking holds, so the hold is made now. */
-  function confirmHold() {
-    if (!pending) return
-    setPending(null)
-    if (pending.kind === 'skip') onSkip(pending.total, pending.choices)
-    else onContinue(pending.total)
-  }
-
   return (
     <>
-      <section className="seat-selection" aria-label="Seat selection" aria-busy={busy}>
+      <section
+        className="min-w-0 space-y-4 text-left [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:m-0 [&_h3]:text-base [&_h3]:font-semibold"
+        aria-label="Seat selection"
+        aria-busy={busy}
+      >
         {error && (
-          <p className="seat-selection__error" role="alert">
+          <p
+            className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            role="alert"
+          >
             {error}
           </p>
         )}
         {missingCabin && (
-          <p className="seat-selection__error" role="alert">
+          <p
+            className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            role="alert"
+          >
             A selected cabin is not available on the assigned aircraft. Go back to flights and choose another cabin.
           </p>
         )}
         {unavailableChoices.length > 0 && (
-          <div className="seat-selection__warning" role="alert">
+          <div className="rounded-lg border border-warn/25 bg-warn/10 px-3 py-2 text-sm text-warn" role="alert">
             <p>
               Some chosen seats are no longer available: {unavailableChoices.map((choice) => choice.seatCode).join(', ')}. Clear them or
               choose replacement seats.
@@ -142,9 +134,12 @@ export function BookingSeatStep({
             </button>
           </div>
         )}
-        <div className="seat-selection__layout">
-          <div className="seat-selection__map-card">
-            <div className="seat-selection__segments" aria-label="Flights">
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="min-w-0 space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-6">
+            <div
+              className="flex flex-wrap gap-2 [&>button[aria-pressed=true]]:border-primary [&>button[aria-pressed=true]]:bg-primary/5"
+              aria-label="Flights"
+            >
               {itinerary.selections.map(({ flight }) => (
                 <button
                   className={controls.secondary}
@@ -159,7 +154,10 @@ export function BookingSeatStep({
               ))}
             </div>
             {loadError ? (
-              <div className="seat-selection__error" role="alert">
+              <div
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                role="alert"
+              >
                 <p>{loadError}</p>
                 <button
                   className={controls.secondary}
@@ -173,7 +171,7 @@ export function BookingSeatStep({
                 </button>
               </div>
             ) : !maps ? (
-              <p className="seat-selection__loading" role="status">
+              <p className="py-8 text-center text-sm text-muted-foreground" role="status">
                 Loading seat maps…
               </p>
             ) : null}
@@ -189,7 +187,7 @@ export function BookingSeatStep({
                 legendAction={
                   choices.some((choice) => choice.flightId === flightId) ? (
                     <button
-                      className="seat-picker__legend-action seat-selection__clear"
+                      className="seat-picker__legend-action inline-flex h-7 cursor-pointer items-center rounded-md px-2 text-xs font-medium text-primary hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                       type="button"
                       disabled={busy}
                       aria-label="Clear seats for this flight"
@@ -220,17 +218,20 @@ export function BookingSeatStep({
             )}
             {maps && (!selection || !traveller || !map) && <p role="status">No seat map is available for this flight.</p>}
           </div>
-          <aside className="seat-selection__summary" aria-label="Passengers and trip summary">
-            <div className="seat-selection__summary-section">
+          <aside
+            className="divide-y overflow-hidden rounded-xl border bg-card shadow-sm lg:sticky lg:top-16"
+            aria-label="Passengers and trip summary"
+          >
+            <div className="space-y-3 p-5">
               <h2>Passengers on {selection?.flight.flightNumber ?? 'this flight'}</h2>
-              <div className="seat-selection__passengers" aria-label="Choose a passenger">
+              <div className="grid gap-2" aria-label="Choose a passenger">
                 {travellers
                   .filter((person) => person.expectedType !== 'infant')
                   .map((person) => {
                     const seat = choices.find((choice) => choice.flightId === flightId && choice.travellerKey === person.key)
                     return (
                       <button
-                        className="seat-selection__passenger"
+                        className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2.5 text-left text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-pressed:border-primary aria-pressed:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 [&_small]:text-xs [&_small]:text-muted-foreground [&_strong]:font-medium [&>span]:flex [&>span]:flex-col"
                         key={person.key}
                         type="button"
                         disabled={busy}
@@ -242,25 +243,28 @@ export function BookingSeatStep({
                             {person.givenName} {person.familyName} ({person.expectedType})
                           </strong>
                         </span>
-                        <span className="seat-selection__seat-code">{seat?.seatCode ?? 'No seat yet'}</span>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums">{seat?.seatCode ?? 'No seat yet'}</span>
                       </button>
                     )
                   })}
               </div>
               {travellers.some((person) => person.expectedType === 'infant') && (
-                <p className="seat-selection__muted">Infants travel on an adult’s lap and do not need a seat.</p>
+                <p className="text-sm text-muted-foreground">Infants travel on an adult’s lap and do not need a seat.</p>
               )}
               {exitSelected && (
-                <p className="seat-selection__warning" role="status">
+                <p className="rounded-lg border border-warn/25 bg-warn/10 px-3 py-2 text-sm text-warn" role="status">
                   Exit-row seats require an adult with no assistance request and no infant on their lap.
                 </p>
               )}
-              <p className="seat-selection__fees">
+              <p className="flex justify-between gap-3 text-sm font-medium tabular-nums">
                 <span>Seat fees</span>
                 <strong>{maps ? formatMoney(seatFees, currency) : '—'}</strong>
               </p>
               {quote.error && (
-                <div className="seat-selection__error" role="alert">
+                <div
+                  className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                  role="alert"
+                >
                   <p>{quote.error}</p>
                   <button className={controls.secondary} type="button" disabled={busy || skipping} onClick={quote.retry}>
                     Retry price
@@ -268,22 +272,25 @@ export function BookingSeatStep({
                 </div>
               )}
               {skipError && (
-                <p className="seat-selection__error" role="alert">
+                <p
+                  className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                  role="alert"
+                >
                   {skipError}
                 </p>
               )}
-              <p className="seat-selection__hint">
+              <p className="rounded-lg border border-link/20 bg-link/5 px-3 py-2 text-sm text-link">
                 Pick a passenger, then a seat. Click your seat again to remove it. You can skip any flight and choose later in My Trips or
                 at check-in. Seats you pick are held with your booking.
               </p>
-              <div className="seat-selection__actions">
+              <div className="grid gap-2 pt-1 [&>*]:w-full">
                 <button
                   className={controls.primary}
                   type="button"
                   disabled={busy || skipping || quote.loading || quote.total === null || !!missingCabin || unavailableChoices.length > 0}
                   onClick={() => {
                     if (quote.total === null) return
-                    setPending({ kind: 'continue', total: quote.total, choices, seatFees: seatFeesFor(choices) })
+                    onContinue(quote.total)
                   }}
                 >
                   {busy ? 'Creating booking…' : 'Continue to review'}
@@ -298,15 +305,7 @@ export function BookingSeatStep({
                     setSkipError(null)
                     void quote
                       .forChoices(remainingChoices)
-                      .then((total) =>
-                        setPending({
-                          kind: 'skip',
-                          total,
-                          choices: remainingChoices,
-                          skippedFlightId: flightId,
-                          seatFees: seatFeesFor(remainingChoices),
-                        }),
-                      )
+                      .then((total) => onSkip(total, remainingChoices))
                       .catch((cause: unknown) =>
                         setSkipError(cause instanceof Error ? cause.message : 'Could not update the price. Please try again.'),
                       )
@@ -323,19 +322,6 @@ export function BookingSeatStep({
           </aside>
         </div>
       </section>
-
-      {/* The dialog sits outside the seat page, so the seat page's own rules do not reach its buttons. */}
-      {pending ? (
-        <ConfirmSeatsDialog
-          open
-          pending={pending}
-          itinerary={itinerary}
-          travellers={travellers}
-          currency={currency}
-          onClose={() => setPending(null)}
-          onConfirm={confirmHold}
-        />
-      ) : null}
     </>
   )
 }

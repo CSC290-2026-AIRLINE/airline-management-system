@@ -172,7 +172,6 @@ export function validateTravellers(
     }
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email.trim())) fail(contactFieldId('email'), 'Enter a valid contact email')
-  if (!contact.phone.trim()) fail(contactFieldId('phone'), 'Enter a contact phone number')
   if (!message) return null
   return { message, fields }
 }

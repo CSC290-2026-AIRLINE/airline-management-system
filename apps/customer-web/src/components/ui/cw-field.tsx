@@ -1,9 +1,6 @@
 import type { ReactNode } from 'react'
-import './cw-field.css'
-
-function classNames(...values: Array<string | false | null | undefined>) {
-  return values.filter(Boolean).join(' ')
-}
+import { cn } from '@customer-web/lib/utils'
+import { Label } from './label'
 
 interface FieldProps {
   /** The id of the control, so the label can point at it and the message can be named after it. */
@@ -29,17 +26,17 @@ interface FieldProps {
  */
 export function Field({ id, label, error, hint, className, children }: FieldProps) {
   return (
-    <div className={classNames('cw-field', className)}>
-      <label id={`${id}-label`} htmlFor={id}>
+    <div className={cn('grid min-w-0 content-start gap-1.5 text-left', className)}>
+      <Label id={`${id}-label`} htmlFor={id}>
         {label}
-      </label>
+      </Label>
       {children}
       {error ? (
-        <p className="cw-field-error" id={`${id}-error`}>
+        <p className="text-xs text-destructive" id={`${id}-error`}>
           {error}
         </p>
       ) : hint ? (
-        <p className="cw-field-hint" id={`${id}-hint`}>
+        <p className="text-xs text-muted-foreground" id={`${id}-hint`}>
           {hint}
         </p>
       ) : null}

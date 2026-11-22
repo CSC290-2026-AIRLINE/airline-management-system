@@ -1,7 +1,7 @@
 import type { ApiError } from '../api/client'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
 import { Dialog } from '../components/Dialog'
-import controls from '../styles/controls.module.css'
+import controls from '../styles/controls'
 
 interface CancelHoldDialogProps {
   open: boolean

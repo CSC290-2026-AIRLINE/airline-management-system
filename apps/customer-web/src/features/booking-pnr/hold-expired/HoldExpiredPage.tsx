@@ -5,9 +5,7 @@ import { ApiErrorBanner } from '../components/ApiErrorBanner'
 import { heldSeatCount } from '../lib/booking'
 import { ConfirmedState } from '../review-pay/ConfirmedState'
 import type { HoldExpiredReason } from './types'
-import styles from './HoldExpiredPage.module.css'
-import controls from '../styles/controls.module.css'
-import '../styles/tokens.css'
+import controls from '../styles/controls'
 
 export function HoldExpiredPage({ reference, reason }: { reference: string; reason: HoldExpiredReason }) {
   const { booking, error, isLoading, reload } = useBooking(reference)
@@ -46,13 +44,15 @@ export function HoldExpiredPage({ reference, reason }: { reference: string; reas
         : `Booking ${reference} was not paid within 15 minutes, so the ${seatLabel} ${seatCount === 1 ? 'is' : 'are'} back on sale and the booking is marked expired. Nothing was charged.`
 
   return (
-    <main className={styles.page}>
-      <div className={styles.shell}>
-        <section className={styles.card}>
-          <span className={styles.chip}>{chip}</span>
+    <main className="mx-auto w-full max-w-xl px-4 py-10 text-left md:py-16">
+      <div className="space-y-6">
+        <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight">
+          <span className="inline-flex w-fit items-center rounded-md border border-warn/25 bg-warn/10 px-2 py-0.5 text-xs font-medium text-warn">
+            {chip}
+          </span>
           <h1>{title}</h1>
-          <p className={styles.body}>{body}</p>
-          <div className={styles.actions}>
+          <p className="text-muted-foreground">{body}</p>
+          <div className="flex flex-wrap gap-2">
             <Link to="/search" className={controls.primary}>
               Search again
             </Link>
@@ -60,7 +60,9 @@ export function HoldExpiredPage({ reference, reason }: { reference: string; reas
               Go to My Trips
             </Link>
           </div>
-          <p className={styles.note}>Prices and seat counts may have changed. If the seats are gone, search will show what is left.</p>
+          <p className="text-xs text-muted-foreground">
+            Prices and seat counts may have changed. If the seats are gone, search will show what is left.
+          </p>
         </section>
       </div>
     </main>
@@ -69,13 +71,15 @@ export function HoldExpiredPage({ reference, reason }: { reference: string; reas
 
 function ActiveHoldState({ reference }: { reference: string }) {
   return (
-    <main className={styles.page}>
-      <div className={styles.shell}>
-        <section className={styles.card}>
-          <span className={styles.neutralChip}>Hold active</span>
+    <main className="mx-auto w-full max-w-xl px-4 py-10 text-left md:py-16">
+      <div className="space-y-6">
+        <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight">
+          <span className="inline-flex w-fit items-center rounded-md border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            Hold active
+          </span>
           <h1>Your hold is still active</h1>
-          <p className={styles.body}>Booking {reference} has not expired yet. Return to Review &amp; pay to finish.</p>
-          <div className={styles.actions}>
+          <p className="text-muted-foreground">Booking {reference} has not expired yet. Return to Review &amp; pay to finish.</p>
+          <div className="flex flex-wrap gap-2">
             <Link to="/review-pay/$reference" params={{ reference }} className={controls.primary}>
               Return to Review &amp; pay
             </Link>
@@ -91,12 +95,17 @@ function ActiveHoldState({ reference }: { reference: string }) {
 
 function LoadingState({ reference }: { reference: string }) {
   return (
-    <main className={styles.page}>
-      <div className={styles.shell}>
-        <section className={styles.card} aria-busy="true">
-          <span className={styles.neutralChip}>Hold expired</span>
+    <main className="mx-auto w-full max-w-xl px-4 py-10 text-left md:py-16">
+      <div className="space-y-6">
+        <section
+          className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight"
+          aria-busy="true"
+        >
+          <span className="inline-flex w-fit items-center rounded-md border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            Hold expired
+          </span>
           <h1>Loading booking…</h1>
-          <p className={styles.body}>Checking what happened to booking {reference}.</p>
+          <p className="text-muted-foreground">Checking what happened to booking {reference}.</p>
         </section>
       </div>
     </main>
@@ -109,15 +118,15 @@ function LoadingState({ reference }: { reference: string }) {
  */
 function ErrorState({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
   return (
-    <main className={styles.page}>
-      <div className={styles.shell}>
-        <section className={styles.card}>
+    <main className="mx-auto w-full max-w-xl px-4 py-10 text-left md:py-16">
+      <div className="space-y-6">
+        <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight">
           <ApiErrorBanner error={error} />
           <h1>We could not load this booking</h1>
-          <p className={styles.body}>
+          <p className="text-muted-foreground">
             The booking could not be read, so we cannot tell you yet what happened to its hold. Try again in a moment.
           </p>
-          <div className={styles.actions}>
+          <div className="flex flex-wrap gap-2">
             <button type="button" className={controls.primary} onClick={onRetry}>
               Try again
             </button>
@@ -133,13 +142,15 @@ function ErrorState({ error, onRetry }: { error: ApiError; onRetry: () => void }
 
 function NotFoundState({ reference }: { reference: string }) {
   return (
-    <main className={styles.page}>
-      <div className={styles.shell}>
-        <section className={styles.card}>
-          <span className={styles.chip}>Not found</span>
+    <main className="mx-auto w-full max-w-xl px-4 py-10 text-left md:py-16">
+      <div className="space-y-6">
+        <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight">
+          <span className="inline-flex w-fit items-center rounded-md border border-warn/25 bg-warn/10 px-2 py-0.5 text-xs font-medium text-warn">
+            Not found
+          </span>
           <h1>We couldn&apos;t find booking {reference}</h1>
-          <p className={styles.body}>Check the reference or go back to your trips.</p>
-          <div className={styles.actions}>
+          <p className="text-muted-foreground">Check the reference or go back to your trips.</p>
+          <div className="flex flex-wrap gap-2">
             <Link to="/bookings" className={controls.primary}>
               Go to My Trips
             </Link>

@@ -16,7 +16,7 @@ import {
   toKey,
   weekdayIndex,
 } from './date-keys'
-import './date-picker.css'
+import { cn } from '@customer-web/lib/utils'
 
 /**
  * The shared date field. It replaces the browser's own `input[type="date"]`, whose text box and calendar popup cannot
@@ -42,10 +42,6 @@ const WEEKDAYS = Array.from({ length: 7 }, (_, index) =>
 
 const longDate = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 const shortDate = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
-
-function classNames(...values: Array<string | false | null | undefined>) {
-  return values.filter(Boolean).join(' ')
-}
 
 export interface DatePickerProps {
   /** The chosen date as `YYYY-MM-DD`, or `''` when nothing is chosen. */
@@ -207,7 +203,10 @@ export function DatePicker({
         id={id}
         type="text"
         data-slot="date-picker-static"
-        className={classNames('cw-date-static', invalid && 'is-invalid', className)}
+        className={cn(
+          'flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 cursor-default bg-muted/40',
+          className,
+        )}
         value={label}
         readOnly
         aria-label={triggerLabel}
@@ -225,7 +224,10 @@ export function DatePicker({
           id={id}
           type="button"
           data-slot="date-picker-trigger"
-          className={classNames('cw-date-trigger', invalid && 'is-invalid', className)}
+          className={cn(
+            'flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 cursor-pointer',
+            className,
+          )}
           aria-label={triggerLabel}
           aria-labelledby={triggerName}
           aria-invalid={invalid || undefined}
@@ -233,16 +235,16 @@ export function DatePicker({
           data-required={required || undefined}
           disabled={disabled}
         >
-          <span className={classNames('cw-date-value', !value && 'is-empty')}>{value ? label : placeholder}</span>
-          <span className="cw-date-spoken" id={spokenId}>
+          <span className={cn('flex-1 truncate', !value && 'text-muted-foreground')}>{value ? label : placeholder}</span>
+          <span className="sr-only" id={spokenId}>
             {spokenDate(value)}
           </span>
-          <CalendarDaysIcon className="cw-date-icon" />
+          <CalendarDaysIcon className="size-4 shrink-0 text-muted-foreground" />
         </button>
       </Popover.Trigger>
       <Popover.Portal container={popupContainer}>
         <Popover.Content
-          className="cw-date-content"
+          className="z-50 w-72 rounded-md border bg-popover p-3 text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
           sideOffset={6}
           collisionPadding={12}
           onOpenAutoFocus={(event) => {
@@ -252,13 +254,18 @@ export function DatePicker({
           }}
           aria-label="Choose a date"
         >
-          <div className="cw-date-header">
-            <button type="button" className="cw-date-nav" aria-label="Previous month" onClick={() => showMonth(addMonths(view, -1))}>
+          <div className="mb-2 flex items-center justify-between gap-1">
+            <button
+              type="button"
+              className="inline-flex size-7 cursor-pointer items-center justify-center rounded-md border bg-background outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-4"
+              aria-label="Previous month"
+              onClick={() => showMonth(addMonths(view, -1))}
+            >
               <ChevronLeftIcon />
             </button>
-            <div className="cw-date-header-selects">
+            <div className="flex items-center gap-1">
               <select
-                className="cw-date-select"
+                className="h-7 cursor-pointer rounded-md border border-input bg-background px-1.5 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 aria-label="Month"
                 value={viewedMonth}
                 onChange={(event) => {
@@ -273,7 +280,7 @@ export function DatePicker({
                 ))}
               </select>
               <select
-                className="cw-date-select"
+                className="h-7 cursor-pointer rounded-md border border-input bg-background px-1.5 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 aria-label="Year"
                 value={viewedYear}
                 onChange={(event) => {
@@ -288,28 +295,33 @@ export function DatePicker({
                 ))}
               </select>
             </div>
-            <button type="button" className="cw-date-nav" aria-label="Next month" onClick={() => showMonth(addMonths(view, 1))}>
+            <button
+              type="button"
+              className="inline-flex size-7 cursor-pointer items-center justify-center rounded-md border bg-background outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:size-4"
+              aria-label="Next month"
+              onClick={() => showMonth(addMonths(view, 1))}
+            >
               <ChevronRightIcon />
             </button>
           </div>
-          <div className="cw-date-weekdays" aria-hidden="true">
+          <div className="grid grid-cols-7 text-center text-xs font-normal text-muted-foreground" aria-hidden="true">
             {WEEKDAYS.map((weekday) => (
               <span key={weekday}>{weekday}</span>
             ))}
           </div>
-          <div className="cw-date-grid" role="grid" aria-label="Calendar" ref={gridRef} onKeyDown={onKeyDown}>
+          <div className="mt-1 grid gap-0.5" role="grid" aria-label="Calendar" ref={gridRef} onKeyDown={onKeyDown}>
             {weeks.map((week, weekIndex) => (
-              <div className="cw-date-week" role="row" key={weekIndex}>
+              <div className="grid grid-cols-7" role="row" key={weekIndex}>
                 {week.map((day) => (
-                  <div className="cw-date-cell" role="gridcell" key={day.key}>
+                  <div className="flex justify-center" role="gridcell" key={day.key}>
                     <button
                       type="button"
                       data-day={day.key}
-                      className={classNames(
-                        'cw-date-day',
-                        !day.inMonth && 'is-outside',
-                        day.key === value && 'is-selected',
-                        day.key === today && 'is-today',
+                      className={cn(
+                        'size-8 cursor-pointer rounded-md text-sm tabular-nums outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent',
+                        !day.inMonth && 'text-muted-foreground opacity-60',
+                        day.key === today && 'bg-accent font-semibold',
+                        day.key === value && 'bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground',
                       )}
                       tabIndex={day.key === focused ? 0 : -1}
                       disabled={day.disabled}
@@ -326,14 +338,19 @@ export function DatePicker({
               </div>
             ))}
           </div>
-          <div className="cw-date-footer">
-            <button type="button" className="cw-date-footer-button" disabled={!selectable(today)} onClick={() => choose(today)}>
+          <div className="mt-2 flex justify-between gap-2 border-t pt-2">
+            <button
+              type="button"
+              className="h-7 cursor-pointer rounded-md px-2 text-sm font-medium text-primary outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!selectable(today)}
+              onClick={() => choose(today)}
+            >
               Today
             </button>
             {clearable && (
               <button
                 type="button"
-                className="cw-date-footer-button"
+                className="h-7 cursor-pointer rounded-md px-2 text-sm font-medium text-primary outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => {
                   onChange('')
                   setOpen(false)

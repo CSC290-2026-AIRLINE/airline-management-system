@@ -25,12 +25,9 @@ export interface Chip {
 
 export type PassengerRole = 'Account holder' | 'Adult' | 'Child' | 'Infant'
 
-/**
- * The role under the name of a passenger. The lead passenger of the booking is the account holder; the read model
- * does not say who the customer is, so the first passenger of the booking stands for the account holder.
- */
-export function passengerRole(passenger: BookingPassenger, index: number): PassengerRole {
-  if (index === 0) {
+/** The role under the name of a passenger: the customer who owns the booking is the account holder. */
+export function passengerRole(passenger: BookingPassenger, accountHolderPassengerId: string): PassengerRole {
+  if (passenger.passengerId === accountHolderPassengerId) {
     return 'Account holder'
   }
 

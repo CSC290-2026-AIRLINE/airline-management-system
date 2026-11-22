@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react'
+import { Input } from '@customer-web/components/ui/input'
 import { Field } from '@customer-web/components/ui/cw-field'
 import { ApiError } from '../api/client'
 import { Dialog } from '../components/Dialog'
-import controls from '../styles/controls.module.css'
-import './review-pay-dialogs.css'
+import controls from '../styles/controls'
 
 interface EditContactDialogProps {
   open: boolean
@@ -11,7 +11,7 @@ interface EditContactDialogProps {
   contactPhone: string | null
   onClose: () => void
   /** Saves the contact details of the booking that is still on hold. */
-  onSave: (contact: { contactEmail: string; contactPhone: string }) => Promise<void>
+  onSave: (contact: { contactEmail: string; contactPhone?: string }) => Promise<void>
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -34,7 +34,6 @@ export function EditContactDialog({ open, contactEmail, contactPhone, onClose, o
   function problems() {
     const found: { email?: string; phone?: string } = {}
     if (!EMAIL.test(email.trim())) found.email = 'Enter a valid email address.'
-    if (!phone.trim()) found.phone = 'Enter a phone number we can reach you on.'
     return found
   }
 
@@ -46,7 +45,7 @@ export function EditContactDialog({ open, contactEmail, contactPhone, onClose, o
     setSaving(true)
     setError(null)
     try {
-      await onSave({ contactEmail: email.trim(), contactPhone: phone.trim() })
+      await onSave({ contactEmail: email.trim(), contactPhone: phone.trim() || undefined })
       onClose()
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === 'BOOKING_CLOSED') {
@@ -70,9 +69,9 @@ export function EditContactDialog({ open, contactEmail, contactPhone, onClose, o
         if (!saving) onClose()
       }}
     >
-      <form className="rp-dialog-form" onSubmit={(event) => void submit(event)} noValidate>
+      <form className="grid gap-4" onSubmit={(event) => void submit(event)} noValidate>
         <Field id="rp-contact-email" label="Email" error={found.email}>
-          <input
+          <Input
             id="rp-contact-email"
             type="email"
             autoComplete="email"
@@ -84,12 +83,11 @@ export function EditContactDialog({ open, contactEmail, contactPhone, onClose, o
             onChange={(event) => setEmail(event.target.value)}
           />
         </Field>
-        <Field id="rp-contact-phone" label="Phone" error={found.phone}>
-          <input
+        <Field id="rp-contact-phone" label="Phone (optional)" error={found.phone}>
+          <Input
             id="rp-contact-phone"
             type="tel"
             autoComplete="tel"
-            required
             maxLength={50}
             aria-invalid={found.phone ? true : undefined}
             aria-describedby={found.phone ? 'rp-contact-phone-error' : undefined}
@@ -98,11 +96,11 @@ export function EditContactDialog({ open, contactEmail, contactPhone, onClose, o
           />
         </Field>
         {error ? (
-          <p className="rp-dialog-error" role="alert">
+          <p className="text-sm text-destructive" role="alert">
             {error}
           </p>
         ) : null}
-        <div className="rp-dialog-actions">
+        <div className="flex flex-wrap justify-end gap-2 pt-1">
           <button type="button" className={controls.secondary} onClick={onClose} disabled={saving}>
             Cancel
           </button>

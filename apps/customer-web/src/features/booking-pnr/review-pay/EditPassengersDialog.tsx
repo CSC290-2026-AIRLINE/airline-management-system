@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { Input } from '@customer-web/components/ui/input'
 import { DatePicker } from '@customer-web/components/ui/date-picker'
 import { Field } from '@customer-web/components/ui/cw-field'
 import { useBookingPnrApi, ApiError } from '../api/client'
@@ -8,9 +9,8 @@ import { formatMoney } from '../lib/format'
 import { useDemoPassengers } from '../passengers/useDemoPassengers'
 import type { TravellerDraft } from '../flow/draft'
 import { priceChangedDetails } from '../flow/integration'
-import controls from '../styles/controls.module.css'
+import controls from '../styles/controls'
 import { holdRequestForBooking } from './rebook'
-import './review-pay-dialogs.css'
 
 interface EditPassengersDialogProps {
   open: boolean
@@ -58,7 +58,7 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
   const demo = useDemoPassengers()
   const [details, setDetails] = useState<Record<string, PassengerDetails>>(() => detailsOf(booking))
   /* The dialog element, so the calendar of the date fields is rendered inside the dialog and not under it. */
-  const [dialog, setDialog] = useState<HTMLDialogElement | null>(null)
+  const [dialog, setDialog] = useState<HTMLElement | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [attempted, setAttempted] = useState(false)
@@ -202,7 +202,7 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
         if (!saving) onClose()
       }}
     >
-      <div className="rp-dialog-form">
+      <div className="grid gap-4">
         {booking.passengers.map((passenger, index) => {
           const value = details[passenger.bookingPassengerId] ?? {
             givenName: '',
@@ -212,12 +212,15 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
           }
           const id = `rebook-${index}`
           return (
-            <fieldset className="rp-passenger" key={passenger.bookingPassengerId}>
+            <fieldset
+              className="grid gap-3 rounded-lg border p-4 [&>legend]:px-1.5 [&>legend]:text-sm [&>legend]:font-semibold"
+              key={passenger.bookingPassengerId}
+            >
               <legend>
                 {passenger.firstName} {passenger.lastName} · {passenger.passengerType}
               </legend>
               <Field id={`${id}-givenName`} label="Given name (as on passport)" error={found[`${id}-givenName`]}>
-                <input
+                <Input
                   id={`${id}-givenName`}
                   autoComplete="off"
                   maxLength={100}
@@ -229,7 +232,7 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
                 />
               </Field>
               <Field id={`${id}-familyName`} label="Family name" error={found[`${id}-familyName`]}>
-                <input
+                <Input
                   id={`${id}-familyName`}
                   autoComplete="off"
                   maxLength={100}
@@ -255,7 +258,7 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
                 />
               </Field>
               <Field id={`${id}-passportNumber`} label="Passport number" error={found[`${id}-passportNumber`]}>
-                <input
+                <Input
                   id={`${id}-passportNumber`}
                   autoComplete="off"
                   maxLength={30}
@@ -271,11 +274,11 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
         })}
 
         {price ? (
-          <div className="rp-dialog-note" role="status">
+          <div className="text-sm text-muted-foreground" role="status">
             <p>
               The price changed from {formatMoney(price.previousTotal, price.currency)} to {formatMoney(price.newTotal, price.currency)}.
             </p>
-            <div className="rp-dialog-actions">
+            <div className="flex flex-wrap justify-end gap-2 pt-1">
               <button type="button" className={controls.secondary} onClick={onClose} disabled={saving}>
                 Stop
               </button>
@@ -292,9 +295,9 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
         ) : null}
 
         {seatsGone ? (
-          <div className="rp-dialog-note" role="status">
+          <div className="text-sm text-muted-foreground" role="status">
             <p>Those seats are no longer available. The new booking can be made without them, and you can pick seats again afterwards.</p>
-            <div className="rp-dialog-actions">
+            <div className="flex flex-wrap justify-end gap-2 pt-1">
               <button type="button" className={controls.secondary} onClick={onClose} disabled={saving}>
                 Stop
               </button>
@@ -306,12 +309,12 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
         ) : null}
 
         {error ? (
-          <p className="rp-dialog-error" role="alert">
+          <p className="text-sm text-destructive" role="alert">
             {error}
           </p>
         ) : null}
 
-        <div className="rp-dialog-actions">
+        <div className="flex flex-wrap justify-end gap-2 pt-1">
           <button type="button" className={controls.secondary} onClick={onClose} disabled={saving}>
             Cancel
           </button>

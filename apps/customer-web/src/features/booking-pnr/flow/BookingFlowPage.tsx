@@ -23,9 +23,11 @@ import { priceChangedDetails, validateSeatChoices, type FlowComponents, type Sea
 import type { AssistanceValue } from '../components/contracts'
 import type { PriceChangedDetails } from '../api/types'
 import { formatMoney } from '../lib/format'
-import controls from '../styles/controls.module.css'
+import controls from '../styles/controls'
 import '../styles/tokens.css'
-import './flow.css'
+
+/** "1 adult", "2 adults". */
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 export interface FlowProps extends FlowComponents {
   resolvePassengers?: ResolvePassengers
@@ -98,17 +100,14 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
        loses its message right away. */
     setAttempted(true)
     const issues = validateTravellers(travellers, contact, itinerary)
-    if (issues) {
-      setError(null)
-      return
-    }
     const missingNote = Object.values(assistance).some(
       (value) =>
         (value.serviceCodes ?? (value.serviceCode ? [value.serviceCode] : [])).some((code) => code === 'UMNR' || code === 'MEDA') &&
         !value.note.trim(),
     )
-    if (missingNote) {
-      setError('Add a note for each UMNR or MEDA assistance request.')
+    // Report every problem in one go, so the customer does not fix the form one message at a time.
+    if (issues || missingNote) {
+      setError(missingNote ? 'Add a note for each UMNR or MEDA assistance request.' : null)
       return
     }
     setError(null)
@@ -165,7 +164,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
           fareQuoteId: fare.fareQuoteId,
         })),
         contactEmail: contact.email.trim(),
-        contactPhone: contact.phone.trim(),
+        contactPhone: contact.phone.trim() || undefined,
         promoCode: contact.promoCode.trim() || undefined,
         expectedTotal: expectedTotal ?? itinerary.expectedTotal,
         seats,
@@ -210,7 +209,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
 
   if (!itinerary)
     return (
-      <main className="f3-search">
+      <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-left md:py-10 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
         <h1>Choose your flights first</h1>
         <p>Your itinerary is missing or unavailable.</p>
         <Link to="/search">Search flights</Link>
@@ -218,7 +217,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
     )
   const tripCurrency = held?.currency ?? itinerary.selections[0]?.fare.currency ?? 'USD'
   const tripSummary = (
-    <div className="f3-trip-summary">
+    <div className="space-y-3 [&_h2]:text-xs [&_h2]:font-medium [&_h2]:text-muted-foreground [&_article]:border-b [&_article]:pb-3 [&_article_p]:mt-1 [&_article_p]:text-xs [&_article_p]:text-muted-foreground">
       <h2>Your trip</h2>
       {itinerary.selections.map(({ flight, fare }) => (
         <article key={flight.flightId}>
@@ -229,17 +228,18 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
             {flight.flightNumber} · {fare.cabin.replaceAll('_', ' ')}
           </p>
           <p>
-            {new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
+            {new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: flight.originTimeZone }).format(
               new Date(flight.depAt),
             )}
           </p>
         </article>
       ))}
       <p>
-        {itinerary.request.adults} adults · {itinerary.request.children} children · {itinerary.request.infants} infants
+        {count(itinerary.request.adults, 'adult', 'adults')} · {count(itinerary.request.children, 'child', 'children')} ·{' '}
+        {count(itinerary.request.infants, 'infant', 'infants')}
       </p>
       {step !== 3 && (
-        <div className="f3-trip-summary__fare">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 tabular-nums">
           <span>Fare quote</span>
           <strong>{formatMoney(itinerary.expectedTotal, tripCurrency)}</strong>
         </div>
@@ -258,16 +258,16 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
       />
     )
   return (
-    <main className="f3-search f3-flow f3-customer-flow">
+    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-left md:py-10 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
       <h1>{step === 2 ? 'Passengers & extras' : step === 3 ? 'Choose your seats' : 'Booking held'}</h1>
       {step !== 3 && (
-        <p className="f3-search-intro">
+        <p className="text-muted-foreground">
           {step === 2
             ? 'Enter traveller details exactly as they appear on the passport.'
             : 'Keep your booking reference for the next step.'}
         </p>
       )}
-      <div className="f3-flow-route-bar">
+      <div className="">
         <BookingRouteBar currentStep={step} onStepClick={goToStep} />
       </div>
       {priceChange && PriceChangedDialog && (
@@ -305,7 +305,9 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
           }}
         />
       )}
-      <div className={`f3-flow-columns${step === 3 && SeatStep ? ' f3-flow-columns--seats' : ''}`}>
+      <div
+        className={`grid items-start gap-6 [&>div]:min-w-0 ${step === 3 && SeatStep ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[minmax(0,1fr)_260px]'}`}
+      >
         <div>
           {step === 2 && (
             <>
@@ -329,7 +331,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                 renderAssistance={
                   AssistanceFields
                     ? (person) => (
-                        <div className="f3-passenger-assistance">
+                        <div className="space-y-3 border-t pt-4 [&_h3]:m-0 [&_h3]:text-sm [&_h3]:font-semibold [&_h3_span]:font-normal [&_h3_span]:text-muted-foreground">
                           <AssistanceFields
                             value={assistance[person.key] ?? { serviceCode: null, note: '' }}
                             bookingMode
@@ -380,7 +382,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                 }}
               />
             ) : (
-              <section className="f3-passenger-card">
+              <section className="rounded-xl border bg-card text-card-foreground shadow-sm min-w-0 space-y-4 p-5 sm:p-6 [&>p]:text-sm [&>p]:text-muted-foreground">
                 <h2>Choose seats later</h2>
                 <p>Your booking can be created without seat assignments. Seats are not held until you continue to review.</p>
                 <ul>
@@ -391,13 +393,13 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                   ))}
                 </ul>
                 {error && (
-                  <p role="alert" className="f3-flow-error">
+                  <p role="alert" className="rounded-lg border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                     {error}
                   </p>
                 )}
-                <div className="f3-flow-actions">
+                <div className="flex flex-col-reverse items-stretch justify-between gap-3 sm:flex-row sm:items-center">
                   <button
-                    className="f3-search-secondary"
+                    className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border bg-background px-4 text-sm font-medium whitespace-nowrap shadow-xs transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
                     type="button"
                     disabled={busy}
                     onClick={() => {
@@ -407,19 +409,24 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                   >
                     Back to passengers
                   </button>
-                  <button className="f3-search-primary" type="button" disabled={busy} onClick={() => void createHold()}>
+                  <button
+                    className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium whitespace-nowrap text-primary-foreground shadow-xs transition-all outline-none hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void createHold()}
+                  >
                     {busy ? 'Creating booking…' : 'Skip, choose seats later'}
                   </button>
                 </div>
               </section>
             ))}
           {step === 4 && error && (
-            <p role="alert" className="f3-flow-error">
+            <p role="alert" className="rounded-lg border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {error}
             </p>
           )}
           {step === 4 && held && (
-            <section className="f3-passenger-card">
+            <section className="rounded-xl border bg-card text-card-foreground shadow-sm min-w-0 space-y-4 p-5 sm:p-6 [&>p]:text-sm [&>p]:text-muted-foreground">
               <p>Your booking reference</p>
               <h2>{held.reference}</h2>
               <p>
@@ -430,7 +437,7 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                 Hold expires:{' '}
                 {new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(held.holdExpiresAt))}
               </p>
-              <div className="f3-flow-receipt-actions">
+              <div className="flex flex-wrap gap-2">
                 <Link to="/bookings" className={controls.secondary}>
                   Go to My Trips
                 </Link>
@@ -439,7 +446,10 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
           )}
         </div>
         {!(step === 3 && SeatStep) && (
-          <aside className="f3-flow-summary" aria-label="Your trip">
+          <aside
+            className="order-2 space-y-3 rounded-xl border bg-card text-card-foreground shadow-sm p-5 md:order-none lg:sticky lg:top-16 [&_article]:border-b [&_article]:pb-3 [&_article_p]:mt-1 [&_article_p]:text-xs [&_article_p]:text-muted-foreground [&>strong]:block [&>strong]:text-xl [&>strong]:tabular-nums"
+            aria-label="Your trip"
+          >
             {tripSummary}
             <p>Seats are held for 15 minutes only after you finish the Seat step.</p>
           </aside>

@@ -1,7 +1,7 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { useBookingPnrApi, type ApiError } from '../api/client'
-import type { BookingDetail, BookingServiceRequest } from '../api/types'
+import type { BookingDetail, BookingServiceRequest, InsuranceOffer, InsurancePolicySummary } from '../api/types'
 import { useBooking } from '../api/useBooking'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
 import { BookingRouteBar, type BookingStep } from '../components/BookingRouteBar'
@@ -18,8 +18,7 @@ import { ConfirmedState } from './ConfirmedState'
 import { EditContactDialog } from './EditContactDialog'
 import { EditPassengersDialog } from './EditPassengersDialog'
 import { searchParamsForBooking } from './search-params-for-booking'
-import styles from './ReviewPayPage.module.css'
-import controls from '../styles/controls.module.css'
+import controls from '../styles/controls'
 import '../styles/tokens.css'
 
 /** The steps of the booking, the same ones the route bar shows. */
@@ -48,6 +47,8 @@ const STEP_COPY: Record<BookingStep, { subtitle: string; note: string }> = {
 export function ReviewPayPage({ reference, step }: { reference: string; step: BookingStep }) {
   const navigate = useNavigate()
   const { booking, error, isLoading, reload } = useBooking(reference)
+  // The policy the confirm answered with, so the confirmation can show it right after paying.
+  const [insurancePolicy, setInsurancePolicy] = useState<InsurancePolicySummary | null>(null)
 
   useEffect(() => {
     if (!booking) {
@@ -73,16 +74,26 @@ export function ReviewPayPage({ reference, step }: { reference: string; step: Bo
     return <NotFoundState reference={reference} />
   }
   if (booking.status === 'confirmed') {
-    return <ConfirmedState booking={booking} />
+    return <ConfirmedState booking={booking} insurancePolicy={insurancePolicy} />
   }
   if (booking.status === 'expired' || booking.status === 'cancelled') {
     return <LoadingState />
   }
 
-  return <HeldReview booking={booking} onReload={reload} step={step} />
+  return <HeldReview booking={booking} onReload={reload} step={step} onInsurancePolicy={setInsurancePolicy} />
 }
 
-function HeldReview({ booking, onReload, step }: { booking: BookingDetail; onReload: () => Promise<void>; step: BookingStep }) {
+function HeldReview({
+  booking,
+  onReload,
+  step,
+  onInsurancePolicy,
+}: {
+  booking: BookingDetail
+  onReload: () => Promise<void>
+  step: BookingStep
+  onInsurancePolicy: (policy: InsurancePolicySummary | null) => void
+}) {
   const navigate = useNavigate()
   const api = useBookingPnrApi()
   const [cancelOpen, setCancelOpen] = useState(false)
@@ -96,6 +107,8 @@ function HeldReview({ booking, onReload, step }: { booking: BookingDetail; onRel
   const [releaseError, setReleaseError] = useState<ApiError | null>(null)
   const [assistancePassengerId, setAssistancePassengerId] = useState<string | null>(null)
   const [passengersOpen, setPassengersOpen] = useState(false)
+  const [insuranceOffer, setInsuranceOffer] = useState<InsuranceOffer>({ kind: 'none' })
+  const [addInsurance, setAddInsurance] = useState(false)
 
   const countdownPaused = isConfirming || isCancelling || cancelOpen || confirmError !== null || cancelError !== null
 
@@ -104,6 +117,25 @@ function HeldReview({ booking, onReload, step }: { booking: BookingDetail; onRel
   const copy = STEP_COPY[step]
   // Step 4 is the review & pay itself, the page the customer pays on. The other steps show one part of the booking.
   const isPayStep = step === 4
+
+  /* Feature 11's travel insurance offer for the booker's tier. Without it the page simply shows no insurance. */
+  useEffect(() => {
+    let cancelled = false
+    api
+      .getInsuranceOffer(booking.reference)
+      .then((offer) => {
+        if (!cancelled) setInsuranceOffer(offer)
+      })
+      .catch(() => {
+        if (!cancelled) setInsuranceOffer({ kind: 'none' })
+      })
+    return () => {
+      cancelled = true
+    }
+    // The offer depends only on the booking; the api object is recreated on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking.reference])
+  const insuranceAddOn = insuranceOffer.kind === 'member_price' && addInsurance ? insuranceOffer : null
 
   /** Opens another step of this booking, so the customer can walk back and forth while the hold runs. */
   function goToStep(next: BookingStep) {
@@ -119,7 +151,8 @@ function HeldReview({ booking, onReload, step }: { booking: BookingDetail; onRel
     setConfirmError(null)
 
     try {
-      await api.devConfirmBooking(booking.reference)
+      const result = await api.devConfirmBooking(booking.reference, { addInsurance: insuranceAddOn !== null })
+      onInsurancePolicy(result.insurancePolicy ?? null)
       await onReload()
     } catch (error) {
       const apiError = toApiError(error)
@@ -167,7 +200,7 @@ function HeldReview({ booking, onReload, step }: { booking: BookingDetail; onRel
   }
 
   /** The contact details of a held booking can be changed in place: the price does not move. */
-  async function handleSaveContact(contact: { contactEmail: string; contactPhone: string }) {
+  async function handleSaveContact(contact: { contactEmail: string; contactPhone?: string }) {
     await api.updateContact(booking.reference, contact)
     await onReload()
   }
@@ -199,14 +232,16 @@ function HeldReview({ booking, onReload, step }: { booking: BookingDetail; onRel
 
   return (
     <>
-      <main className={styles.page}>
-        <div className={styles.shell}>
-          <header className={styles.header}>
-            <div className={styles.titleRow}>
+      <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 text-left md:py-10">
+        <div className="space-y-6">
+          <header className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight">
               <h1>Review &amp; pay</h1>
-              <span className={styles.reference}>Booking {booking.reference}</span>
+              <span className="rounded-md border bg-background px-2 py-0.5 font-mono text-xs text-muted-foreground">
+                Booking {booking.reference}
+              </span>
             </div>
-            <p className={styles.subtitle}>{copy.subtitle}</p>
+            <p className="text-base text-muted-foreground">{copy.subtitle}</p>
           </header>
 
           {/* The bar takes the customer back to a step of this booking. Every step but the one they are on can be
@@ -233,8 +268,8 @@ function HeldReview({ booking, onReload, step }: { booking: BookingDetail; onRel
 
           {confirmError ? <ApiErrorBanner error={confirmError} /> : null}
 
-          <div className={styles.columns}>
-            <div className={styles.mainColumn}>
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="min-w-0 space-y-6">
               {step === 1 || isPayStep ? (
                 <FlightsCard
                   booking={booking}
@@ -255,10 +290,13 @@ function HeldReview({ booking, onReload, step }: { booking: BookingDetail; onRel
               {step === 3 || isPayStep ? <BookingSeatChangesPanel reference={booking.reference} onChanged={() => void onReload()} /> : null}
             </div>
 
-            <aside className={styles.summaryColumn}>
-              <PriceCard booking={booking} />
+            <aside className="space-y-4 lg:sticky lg:top-16">
+              <PriceCard booking={booking} insuranceAddOn={insuranceAddOn} />
+              {isPayStep ? (
+                <InsuranceCard offer={insuranceOffer} checked={addInsurance} onChange={setAddInsurance} disabled={isConfirming} />
+              ) : null}
 
-              <div className={styles.actions}>
+              <div className="flex flex-col gap-2 [&>*]:w-full">
                 {isPayStep ? (
                   payAction
                 ) : (
@@ -294,9 +332,13 @@ function HeldReview({ booking, onReload, step }: { booking: BookingDetail; onRel
                 ) : null}
               </div>
 
-              {isPayStep && !import.meta.env.DEV ? <p className={styles.note}>Pay now will open checkout when it is connected.</p> : null}
-              <p className={styles.note}>{copy.note}</p>
-              {isPayStep ? <p className={styles.note}>Want a meal on board? You can add meals from your booking once it is paid.</p> : null}
+              {isPayStep && !import.meta.env.DEV ? (
+                <p className="text-xs text-muted-foreground">Pay now will open checkout when it is connected.</p>
+              ) : null}
+              <p className="text-xs text-muted-foreground">{copy.note}</p>
+              {isPayStep ? (
+                <p className="text-xs text-muted-foreground">Want a meal on board? You can add meals from your booking once it is paid.</p>
+              ) : null}
             </aside>
           </div>
         </div>
@@ -402,10 +444,10 @@ function FlightsCard({
   }
 
   return (
-    <section className={styles.card}>
-      <div className={styles.cardHeader}>
+    <section className="flex flex-col gap-4 rounded-xl border bg-card p-6 text-card-foreground shadow-sm [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2>Flights</h2>
-        <div className={styles.cardActions}>
+        <div className="flex flex-wrap gap-2">
           <button type="button" className={controls.action} onClick={onChangeFlights}>
             Change flights
           </button>
@@ -419,16 +461,17 @@ function FlightsCard({
       {booking.segments.map((segment) => {
         const seats = seatsBySegment.get(segment.bookingSegmentId) ?? []
         return (
-          <div className={styles.flightRow} key={segment.bookingSegmentId}>
+          <div className="flex flex-wrap items-start justify-between gap-2" key={segment.bookingSegmentId}>
             <div>
-              <p className={styles.flightNumber}>
-                {segment.flightNumber} · {formatDate(segment.depAt)} · {formatCabin(segment.cabin)}
+              <p className="text-sm font-medium">
+                {segment.flightNumber} · {formatDate(segment.depAt, segment.originTimeZone)} · {formatCabin(segment.cabin)}
               </p>
-              <p className={styles.flightRoute}>
-                {segment.origin} {formatTime(segment.depAt)} → {segment.destination} {formatTime(segment.arrAt)} · direct
+              <p className="text-xs text-muted-foreground tabular-nums">
+                {segment.origin} {formatTime(segment.depAt, segment.originTimeZone)} → {segment.destination}{' '}
+                {formatTime(segment.arrAt, segment.destinationTimeZone)} · direct
               </p>
             </div>
-            <div className={styles.flightSeats}>{seats.length > 0 ? `Seats ${seats.join(', ')}` : 'Seats: choose later'}</div>
+            <div className="text-sm text-muted-foreground">{seats.length > 0 ? `Seats ${seats.join(', ')}` : 'Seats: choose later'}</div>
           </div>
         )
       })}
@@ -458,10 +501,10 @@ function PassengersCard({
   }
 
   return (
-    <section className={styles.card}>
-      <div className={styles.cardHeader}>
+    <section className="flex flex-col gap-4 rounded-xl border bg-card p-6 text-card-foreground shadow-sm [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2>Passengers</h2>
-        <div className={styles.cardActions}>
+        <div className="flex flex-wrap gap-2">
           <button type="button" className={controls.action} onClick={onEditDetails}>
             Edit details
           </button>
@@ -481,26 +524,33 @@ function PassengersCard({
           passenger.passengerType === 'infant' && lapAdult ? `infant · on ${lapAdult.firstName}'s lap` : passenger.passengerType
 
         return (
-          <div className={styles.passengerRow} key={passenger.bookingPassengerId}>
+          <div
+            className="flex flex-wrap items-start justify-between gap-2 border-b pb-3 last:border-b-0 last:pb-0"
+            key={passenger.bookingPassengerId}
+          >
             <div>
-              <p className={styles.passengerName}>
+              <p className="text-sm font-medium">
                 {passenger.firstName} {passenger.lastName}
               </p>
-              <p className={styles.muted}>{passengerDetail}</p>
+              <p className="text-sm text-muted-foreground">{passengerDetail}</p>
             </div>
-            <div className={styles.chips}>
+            <div className="flex flex-wrap gap-1.5">
               {requests.length === 0 ? (
-                <span className={styles.muted}>no extras</span>
+                <span className="text-sm text-muted-foreground">no extras</span>
               ) : (
                 requests.map((request) => (
-                  <span className={styles.warningChip} key={request.serviceRequestId} title={request.decisionNote ?? undefined}>
+                  <span
+                    className="inline-flex items-center rounded-md border border-warn/25 bg-warn/10 px-2 py-0.5 text-xs font-medium text-warn"
+                    key={request.serviceRequestId}
+                    title={request.decisionNote ?? undefined}
+                  >
                     {request.serviceCode} {request.status}
                     {request.status === 'requested' ? ' · staff will review' : ''}
                   </span>
                 ))
               )}
             </div>
-            <div className={styles.passengerActions}>
+            <div className="flex flex-wrap items-center gap-3">
               <button type="button" className={controls.link} onClick={() => onRequestAssistance(passenger.bookingPassengerId)}>
                 Request assistance
               </button>
@@ -508,10 +558,10 @@ function PassengersCard({
           </div>
         )
       })}
-      <div className={styles.contactRow}>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
         <div>
-          <p className={styles.muted}>Contact for this booking</p>
-          <p className={styles.contactDetails}>
+          <p className="text-sm text-muted-foreground">Contact for this booking</p>
+          <p className="text-sm">
             {booking.contactEmail}
             {booking.contactPhone ? ` · ${booking.contactPhone}` : ''}
           </p>
@@ -524,38 +574,87 @@ function PassengersCard({
   )
 }
 
-function PriceCard({ booking }: { booking: BookingDetail }) {
+/**
+ * Travel insurance, a loyalty tier benefit (feature 11): included for some tiers, an add-on at the member price for
+ * others, and absent otherwise. The policy is issued when the booking is confirmed.
+ */
+function InsuranceCard({
+  offer,
+  checked,
+  onChange,
+  disabled,
+}: {
+  offer: InsuranceOffer
+  checked: boolean
+  onChange: (checked: boolean) => void
+  disabled: boolean
+}) {
+  if (offer.kind === 'none') {
+    return null
+  }
+
+  return (
+    <section
+      className="flex flex-col gap-4 rounded-xl border bg-card p-6 text-card-foreground shadow-sm [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold"
+      aria-labelledby="rp-insurance-title"
+    >
+      <h2 id="rp-insurance-title">Travel insurance</h2>
+      {offer.kind === 'included' ? (
+        <p className="text-sm">Included with your {offer.tierName} membership. The policy is issued when you pay.</p>
+      ) : (
+        <label className="flex cursor-pointer items-start gap-2.5 text-sm [&_input]:mt-0.5 [&_input]:size-4 [&_input]:accent-primary [&_small]:block">
+          <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} disabled={disabled} />
+          <span>
+            Add travel insurance for {formatMoney(offer.price, offer.currency)}
+            <small className="text-xs text-muted-foreground">{offer.tierName} member price, covering everyone on this booking.</small>
+          </span>
+        </label>
+      )}
+    </section>
+  )
+}
+
+function PriceCard({ booking, insuranceAddOn }: { booking: BookingDetail; insuranceAddOn: { price: number; currency: string } | null }) {
   const totals = new Map<string, number>()
   for (const coupon of booking.coupons) {
     totals.set(coupon.bookingPassengerId, (totals.get(coupon.bookingPassengerId) ?? 0) + coupon.priceTotal)
   }
 
   return (
-    <section className={styles.card}>
+    <section className="flex flex-col gap-4 rounded-xl border bg-card p-6 text-card-foreground shadow-sm [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
       <h2>Price</h2>
       {booking.passengers.map((passenger) => (
-        <div className={styles.priceRow} key={passenger.bookingPassengerId}>
+        <div className="flex justify-between gap-3 text-sm [&>span:last-child]:tabular-nums" key={passenger.bookingPassengerId}>
           <span>
             {passenger.firstName} · {passenger.passengerType}
           </span>
           <span>{formatMoney(totals.get(passenger.bookingPassengerId) ?? 0, booking.currency)}</span>
         </div>
       ))}
-      <div className={styles.totalRow}>
+      {insuranceAddOn ? (
+        <div className="flex justify-between gap-3 text-sm [&>span:last-child]:tabular-nums">
+          <span>Travel insurance</span>
+          <span>{formatMoney(insuranceAddOn.price, insuranceAddOn.currency)}</span>
+        </div>
+      ) : null}
+      <div className="flex justify-between gap-3 border-t pt-3 text-base font-semibold tabular-nums">
         <span>Total</span>
-        <span>{formatMoney(booking.total, booking.currency)}</span>
+        <span>{formatMoney(booking.total + (insuranceAddOn?.price ?? 0), booking.currency)}</span>
       </div>
-      <p className={styles.note}>Fares are quoted by pricing and fixed for this hold. Payment is taken at checkout.</p>
+      <p className="text-xs text-muted-foreground">Fares are quoted by pricing and fixed for this hold. Payment is taken at checkout.</p>
     </section>
   )
 }
 
 function LoadingState() {
   return (
-    <main className={styles.page}>
-      <div className={styles.messageCard} aria-busy="true">
+    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 text-left md:py-10">
+      <div
+        className="space-y-3 rounded-xl border bg-card p-6 text-left shadow-xs [&_h1]:m-0 [&_h1]:text-lg [&_h1]:font-semibold"
+        aria-busy="true"
+      >
         <h1>Loading booking…</h1>
-        <p className={styles.muted}>Checking your hold.</p>
+        <p className="text-sm text-muted-foreground">Checking your hold.</p>
       </div>
     </main>
   )
@@ -563,11 +662,11 @@ function LoadingState() {
 
 function NotFoundState({ reference }: { reference: string }) {
   return (
-    <main className={styles.page}>
-      <div className={styles.messageCard}>
+    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 text-left md:py-10">
+      <div className="space-y-3 rounded-xl border bg-card p-6 text-left shadow-xs [&_h1]:m-0 [&_h1]:text-lg [&_h1]:font-semibold">
         <h1>We couldn&apos;t find booking {reference}</h1>
-        <p className={styles.muted}>Check the reference or go back to your trips.</p>
-        <div className={styles.confirmedActions}>
+        <p className="text-sm text-muted-foreground">Check the reference or go back to your trips.</p>
+        <div className="flex flex-wrap gap-2">
           <Link to="/bookings" className={controls.primary}>
             Go to My Trips
           </Link>
@@ -582,10 +681,10 @@ function NotFoundState({ reference }: { reference: string }) {
 
 function ErrorState({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
   return (
-    <main className={styles.page}>
-      <div className={styles.messageCard}>
+    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 text-left md:py-10">
+      <div className="space-y-3 rounded-xl border bg-card p-6 text-left shadow-xs [&_h1]:m-0 [&_h1]:text-lg [&_h1]:font-semibold">
         <ApiErrorBanner error={error} />
-        <div className={styles.confirmedActions}>
+        <div className="flex flex-wrap gap-2">
           <button type="button" className={controls.secondary} onClick={onRetry}>
             Try again
           </button>

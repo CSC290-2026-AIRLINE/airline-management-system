@@ -7,20 +7,21 @@ const CABIN_LABELS: Record<Cabin, string> = {
   first: 'First',
 }
 
-const TRIP_DATE = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-const TRIP_DATE_NO_YEAR = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' })
-const FLIGHT_DATE = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+// Flight times take the airport's IANA time zone, so a flight shows the same local time on every page and in every
+// browser. Times that are not tied to an airport (booked at, hold expiry) leave it out and use the browser's zone.
+const tripDate = (timeZone?: string) => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone })
+const tripDateNoYear = (timeZone?: string) => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone })
 
 export function formatMoney(amount: number, currency: string): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency, currencyDisplay: 'code' }).format(amount)
 }
 
-export function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(iso))
+export function formatDate(iso: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone }).format(new Date(iso))
 }
 
-export function formatTime(iso: string): string {
-  return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso))
+export function formatTime(iso: string, timeZone?: string): string {
+  return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone }).format(new Date(iso))
 }
 
 export function formatDuration(ms: number): string {
@@ -36,12 +37,14 @@ export function formatCabin(cabin: Cabin): string {
 
 /** "27 Oct 2026" — the date a booking was made. */
 export function formatDateWithYear(iso: string): string {
-  return TRIP_DATE.format(new Date(iso))
+  return tripDate().format(new Date(iso))
 }
 
 /** "Thu 12 Nov" — the day of a flight, without the comma of formatDate. */
-export function formatFlightDate(iso: string): string {
-  const parts = FLIGHT_DATE.formatToParts(new Date(iso))
+export function formatFlightDate(iso: string, timeZone?: string): string {
+  const parts = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone }).formatToParts(
+    new Date(iso),
+  )
   const value = (type: Intl.DateTimeFormatPartTypes): string => parts.find((part) => part.type === type)?.value ?? ''
   return `${value('weekday')} ${value('day')} ${value('month')}`
 }
@@ -61,37 +64,54 @@ export function formatTicketNumber(ticketNumber: string): string {
 }
 
 /** "12 Nov 2026", or "12 Nov" without the year. */
-export function formatTripDate(date: Date, withYear = true): string {
-  return (withYear ? TRIP_DATE : TRIP_DATE_NO_YEAR).format(date)
+export function formatTripDate(date: Date, withYear = true, timeZone?: string): string {
+  return (withYear ? tripDate(timeZone) : tripDateNoYear(timeZone)).format(date)
+}
+
+/** The calendar day of an instant in a time zone. */
+function dayParts(date: Date, timeZone?: string): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: 'numeric', day: 'numeric', timeZone }).formatToParts(date)
+  const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value)
+  return { year: value('year'), month: value('month'), day: value('day') }
 }
 
 /**
  * The dates of a trip: "12 – 19 Nov 2026" for a return trip, "21 Jun 2026" for a single date.
  * The year is left out on the 393 px layout.
  */
-export function formatTripDates(start: string | null, end: string | null, withYear = true): string {
+export function formatTripDates(
+  start: string | null,
+  end: string | null,
+  withYear = true,
+  startTimeZone?: string | null,
+  endTimeZone?: string | null,
+): string {
   if (!start) {
     return ''
   }
 
+  const fromZone = startTimeZone ?? undefined
+  const toZone = endTimeZone ?? fromZone
   const from = new Date(start)
   if (!end) {
-    return formatTripDate(from, withYear)
+    return formatTripDate(from, withYear, fromZone)
   }
 
   const to = new Date(end)
-  if (from.getTime() === to.getTime()) {
-    return formatTripDate(from, withYear)
+  const a = dayParts(from, fromZone)
+  const b = dayParts(to, toZone)
+  if (a.year === b.year && a.month === b.month && a.day === b.day) {
+    return formatTripDate(from, withYear, fromZone)
   }
 
-  const sameYear = from.getFullYear() === to.getFullYear()
-  const sameMonth = sameYear && from.getMonth() === to.getMonth()
+  const sameYear = a.year === b.year
+  const sameMonth = sameYear && a.month === b.month
 
   if (sameMonth) {
-    return `${from.getDate()} – ${formatTripDate(to, false)}${withYear ? ` ${to.getFullYear()}` : ''}`
+    return `${a.day} – ${formatTripDate(to, false, toZone)}${withYear ? ` ${b.year}` : ''}`
   }
 
-  return `${formatTripDate(from, withYear && !sameYear)} – ${formatTripDate(to, withYear)}`
+  return `${formatTripDate(from, withYear && !sameYear, fromZone)} – ${formatTripDate(to, withYear, toZone)}`
 }
 
 /** "1 adult, 1 child" for the muted line of a booking card. */

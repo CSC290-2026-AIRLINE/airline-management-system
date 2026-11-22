@@ -41,6 +41,9 @@ export interface FlightOption {
   destination: string
   depAt: string
   arrAt: string
+  // IANA time zones of the two airports; times are shown in the airport's local time.
+  originTimeZone: string
+  destinationTimeZone: string
   durationMinutes: number
   cabins: CabinAvailability[]
 }

@@ -1,6 +1,6 @@
 import { formatDuration, formatTime } from '../lib/format'
 import { useHoldCountdown } from '../lib/useHoldCountdown'
-import styles from './HoldBanner.module.css'
+import { Clock } from 'lucide-react'
 
 interface HoldBannerProps {
   reference: string
@@ -22,11 +22,15 @@ export function HoldBanner({ reference, holdExpiresAt, serverNow, onExpire, paus
   const remainingMs = useHoldCountdown(holdExpiresAt, serverNow, onExpire, paused)
 
   return (
-    <div className={styles.banner}>
-      <p>
-        Seats held for <strong>{formatDuration(remainingMs)}</strong> · booking {reference}. If time runs out, the seats go back on sale.
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-warn/25 bg-warn/10 px-4 py-3 text-left text-sm text-warn">
+      <Clock className="size-4 shrink-0" aria-hidden="true" />
+      <p className="flex-1">
+        Seats held for <strong className="font-semibold tabular-nums">{formatDuration(remainingMs)}</strong> · booking {reference}. If time
+        runs out, the seats go back on sale.
       </p>
-      <span className={styles.pill}>hold ends {formatTime(holdExpiresAt)} · simulated time</span>
+      <span className="rounded-full border border-warn/25 bg-background px-2.5 py-0.5 text-xs tabular-nums">
+        hold ends {formatTime(holdExpiresAt)} · simulated time
+      </span>
     </div>
   )
 }

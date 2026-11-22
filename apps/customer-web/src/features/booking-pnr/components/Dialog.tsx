@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react'
-import styles from './Dialog.module.css'
-import '../styles/tokens.css'
+import type { ReactNode } from 'react'
+import {
+  Dialog as DialogRoot,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@customer-web/components/ui/dialog'
 
 interface DialogProps {
   open: boolean
@@ -10,84 +16,29 @@ interface DialogProps {
   children?: ReactNode
   footer?: ReactNode
   /**
-   * Called with the dialog element, so a popup inside the dialog can be rendered into it. A popup portalled to the body
-   * is painted under the dialog, because the dialog sits in the browser's top layer.
+   * Called with the dialog's content element, so a popup inside the dialog (a calendar) can be rendered into it and
+   * stays above the dialog and inside its focus trap.
    */
-  dialogRef?: (dialog: HTMLDialogElement | null) => void
+  dialogRef?: (dialog: HTMLElement | null) => void
 }
 
+/** The booking pages' modal: the app's shadcn Dialog with a title, an optional description and a footer of actions. */
 export function Dialog({ open, title, description, onClose, children, footer, dialogRef }: DialogProps) {
-  const dialogRefInternal = useRef<HTMLDialogElement>(null)
-  const titleId = useId()
-  const descriptionId = useId()
-
-  /* The callback is stable, so the element is not handed over again on every render. */
-  const setDialog = useCallback(
-    (dialog: HTMLDialogElement | null) => {
-      dialogRefInternal.current = dialog
-      dialogRef?.(dialog)
-    },
-    [dialogRef],
-  )
-
-  useEffect(() => {
-    const dialog = dialogRefInternal.current
-    if (!dialog) {
-      return
-    }
-    if (open && !dialog.open) {
-      dialog.showModal()
-    }
-    if (!open && dialog.open) {
-      dialog.close()
-    }
-
-    return () => {
-      if (dialog.open) {
-        dialog.close()
-      }
-    }
-  }, [open])
-
-  useEffect(() => {
-    const dialog = dialogRefInternal.current
-    if (!dialog) {
-      return
-    }
-
-    const handleCancel = (event: Event) => {
-      event.preventDefault()
-      onClose()
-    }
-
-    dialog.addEventListener('cancel', handleCancel)
-    return () => dialog.removeEventListener('cancel', handleCancel)
-  }, [onClose])
-
   return (
-    <dialog
-      ref={setDialog}
-      className={styles.dialog}
-      aria-labelledby={titleId}
-      aria-describedby={description ? descriptionId : undefined}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose()
-        }
-      }}
-    >
-      <div className={styles.panel}>
-        <h2 id={titleId} className={styles.title}>
-          {title}
-        </h2>
-        {description ? (
-          <p id={descriptionId} className={styles.description}>
-            {description}
-          </p>
-        ) : null}
+    <DialogRoot open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
+      {/* Without a description Radix needs aria-describedby set to undefined explicitly, or it warns. */}
+      <DialogContent
+        ref={dialogRef}
+        className="text-left sm:max-w-lg [&>*]:min-w-0"
+        {...(description ? {} : { 'aria-describedby': undefined })}
+      >
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          {description ? <DialogDescription>{description}</DialogDescription> : null}
+        </DialogHeader>
         {children}
-        {footer ? <div className={styles.footer}>{footer}</div> : null}
-      </div>
-    </dialog>
+        {footer ? <DialogFooter className="sm:flex-wrap">{footer}</DialogFooter> : null}
+      </DialogContent>
+    </DialogRoot>
   )
 }

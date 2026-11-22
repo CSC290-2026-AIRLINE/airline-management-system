@@ -4,10 +4,8 @@ import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import { ApiError } from '../api/client'
 import type { ApiErrorBody, BookingDetail, SeatMap } from '../api/types'
 import { BookingSeatChange } from './BookingSeatChange'
-import controls from '../styles/controls.module.css'
-import detailStyles from '../booking-detail/BookingDetailPage.module.css'
-import './booking-seat-panel.css'
-import './seat-selection.css'
+import { Button } from '@customer-web/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@customer-web/components/ui/card'
 
 interface BookingSeatChangesPanelProps {
   reference: string
@@ -31,7 +29,7 @@ export function BookingSeatChangesPanel({ reference, onChanged, id = 'seats' }: 
   const [bookingError, setBookingError] = useState(false)
   const editor = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement | null>(null)
-  const panel = useRef<HTMLElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (selectedCoupon) editor.current?.focus()
@@ -75,7 +73,7 @@ export function BookingSeatChangesPanel({ reference, onChanged, id = 'seats' }: 
       setMap(null)
       setSelectedCoupon(null)
       try {
-        const response = await fetchWithAuth(`/api/flights/${encodeURIComponent(flightId)}/seat-map`)
+        const response = await fetchWithAuth(`/api/bookings/flights/${encodeURIComponent(flightId)}/seat-map`)
         if (!response.ok) throw new Error('Seat map unavailable')
         setMap((await response.json()) as SeatMap)
         setSelectedCoupon(couponId)
@@ -88,22 +86,32 @@ export function BookingSeatChangesPanel({ reference, onChanged, id = 'seats' }: 
     [fetchWithAuth],
   )
 
-  if (bookingLoading) return <p role="status">Loading booking seats…</p>
+  if (bookingLoading)
+    return (
+      <p className="text-sm text-muted-foreground" role="status">
+        Loading booking seats…
+      </p>
+    )
   if (bookingError)
     return (
-      <section className="booking-seat-panel" aria-label="Manage seats">
-        <p role="alert">Could not load booking seats.</p>
-        <button
-          className={controls.secondary}
-          type="button"
-          onClick={() => {
-            setBookingLoading(true)
-            setRevision((value) => value + 1)
-          }}
-        >
-          Try again
-        </button>
-      </section>
+      <Card aria-label="Manage seats">
+        <CardContent className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-destructive" role="alert">
+            Could not load booking seats.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={() => {
+              setBookingLoading(true)
+              setRevision((value) => value + 1)
+            }}
+          >
+            Try again
+          </Button>
+        </CardContent>
+      </Card>
     )
   if (!booking || !EDITABLE_STATUSES.includes(booking.status)) return null
   const coupon = booking.coupons.find((item) => item.couponId === selectedCoupon)
@@ -111,15 +119,17 @@ export function BookingSeatChangesPanel({ reference, onChanged, id = 'seats' }: 
   const passenger = booking.passengers.find((item) => item.bookingPassengerId === coupon?.bookingPassengerId)
 
   return (
-    <section id={id} ref={panel} tabIndex={-1} className="booking-seat-panel" aria-label="Manage seats" aria-busy={loading}>
-      <h2 className={detailStyles.sectionTitle}>Seats</h2>
-      <div className={`${detailStyles.card} booking-seat-panel__card`}>
-        <p className={detailStyles.muted}>
+    <Card id={id} ref={panel} tabIndex={-1} className="scroll-mt-20 outline-none" aria-label="Manage seats" aria-busy={loading}>
+      <CardHeader>
+        <CardTitle>Seats</CardTitle>
+        <CardDescription>
           {booking.status === 'held'
             ? 'Choose a seat for each passenger, or change a seat while the hold runs.'
             : 'Choose a seat for each passenger, or change an existing seat before check-in.'}
-        </p>
-        <div className="booking-seat-panel__passengers">
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="divide-y rounded-lg border">
           {booking.coupons
             .filter((item) => EDITABLE_STATUSES.includes(item.status))
             .map((item) => {
@@ -127,23 +137,29 @@ export function BookingSeatChangesPanel({ reference, onChanged, id = 'seats' }: 
               const flight = booking.segments.find((candidate) => candidate.bookingSegmentId === item.bookingSegmentId)
               if (!person || !flight || person.passengerType === 'infant') return null
               return (
-                <div className="booking-seat-panel__passenger" key={item.couponId}>
-                  <span className="booking-seat-panel__icon" aria-hidden="true">
-                    <Armchair size={20} />
+                <div className="flex flex-wrap items-center gap-3 p-4" key={item.couponId}>
+                  <span
+                    className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
+                    aria-hidden="true"
+                  >
+                    <Armchair className="size-4" />
                   </span>
-                  <div className="booking-seat-panel__person">
-                    <strong>
+                  <div className="flex min-w-[11rem] flex-1 flex-col">
+                    <strong className="text-sm font-medium">
                       {person.firstName} {person.lastName}
                     </strong>
-                    <span>
+                    <span className="text-xs text-muted-foreground">
                       {flight.flightNumber} · {flight.origin} → {flight.destination}
                     </span>
                   </div>
-                  <span className={`booking-seat-panel__seat${item.seatCode ? ' is-assigned' : ''}`}>
+                  <span
+                    className={`rounded-md border px-2 py-0.5 text-sm tabular-nums ${item.seatCode ? 'border-primary/20 bg-primary/5 font-semibold' : 'text-muted-foreground'}`}
+                  >
                     {item.seatCode ?? 'Choose later'}
                   </span>
-                  <button
-                    className={controls.secondary}
+                  <Button
+                    variant="outline"
+                    size="sm"
                     type="button"
                     disabled={loading}
                     aria-expanded={selectedCoupon === item.couponId}
@@ -153,20 +169,24 @@ export function BookingSeatChangesPanel({ reference, onChanged, id = 'seats' }: 
                     }}
                   >
                     {item.seatCode ? 'Change seat' : 'Choose seat'}
-                  </button>
+                  </Button>
                 </div>
               )
             })}
         </div>
-        {loading && <p role="status">Loading seat map…</p>}
+        {loading && (
+          <p className="text-sm text-muted-foreground" role="status">
+            Loading seat map…
+          </p>
+        )}
         {error && (
-          <p className="seat-selection__error" role="alert">
+          <p className="text-sm text-destructive" role="alert">
             {error}
           </p>
         )}
         {coupon && segment && passenger && map && (
           <div
-            className="booking-seat-panel__editor"
+            className="rounded-lg border p-4 outline-none"
             tabIndex={-1}
             ref={editor}
             aria-label={`Seat selection for ${passenger.firstName} ${passenger.lastName}`}
@@ -204,7 +224,7 @@ export function BookingSeatChangesPanel({ reference, onChanged, id = 'seats' }: 
                 if (!response.ok) throw new Error('Seat payment failed')
               }}
               onRefresh={async () => {
-                const response = await fetchWithAuth(`/api/flights/${encodeURIComponent(coupon.flightId)}/seat-map`)
+                const response = await fetchWithAuth(`/api/bookings/flights/${encodeURIComponent(coupon.flightId)}/seat-map`)
                 if (!response.ok) throw new Error('Seat map unavailable')
                 setMap((await response.json()) as SeatMap)
               }}
@@ -218,7 +238,7 @@ export function BookingSeatChangesPanel({ reference, onChanged, id = 'seats' }: 
             />
           </div>
         )}
-      </div>
-    </section>
+      </CardContent>
+    </Card>
   )
 }

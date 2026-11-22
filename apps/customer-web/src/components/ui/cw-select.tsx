@@ -1,22 +1,14 @@
 import type { ComponentProps, ReactNode } from 'react'
-import { CheckIcon, ChevronDownIcon } from 'lucide-react'
 import { Select as SelectPrimitive } from 'radix-ui'
-import './cw-select.css'
+import { cn } from '@customer-web/lib/utils'
+import { SelectItem as ShadSelectItem, SelectTrigger as ShadSelectTrigger, SelectValue as ShadSelectValue } from './select'
 
 /**
- * The customer-web dropdown. It is the same Radix Select the staff console uses (see
- * `apps/staff-web/src/components/ui/select.tsx`), so both apps look and behave the same: a chevron on the trigger, a
- * popover list, a tick on the chosen option. The trigger keeps the customer field metrics (40px high, 15px text) so it
- * sits with the inputs next to it.
- *
- * Radix has no empty-string value, so "nothing selected" travels as this marker. Call sites still use `''` and get `''`
- * back from `onValueChange`.
+ * The booking forms' dropdown: the app's shadcn Select, with two additions. "Nothing selected" travels as `''` (Radix
+ * has no empty-string value, so it maps to a marker), and the popup can be rendered into a container, so a dropdown
+ * inside a dialog stays in the dialog. The trigger is full width, like the inputs next to it.
  */
 const EMPTY_VALUE = '__empty__'
-
-function classNames(...values: Array<string | false | null | undefined>) {
-  return values.filter(Boolean).join(' ')
-}
 
 interface SelectProps {
   /** The chosen value. `''` means nothing is selected. */
@@ -42,20 +34,11 @@ function Select({ value, onValueChange, disabled, required, children }: SelectPr
   )
 }
 
-function SelectTrigger({ className, children, ...props }: ComponentProps<typeof SelectPrimitive.Trigger>) {
-  return (
-    <SelectPrimitive.Trigger data-slot="select-trigger" className={classNames('cw-select-trigger', className)} {...props}>
-      {children}
-      <SelectPrimitive.Icon asChild>
-        <ChevronDownIcon className="cw-select-chevron" />
-      </SelectPrimitive.Icon>
-    </SelectPrimitive.Trigger>
-  )
+function SelectTrigger({ className, ...props }: ComponentProps<typeof ShadSelectTrigger>) {
+  return <ShadSelectTrigger className={cn('w-full bg-background data-[size=default]:h-9', className)} {...props} />
 }
 
-function SelectValue({ className, ...props }: ComponentProps<typeof SelectPrimitive.Value>) {
-  return <SelectPrimitive.Value data-slot="select-value" className={classNames('cw-select-value', className)} {...props} />
-}
+const SelectValue = ShadSelectValue
 
 function SelectContent({
   className,
@@ -69,33 +52,24 @@ function SelectContent({
     <SelectPrimitive.Portal container={container}>
       <SelectPrimitive.Content
         data-slot="select-content"
-        className={classNames('cw-select-content', className)}
+        className={cn(
+          'relative z-50 max-h-(--radix-select-content-available-height) min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
+          className,
+        )}
         position={position}
         align={align}
         {...props}
       >
-        <SelectPrimitive.Viewport className="cw-select-viewport">{children}</SelectPrimitive.Viewport>
+        <SelectPrimitive.Viewport className="w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1 p-1">
+          {children}
+        </SelectPrimitive.Viewport>
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>
   )
 }
 
-function SelectItem({ className, children, value, ...props }: ComponentProps<typeof SelectPrimitive.Item>) {
-  return (
-    <SelectPrimitive.Item
-      data-slot="select-item"
-      className={classNames('cw-select-item', className)}
-      value={value === '' ? EMPTY_VALUE : value}
-      {...props}
-    >
-      <span className="cw-select-indicator" aria-hidden="true">
-        <SelectPrimitive.ItemIndicator>
-          <CheckIcon className="cw-select-check" />
-        </SelectPrimitive.ItemIndicator>
-      </span>
-      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-    </SelectPrimitive.Item>
-  )
+function SelectItem({ value, ...props }: ComponentProps<typeof ShadSelectItem>) {
+  return <ShadSelectItem value={value === '' ? EMPTY_VALUE : value} {...props} />
 }
 
 export { Select, SelectContent, SelectItem, SelectTrigger, SelectValue }

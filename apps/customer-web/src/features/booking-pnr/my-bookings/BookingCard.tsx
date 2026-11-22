@@ -3,9 +3,9 @@ import type { BookingListItem } from '../api/types'
 import { StatusChip } from '../components/StatusChip'
 import { formatDuration, formatPassengerCounts, formatTripDates } from '../lib/format'
 import { useHoldCountdown } from '../lib/useHoldCountdown'
-import controls from '../styles/controls.module.css'
+import { Button } from '@customer-web/components/ui/button'
+import { Card } from '@customer-web/components/ui/card'
 import { cardModel, flightLabel, routeLabel, type TripTab } from './booking-card-model'
-import styles from './BookingCard.module.css'
 
 interface BookingCardProps {
   item: BookingListItem
@@ -48,50 +48,46 @@ function CardShell({
   const model = cardModel(item, tab, countdown, expired, serverNow)
   const counts = formatPassengerCounts(item.passengerCounts)
   const flights = flightLabel(item)
-  const datesWithYear = formatTripDates(item.travelDate, item.travelEndDate, true)
-  const datesShort = formatTripDates(item.travelDate, item.travelEndDate, false)
+  const datesWithYear = formatTripDates(item.travelDate, item.travelEndDate, true, item.travelTimeZone, item.travelEndTimeZone)
+  const datesShort = formatTripDates(item.travelDate, item.travelEndDate, false, item.travelTimeZone, item.travelEndTimeZone)
 
   return (
-    <article className={styles.card}>
-      <div className={styles.head}>
-        <p className={styles.route}>{routeLabel(item.trip)}</p>
-        <StatusChip label={model.chip.label} tone={model.chip.tone} className={styles.desktopChip} />
+    <Card className="flex-row flex-wrap items-center gap-4 px-5 py-4 text-left sm:flex-nowrap sm:px-6">
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-base font-semibold text-foreground">{routeLabel(item.trip)}</p>
+          <StatusChip label={model.chip.label} tone={model.chip.tone} className="hidden sm:inline-flex" />
+          <StatusChip label={model.mobileChip.label} tone={model.mobileChip.tone} className="sm:hidden" />
+        </div>
+        <p className="text-sm font-medium text-foreground">
+          <span className="hidden sm:inline">{datesWithYear}</span>
+          <span className="sm:hidden">{datesShort}</span>
+        </p>
+        <p className="text-sm text-muted-foreground">
+          <span className="font-mono text-xs tracking-wide text-foreground">{item.reference}</span> · {counts} · {flights}
+        </p>
+        {model.mobileNote ? <p className="text-xs text-muted-foreground sm:hidden">{model.mobileNote}</p> : null}
       </div>
 
-      <p className={styles.dates}>{datesWithYear}</p>
-
-      <p className={styles.meta}>
-        {item.reference} · {counts} · {flights}
-      </p>
-
-      <div className={styles.mobileRow}>
-        <Link to="/bookings/$reference" params={{ reference: item.reference }} className={styles.reference}>
-          {item.reference}
-        </Link>
-        <StatusChip label={model.mobileChip.label} tone={model.mobileChip.tone} />
-      </div>
-
-      <p className={styles.summary}>
-        {counts} · {datesShort}
-      </p>
-
-      <p className={styles.note}>{model.mobileNote}</p>
-
-      <div className={styles.actions}>
-        <Link to="/bookings/$reference" params={{ reference: item.reference }} className={`${controls.primary} ${styles.viewTrip}`}>
-          View trip
-        </Link>
-        {model.action.kind === 'complete-payment' ? (
-          <Link to="/review-pay/$reference" params={{ reference: item.reference }} className={controls.action}>
-            {model.action.label}
+      <div className="flex w-full flex-col items-stretch gap-1.5 sm:w-auto sm:items-end">
+        <Button asChild>
+          <Link to="/bookings/$reference" params={{ reference: item.reference }}>
+            View trip
           </Link>
+        </Button>
+        {model.action.kind === 'complete-payment' ? (
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/review-pay/$reference" params={{ reference: item.reference }}>
+              {model.action.label}
+            </Link>
+          </Button>
         ) : null}
         {model.action.kind !== 'none' && model.action.kind !== 'complete-payment' ? (
-          <button type="button" className={`${controls.link} ${styles.cardLink}`} disabled title={model.action.disabledReason ?? undefined}>
+          <Button variant="link" size="sm" className="h-auto p-0" disabled title={model.action.disabledReason ?? undefined}>
             {model.action.label}
-          </button>
+          </Button>
         ) : null}
       </div>
-    </article>
+    </Card>
   )
 }

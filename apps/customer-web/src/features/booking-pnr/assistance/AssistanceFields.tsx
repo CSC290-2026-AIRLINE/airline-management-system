@@ -3,7 +3,6 @@ import type { AssistanceFieldsProps } from '../components/contracts'
 import { useId } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/cw-select'
 import { Field } from '@customer-web/components/ui/cw-field'
-import './assistance-fields.css'
 
 const options: Array<{ code: ServiceCode; label: string }> = [
   { code: 'WCHR', label: 'Wheelchair: assistance on the ramp' },
@@ -35,12 +34,15 @@ export function AssistanceFields({
   const noteId = useId()
 
   return (
-    <fieldset className="assistance-fields" disabled={disabled}>
+    <fieldset
+      className="grid min-w-0 gap-3 rounded-lg border p-4 [&>legend]:px-1.5 [&>legend]:text-sm [&>legend]:font-semibold [&>p]:text-sm [&>p]:text-muted-foreground"
+      disabled={disabled}
+    >
       <legend>Special assistance (optional)</legend>
       {bookingMode ? (
-        <div className="assistance-fields__checks" aria-label="Assistance types">
+        <div className="flex flex-wrap gap-x-5 gap-y-2" aria-label="Assistance types">
           {options.map(({ code }) => (
-            <label className="assistance-fields__check" key={code}>
+            <label className="flex cursor-pointer items-center gap-2 text-sm [&_input]:size-4 [&_input]:accent-primary" key={code}>
               <input
                 type="checkbox"
                 checked={selectedCodes.includes(code)}
@@ -92,6 +94,7 @@ export function AssistanceFields({
           error={noteError}
         >
           <textarea
+            className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20"
             id={noteId}
             required={noteRequired}
             aria-invalid={noteError ? true : undefined}

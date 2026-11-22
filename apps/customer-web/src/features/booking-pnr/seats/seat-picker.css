@@ -1,14 +1,14 @@
 .seat-picker {
   min-width: 0;
-  color: var(--f3-ink, #0a1424);
-  font-family: Inter, sans-serif;
+  color: var(--f3-ink, var(--color-ink));
+  font-family: var(--font-sans);
 }
 .seat-picker__legend {
   display: flex;
   flex-wrap: wrap;
   gap: 10px 16px;
   margin-bottom: 16px;
-  color: #677287;
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 .seat-picker__legend-item {
@@ -30,7 +30,7 @@
   border: 1px solid #8aa6d0;
   border-radius: 6px;
   background: white;
-  color: #677287;
+  color: var(--muted-foreground);
 }
 .seat-picker--booking .seat-picker__swatch::after {
   content: '';
@@ -64,8 +64,8 @@
   border-color: #34789b;
 }
 .seat-picker__swatch--selected {
-  background: #102544;
-  border-color: #fca311;
+  background: var(--primary);
+  border-color: var(--ring);
 }
 .seat-picker__swatch--taken {
   background: #e5eaf1;
@@ -81,7 +81,7 @@
 }
 .seat-picker__cabin {
   margin: 0 0 12px;
-  color: #677287;
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 .seat-picker__rows {
@@ -95,9 +95,9 @@
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   padding: 12px 4px;
-  border: 1px solid #d9dfe9;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--card);
 }
 .seat-picker__row {
   display: flex;
@@ -112,7 +112,7 @@
   flex: 0 0 22px;
   text-align: right;
   padding-right: 4px;
-  color: #677287;
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 .seat-picker__columns {
@@ -121,12 +121,12 @@
   z-index: 1;
   padding-top: 8px;
   padding-bottom: 8px;
-  background: #fff;
+  background: var(--card);
 }
 .seat-picker__column {
   flex: 0 0 var(--seat-size);
   text-align: center;
-  color: #677287;
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 .seat-picker__gap {
@@ -148,7 +148,7 @@
   padding: 0 0 5px;
   border: 1px solid #82a6e6;
   border-radius: 8px;
-  background: #fff;
+  background: var(--card);
   color: #52657a;
   font:
     600 11px/1 Inter,
@@ -194,7 +194,7 @@
 }
 .seat-picker__seat:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 3px 8px #10254420;
+  box-shadow: 0 3px 8px var(--primary) 20;
 }
 .seat-picker__seat:disabled {
   background: #e5eaf1;
@@ -216,16 +216,16 @@
 }
 .seat-picker__seat--party:disabled {
   background: #eaf0fb;
-  border-color: #102544;
-  color: #102544;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .seat-picker__seat--current:disabled {
-  background: #102544;
-  border-color: #102544;
+  background: var(--primary);
+  border-color: var(--primary);
   color: #fff;
 }
 .seat-picker__seat[aria-pressed='true'] {
-  background: #102544;
+  background: var(--primary);
   color: #fff;
   border-color: #f28b2c;
   box-shadow: 0 0 0 1px #f28b2c;
@@ -236,7 +236,7 @@
 }
 .seat-picker__seat:focus-visible,
 .seat-picker__rows:focus-visible {
-  outline: 3px solid #fca311;
+  outline: 3px solid var(--ring);
   outline-offset: 3px;
 }
 @media (prefers-reduced-motion: reduce) {

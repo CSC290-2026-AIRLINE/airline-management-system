@@ -3,9 +3,8 @@ import { ApiError } from '../api/client'
 import type { Cabin, SeatMap } from '../api/types'
 import { SeatPicker } from './SeatPicker'
 import { SeatTakenDialog } from './SeatTakenDialog'
-import controls from '../styles/controls.module.css'
+import controls from '../styles/controls'
 import { formatMoney } from '../lib/format'
-import './seat-selection.css'
 
 interface BookingSeatChangeProps {
   seatMap: SeatMap
@@ -80,11 +79,16 @@ export function BookingSeatChange({
   }
 
   return (
-    <section className="seat-selection" aria-label="Change your seat">
-      <div className="booking-seat-panel__editor-heading">
+    <section
+      className="min-w-0 space-y-4 text-left [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:m-0 [&_h3]:text-base [&_h3]:font-semibold"
+      aria-label="Change your seat"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3>Choose a seat for {passengerName}</h3>
-          <p className="seat-selection__muted">Current seat: {currentSeat ?? 'Not chosen'} · Exit-row seats have eligibility rules.</p>
+          <p className="text-sm text-muted-foreground">
+            Current seat: {currentSeat ?? 'Not chosen'} · Exit-row seats have eligibility rules.
+          </p>
         </div>
         <button className={controls.secondary} type="button" disabled={saving} onClick={onClose}>
           Close
@@ -107,7 +111,10 @@ export function BookingSeatChange({
         }}
       />
       {selectedSeat && (
-        <div className="seat-selection__selected" role="status">
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm [&_small]:block [&_small]:text-xs [&_small]:text-muted-foreground"
+          role="status"
+        >
           <span>
             <strong>Seat {selectedSeat.seatCode}</strong>
             <small>{selectedSeat.type.replaceAll('_', ' ')}</small>
@@ -116,16 +123,16 @@ export function BookingSeatChange({
         </div>
       )}
       {selectedSeat?.type === 'exit' && (
-        <p className="seat-selection__warning" role="status">
+        <p className="rounded-lg border border-warn/25 bg-warn/10 px-3 py-2 text-sm text-warn" role="status">
           Exit-row seats require an adult with no assistance request and no infant on their lap.
         </p>
       )}
       {message && (
-        <p className="seat-selection__hint" role="status">
+        <p className="rounded-lg border border-link/20 bg-link/5 px-3 py-2 text-sm text-link" role="status">
           {message}
         </p>
       )}
-      <div className="booking-seat-panel__actions">
+      <div className="flex flex-wrap justify-end gap-2 pt-2">
         {import.meta.env.DEV && paymentRequired && paymentLock && onPaySeat && (
           <button
             className={controls.primary}

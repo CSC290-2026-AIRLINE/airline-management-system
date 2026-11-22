@@ -1,13 +1,13 @@
 import { Link } from '@tanstack/react-router'
 import { Check } from 'lucide-react'
-import type { BookingDetail } from '../api/types'
+import type { BookingDetail, InsurancePolicySummary } from '../api/types'
 import { FeatureAction } from '../booking-detail/FeatureAction'
 import { MEALS_DISABLED, partyLabel } from '../booking-detail/booking-detail-model'
 import { StatusChip } from '../components/StatusChip'
 import { formatCabin, formatDateTime, formatFlightDate, formatMoney, formatTime } from '../lib/format'
-import controls from '../styles/controls.module.css'
-import styles from './ConfirmedState.module.css'
-import '../styles/tokens.css'
+import { Button } from '@customer-web/components/ui/button'
+import { Card, CardContent } from '@customer-web/components/ui/card'
+import { PageShell } from '../components/PageShell'
 
 /**
  * The booking is paid and ticketed.
@@ -16,7 +16,13 @@ import '../styles/tokens.css'
  * with their seats, who is travelling and what was paid. The trips and the passengers come from the booking itself, so
  * the page is the same whether the customer confirms here or arrives on a booking that was already paid.
  */
-export function ConfirmedState({ booking }: { booking: BookingDetail }) {
+export function ConfirmedState({
+  booking,
+  insurancePolicy = null,
+}: {
+  booking: BookingDetail
+  insurancePolicy?: InsurancePolicySummary | null
+}) {
   const passengersById = new Map(booking.passengers.map((passenger) => [passenger.bookingPassengerId, passenger]))
   /* The seats of every flight, so each flight row can say who sits where. */
   const seatsBySegment = new Map<string, string[]>()
@@ -36,68 +42,88 @@ export function ConfirmedState({ booking }: { booking: BookingDetail }) {
   const segments = [...booking.segments].sort((a, b) => a.segmentOrder - b.segmentOrder)
 
   return (
-    <main className={styles.page}>
-      <section className={styles.card}>
-        <header className={styles.hero}>
-          <span className={styles.successMark} aria-hidden="true">
-            <Check size={26} strokeWidth={2.75} />
-          </span>
-          <div className={styles.heroText}>
-            <StatusChip label="Confirmed" tone="confirmed" />
-            <h1>Your booking is confirmed</h1>
-            <p className={styles.lead}>Payment received and tickets issued.</p>
-            <p className={styles.meta}>
-              {booking.confirmedAt ? `Confirmed ${formatDateTime(booking.confirmedAt)}. ` : ''}A confirmation was sent to{' '}
-              {booking.contactEmail}.
-            </p>
+    <PageShell className="max-w-2xl">
+      <Card>
+        <CardContent className="space-y-6">
+          <header className="flex gap-4">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-ok/10 text-ok" aria-hidden="true">
+              <Check className="size-6" strokeWidth={2.5} />
+            </span>
+            <div className="space-y-1">
+              <StatusChip label="Confirmed" tone="confirmed" />
+              <h1 className="m-0 text-2xl font-semibold tracking-tight">Your booking is confirmed</h1>
+              <p className="text-muted-foreground">Payment received and tickets issued.</p>
+              <p className="text-xs text-muted-foreground">
+                {booking.confirmedAt ? `Confirmed ${formatDateTime(booking.confirmedAt)}. ` : ''}A confirmation was sent to{' '}
+                {booking.contactEmail}.
+              </p>
+            </div>
+          </header>
+
+          <div className="inline-flex flex-col gap-0.5 rounded-lg border bg-muted/40 px-4 py-3">
+            <span className="text-xs text-muted-foreground">Booking reference</span>
+            <span className="font-mono text-2xl font-semibold tracking-widest">{booking.reference}</span>
           </div>
-        </header>
 
-        <div className={styles.reference}>
-          <span className={styles.referenceLabel}>Booking reference</span>
-          <span className={styles.referenceValue}>{booking.reference}</span>
-        </div>
+          <section aria-labelledby="confirmed-trip" className="space-y-2">
+            <h2 id="confirmed-trip" className="m-0 text-sm font-semibold">
+              Your trip
+            </h2>
+            <div className="divide-y rounded-lg border">
+              {segments.map((segment) => {
+                const seats = seatsBySegment.get(segment.bookingSegmentId) ?? []
+                return (
+                  <div className="flex flex-wrap items-start justify-between gap-2 px-4 py-3" key={segment.bookingSegmentId}>
+                    <div>
+                      <p className="text-sm font-medium">
+                        {segment.flightNumber} · {formatCabin(segment.cabin)}
+                      </p>
+                      <p className="text-xs text-muted-foreground tabular-nums">
+                        {formatFlightDate(segment.depAt, segment.originTimeZone)} · {segment.origin}{' '}
+                        {formatTime(segment.depAt, segment.originTimeZone)} → {segment.destination}{' '}
+                        {formatTime(segment.arrAt, segment.destinationTimeZone)}
+                      </p>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {seats.length === 0 ? 'Seat not chosen' : `${seats.length === 1 ? 'Seat' : 'Seats'} ${seats.join(', ')}`}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
 
-        <section aria-labelledby="confirmed-trip">
-          <h2 id="confirmed-trip" className={styles.sectionTitle}>
-            Your trip
-          </h2>
-          {segments.map((segment) => {
-            const seats = seatsBySegment.get(segment.bookingSegmentId) ?? []
-            return (
-              <div className={styles.flightRow} key={segment.bookingSegmentId}>
-                <div>
-                  <p className={styles.flightNumber}>
-                    {segment.flightNumber} · {formatCabin(segment.cabin)}
-                  </p>
-                  <p className={styles.flightRoute}>
-                    {formatFlightDate(segment.depAt)} · {segment.origin} {formatTime(segment.depAt)} → {segment.destination}{' '}
-                    {formatTime(segment.arrAt)}
-                  </p>
-                </div>
-                <p className={styles.flightSeats}>
-                  {seats.length === 0 ? 'Seat not chosen' : `${seats.length === 1 ? 'Seat' : 'Seats'} ${seats.join(', ')}`}
-                </p>
-              </div>
-            )
-          })}
-        </section>
+          <div className="space-y-1 border-t pt-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-sm text-muted-foreground">{partyLabel(booking.passengers)} · tickets issued</p>
+              <p className="text-sm">
+                Total paid{' '}
+                <strong className="text-lg tabular-nums">
+                  {formatMoney(booking.total + (insurancePolicy?.price ?? 0), insurancePolicy?.currency ?? booking.currency)}
+                </strong>
+              </p>
+            </div>
+            {insurancePolicy ? (
+              <p className="text-sm text-muted-foreground">
+                Travel insurance policy {insurancePolicy.policyNumber} ·{' '}
+                {insurancePolicy.price > 0 ? formatMoney(insurancePolicy.price, insurancePolicy.currency) : 'included with your membership'}
+              </p>
+            ) : null}
+          </div>
 
-        <div className={styles.totalRow}>
-          <p className={styles.party}>{partyLabel(booking.passengers)} · tickets issued</p>
-          <p className={styles.total}>
-            Total paid <strong>{formatMoney(booking.total, booking.currency)}</strong>
-          </p>
-        </div>
-
-        <div className={styles.actions}>
-          <Link to="/bookings/$reference" params={{ reference: booking.reference }} className={controls.primary}>
-            View trip
-          </Link>
-          <FeatureAction label="Add meals" reason={MEALS_DISABLED} className={controls.secondary} />
-        </div>
-        <p className={styles.note}>Meals can be added from your booking once onboard ordering is available.</p>
-      </section>
-    </main>
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <Button asChild>
+                <Link to="/bookings/$reference" params={{ reference: booking.reference }}>
+                  View trip
+                </Link>
+              </Button>
+              <FeatureAction label="Add meals" reason={MEALS_DISABLED} variant="outline" />
+            </div>
+            <p className="text-xs text-muted-foreground">Meals can be added from your booking once onboard ordering is available.</p>
+          </div>
+        </CardContent>
+      </Card>
+    </PageShell>
   )
 }
