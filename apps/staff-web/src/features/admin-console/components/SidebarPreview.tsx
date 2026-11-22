@@ -1,8 +1,8 @@
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@staff-web/lib/utils'
-import flythonMark from '../assets/flython-mark.svg'
+import flythonLogo from '../assets/flython-logo.svg'
 import sidebarPattern from '../assets/sidebar-pattern.png'
-import { ADMIN_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM } from '../nav-items'
+import { ADMIN_ITEMS, CHECKIN_ITEMS, CREW_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM } from '../nav-items'
 import type { ScreenDto } from '../types'
 
 interface PreviewItem {
@@ -34,7 +34,7 @@ function Group({ label, items, indent = true }: { label?: string; items: Preview
 
 /**
  * A non-interactive copy of the live sidebar (same groups, icons, colours and texture) showing only what `screens` lets
- * a role open. A pricing/admin item matches by its registered screen code; the other teams' items have no code yet, so
+ * a role open. A pricing/admin/crew item matches by its registered screen code; the other teams' items have no code yet, so
  * they match a registered screen of the same name.
  */
 export function SidebarPreview({ screens, roleName }: { screens: ScreenDto[]; roleName: string }) {
@@ -57,17 +57,15 @@ export function SidebarPreview({ screens, roleName }: { screens: ScreenDto[]; ro
       />
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-center gap-2 px-2 py-1">
-          <img src={flythonMark} alt="" className="h-6 w-auto shrink-0" />
-          <span className="flex flex-col font-heading leading-none font-bold whitespace-nowrap">
-            <span className="text-xl">Flython</span>
-            <span className="text-xs tracking-[0.3em]">AIRLINES</span>
-          </span>
+          <img src={flythonLogo} alt="Flython Airline" className="h-10 w-auto shrink-0" />
         </div>
         <p className="px-2 text-xs text-[#b7c1d1] uppercase">Admin workspace</p>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto" aria-hidden="true">
         <Group label="Administration" items={ADMIN_ITEMS.map((i) => ({ ...i, visible: byCode(i.code) }))} />
         <Group label="Pricing & Fare Rules" items={PRICING_ITEMS.map((i) => ({ ...i, visible: byCode(i.code) }))} />
+        <Group label="Crew & Rostering" items={CREW_ITEMS.map((i) => ({ ...i, visible: byCode(i.code) }))} />
+        <Group label="Check-in & Boarding" items={CHECKIN_ITEMS.map((i) => ({ ...i, visible: byCode(i.code) }))} />
         {GROUPS.map((g) => (
           <Group key={g.label} label={g.label} items={g.items.map((i) => ({ ...i, visible: byName(i.label) }))} />
         ))}

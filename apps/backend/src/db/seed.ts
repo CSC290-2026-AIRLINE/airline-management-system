@@ -2,6 +2,7 @@ import path from 'node:path'
 import { faker } from '@faker-js/faker'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/prisma/client'
+import { seedFeature6 } from './seed-f6'
 
 try {
   process.loadEnvFile(path.join(__dirname, '..', '..', '.env'))
@@ -42,9 +43,65 @@ const APPROVAL_POLICIES = [
   { airport: 'BKK', curfew_start_local: '00:00', curfew_end_local: '05:00', max_departure_per_hour: 20, offer_style: 'slots' },
   { airport: 'CNX', curfew_start_local: '23:00', curfew_end_local: '06:00', max_departure_per_hour: 8, offer_style: 'window' },
 ]
+// Feature 2's demo reference data, so the staff screens can be tried straight after a seed: the fixed disruption reasons (one per category),
+// the airline code, two aircraft types, four aircraft and the four repeat patterns of the demo network. The aircraft belong to Feature 9;
+// they are upserted by their tail number, so its own seed can replace them. Currency rates for the cost estimate are seeded with the staff.
+const DISRUPTION_REASONS = [
+  { code: 'WX', category: 'weather', description: 'Weather' },
+  { code: 'TECH', category: 'technical', description: 'Technical fault' },
+  { code: 'CREW', category: 'crew', description: 'Crew availability' },
+  { code: 'ATC', category: 'air_traffic_control', description: 'Air traffic control restriction' },
+  { code: 'SEC', category: 'security', description: 'Security' },
+  { code: 'APT', category: 'airport_operations', description: 'Airport operations' },
+  { code: 'OTH', category: 'other', description: 'Other' },
+]
+const AIRLINE_CODE = 'XX'
+const AIRCRAFT_TYPES = [
+  {
+    code: 'A320',
+    manufacturer: 'Airbus',
+    model: 'A320-200',
+    layout: { rows: 30, seats_per_row: 6 },
+    hold_weight_limit_kg: 20000,
+    max_takeoff_weight_kg: 78000,
+    max_range_km: 6100,
+    min_turnaround_minutes: 50,
+    operating_cost_per_hour: 4500,
+    cost_currency: 'USD',
+  },
+  {
+    code: 'ATR72',
+    manufacturer: 'ATR',
+    model: 'ATR 72-600',
+    layout: { rows: 18, seats_per_row: 4 },
+    hold_weight_limit_kg: 6000,
+    max_takeoff_weight_kg: 23000,
+    max_range_km: 1500,
+    min_turnaround_minutes: 35,
+    operating_cost_per_hour: 1800,
+    cost_currency: 'USD',
+  },
+]
+const AIRCRAFT = [
+  { tail_number: 'HS-XA1', type: 'A320', base_airport_code: 'BKK' },
+  { tail_number: 'HS-XA2', type: 'A320', base_airport_code: 'BKK' },
+  { tail_number: 'HS-XA3', type: 'A320', base_airport_code: 'CNX' },
+  { tail_number: 'HS-XT1', type: 'ATR72', base_airport_code: 'HKT' },
+]
+const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7]
+const PATTERNS = [
+  { flight_number: 'XX101', origin: 'BKK', destination: 'CNX', dep_time_local: '08:00', days_of_week: ALL_DAYS },
+  { flight_number: 'XX102', origin: 'CNX', destination: 'BKK', dep_time_local: '10:30', days_of_week: ALL_DAYS },
+  { flight_number: 'XX201', origin: 'BKK', destination: 'HKT', dep_time_local: '13:00', days_of_week: [1, 3, 5] },
+  { flight_number: 'XX202', origin: 'HKT', destination: 'BKK', dep_time_local: '15:30', days_of_week: [1, 3, 5] },
+]
+const PATTERN_DAYS = 75
+// 1 USD is about 35 THB; the table holds units of the currency per unit of the base (THB).
+const CURRENCY_RATES = [{ currency_code: 'USD', rate_per_base: 0.028571 }]
+
 const PRICING_SETTINGS = [
   { key: 'quote_hold_minutes', value: '15' },
-  { key: 'base_currency', value: 'USD' },
+  { key: 'base_currency', value: 'THB' },
 ]
 
 // Feature 6: the final demo needs two gates at one airport. The visa rows are examples, not real visa policy
@@ -168,6 +225,56 @@ async function seedFlightNetwork() {
       where: { airport: policy.airport },
       update: {},
       create: { ...policy, curfew_start_local: timeOfDay(curfew_start_local), curfew_end_local: timeOfDay(curfew_end_local) },
+    })
+  }
+}
+
+// Upserted like the flight network, and needs it: the patterns point at the routes. The partial unique indexes on aircraft cannot back a Prisma
+// upsert, so those use skipDuplicates like the pricing catalog below.
+async function seedFlightSchedulingDemo() {
+  for (const reason of DISRUPTION_REASONS) {
+    await prisma.disruption_reason.upsert({ where: { code: reason.code }, update: {}, create: reason })
+  }
+  await prisma.flight_setting.upsert({
+    where: { key: 'airline_code' },
+    update: {},
+    create: { key: 'airline_code', value: AIRLINE_CODE },
+  })
+  await prisma.aircraft_type.createMany({ data: AIRCRAFT_TYPES, skipDuplicates: true })
+  const types = await prisma.aircraft_type.findMany({ where: { deleted_at: null }, select: { id: true, code: true } })
+  const typeId = new Map(types.map((t) => [t.code, t.id]))
+  await prisma.aircraft.createMany({
+    data: AIRCRAFT.map(({ type, ...aircraft }) => ({
+      ...aircraft,
+      aircraft_type_id: typeId.get(type) as string,
+      entry_into_service_date: new Date('2024-01-15T00:00:00Z'),
+    })),
+    skipDuplicates: true,
+  })
+
+  // From today (UTC) for a while, so the demo always has dates ahead of it.
+  const from = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z')
+  const to = new Date(from.getTime() + PATTERN_DAYS * 24 * 60 * 60 * 1000)
+  for (const { origin, destination, dep_time_local, ...pattern } of PATTERNS) {
+    const route = await prisma.route.findUnique({ where: { origin_destination: { origin, destination } }, select: { id: true } })
+    if (!route) continue
+    await prisma.flight_pattern.upsert({
+      where: { flight_number: pattern.flight_number },
+      update: {},
+      create: { ...pattern, route_id: route.id, dep_time_local: timeOfDay(dep_time_local), valid_from: from, valid_to: to },
+    })
+  }
+}
+
+// Needs a staff member for `updated_by`, so it runs after the staff are seeded.
+async function seedCurrencyRates() {
+  const staff = await prisma.staff.findFirst({ select: { id: true } })
+  if (!staff) return
+  for (const rate of CURRENCY_RATES) {
+    await prisma.currency_rate.upsert({
+      where: { currency_code: rate.currency_code },
+      update: {},
+      create: { ...rate, updated_by: staff.id },
     })
   }
 }
@@ -331,15 +438,17 @@ async function seedRefreshTokens(userId: string) {
 
 async function main() {
   console.log(
-    `Seeding ${STAFF_ROLES.length} roles, the Feature 2, 4, 5, 6, 10 and 11 demo data, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`,
+    `Seeding ${STAFF_ROLES.length} roles, the Feature 2, 4, 5, 6, 10 and 11 demo data, the Feature 6 demo flights and bookings, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`,
   )
 
   const roleIds = await seedRoles()
   await seedFlightNetwork()
+  await seedFlightSchedulingDemo()
   // Pricing first: its fare classes feed the loyalty earn rules, and its baggage override needs the routes above.
   await seedPricingSettings()
   await seedPricingCatalog()
   await seedCheckIn()
+  await seedFeature6(prisma)
   await seedLostAndFound()
   await seedLoyalty()
   await seedCrewPay()
@@ -353,6 +462,8 @@ async function main() {
     const user = await seedStaff(roleIds)
     await seedRefreshTokens(user.id)
   }
+
+  await seedCurrencyRates()
 
   console.log('Seeding complete.')
 }

@@ -1,8 +1,8 @@
 import type { ServiceCode } from '../api/types'
 import type { AssistanceFieldsProps } from '../components/contracts'
 import { useId } from 'react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
-import { Field } from '@customer-web/components/ui/field'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/cw-select'
+import { Field } from '@customer-web/components/ui/cw-field'
 import './assistance-fields.css'
 
 const options: Array<{ code: ServiceCode; label: string }> = [

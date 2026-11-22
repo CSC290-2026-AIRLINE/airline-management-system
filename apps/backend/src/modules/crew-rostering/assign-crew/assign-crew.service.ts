@@ -1,0 +1,1288 @@
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { DbService } from '@backend/db/db.service'
+import { Prisma } from '@backend/db/generated/prisma/client'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import { writeRosteringAudit } from '@backend/modules/crew-rostering/rostering-audit'
+import { loadBaseContext } from '@backend/modules/crew-rostering/base-context'
+import { lockDraftRun } from '@backend/modules/crew-rostering/run-lock'
+import { cabinCrewFor, DEFAULT_SEATS_PER_CABIN_CREW, MIN_CABIN_CREW } from '@backend/modules/crew-rostering/cabin-crew'
+import { LOCAL_MISS_RATE, POLICE_SHORT_RATE, pickOne } from './random-pick'
+import { isoDate, isRestBetween, shortName } from '@backend/modules/crew-rostering/crew-format'
+
+/**
+ * Feature 8 · Step 3 — assign crew.
+ *
+ * Owns `pairing_leg_assignment` and the `rule_break` rows of a roster run. It reads the
+ * pairings Build pairings committed through `roster_run_pairing`, never through that
+ * step's service, so the two can be replaced independently.
+ *
+ * Decisions taken from the F8 migration (`20261024120000_feature8_crew_rostering`):
+ *
+ *  · **Seats are `crew.role`**: captain, first officer, cabin crew and police. There is no
+ *    local-crew seat. "Local crew" is a cabin crew member who speaks a language
+ *    `country_language` lists for the destination, and the auto-assigner prefers them
+ *    for the cabin seats of an international pairing.
+ *  · **A pairing is crewed as a whole**: the same people fly every leg, which is what a
+ *    pairing is for. Rows are still written per leg, as the table requires.
+ *  · **Re-check, not rebuild.** A check inserts the breaks it finds, closes the open ones
+ *    it no longer finds as `fixed`, and never reopens one Ops has overridden.
+ *  · Business timestamps (`assigned_at`, `resolved_at`) come from the `SimulationClock`.
+ */
+
+export const SEAT_ROLES = ['captain', 'first_officer', 'cabin_crew', 'police'] as const
+export type SeatRole = (typeof SEAT_ROLES)[number]
+
+/** `rule_break.rule`, as the migration's CHECK lists it. */
+export const RULE_CODES = [
+  'OVERLAP',
+  'REST_SHORT',
+  'HOURS_28D',
+  'DUTY_LIMIT',
+  'NO_LEGAL_CREW',
+  'LICENCE_EXPIRED',
+  'NO_TYPE_RATING',
+  'WRONG_FLEET',
+  'NO_LOCAL_CREW',
+  'POLICE_MIN',
+  'POLICE_NO_SEAT',
+] as const
+export type RuleCode = (typeof RULE_CODES)[number]
+
+/** `law` breaks must be fixed with a swap; `company` breaks may be overridden in writing. */
+export type RuleSeverity = 'law' | 'company'
+
+const COMPANY_RULES: ReadonlySet<RuleCode> = new Set(['NO_LOCAL_CREW', 'POLICE_MIN', 'POLICE_NO_SEAT'])
+
+const RULE_TITLES: Record<RuleCode, string> = {
+  OVERLAP: 'Crew on two flights at once',
+  REST_SHORT: 'Rest between duties',
+  HOURS_28D: 'Flight hours in 28 days',
+  DUTY_LIMIT: 'Duty limit',
+  NO_LEGAL_CREW: 'Seat not filled',
+  LICENCE_EXPIRED: 'Licence expired',
+  NO_TYPE_RATING: 'No type rating',
+  WRONG_FLEET: 'Wrong fleet',
+  NO_LOCAL_CREW: 'No local crew',
+  POLICE_MIN: 'Police complement',
+  POLICE_NO_SEAT: 'No seat for police',
+}
+
+export interface AssignCrewParams {
+  /** `YYYY-MM-DD`. */
+  dateFrom: string
+  /** `YYYY-MM-DD`, inclusive. */
+  dateTo: string
+  /** IATA base. */
+  base: string
+}
+
+/** How auto-assign picks people. */
+export interface AutoAssignOptions {
+  /**
+   * Demo mode: now and then a seat gets someone who is not rested, a local speaker is skipped or
+   * a police officer is left out, so Ops have breaks to fix. Off by default, so a normal run
+   * picks only legal crew and a break comes only from a real shortage.
+   */
+  demoBreaks?: boolean
+  /** The random source; fixed in tests. */
+  random?: () => number
+}
+
+export interface RosterRunRow {
+  id: string
+  base: string
+  dateFrom: string
+  dateTo: string
+  status: 'draft' | 'published'
+}
+
+/** The limits the rules use, as `crew_setting` holds them, before any stricter country rule. */
+export interface RuleLimitsRow {
+  minRestHours: number
+  maxDutyHours: number
+  maxFlightsPerDuty: number
+  maxFlightHours28d: number
+  minLocalCrew: number
+  minPoliceInternational: number
+  /** One cabin crew member per this many seats on the aircraft. */
+  seatsPerCabinCrew: number
+  /**
+   * Cabin crew the pairing carries: the most any of its legs needs, since the same people fly every leg. In the defaults,
+   * before any pairing, it is the floor every leg starts from.
+   */
+  cabinCrewPerLeg: number
+  reportMinutes: number
+  releaseMinutes: number
+}
+
+export interface CommittedLegRow {
+  /** `pairing_leg.id`. */
+  legId: string
+  flightId: string
+  flightNumber: string
+  origin: string
+  destination: string
+  departureAt: string
+  arrivalAt: string
+  /** Feature 9's `aircraft_type.model`, which ratings and fleets are held against. */
+  aircraftType: string
+  /** Origin and destination are in different countries. */
+  international: boolean
+  /** Languages that count as local at the destination; empty for a domestic leg. */
+  localLanguages: string[]
+}
+
+export interface CommittedPairingRow {
+  id: string
+  code: string
+  legs: CommittedLegRow[]
+}
+
+export interface CommittedPairingResult {
+  rosterRun: RosterRunRow | null
+  pairings: CommittedPairingRow[]
+  /** Pairings in the window Build pairings has not committed (invalid, or not committed yet). */
+  uncommitted: { id: string; code: string }[]
+  totalLegs: number
+  limits: RuleLimitsRow
+}
+
+export interface CrewSummaryRow {
+  id: string
+  /** `S. Kittipong`. */
+  name: string
+  fullName: string
+  role: SeatRole
+  languages: string[]
+}
+
+export interface LegAssignmentRow {
+  pairingId: string
+  pairingCode: string
+  leg: CommittedLegRow
+  captain: CrewSummaryRow | null
+  firstOfficer: CrewSummaryRow | null
+  cabinCrew: CrewSummaryRow[]
+  /** The cabin crew who speak a local language at the destination. */
+  localCrew: CrewSummaryRow[]
+  police: CrewSummaryRow[]
+  cabinRequired: number
+  policeRequired: number
+}
+
+export interface RuleBreakRow {
+  id: string
+  code: RuleCode
+  severity: RuleSeverity
+  title: string
+  detail: string
+  pairingId: string
+  legId: string
+  flightNumber: string
+  /** The person the break is about, for person rules. */
+  crewId: string | null
+  /** The empty seat, for `NO_LEGAL_CREW` only. */
+  role: SeatRole | null
+}
+
+export interface AssignmentSummaryRow {
+  totalLegs: number
+  /** Legs with every seat filled. A leg can be fully crewed and still break a rule. */
+  fullyCrewedLegs: number
+  brokenLegs: number
+  breakCount: number
+}
+
+export interface RunResult {
+  rosterRun: RosterRunRow
+  assignments: LegAssignmentRow[]
+  /** Open breaks only; fixed and overridden ones are Fix & publish's history. */
+  breaks: RuleBreakRow[]
+  summary: AssignmentSummaryRow
+  /**
+   * Pairings in the run with nobody on them while others are crewed. They are not judged, not published with this batch,
+   * and move to a new draft run on publish, so both pages list them instead of counting their empty seats as breaks.
+   */
+  notCrewed: NotCrewedRow[]
+}
+
+export interface NotCrewedRow {
+  pairingId: string
+  code: string
+  /** Set when the run's crew cannot fly it at all, e.g. `Nobody at BKK flies the ATR 72-600.` */
+  reason: string | null
+}
+
+const LEG_SELECT = {
+  id: true,
+  flight: {
+    select: {
+      id: true,
+      flight_number: true,
+      service_date: true,
+      dep_at: true,
+      arr_at: true,
+      route: { select: { origin: true, destination: true } },
+      aircraft: { select: { aircraft_type: { select: { model: true, layout: true } } } },
+    },
+  },
+} satisfies Prisma.pairing_legSelect
+
+const RUN_SELECT = {
+  id: true,
+  base_airport: true,
+  date_from: true,
+  date_to: true,
+  status: true,
+  roster_run_pairing: {
+    select: { pairing: { select: { id: true, code: true, pairing_leg: { select: LEG_SELECT } } } },
+    orderBy: { pairing: { created_at: 'asc' } },
+  },
+} satisfies Prisma.roster_runSelect
+
+const CREW_SELECT = {
+  id: true,
+  first_name: true,
+  last_name: true,
+  role: true,
+  languages: true,
+  fleet_aircraft_type: true,
+  licence_expires_on: true,
+  crew_certification: { select: { aircraft_type: true, expires_on: true } },
+} satisfies Prisma.crewSelect
+
+const ASSIGNMENT_SELECT = {
+  id: true,
+  crew_id: true,
+  pairing_id: true,
+  pairing_leg_id: true,
+  role: true,
+  assigned_by: true,
+  pairing_leg: { select: { flight: { select: { dep_at: true, arr_at: true } } } },
+} satisfies Prisma.pairing_leg_assignmentSelect
+
+export type RunDbRow = Prisma.roster_runGetPayload<{ select: typeof RUN_SELECT }>
+type CrewDbRow = Prisma.crewGetPayload<{ select: typeof CREW_SELECT }>
+type AssignmentDbRow = Prisma.pairing_leg_assignmentGetPayload<{ select: typeof ASSIGNMENT_SELECT }>
+
+export interface Leg {
+  id: string
+  pairingId: string
+  pairingCode: string
+  flightId: string
+  flightNumber: string
+  /** `YYYY-MM-DD`. */
+  serviceDate: string
+  dep: Date
+  arr: Date
+  origin: string
+  destination: string
+  destinationCountry: string
+  aircraftType: string
+  international: boolean
+  localLanguages: string[]
+  /** Cabin crew on this leg who must speak the destination's language (`min_local_crew`). */
+  localCrewRequired: number
+  /** Cabin crew this leg's aircraft needs: `ceil(seats / seats_per_cabin_crew)`. */
+  cabinCrewRequired: number
+}
+
+export interface RunPairing {
+  id: string
+  code: string
+  legs: Leg[]
+  /** The defaults, tightened by the countries the pairing visits. */
+  limits: RuleLimitsRow
+}
+
+export interface Context {
+  defaults: RuleLimitsRow
+  countryRules: Map<string, { minRestHours: number; maxDutyHours: number }>
+  airportCountry: Map<string, string>
+  countryLanguages: Map<string, string[]>
+  /** Duty days are cut at local midnight in the base's timezone. */
+  timeZone: string
+}
+
+/** One leg a person flies, from any run. */
+interface BusyLeg {
+  legId: string
+  pairingId: string
+  dep: Date
+  arr: Date
+  /** The person's whole stretch in this pairing: first departure to last arrival. Nobody can be on anything else inside it. */
+  blockDep: Date
+  blockArr: Date
+}
+
+interface FoundBreak {
+  pairingId: string
+  legId: string
+  crewId: string | null
+  role: SeatRole | null
+  rule: RuleCode
+  detail: string
+}
+
+const HOUR = 3_600_000
+const DAY = 86_400_000
+
+@Injectable()
+export class AssignCrewService {
+  constructor(
+    private readonly db: DbService,
+    private readonly clock: SimulationClock,
+    private readonly audit: AuditService,
+  ) {}
+
+  /** Bases a run can be crewed from — the same set Build pairings offers. */
+  async listBases(): Promise<string[]> {
+    const rows = await this.db.airport.findMany({ where: { is_active: true }, select: { iata_code: true }, orderBy: { iata_code: 'asc' } })
+    return rows.map((row) => row.iata_code)
+  }
+
+  /** The run Build pairings committed for exactly this base and window, and what it left out. */
+  async listCommittedPairings(params: AssignCrewParams): Promise<CommittedPairingResult> {
+    const context = await this.loadContext(params.base)
+    const window = { gte: new Date(`${params.dateFrom}T00:00:00.000Z`), lte: new Date(`${params.dateTo}T00:00:00.000Z`) }
+
+    const [run, uncommitted] = await Promise.all([
+      // A draft first: once a batch is published, the pairings left over wait in a new draft run for the same window.
+      this.db.roster_run.findFirst({
+        where: { base_airport: params.base, date_from: window.gte, date_to: window.lte },
+        select: RUN_SELECT,
+        orderBy: [{ status: 'asc' }, { created_at: 'desc' }],
+      }),
+      this.db.pairing.findMany({
+        where: { base_airport: params.base, roster_run_pairing: { is: null }, pairing_leg: { some: { flight: { service_date: window } } } },
+        select: { id: true, code: true },
+        orderBy: { created_at: 'asc' },
+      }),
+    ])
+
+    const pairings = run ? this.toRunPairings(run, context) : []
+    return {
+      rosterRun: run ? this.toRunRow(run) : null,
+      pairings: pairings.map((pairing) => ({ id: pairing.id, code: pairing.code, legs: pairing.legs.map((leg) => this.toLegRow(leg)) })),
+      uncommitted,
+      totalLegs: pairings.reduce((total, pairing) => total + pairing.legs.length, 0),
+      limits: context.defaults,
+    }
+  }
+
+  /**
+   * The pairings of a run that are in play: those somebody is crewed on. A run nobody has crewed yet has no batch, so every
+   * pairing counts and the page cannot look ready to publish. The pairings left out are not wrong, they are for the next round.
+   * Assign crew, Fix & publish and publish all use this one scope, so they agree on what is open.
+   */
+  scopeOf(pairings: readonly RunPairing[], assignments: readonly { pairing_id: string }[]): Set<string> {
+    const crewed = new Set(assignments.map((row) => row.pairing_id))
+    return crewed.size > 0
+      ? new Set(pairings.filter((pairing) => crewed.has(pairing.id)).map((pairing) => pairing.id))
+      : new Set(pairings.map((pairing) => pairing.id))
+  }
+
+  /** The scope of a run as it stands in the database. */
+  async scopeIds(rosterRunId: string, client: Prisma.TransactionClient = this.db): Promise<Set<string>> {
+    const { pairings } = await this.loadRun(rosterRunId, client)
+    return this.scopeOf(pairings, await this.activeAssignments(pairings, client))
+  }
+
+  /** What is stored for the run now, without re-checking. */
+  async getRun(rosterRunId: string): Promise<RunResult> {
+    const { run, pairings } = await this.loadRun(rosterRunId)
+    const assignments = await this.activeAssignments(pairings)
+    return this.toResult(run, pairings, assignments, await this.openBreaks(rosterRunId), await this.fleetsAt(run.base_airport))
+  }
+
+  /**
+   * Crews the chosen pairings of a draft run, then re-checks the run.
+   *
+   * The pairings' previous automatic rows are deleted first (a draft run's rows may be),
+   * so a re-run is a re-crew rather than a second set of seats. Rows Ops added by hand
+   * (`assigned_by = 'ops'`) stay, and the seats they fill are not filled again.
+   */
+  async autoAssign(rosterRunId: string, pairingIds: string[], options: AutoAssignOptions = {}, actorUserId?: string): Promise<RunResult> {
+    const { run, pairings } = await this.loadRun(rosterRunId)
+    if (run.status === 'published') throw new ConflictException('This roster is published and can no longer be crewed automatically')
+
+    const unknown = pairingIds.find((id) => !pairings.some((pairing) => pairing.id === id))
+    if (unknown) throw new BadRequestException(`Pairing ${unknown} is not in this roster run`)
+    const targets = pairingIds.length > 0 ? pairings.filter((pairing) => pairingIds.includes(pairing.id)) : pairings
+    if (targets.every((pairing) => pairing.legs.length === 0)) throw new BadRequestException('The run has no legs to crew')
+    const targetIds = new Set(targets.map((pairing) => pairing.id))
+
+    const pool = await this.db.crew.findMany({
+      where: { deleted_at: null, base_airport: run.base_airport },
+      select: CREW_SELECT,
+      orderBy: [{ last_name: 'asc' }, { first_name: 'asc' }],
+    })
+    const legs = targets.flatMap((pairing) => pairing.legs)
+    const readAt = new Date()
+    const existing = await this.db.pairing_leg_assignment.findMany({
+      where: {
+        crew_id: { in: pool.map((member) => member.id) },
+        unassigned_at: null,
+        pairing_leg: { flight: { dep_at: this.historyWindow(legs) } },
+      },
+      select: ASSIGNMENT_SELECT,
+    })
+    // The targets' automatic rows are about to be replaced, so they do not make anyone busy.
+    const kept = existing.filter((row) => !(row.assigned_by === 'auto' && targetIds.has(row.pairing_id)))
+    const busy = this.busyByCrew(kept)
+
+    const rows: Prisma.pairing_leg_assignmentCreateManyInput[] = []
+    for (const pairing of targets) {
+      const plan = this.planPairing(pairing, pool, busy, options)
+      for (const leg of pairing.legs) {
+        const byOps = kept.filter((row) => row.pairing_leg_id === leg.id)
+        const onLeg = new Set(byOps.map((row) => row.crew_id))
+        for (const role of SEAT_ROLES) {
+          const open = this.required(role, leg, pairing.limits) - byOps.filter((row) => row.role === role).length
+          for (const member of plan[role].filter((candidate) => !onLeg.has(candidate.id)).slice(0, Math.max(0, open))) {
+            rows.push({
+              pairing_id: pairing.id,
+              pairing_leg_id: leg.id,
+              crew_id: member.id,
+              role,
+              assigned_by: 'auto',
+              assigned_at: this.clock.now(),
+            })
+          }
+        }
+      }
+    }
+
+    await this.db.$transaction(async (tx) => {
+      // Run first, then crew, in the same order as swap and sick call, so they never wait on each other in a circle.
+      // Publish takes this lock too, so a run published since the read above is refused here instead of re-crewed.
+      await lockDraftRun(tx, rosterRunId, 'This roster was published while auto-assign ran, so it can no longer be crewed automatically')
+      const crewIds = [...new Set(rows.map((row) => row.crew_id))]
+      if (crewIds.length > 0) {
+        // Holding the crew rows means nobody else can assign these people until this commits. Anything
+        // assigned to them between the read above and the lock was not part of the plan, so stop.
+        await tx.$queryRaw`SELECT id FROM crew WHERE id = ANY(${crewIds}::uuid[]) FOR UPDATE`
+        const raced = await tx.pairing_leg_assignment.count({
+          where: { crew_id: { in: crewIds }, unassigned_at: null, created_at: { gt: readAt }, pairing_id: { notIn: [...targetIds] } },
+        })
+        if (raced > 0) throw new ConflictException('Some of this crew were assigned elsewhere while auto-assign ran. Run it again.')
+      }
+      // Rows already taken off (a sick call or a swap) are history, so only the live automatic rows are replaced.
+      const replaced = await tx.pairing_leg_assignment.deleteMany({
+        where: { pairing_id: { in: [...targetIds] }, assigned_by: 'auto', unassigned_at: null },
+      })
+      if (rows.length > 0) await tx.pairing_leg_assignment.createMany({ data: rows })
+      // A re-crew starts these pairings' breaks over. What the last round found was not fixed by it, it no longer applies, so
+      // it is removed rather than left behind as a "Fixed" row. Overrides stay: they record a decision and its reason.
+      await tx.rule_break.deleteMany({
+        where: { roster_run_id: rosterRunId, pairing_id: { in: [...targetIds] }, OR: [{ resolved_at: null }, { resolution: 'fixed' }] },
+      })
+      const codes = targets.map((pairing) => pairing.code)
+      await writeRosteringAudit(
+        this.audit,
+        actorUserId,
+        {
+          action: 'update',
+          entityType: 'roster_run',
+          entityId: rosterRunId,
+          summary: `Auto-assigned ${plural(rows.length, 'seat')} on ${plural(codes.length, 'pairing')}: ${codes.join(', ')}`,
+          before: { autoSeats: replaced.count },
+          after: { autoSeats: rows.length, pairings: codes, ...(options.demoBreaks ? { demoBreaks: true } : {}) },
+        },
+        tx,
+      )
+    })
+
+    return this.check(rosterRunId)
+  }
+
+  /**
+   * Re-checks every rule on the run against what is stored, and records the result.
+   *
+   * Pass the caller's transaction as `client` when it already holds the run lock (publish does), so the check
+   * reads and writes inside that transaction instead of waiting on the lock from a second connection.
+   */
+  async check(rosterRunId: string, client: Prisma.TransactionClient = this.db): Promise<RunResult> {
+    const { run, pairings, context } = await this.loadRun(rosterRunId, client)
+    const assignments = await this.activeAssignments(pairings, client)
+    // Only the pairings in play are judged: the ones somebody is crewed on. The rest wait for the next round and raise nothing.
+    const inScope = this.scopeOf(pairings, assignments)
+    const crewIds = [...new Set(assignments.map((row) => row.crew_id))]
+    const legs = pairings.flatMap((pairing) => pairing.legs)
+    const history =
+      crewIds.length === 0
+        ? []
+        : await client.pairing_leg_assignment.findMany({
+            where: { crew_id: { in: crewIds }, unassigned_at: null, pairing_leg: { flight: { dep_at: this.historyWindow(legs) } } },
+            select: ASSIGNMENT_SELECT,
+          })
+
+    const found = this.evaluate(
+      pairings.filter((pairing) => inScope.has(pairing.id)),
+      assignments,
+      this.busyByCrew(history),
+      context,
+    )
+    await this.storeBreaks(rosterRunId, found, inScope, run.status !== 'published', client)
+    return this.toResult(
+      run,
+      pairings,
+      assignments,
+      await this.openBreaks(rosterRunId, client),
+      await this.fleetsAt(run.base_airport, client),
+    )
+  }
+
+  /* ── assignment ─────────────────────────────────────────────────────────── */
+
+  /**
+   * Picks the people for one pairing, seat by seat.
+   *
+   * A candidate must hold the seat's role, a licence valid through the last flight date,
+   * the fleet of every leg (police travel as passengers and are exempt), a current type
+   * rating if a pilot, enough rest either side of the pairing and room under the 28-day
+   * cap. Among those, a person is picked at random, a local-language speaker first for the
+   * cabin when one is legal and free, and the police complement is always filled. With nobody
+   * legal a seat stays empty, which is a real `NO_LEGAL_CREW` shortage. Only with `demoBreaks`
+   * does the dice sometimes pick someone qualified but not rested (`BREAK_RATE`), skip the local
+   * speaker or leave a police officer out. The chosen people are then marked busy, which the
+   * next pairing's legal picks respect.
+   */
+  private planPairing(
+    pairing: RunPairing,
+    pool: CrewDbRow[],
+    busy: Map<string, BusyLeg[]>,
+    { demoBreaks = false, random = Math.random }: AutoAssignOptions,
+  ): Record<SeatRole, CrewDbRow[]> {
+    const { limits } = pairing
+    const first = pairing.legs[0]
+    const last = pairing.legs[pairing.legs.length - 1]
+    const start = first.dep.getTime() - limits.reportMinutes * 60_000
+    const end = last.arr.getTime() + limits.releaseMinutes * 60_000
+    const lastDate = pairing.legs.reduce((latest, leg) => (leg.serviceDate > latest ? leg.serviceDate : latest), first.serviceDate)
+    const models = [...new Set(pairing.legs.map((leg) => leg.aircraftType))]
+    const block = pairing.legs.reduce((total, leg) => total + (leg.arr.getTime() - leg.dep.getTime()), 0)
+    const chosen = new Set<string>()
+
+    const eligible = (member: CrewDbRow, seat: SeatRole, strict = true): boolean => {
+      if (member.role !== seat || chosen.has(member.id)) return false
+      if (isoDate(member.licence_expires_on) < lastDate) return false
+      if (seat !== 'police' && models.some((model) => member.fleet_aircraft_type !== model)) return false
+      if (isPilot(seat) && models.some((model) => !this.rated(member, model, lastDate))) return false
+      // Not strict means everything but rest and hours: the dice may pick such a person, and the check then reports the break.
+      if (!strict) return true
+
+      const theirs = busy.get(member.id) ?? []
+      // A pairing is one block from the first report to the last release, so a day trip cannot slot into the gap of a multi-day one.
+      const free = theirs.every((other) => {
+        const otherStart = other.blockDep.getTime() - limits.reportMinutes * 60_000
+        const otherEnd = other.blockArr.getTime() + limits.releaseMinutes * 60_000
+        return otherEnd <= start || end <= otherStart
+      })
+      if (!free) return false
+      const rest = limits.minRestHours * HOUR
+      const rested = theirs.every((other) => {
+        const otherStart = other.dep.getTime() - limits.reportMinutes * 60_000
+        const otherEnd = other.arr.getTime() + limits.releaseMinutes * 60_000
+        return otherEnd + rest <= start || end + rest <= otherStart
+      })
+      if (!rested) return false
+
+      const flown = theirs
+        .filter((other) => other.dep.getTime() > end - 28 * DAY && other.dep.getTime() <= end)
+        .reduce((total, other) => total + (other.arr.getTime() - other.dep.getTime()), 0)
+      return flown + block <= limits.maxFlightHours28d * HOUR
+    }
+
+    const pick = (seat: SeatRole, count: number, prefer: (member: CrewDbRow) => boolean = () => true): CrewDbRow[] => {
+      const picked: CrewDbRow[] = []
+      for (let taken = 0; taken < Math.max(0, count); taken += 1) {
+        const legal = pool.filter((member) => eligible(member, seat) && prefer(member))
+        const loose = demoBreaks ? pool.filter((member) => eligible(member, seat, false) && prefer(member)) : legal
+        const member = pickOne(legal, loose, random)
+        if (!member) break
+        chosen.add(member.id)
+        picked.push(member)
+      }
+      return picked
+    }
+
+    const captain = pick('captain', 1)
+    const firstOfficer = pick('first_officer', 1)
+
+    // Local speakers first, one language set at a time, then the rest of the cabin.
+    const cabin: CrewDbRow[] = []
+    const languageSets = new Map<string, { languages: string[]; required: number }>()
+    for (const leg of pairing.legs.filter((item) => item.international && item.localLanguages.length > 0)) {
+      const key = leg.localLanguages.join(',')
+      const required = Math.max(languageSets.get(key)?.required ?? 0, leg.localCrewRequired)
+      languageSets.set(key, { languages: leg.localLanguages, required })
+    }
+    for (const { languages, required } of languageSets.values()) {
+      const have = cabin.filter((member) => speaks(member.languages, languages)).length
+      const room = limits.cabinCrewPerLeg - cabin.length
+      // In demo mode the speaker is sometimes left to chance, which is what raises NO_LOCAL_CREW.
+      const wanted = demoBreaks && random() < LOCAL_MISS_RATE ? 0 : Math.min(room, required - have)
+      cabin.push(...pick('cabin_crew', wanted, (member) => speaks(member.languages, languages)))
+    }
+    cabin.push(...pick('cabin_crew', limits.cabinCrewPerLeg - cabin.length))
+
+    const international = pairing.legs.some((leg) => leg.international)
+    const policeWanted =
+      demoBreaks && random() < POLICE_SHORT_RATE ? Math.max(0, limits.minPoliceInternational - 1) : limits.minPoliceInternational
+    const police = international ? pick('police', policeWanted) : []
+
+    const plan: Record<SeatRole, CrewDbRow[]> = { captain, first_officer: firstOfficer, cabin_crew: cabin, police }
+    for (const member of Object.values(plan).flat()) {
+      const theirs = busy.get(member.id) ?? []
+      theirs.push(
+        ...pairing.legs.map((leg) => ({
+          legId: leg.id,
+          pairingId: pairing.id,
+          dep: leg.dep,
+          arr: leg.arr,
+          blockDep: first.dep,
+          blockArr: last.arr,
+        })),
+      )
+      busy.set(member.id, theirs)
+    }
+    return plan
+  }
+
+  private required(role: SeatRole, leg: Leg, limits: RuleLimitsRow): number {
+    if (role === 'cabin_crew') return leg.cabinCrewRequired
+    if (role === 'police') return leg.international ? limits.minPoliceInternational : 0
+    return 1
+  }
+
+  /** A current certification for this aircraft model on the flight date. */
+  private rated(member: CrewDbRow, model: string, onDate: string): boolean {
+    return member.crew_certification.some((cert) => cert.aircraft_type === model && isoDate(cert.expires_on) >= onDate)
+  }
+
+  /* ── rules ──────────────────────────────────────────────────────────────── */
+
+  /**
+   * Every rule the stored roster fails. Person rules name the person and leave `role`
+   * empty; only `NO_LEGAL_CREW` names a seat, as the table's CHECK requires.
+   */
+  private evaluate(
+    pairings: RunPairing[],
+    assignments: (AssignmentDbRow & { crew: CrewDbRow })[],
+    busy: Map<string, BusyLeg[]>,
+    context: Context,
+  ): FoundBreak[] {
+    const found = new Map<string, FoundBreak>()
+    const raise = (item: FoundBreak): void => {
+      const key = breakKey(item.legId, item.rule, item.crewId, item.role)
+      if (!found.has(key)) found.set(key, item)
+    }
+    const pairingOfLeg = new Map(pairings.flatMap((pairing) => pairing.legs.map((leg) => [leg.id, pairing] as const)))
+
+    for (const pairing of pairings) {
+      const { limits } = pairing
+
+      for (const day of this.dutyDays(pairing.legs, limits)) {
+        const minutes = this.dutyMinutes(day, limits)
+        if (day.length > limits.maxFlightsPerDuty || minutes > limits.maxDutyHours * 60) {
+          raise({
+            pairingId: pairing.id,
+            legId: day[0].id,
+            crewId: null,
+            role: null,
+            rule: 'DUTY_LIMIT',
+            detail:
+              day.length > limits.maxFlightsPerDuty
+                ? `The duty starting with ${day[0].flightNumber} has ${day.length} flights; the limit is ${limits.maxFlightsPerDuty}.`
+                : `The duty starting with ${day[0].flightNumber} runs ${hours(minutes / 60)}; the limit is ${hours(limits.maxDutyHours)}.`,
+          })
+        }
+      }
+
+      for (const leg of pairing.legs) {
+        const onLeg = assignments.filter((row) => row.pairing_leg_id === leg.id)
+        const seat = (role: SeatRole) => onLeg.filter((row) => row.role === role)
+        const base = { pairingId: pairing.id, legId: leg.id }
+
+        if (seat('captain').length === 0)
+          raise({ ...base, crewId: null, role: 'captain', rule: 'NO_LEGAL_CREW', detail: `${leg.flightNumber} has no legal captain.` })
+        if (seat('first_officer').length === 0)
+          raise({
+            ...base,
+            crewId: null,
+            role: 'first_officer',
+            rule: 'NO_LEGAL_CREW',
+            detail: `${leg.flightNumber} has no legal first officer.`,
+          })
+        const cabin = seat('cabin_crew')
+        if (cabin.length < leg.cabinCrewRequired) {
+          raise({
+            ...base,
+            crewId: null,
+            role: 'cabin_crew',
+            rule: 'NO_LEGAL_CREW',
+            detail: `${cabin.length} of ${leg.cabinCrewRequired} cabin crew on ${leg.flightNumber}.`,
+          })
+        }
+
+        if (leg.international) {
+          const police = seat('police').length
+          if (police < limits.minPoliceInternational) {
+            raise({
+              ...base,
+              crewId: null,
+              role: null,
+              rule: 'POLICE_MIN',
+              detail: `${police} of ${limits.minPoliceInternational} police on international flight ${leg.flightNumber}.`,
+            })
+          }
+          if (leg.localCrewRequired > 0) {
+            const speakers = cabin.filter((row) => speaks(row.crew.languages, leg.localLanguages)).length
+            if (leg.localLanguages.length === 0) {
+              raise({
+                ...base,
+                crewId: null,
+                role: null,
+                rule: 'NO_LOCAL_CREW',
+                detail: `No local languages are set for ${leg.destinationCountry.toUpperCase()} (${leg.destination}). Add them in Setup rules.`,
+              })
+            } else if (speakers < leg.localCrewRequired) {
+              raise({
+                ...base,
+                crewId: null,
+                role: null,
+                rule: 'NO_LOCAL_CREW',
+                detail: `${leg.flightNumber} needs ${leg.localCrewRequired} cabin crew who speak ${leg.localLanguages.join(' or ').toUpperCase()} for ${leg.destination}, has ${speakers}.`,
+              })
+            }
+          }
+        }
+
+        for (const row of onLeg) {
+          const member = row.crew
+          const name = shortName(member)
+          const person = { ...base, crewId: member.id, role: null }
+          if (isoDate(member.licence_expires_on) < leg.serviceDate) {
+            raise({ ...person, rule: 'LICENCE_EXPIRED', detail: `${name}'s licence expired on ${isoDate(member.licence_expires_on)}.` })
+          }
+          if (row.role !== 'police' && member.fleet_aircraft_type !== leg.aircraftType) {
+            raise({
+              ...person,
+              rule: 'WRONG_FLEET',
+              detail: `${name} flies the ${member.fleet_aircraft_type}, but ${leg.flightNumber} is a ${leg.aircraftType}.`,
+            })
+          }
+          if (isPilot(row.role) && !this.rated(member, leg.aircraftType, leg.serviceDate)) {
+            raise({
+              ...person,
+              rule: 'NO_TYPE_RATING',
+              detail: `${name} has no valid ${leg.aircraftType} type rating on ${leg.serviceDate}.`,
+            })
+          }
+
+          const theirs = busy.get(member.id) ?? []
+          const clash = theirs.find((other) => other.legId !== leg.id && other.dep < leg.arr && leg.dep < other.arr)
+          if (clash) raise({ ...person, rule: 'OVERLAP', detail: `${name} is on another flight during ${leg.flightNumber}.` })
+
+          const flown = theirs
+            .filter((other) => other.dep.getTime() > leg.dep.getTime() - 28 * DAY && other.dep <= leg.dep)
+            .reduce((total, other) => total + (other.arr.getTime() - other.dep.getTime()), 0)
+          if (flown > limits.maxFlightHours28d * HOUR) {
+            raise({
+              ...person,
+              rule: 'HOURS_28D',
+              detail: `${name} reaches ${hours(flown / HOUR)} in the 28 days to ${leg.flightNumber}; the cap is ${hours(limits.maxFlightHours28d)}.`,
+            })
+          }
+        }
+      }
+    }
+
+    // A pairing is one block for the person on it. Two blocks that overlap are a break even when no two flights do, such as a
+    // day trip from base that falls in the night a multi-day pairing spends away.
+    const crewById = new Map(assignments.map((row) => [row.crew_id, row.crew]))
+    for (const [crewId, member] of crewById) {
+      const blocks = this.personBlocks(busy.get(crewId) ?? [], context)
+      for (const mine of blocks) {
+        const pairing = pairingOfLeg.get(mine.firstLegId)
+        if (!pairing) continue
+        const other = blocks.find(
+          (candidate) =>
+            candidate.pairingId !== mine.pairingId &&
+            candidate.start < mine.end &&
+            mine.start < candidate.end &&
+            // Flights that overlap themselves are already reported as OVERLAP on the leg.
+            !candidate.legs.some((a) => mine.legs.some((b) => a.dep < b.arr && b.dep < a.arr)),
+        )
+        if (other) {
+          raise({
+            pairingId: pairing.id,
+            legId: mine.firstLegId,
+            crewId,
+            role: null,
+            rule: 'OVERLAP',
+            detail: `${shortName(member)} is on another pairing during ${pairing.code}.`,
+          })
+        }
+      }
+    }
+
+    // Rest is a property of a person's duties, not of one leg: each duty after the first must
+    // start at least the minimum rest after the one before it ends.
+    for (const [crewId, member] of crewById) {
+      const duties = this.personDuties(busy.get(crewId) ?? [], context)
+      for (let index = 1; index < duties.length; index += 1) {
+        const pairing = pairingOfLeg.get(duties[index].firstLegId)
+        if (!pairing) continue
+        const rest = (duties[index].start - duties[index - 1].end) / HOUR
+        if (rest < pairing.limits.minRestHours) {
+          const leg = pairing.legs.find((candidate) => candidate.id === duties[index].firstLegId)
+          raise({
+            pairingId: pairing.id,
+            legId: duties[index].firstLegId,
+            crewId,
+            role: null,
+            rule: 'REST_SHORT',
+            detail: `${shortName(member)} has ${hours(rest)} rest before ${leg?.flightNumber ?? 'this duty'}; the minimum is ${hours(pairing.limits.minRestHours)}.`,
+          })
+        }
+      }
+    }
+
+    return [...found.values()]
+  }
+
+  /**
+   * Records a check: inserts what is new, closes the open breaks no longer found as
+   * `fixed`, refreshes the wording of the ones still open, and leaves overridden ones closed.
+   * A pairing that left the batch (nobody is on it any more, so it is not judged) did not get fixed: in a draft run its open
+   * breaks are deleted, so the history does not claim a fix nobody made.
+   *
+   * The run row is locked first, so two checks of one run take turns. Without it both could read "no break yet" for a
+   * break whose `crew_id` or `role` is null and insert it twice: the unique index treats NULLs as distinct, and the
+   * second copy would never be closed, which blocks publish for good. Inside a caller's transaction the lock is
+   * already held (or taken here) on that same connection.
+   */
+  private async storeBreaks(
+    rosterRunId: string,
+    found: FoundBreak[],
+    inScope: ReadonlySet<string>,
+    draft: boolean,
+    client: Prisma.TransactionClient = this.db,
+  ): Promise<void> {
+    const write = async (tx: Prisma.TransactionClient): Promise<void> => {
+      await tx.$queryRaw`SELECT id FROM roster_run WHERE id = ${rosterRunId}::uuid FOR UPDATE`
+      const stored = await tx.rule_break.findMany({
+        where: { roster_run_id: rosterRunId, OR: [{ resolved_at: null }, { resolution: 'overridden' }] },
+        select: {
+          id: true,
+          pairing_id: true,
+          pairing_leg_id: true,
+          rule: true,
+          crew_id: true,
+          role: true,
+          detail: true,
+          resolved_at: true,
+        },
+      })
+      const open = new Map(
+        stored.filter((row) => row.resolved_at === null).map((row) => [breakKey(row.pairing_leg_id, row.rule, row.crew_id, row.role), row]),
+      )
+      const overridden = new Set(
+        stored.filter((row) => row.resolved_at !== null).map((row) => breakKey(row.pairing_leg_id, row.rule, row.crew_id, row.role)),
+      )
+      const foundKeys = new Set(found.map((item) => breakKey(item.legId, item.rule, item.crewId, item.role)))
+
+      const gone = [...open.entries()].filter(([key]) => !foundKeys.has(key))
+      const dropped = draft ? gone.filter(([, row]) => !inScope.has(row.pairing_id)).map(([, row]) => row.id) : []
+      if (dropped.length > 0) await tx.rule_break.deleteMany({ where: { id: { in: dropped } } })
+      const fixed = gone.map(([, row]) => row.id).filter((id) => !dropped.includes(id))
+      if (fixed.length > 0) {
+        await tx.rule_break.updateMany({ where: { id: { in: fixed } }, data: { resolved_at: this.clock.now(), resolution: 'fixed' } })
+      }
+
+      const fresh: Prisma.rule_breakCreateManyInput[] = []
+      for (const item of found) {
+        const key = breakKey(item.legId, item.rule, item.crewId, item.role)
+        const current = open.get(key)
+        if (current && current.detail !== item.detail)
+          await tx.rule_break.update({ where: { id: current.id }, data: { detail: item.detail } })
+        if (!current && !overridden.has(key)) {
+          fresh.push({
+            roster_run_id: rosterRunId,
+            pairing_id: item.pairingId,
+            pairing_leg_id: item.legId,
+            crew_id: item.crewId,
+            role: item.role,
+            rule: item.rule,
+            detail: item.detail,
+          })
+        }
+      }
+      if (fresh.length > 0) await tx.rule_break.createMany({ data: fresh, skipDuplicates: true })
+    }
+    if (client === this.db) await this.db.$transaction(write)
+    else await write(client)
+  }
+
+  /**
+   * Consecutive legs of one pairing form one duty unless the rest between them (release to the
+   * next report) is at least the minimum rest. A leg landing 23:45 and the next leaving 00:05 is
+   * one duty, not two on either side of midnight.
+   */
+  private dutyDays(legs: Leg[], limits: RuleLimitsRow): Leg[][] {
+    const days: Leg[][] = []
+    for (const leg of legs) {
+      const current = days[days.length - 1]
+      const previous = current?.[current.length - 1]
+      if (previous && !isRestBetween(previous.arr, leg.dep, limits.reportMinutes, limits.releaseMinutes, limits.minRestHours))
+        current.push(leg)
+      else days.push([leg])
+    }
+    return days
+  }
+
+  private dutyMinutes(day: Leg[], limits: RuleLimitsRow): number {
+    const start = day[0].dep.getTime() - limits.reportMinutes * 60_000
+    const end = day[day.length - 1].arr.getTime() + limits.releaseMinutes * 60_000
+    return Math.max(0, Math.round((end - start) / 60_000))
+  }
+
+  /**
+   * A person's duties across every run, in time order. Within one pairing, legs are one duty
+   * unless the rest between them reaches the minimum; different pairings are always separate
+   * duties, so rest between them is still checked.
+   */
+  private personDuties(legs: BusyLeg[], context: Context): { firstLegId: string; start: number; end: number }[] {
+    const { reportMinutes, releaseMinutes, minRestHours } = context.defaults
+    const groups: BusyLeg[][] = []
+    const open = new Map<string, BusyLeg[]>()
+    for (const leg of [...legs].sort((a, b) => a.dep.getTime() - b.dep.getTime())) {
+      const current = open.get(leg.pairingId)
+      const previous = current?.[current.length - 1]
+      if (current && previous && !isRestBetween(previous.arr, leg.dep, reportMinutes, releaseMinutes, minRestHours)) {
+        current.push(leg)
+      } else {
+        const group = [leg]
+        open.set(leg.pairingId, group)
+        groups.push(group)
+      }
+    }
+    return groups
+      .map((group) => ({
+        firstLegId: group[0].legId,
+        start: group[0].dep.getTime() - reportMinutes * 60_000,
+        end: group[group.length - 1].arr.getTime() + releaseMinutes * 60_000,
+      }))
+      .sort((a, b) => a.start - b.start)
+  }
+
+  /** A person's pairings as blocks: first report to last release, with the legs inside. */
+  private personBlocks(
+    legs: BusyLeg[],
+    context: Context,
+  ): { pairingId: string; firstLegId: string; start: number; end: number; legs: BusyLeg[] }[] {
+    const { reportMinutes, releaseMinutes } = context.defaults
+    const byPairing = new Map<string, BusyLeg[]>()
+    for (const leg of legs) byPairing.set(leg.pairingId, [...(byPairing.get(leg.pairingId) ?? []), leg])
+    return [...byPairing.entries()].map(([pairingId, group]) => {
+      const sorted = [...group].sort((a, b) => a.dep.getTime() - b.dep.getTime())
+      return {
+        pairingId,
+        firstLegId: sorted[0].legId,
+        start: sorted[0].blockDep.getTime() - reportMinutes * 60_000,
+        end: sorted[0].blockArr.getTime() + releaseMinutes * 60_000,
+        legs: sorted,
+      }
+    })
+  }
+
+  /* ── reads ──────────────────────────────────────────────────────────────── */
+
+  /** The aircraft models the pilots and cabin crew based at `base` fly (police are exempt from fleet). */
+  private async fleetsAt(base: string, client: Prisma.TransactionClient = this.db): Promise<Set<string>> {
+    const rows = await client.crew.findMany({
+      where: { deleted_at: null, base_airport: base, role: { not: 'police' } },
+      select: { fleet_aircraft_type: true },
+      distinct: ['fleet_aircraft_type'],
+    })
+    return new Set(rows.map((row) => row.fleet_aircraft_type))
+  }
+
+  /** The run with its pairings and legs, for the step that fixes and publishes it. */
+  async loadRun(
+    rosterRunId: string,
+    client: Prisma.TransactionClient = this.db,
+  ): Promise<{ run: RunDbRow; pairings: RunPairing[]; context: Context }> {
+    const run = await client.roster_run.findUnique({ where: { id: rosterRunId }, select: RUN_SELECT })
+    if (!run) throw new NotFoundException(`Roster run ${rosterRunId} was not found`)
+    const context = await this.loadContext(run.base_airport, client)
+    return { run, pairings: this.toRunPairings(run, context), context }
+  }
+
+  private async activeAssignments(
+    pairings: RunPairing[],
+    client: Prisma.TransactionClient = this.db,
+  ): Promise<(AssignmentDbRow & { crew: CrewDbRow })[]> {
+    if (pairings.length === 0) return []
+    return client.pairing_leg_assignment.findMany({
+      where: { pairing_id: { in: pairings.map((pairing) => pairing.id) }, unassigned_at: null },
+      select: { ...ASSIGNMENT_SELECT, crew: { select: CREW_SELECT } },
+      orderBy: { created_at: 'asc' },
+    })
+  }
+
+  private async openBreaks(rosterRunId: string, client: Prisma.TransactionClient = this.db): Promise<RuleBreakRow[]> {
+    const rows = await client.rule_break.findMany({
+      where: { roster_run_id: rosterRunId, resolved_at: null },
+      select: {
+        id: true,
+        pairing_id: true,
+        pairing_leg_id: true,
+        crew_id: true,
+        role: true,
+        rule: true,
+        detail: true,
+        pairing_leg: { select: { flight: { select: { flight_number: true, dep_at: true } } } },
+      },
+    })
+    return rows
+      .sort((a, b) => a.pairing_leg.flight.dep_at.getTime() - b.pairing_leg.flight.dep_at.getTime() || a.rule.localeCompare(b.rule))
+      .map((row) => {
+        const code = row.rule as RuleCode
+        return {
+          id: row.id,
+          code,
+          severity: COMPANY_RULES.has(code) ? 'company' : 'law',
+          title: `${RULE_TITLES[code] ?? row.rule} · ${row.pairing_leg.flight.flight_number}`,
+          detail: row.detail,
+          pairingId: row.pairing_id,
+          legId: row.pairing_leg_id,
+          flightNumber: row.pairing_leg.flight.flight_number,
+          crewId: row.crew_id,
+          role: (row.role as SeatRole | null) ?? null,
+        }
+      })
+  }
+
+  private async loadContext(base: string, client: Prisma.TransactionClient = this.db): Promise<Context> {
+    const [{ read, ...shared }, languages] = await Promise.all([
+      loadBaseContext(client, base),
+      client.country_language.findMany({ select: { country_code: true, language_code: true }, orderBy: { language_code: 'asc' } }),
+    ])
+
+    const countryLanguages = new Map<string, string[]>()
+    for (const row of languages)
+      countryLanguages.set(row.country_code, [...(countryLanguages.get(row.country_code) ?? []), row.language_code])
+
+    return {
+      defaults: {
+        minRestHours: read('min_rest_hours', 10),
+        maxDutyHours: read('max_duty_hours', 13),
+        maxFlightsPerDuty: read('max_flights_per_duty', 4),
+        maxFlightHours28d: read('max_flight_hours_28d', 100),
+        minLocalCrew: read('min_local_crew', 1),
+        minPoliceInternational: read('min_police_international', 2),
+        seatsPerCabinCrew: read('seats_per_cabin_crew', DEFAULT_SEATS_PER_CABIN_CREW),
+        cabinCrewPerLeg: MIN_CABIN_CREW,
+        reportMinutes: read('report_minutes', 60),
+        releaseMinutes: read('release_minutes', 0),
+      },
+      countryLanguages,
+      ...shared,
+    }
+  }
+
+  /* ── mapping ────────────────────────────────────────────────────────────── */
+
+  private toRunPairings(run: RunDbRow, context: Context): RunPairing[] {
+    return run.roster_run_pairing.map(({ pairing }) => {
+      const legs = pairing.pairing_leg
+        .map((row): Leg => {
+          const { flight } = row
+          const originCountry = context.airportCountry.get(flight.route.origin) ?? ''
+          const destinationCountry = context.airportCountry.get(flight.route.destination) ?? ''
+          const international = originCountry !== destinationCountry
+          return {
+            id: row.id,
+            pairingId: pairing.id,
+            pairingCode: pairing.code,
+            flightId: flight.id,
+            flightNumber: flight.flight_number,
+            serviceDate: isoDate(flight.service_date),
+            dep: flight.dep_at,
+            arr: flight.arr_at,
+            origin: flight.route.origin,
+            destination: flight.route.destination,
+            destinationCountry,
+            aircraftType: flight.aircraft.aircraft_type.model,
+            international,
+            localLanguages: international ? (context.countryLanguages.get(destinationCountry) ?? []) : [],
+            localCrewRequired: context.defaults.minLocalCrew,
+            cabinCrewRequired: cabinCrewFor(flight.aircraft.aircraft_type.layout, context.defaults.seatsPerCabinCrew),
+          }
+        })
+        .sort((a, b) => a.dep.getTime() - b.dep.getTime())
+
+      const limits = { ...context.defaults }
+      for (const leg of legs) {
+        limits.cabinCrewPerLeg = Math.max(limits.cabinCrewPerLeg, leg.cabinCrewRequired)
+        const rule = context.countryRules.get(leg.destinationCountry)
+        if (!rule) continue
+        limits.minRestHours = Math.max(limits.minRestHours, rule.minRestHours)
+        limits.maxDutyHours = Math.min(limits.maxDutyHours, rule.maxDutyHours)
+      }
+      return { id: pairing.id, code: pairing.code, legs, limits }
+    })
+  }
+
+  private toResult(
+    run: RunDbRow,
+    pairings: RunPairing[],
+    assignments: (AssignmentDbRow & { crew: CrewDbRow })[],
+    breaks: RuleBreakRow[],
+    fleets: ReadonlySet<string>,
+  ): RunResult {
+    const inScope = this.scopeOf(pairings, assignments)
+    const notCrewed = pairings
+      .filter((pairing) => !inScope.has(pairing.id))
+      .map((pairing): NotCrewedRow => {
+        const unflown = [...new Set(pairing.legs.map((leg) => leg.aircraftType))].filter((model) => !fleets.has(model))
+        return {
+          pairingId: pairing.id,
+          code: pairing.code,
+          reason: unflown.length > 0 ? `Nobody at ${run.base_airport} flies the ${unflown.join(' or ')}.` : null,
+        }
+      })
+    const rows: LegAssignmentRow[] = pairings.flatMap((pairing) =>
+      pairing.legs.map((leg) => {
+        const onLeg = assignments.filter((row) => row.pairing_leg_id === leg.id)
+        const seat = (role: SeatRole) => onLeg.filter((row) => row.role === role).map((row) => toCrewSummary(row.crew))
+        const cabinCrew = seat('cabin_crew')
+        return {
+          pairingId: pairing.id,
+          pairingCode: pairing.code,
+          leg: this.toLegRow(leg),
+          captain: seat('captain')[0] ?? null,
+          firstOfficer: seat('first_officer')[0] ?? null,
+          cabinCrew,
+          localCrew: leg.international ? cabinCrew.filter((member) => speaks(member.languages, leg.localLanguages)) : [],
+          police: seat('police'),
+          cabinRequired: leg.cabinCrewRequired,
+          policeRequired: this.required('police', leg, pairing.limits),
+        }
+      }),
+    )
+
+    const brokenLegs = new Set(breaks.map((item) => item.legId))
+    return {
+      rosterRun: this.toRunRow(run),
+      assignments: rows,
+      breaks,
+      notCrewed,
+      summary: {
+        totalLegs: rows.length,
+        fullyCrewedLegs: rows.filter(
+          (row) =>
+            row.captain !== null &&
+            row.firstOfficer !== null &&
+            row.cabinCrew.length >= row.cabinRequired &&
+            row.police.length >= row.policeRequired,
+        ).length,
+        brokenLegs: brokenLegs.size,
+        breakCount: breaks.length,
+      },
+    }
+  }
+
+  private toRunRow(run: RunDbRow): RosterRunRow {
+    return {
+      id: run.id,
+      base: run.base_airport,
+      dateFrom: isoDate(run.date_from),
+      dateTo: isoDate(run.date_to),
+      status: run.status === 'published' ? 'published' : 'draft',
+    }
+  }
+
+  private toLegRow(leg: Leg): CommittedLegRow {
+    return {
+      legId: leg.id,
+      flightId: leg.flightId,
+      flightNumber: leg.flightNumber,
+      origin: leg.origin,
+      destination: leg.destination,
+      departureAt: leg.dep.toISOString(),
+      arrivalAt: leg.arr.toISOString(),
+      aircraftType: leg.aircraftType,
+      international: leg.international,
+      localLanguages: leg.localLanguages,
+    }
+  }
+
+  private busyByCrew(rows: AssignmentDbRow[]): Map<string, BusyLeg[]> {
+    // A person's block in a pairing runs from the first departure to the last arrival among the legs they are on there.
+    const blocks = new Map<string, { dep: Date; arr: Date }>()
+    for (const row of rows) {
+      const key = `${row.crew_id}|${row.pairing_id}`
+      const { dep_at: dep, arr_at: arr } = row.pairing_leg.flight
+      const block = blocks.get(key)
+      blocks.set(key, { dep: block && block.dep < dep ? block.dep : dep, arr: block && block.arr > arr ? block.arr : arr })
+    }
+    const out = new Map<string, BusyLeg[]>()
+    for (const row of rows) {
+      const block = blocks.get(`${row.crew_id}|${row.pairing_id}`)!
+      const entry = {
+        legId: row.pairing_leg_id,
+        pairingId: row.pairing_id,
+        dep: row.pairing_leg.flight.dep_at,
+        arr: row.pairing_leg.flight.arr_at,
+        blockDep: block.dep,
+        blockArr: block.arr,
+      }
+      out.set(row.crew_id, [...(out.get(row.crew_id) ?? []), entry])
+    }
+    return out
+  }
+
+  /** Far enough back for the 28-day cap and far enough ahead for rest after the last leg. */
+  private historyWindow(legs: Leg[]): { gte: Date; lte: Date } {
+    const deps = legs.map((leg) => leg.dep.getTime())
+    if (deps.length === 0) return { gte: new Date(0), lte: new Date(0) }
+    return { gte: new Date(Math.min(...deps) - 28 * DAY), lte: new Date(Math.max(...deps) + 3 * DAY) }
+  }
+}
+
+function isPilot(role: string): boolean {
+  return role === 'captain' || role === 'first_officer'
+}
+
+function speaks(spoken: readonly string[], wanted: readonly string[]): boolean {
+  return wanted.some((language) => spoken.includes(language))
+}
+
+/** `rule_break_open_uq` treats NULLs as equal, so the key does too. */
+function breakKey(legId: string, rule: string, crewId: string | null, role: string | null): string {
+  return `${legId}|${rule}|${crewId ?? ''}|${role ?? ''}`
+}
+
+function toCrewSummary(member: CrewDbRow): CrewSummaryRow {
+  return {
+    id: member.id,
+    name: shortName(member),
+    fullName: `${member.first_name} ${member.last_name}`,
+    role: member.role as SeatRole,
+    languages: member.languages,
+  }
+}
+
+function hours(value: number): string {
+  return `${Math.round(value * 10) / 10} h`
+}
+
+/** `1 seat`, `3 seats`. */
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`
+}

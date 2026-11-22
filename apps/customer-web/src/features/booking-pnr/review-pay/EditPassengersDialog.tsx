@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { DatePicker } from '@customer-web/components/ui/date-picker'
-import { Field } from '@customer-web/components/ui/field'
+import { Field } from '@customer-web/components/ui/cw-field'
 import { useBookingPnrApi, ApiError } from '../api/client'
 import type { BookingDetail } from '../api/types'
 import { Dialog } from '../components/Dialog'

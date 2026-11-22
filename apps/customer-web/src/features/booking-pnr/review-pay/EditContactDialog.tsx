@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Field } from '@customer-web/components/ui/field'
+import { Field } from '@customer-web/components/ui/cw-field'
 import { ApiError } from '../api/client'
 import { Dialog } from '../components/Dialog'
 import controls from '../styles/controls.module.css'

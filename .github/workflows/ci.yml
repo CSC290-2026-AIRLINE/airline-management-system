@@ -54,6 +54,9 @@ jobs:
       - name: Check customer-web formatting
         run: npm run format:check -w apps/customer-web
 
+      - name: Test customer-web
+        run: npm run test -w apps/customer-web
+
       - name: Build customer-web
         run: npm run build -w apps/customer-web
 
@@ -63,6 +66,9 @@ jobs:
 
       - name: Check staff-web formatting
         run: npm run format:check -w apps/staff-web
+
+      - name: Test staff-web
+        run: npm run test -w apps/staff-web
 
       - name: Build staff-web
         run: npm run build -w apps/staff-web

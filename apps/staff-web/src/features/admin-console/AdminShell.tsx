@@ -39,7 +39,9 @@ export function AdminShell() {
 
   return (
     <AppShell>
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:p-6 lg:p-8">
+      {/* The page sits against the sidebar's edge, as it always has. The block is `max-w-6xl`, so on a wide screen the
+          right-hand side stays empty rather than the content drifting into the middle of the window. */}
+      <div className="flex w-full max-w-6xl flex-1 flex-col gap-4 px-6 pt-6 pb-10 min-[1100px]:px-[63px]">
         <div className="flex flex-col gap-4 [.admin-shell:has([data-access-denied])_&]:hidden">
           <div className="flex flex-col gap-2">
             <h1 className="m-0 font-sans text-2xl font-bold tracking-tight text-foreground">ADMINISTRATION</h1>
@@ -49,6 +51,8 @@ export function AdminShell() {
             </p>
           </div>
 
+          {/* The three admin screens as tabs. The sidebar carries the same three links, so a tab is a shortcut, not the
+              only way in — and on a phone, where the sidebar collapses into a sheet, the tabs are the way in. */}
           <Tabs
             value={activeTab}
             onValueChange={(to) => void navigate({ to })}

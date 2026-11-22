@@ -1,9 +1,9 @@
 import type { DemoPassenger } from './demo-passengers'
 import type { FormEvent, ReactNode } from 'react'
 import type { SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/cw-select'
 import { DatePicker } from '@customer-web/components/ui/date-picker'
-import { Field } from '@customer-web/components/ui/field'
+import { Field } from '@customer-web/components/ui/cw-field'
 import {
   ageAt,
   contactFieldId,

@@ -11,8 +11,16 @@
 				"body-parser": "^2.4.0"
 			}
 		},
+		"@prisma/client": {
+			"prisma": {
+				"@prisma/config": {
+					"effect": "^3.22.5"
+				}
+			}
+		},
 		"body-parser": "^2.4.0",
-		"multer": "^2.5.0"
+		"multer": "^2.5.0",
+		"effect": "^3.22.5"
 	},
 	"engines": {
 		"node": ">=24.0.0"
@@ -27,7 +35,9 @@
 		"db:migrate:deploy": "npm exec -w apps/backend -- prisma migrate deploy",
 		"db:migrate:reset": "npm exec -w apps/backend -- prisma migrate reset",
 		"db:studio": "npm exec -w apps/backend -- prisma studio",
-		"db:seed": "npm run db:seed -w apps/backend"
+		"db:seed": "npm run db:seed -w apps/backend",
+		"db:prepare": "npm run db:migrate:deploy && npm run db:generate",
+		"db:seed:security": "npm run db:seed:security -w apps/backend --"
 	},
 	"devDependencies": {
 		"concurrently": "^8.2.2"
