@@ -2,13 +2,13 @@ import {
   Calendar,
   CalendarClock,
   Globe,
-  Route,
   Gauge,
   ChartColumn,
   ClipboardCheck,
   CreditCard,
   DoorOpen,
   FileText,
+  IdCard,
   KeyRound,
   ListChecks,
   Luggage,
@@ -19,10 +19,12 @@ import {
   PlaneLanding,
   PlaneTakeoff,
   Receipt,
+  Route,
   ScrollText,
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Sofa,
   Star,
   Tag,
   Ticket,
@@ -54,7 +56,6 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
       { label: 'Customer Search', icon: Search, to: '/customer-search', activePrefix: '/customer-search' },
       { label: 'Security Screening', icon: ShieldCheck, to: '/security-screening/screening-queue', activePrefix: '/security-screening' },
       { label: 'Service & Compensation', icon: MessageSquare },
-      { label: 'Loyalty Programme', icon: Star },
     ],
   },
   {
@@ -101,6 +102,22 @@ export const PRICING_ITEMS = [
   { to: '/pricing/monthly-report', code: 'f04.monthly_report', label: 'Monthly Report', icon: FileText },
 ] as const
 
+/**
+ * The crew rostering screens (Feature 8). `match` lists every path that lights the item up: "Roster runs" is one item
+ * for the three wizard steps and the published rosters they lead to, and "Crew" covers each crew member's profile page.
+ */
+export const CREW_ITEMS = [
+  {
+    to: '/build-pairings',
+    code: 'f08.roster_runs',
+    label: 'Roster runs',
+    icon: Route,
+    match: ['/build-pairings', '/assign-crew', '/fix-publish', '/published-rosters'],
+  },
+  { to: '/setup-crew', code: 'f08.crew', label: 'Crew', icon: IdCard, match: ['/setup-crew'] },
+  { to: '/setup-rule', code: 'f08.rules', label: 'Rules', icon: ListChecks, match: ['/setup-rule'] },
+] as const
+
 /** The check-in and gate screens of the Check-in & Boarding feature (F6). */
 export const CHECKIN_ITEMS = [
   { to: '/check-in/counter', code: 'f06.counter', label: 'Check-in counter', icon: UserCheck },
@@ -120,3 +137,11 @@ export const FLIGHT_SCHEDULING_ITEMS: readonly {
   { to: '/routes', label: 'Routes', icon: Route },
   { to: '/congestion', label: 'Congestion', icon: Gauge },
 ]
+
+/** The Feature 11 (loyalty programme) staff pages. */
+export const LOYALTY_ITEMS = [
+  { to: '/loyalty/members', label: 'Member Lookup', icon: Search },
+  { to: '/loyalty/rules', label: 'Loyalty Rules', icon: SlidersHorizontal },
+  { to: '/loyalty/award-release', label: 'Award Release', icon: Star },
+  { to: '/loyalty/lounge', label: 'Lounge Desk', icon: Sofa },
+] as const
