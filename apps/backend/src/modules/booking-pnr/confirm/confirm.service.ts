@@ -160,15 +160,17 @@ export class ConfirmService {
 
         await this.inventory.lock(tx, keys)
         if (locked.status === 'expired') {
+          // Expiry already gave the held seats back, so take them again before selling. Selling straight from held
+          // would move another booking's held seats instead.
           try {
-            await this.inventory.sell(tx, keys, count, award)
-          } catch {
-            // Roll back, then refund outside the transaction and answer HOLD_EXPIRED_REFUNDED (B3).
-            throw new LatePaymentSeatsGoneError()
+            await this.inventory.hold(tx, keys, count, award)
+          } catch (error) {
+            // Only "no seats left" is a refund (B3); roll back, refund outside the transaction, answer HOLD_EXPIRED_REFUNDED.
+            if (error instanceof BookingError && error.code === 'SEAT_UNAVAILABLE') throw new LatePaymentSeatsGoneError()
+            throw error
           }
-        } else {
-          await this.inventory.sell(tx, keys, count, award)
         }
+        await this.inventory.sell(tx, keys, count, award)
         await this.statusService.move(tx, { id: locked.id, status: locked.status }, 'confirmed', {
           issueTicket: () => nextTicketNumber(tx, AIRLINE_TICKET_NUMBER),
         })

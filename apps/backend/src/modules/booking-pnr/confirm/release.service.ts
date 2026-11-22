@@ -95,30 +95,38 @@ export class ReleaseService {
   }
 
   /**
-   * B2 expiry job body. Locks a batch of stale holds with FOR UPDATE SKIP LOCKED, so a second instance (or a
-   * concurrent confirm) can never release or sell the same booking twice.
+   * B2 expiry job body. Locks each stale hold with FOR UPDATE SKIP LOCKED, so a second instance (or a concurrent
+   * confirm) can never release or sell the same booking twice.
    */
   async releaseStale(batchSize = 100): Promise<number> {
     const now = this.clock.now()
-    const released = await this.db.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ id: string; booking_reference: string }>>`
-        SELECT id, booking_reference FROM booking
-        WHERE status = 'held' AND hold_expires_at <= ${now}
-        ORDER BY hold_expires_at
-        LIMIT ${batchSize}
-        FOR UPDATE SKIP LOCKED`
-
-      let count = 0
-      for (const row of rows) {
-        const booking = await tx.booking.findUnique({ where: { id: row.id }, select: RELEASE_SELECT })
-        if (!booking || booking.status !== 'held') {
-          continue
-        }
-        await this.performRelease(tx, booking, now)
-        count++
-      }
-      return count
+    const candidates = await this.db.booking.findMany({
+      where: { status: 'held', hold_expires_at: { lte: now } },
+      orderBy: { hold_expires_at: 'asc' },
+      take: batchSize,
+      select: { id: true, booking_reference: true },
     })
+
+    // Each booking is released in its own transaction, so one that fails cannot roll back the rest of the batch.
+    let released = 0
+    for (const candidate of candidates) {
+      try {
+        const done = await this.db.$transaction(async (tx) => {
+          const rows = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM booking
+            WHERE id = ${candidate.id}::uuid AND status = 'held' AND hold_expires_at <= ${now}
+            FOR UPDATE SKIP LOCKED`
+          if (!rows.length) return false
+          const booking = await tx.booking.findUnique({ where: { id: candidate.id }, select: RELEASE_SELECT })
+          if (!booking || booking.status !== 'held') return false
+          await this.performRelease(tx, booking, now)
+          return true
+        })
+        if (done) released++
+      } catch (error) {
+        this.logger.error(`Could not release stale hold ${candidate.booking_reference}`, error instanceof Error ? error.stack : undefined)
+      }
+    }
 
     if (released > 0) {
       this.logger.log(`Released ${released} stale hold(s)`)

@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common'
+import { Logger, NotFoundException } from '@nestjs/common'
 import { BookingStatusService } from '../common/booking-status.service'
 import { ReleaseService } from './release.service'
 
@@ -39,6 +39,7 @@ function makeHarness() {
   }
 
   const db = {
+    booking: { findMany: jest.fn().mockResolvedValue([{ id: booking.id, booking_reference: booking.booking_reference }]) },
     $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
   }
 
@@ -146,6 +147,32 @@ describe('ReleaseService.releaseStale', () => {
     expect(released).toBe(1)
     expect(h.inventory.release).toHaveBeenCalledTimes(1)
     expect(h.seats.releaseForBooking).toHaveBeenCalledWith(h.tx, 'booking-1', NOW)
+  })
+
+  it('releases each stale hold in its own transaction, so one failure does not stop the others', async () => {
+    const h = makeHarness()
+    const log = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined)
+    h.db.booking.findMany.mockResolvedValue([
+      { id: 'broken', booking_reference: 'BRK234' },
+      { id: 'booking-1', booking_reference: 'ABC123' },
+    ])
+    h.inventory.release.mockRejectedValueOnce(new Error('Inventory transition exceeds the source count'))
+
+    const released = await h.service.releaseStale()
+
+    expect(released).toBe(1)
+    expect(h.db.$transaction).toHaveBeenCalledTimes(2)
+    expect(h.inventory.release).toHaveBeenCalledTimes(2)
+    expect(log).toHaveBeenCalledWith('Could not release stale hold BRK234', expect.any(String))
+    log.mockRestore()
+  })
+
+  it('skips a stale hold another instance has locked', async () => {
+    const h = makeHarness()
+    h.tx.$queryRaw.mockResolvedValueOnce([])
+
+    expect(await h.service.releaseStale()).toBe(0)
+    expect(h.inventory.release).not.toHaveBeenCalled()
   })
 
   it('skips a booking that another transaction already moved out of held', async () => {
