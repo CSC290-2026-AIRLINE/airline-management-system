@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Button } from '@staff-web/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
+import { StatusBadge } from '../components/StatusBadge'
 import { useBookingPnrApi } from '../api/client'
 import type { BookingDetail } from '../api/types'
 import { BookingDetailsBody } from './BookingDetailsBody'
@@ -8,7 +10,6 @@ import { StaffCancelForm } from './StaffCancelForm'
 import { StaffSeatAssignment } from '../seats/StaffSeatAssignment'
 
 export function BookingDetailsDialog({ reference, onClose, onChanged }: { reference: string; onClose: () => void; onChanged: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null)
   const currentApi = useBookingPnrApi(),
     api = useRef(currentApi)
   const [booking, setBooking] = useState<BookingDetail | null>(null)
@@ -20,11 +21,6 @@ export function BookingDetailsDialog({ reference, onClose, onChanged }: { refere
   useEffect(() => {
     api.current = currentApi
   }, [currentApi])
-  useEffect(() => {
-    const node = dialog.current
-    node?.showModal()
-    return () => node?.close()
-  }, [])
   useEffect(() => {
     let active = true
     void api.current
@@ -49,74 +45,78 @@ export function BookingDetailsDialog({ reference, onClose, onChanged }: { refere
     setRefresh((value) => value + 1)
   }
   return (
-    <dialog
-      className={`f3-lookup f3-lookup-modal${cancelMode ? ' is-cancel' : ''}`}
-      ref={dialog}
-      aria-labelledby="f3-booking-dialog-title"
-      onCancel={(event) => {
-        event.preventDefault()
-        if (!busy) onClose()
-      }}
-    >
-      {!cancelMode && (
-        <header className="f3-lookup-modal-heading">
-          <div>
-            <p className="f3-lookup-eyebrow">Booking</p>
-            <div className="f3-lookup-modal-title">
-              <h2 id="f3-booking-dialog-title">{reference}</h2>
-              {booking && <span className={`f3-lookup-chip is-${booking.status}`}>{booking.status}</span>}
+    <Dialog open onOpenChange={(open) => (!open && !busy ? onClose() : undefined)}>
+      <DialogContent
+        className={`max-h-[calc(100dvh-2rem)] overflow-y-auto text-left ${cancelMode ? 'sm:max-w-xl' : 'sm:max-w-2xl'}`}
+        showCloseButton={!cancelMode && !busy}
+        aria-describedby={undefined}
+      >
+        {!cancelMode && (
+          <DialogHeader className="border-b pb-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <DialogTitle className="font-mono text-2xl font-semibold tracking-wide">{reference}</DialogTitle>
+              {booking && <StatusBadge status={booking.status} />}
             </div>
-            {booking && <p className="f3-lookup-modal-sub">Booked by {booking.bookedByStaffId ? 'a staff agent' : 'the customer'}</p>}
+            {booking && <DialogDescription>Booked by {booking.bookedByStaffId ? 'a staff agent' : 'the customer'}</DialogDescription>}
+          </DialogHeader>
+        )}
+        {loading && (
+          <p className="text-muted-foreground" role="status">
+            Loading booking details…
+          </p>
+        )}
+        {error && (
+          <div
+            role="alert"
+            className="flex flex-col items-start gap-3 rounded-lg border border-danger/25 bg-danger-soft px-4 py-3 text-danger"
+          >
+            <p>{error}</p>
+            <Button type="button" variant="outline" size="sm" onClick={reload}>
+              Try again
+            </Button>
           </div>
-          <button type="button" aria-label="Close booking details" disabled={busy} onClick={onClose}>
-            ×
-          </button>
-        </header>
-      )}
-      {loading && <p role="status">Loading booking details…</p>}
-      {error && (
-        <div role="alert" className="f3-lookup-error">
-          <p>{error}</p>
-          <Button type="button" variant="outline" onClick={reload}>
-            Try again
-          </Button>
-        </div>
-      )}
-      {booking && !cancelMode && (
-        <>
-          <BookingDetailsBody booking={booking} />
-          <StaffSeatAssignment
+        )}
+        {booking && !cancelMode && (
+          <>
+            <BookingDetailsBody booking={booking} />
+            <StaffSeatAssignment
+              booking={booking}
+              onBusyChange={setBusy}
+              onChanged={() => {
+                reload()
+                onChanged()
+              }}
+            />
+            <DialogFooter className="border-t pt-4">
+              <Button asChild variant="outline">
+                <Link to="/assistance">Open assistance queue</Link>
+              </Button>
+              {['held', 'confirmed'].includes(booking.status) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-danger/40 text-danger hover:bg-danger-soft hover:text-danger"
+                  onClick={() => setCancelMode(true)}
+                >
+                  Cancel booking
+                </Button>
+              )}
+            </DialogFooter>
+          </>
+        )}
+        {booking && cancelMode && (
+          <StaffCancelForm
             booking={booking}
             onBusyChange={setBusy}
-            onChanged={() => {
+            onBack={() => setCancelMode(false)}
+            onSuccess={() => {
+              setCancelMode(false)
               reload()
               onChanged()
             }}
           />
-          <footer className="f3-lookup-actions">
-            <Button asChild variant="outline">
-              <Link to="/assistance">Open assistance queue</Link>
-            </Button>
-            {['held', 'confirmed'].includes(booking.status) && (
-              <Button type="button" variant="outline" className="f3-lookup-danger-outline" onClick={() => setCancelMode(true)}>
-                Cancel booking
-              </Button>
-            )}
-          </footer>
-        </>
-      )}
-      {booking && cancelMode && (
-        <StaffCancelForm
-          booking={booking}
-          onBusyChange={setBusy}
-          onBack={() => setCancelMode(false)}
-          onSuccess={() => {
-            setCancelMode(false)
-            reload()
-            onChanged()
-          }}
-        />
-      )}
-    </dialog>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }

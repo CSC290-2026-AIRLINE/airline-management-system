@@ -134,26 +134,34 @@ export function lookupQuery(filters: LookupFilters, page = 1, pageSize = 20, now
 }
 export const lookupMoney = (value: number, currency = 'USD') =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency, currencyDisplay: 'code' }).format(value)
-export const lookupDate = (value: string | null, withTime = false) =>
+// Flight dates and times take the departure or arrival airport's time zone, so every page shows the same local time.
+// Times that are not tied to an airport (booked at, history) leave it out and use the browser's zone.
+export const lookupDate = (value: string | null, withTime = false, timeZone?: string | null) =>
   value
     ? new Intl.DateTimeFormat('en-GB', {
         dateStyle: 'medium',
         ...(withTime ? { timeStyle: 'short' as const } : {}),
-        timeZone: 'UTC',
+        timeZone: timeZone ?? undefined,
       }).format(new Date(value))
     : '—'
 /** "26 Oct" — the Booked column of the results table (frame 01). */
-export const lookupShortDate = (value: string | null) =>
-  value ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(value)) : '—'
-/** "Thu 12 Nov" — the flight date of the details dialog (frame 01o). */
-export const lookupDayDate = (value: string | null) =>
+export const lookupShortDate = (value: string | null, timeZone?: string | null) =>
   value
-    ? new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(value))
+    ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: timeZone ?? undefined }).format(new Date(value))
+    : '—'
+/** "Thu 12 Nov" — the flight date of the details dialog (frame 01o). */
+export const lookupDayDate = (value: string | null, timeZone?: string | null) =>
+  value
+    ? new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: timeZone ?? undefined }).format(
+        new Date(value),
+      )
     : '—'
 /** "11:40" — the flight times of the details dialog (frame 01o). */
-export const lookupTime = (value: string | null) =>
+export const lookupTime = (value: string | null, timeZone?: string | null) =>
   value
-    ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }).format(new Date(value))
+    ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: timeZone ?? undefined }).format(
+        new Date(value),
+      )
     : '—'
 export const ticketLabel = (value: string | null) =>
   value ? (/^\d{13}$/.test(value) ? `${value.slice(0, 3)}-${value.slice(3)}` : value) : 'Not issued'

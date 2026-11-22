@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { CircleAlert } from 'lucide-react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
+import { Checkbox } from '@staff-web/components/ui/checkbox'
+import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
+import { Field, FieldLabel } from '@staff-web/components/ui/field'
+import { Label } from '@staff-web/components/ui/label'
+import { Table, TableBody, TableCell, TableRow } from '@staff-web/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { useBookingPnrApi } from '../api/client'
 import type { BookingDetail, CancelPreview } from '../api/types'
@@ -19,7 +26,7 @@ function contextLine(booking: BookingDetail): string {
   const others = rest.length > 0 ? ` and ${rest.length} other${rest.length === 1 ? '' : 's'}` : ''
   const segment = booking.segments[0]
   const flight = segment ? segment.flightNumber : ''
-  const date = segment ? lookupShortDate(segment.depAt) : ''
+  const date = segment ? lookupShortDate(segment.depAt, segment.originTimeZone) : ''
   return [names + others, flight, date].filter(Boolean).join(' · ')
 }
 
@@ -32,15 +39,15 @@ export function StaffCancelForm({ booking, onBack, onSuccess, onBusyChange }: Pr
   const [waiveFee, setWaiveFee] = useState(false)
   const [busy, setBusy] = useState(false)
   const inFlight = useRef(false)
-  /* The form lives in a native `<dialog>`, which sits in the top layer. The dropdown menu has to open inside it, or it
-     would be painted behind the dialog. */
+  /* The form lives in a modal dialog. The dropdown menu opens inside it, so it stays above the dialog and in its
+     focus trap. */
   const form = useRef<HTMLFormElement>(null)
   const [dialog, setDialog] = useState<HTMLElement | null>(null)
   useEffect(() => {
     api.current = currentApi
   }, [currentApi])
   useEffect(() => {
-    setDialog(form.current?.closest('dialog') ?? null)
+    setDialog(form.current?.closest<HTMLElement>('[role="dialog"]') ?? null)
   }, [])
   useEffect(() => {
     let active = true
@@ -77,40 +84,46 @@ export function StaffCancelForm({ booking, onBack, onSuccess, onBusyChange }: Pr
     if (success) onSuccess()
   }
   return (
-    <form ref={form} onSubmit={(event) => void cancel(event)} aria-label="Staff cancellation">
-      <header className="f3-lookup-modal-heading f3-lookup-cancel-heading">
-        <div>
-          <h2 id="f3-booking-dialog-title">Cancel booking {booking.reference}?</h2>
-          <p className="f3-lookup-modal-sub">{contextLine(booking)}</p>
-        </div>
-      </header>
-      {!preview && !error && <p role="status">Loading cancellation preview…</p>}
+    <form ref={form} className="flex flex-col gap-4" onSubmit={(event) => void cancel(event)} aria-label="Staff cancellation">
+      <DialogHeader>
+        <DialogTitle>Cancel booking {booking.reference}?</DialogTitle>
+        <DialogDescription>{contextLine(booking)}</DialogDescription>
+      </DialogHeader>
+      {!preview && !error && (
+        <p className="text-sm text-muted-foreground" role="status">
+          Loading cancellation preview…
+        </p>
+      )}
       {preview && (
         <>
-          <dl className="f3-lookup-amounts">
-            <div>
-              <dt>{booking.status === 'held' ? 'Unpaid booking total' : 'Total paid'}</dt>
-              <dd>{lookupMoney(booking.total, booking.currency)}</dd>
-            </div>
-            <div>
-              <dt>Cancellation fee</dt>
-              <dd className="is-fee">− {lookupMoney(preview.fee, preview.currency)}</dd>
-            </div>
-            <div>
-              <dt>Refund</dt>
-              <dd className="is-refund">{lookupMoney(preview.refund, preview.currency)}</dd>
-            </div>
-            {preview.milesReturned != null && (
-              <div>
-                <dt>Miles returned</dt>
-                <dd>{preview.milesReturned.toLocaleString()}</dd>
-              </div>
-            )}
-          </dl>
-          <label>
-            Reason (kept in the booking history)
+          <div className="rounded-lg border bg-muted/40">
+            <Table>
+              <TableBody>
+                <TableRow className="hover:bg-transparent">
+                  <TableCell>{booking.status === 'held' ? 'Unpaid booking total' : 'Total paid'}</TableCell>
+                  <TableCell className="text-right tabular-nums">{lookupMoney(booking.total, booking.currency)}</TableCell>
+                </TableRow>
+                <TableRow className="hover:bg-transparent">
+                  <TableCell>Cancellation fee</TableCell>
+                  <TableCell className="text-right text-danger tabular-nums">− {lookupMoney(preview.fee, preview.currency)}</TableCell>
+                </TableRow>
+                <TableRow className="hover:bg-transparent">
+                  <TableCell>Refund</TableCell>
+                  <TableCell className="text-right font-semibold tabular-nums">{lookupMoney(preview.refund, preview.currency)}</TableCell>
+                </TableRow>
+                {preview.milesReturned != null && (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell>Miles returned</TableCell>
+                    <TableCell className="text-right tabular-nums">{preview.milesReturned.toLocaleString()}</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <Field>
+            <FieldLabel htmlFor="staff-cancel-reason">Reason (kept in the booking history)</FieldLabel>
             <Select value={reason} onValueChange={setReason} disabled={busy} required>
-              <SelectTrigger className="min-h-10.5">
+              <SelectTrigger id="staff-cancel-reason" className="w-full">
                 <SelectValue placeholder="Choose a reason" />
               </SelectTrigger>
               <SelectContent container={dialog}>
@@ -120,13 +133,20 @@ export function StaffCancelForm({ booking, onBack, onSuccess, onBusyChange }: Pr
                 <SelectItem value="Other staff request">Other staff request</SelectItem>
               </SelectContent>
             </Select>
-          </label>
-          <label className="f3-lookup-check">
-            <input type="checkbox" checked={waiveFee} disabled={busy} onChange={(event) => setWaiveFee(event.target.checked)} />
-            Request a fee waiver
-          </label>
+          </Field>
+          <div className="flex items-center gap-2.5">
+            <Checkbox
+              id="staff-cancel-waive"
+              checked={waiveFee}
+              disabled={busy}
+              onCheckedChange={(checked) => setWaiveFee(checked === true)}
+            />
+            <Label htmlFor="staff-cancel-waive" className="cursor-pointer">
+              Request a fee waiver
+            </Label>
+          </div>
           {waiveFee && (
-            <p className="f3-lookup-muted">
+            <p className="text-sm text-muted-foreground">
               The displayed amounts are the standard preview. The waiver is requested with cancellation; the cancellation service determines
               the final refund.
             </p>
@@ -134,18 +154,19 @@ export function StaffCancelForm({ booking, onBack, onSuccess, onBusyChange }: Pr
         </>
       )}
       {error && (
-        <p className="f3-lookup-error" role="alert">
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
-      <div className="f3-lookup-actions">
+      <DialogFooter className="border-t pt-4">
         <Button type="button" variant="outline" disabled={busy} onClick={onBack}>
           Keep booking
         </Button>
         <Button type="submit" variant="destructive" disabled={!preview || !reason || busy}>
           {busy ? 'Cancelling…' : 'Cancel booking'}
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   )
 }

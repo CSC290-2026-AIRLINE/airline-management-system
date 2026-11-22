@@ -1,4 +1,9 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Card, CardContent, CardTitle } from '@staff-web/components/ui/card'
+import { Field, FieldLabel } from '@staff-web/components/ui/field'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { CircleAlert, Info } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { FlightSearchPage, type SearchItinerary } from '@customer-web/features/booking-search/pages/FlightSearchPage'
@@ -15,8 +20,6 @@ import { clearBookingDraft, readBookingDraft, saveBookingDraft, type StaffBookin
 import { STAFF_BOOKING_STAGES } from './booking-stages'
 import { StaffBookingStepper } from './StaffBookingStepper'
 import { StaffSeatStep } from './StaffSeatStep'
-import '@customer-web/features/booking-pnr/flow/flow.css'
-import './staff-booking.css'
 
 /** The title and the line under it of each step of the staff flow. */
 const STEP_COPY: Record<'passengers' | 'seats' | 'held', { title: string; intro: string }> = {
@@ -41,12 +44,10 @@ class StaffBookingBoundary extends Component<{ children: ReactNode }, { failed: 
   }
   render() {
     return this.state.failed ? (
-      <main className="f3-search">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 text-left md:py-10 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
         <h1>Staff booking is unavailable</h1>
         <p>Refresh the page to try again.</p>
-        <button className="f3-search-primary" onClick={() => window.location.reload()}>
-          Refresh page
-        </button>
+        <Button onClick={() => window.location.reload()}>Refresh page</Button>
       </main>
     ) : (
       this.props.children
@@ -220,58 +221,66 @@ function StaffBookingContent() {
     }
   }
   return (
-    <div className="f3-staff-booking">
-      <section className="f3-search f3-staff-customer">
-        <div className="f3-search-heading">
+    <div className="flex flex-col">
+      <section className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 text-left md:py-10 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold pb-0 md:pb-0">
+        <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="f3-search-eyebrow">STAFF BOOKING</p>
             <h1>Book for customer</h1>
           </div>
         </div>
-        <p className="f3-search-intro">Select a customer, then choose flights and enter the booking details on their behalf.</p>
+        <p className="m-0 text-muted-foreground">Select a customer, then choose flights and enter the booking details on their behalf.</p>
         {import.meta.env.DEV && (
-          <div className="f3-demo-notice">
-            <strong>Development demo booking</strong>
-            <p>Only the seeded demo customer and travellers are available. Bookings use the real inventory hold.</p>
-          </div>
+          <Alert>
+            <Info />
+            <AlertDescription className="flex flex-wrap items-center gap-2">
+              <strong>Development demo booking</strong>
+              <p>Only the seeded demo customer and travellers are available. Bookings use the real inventory hold.</p>
+            </AlertDescription>
+          </Alert>
         )}
         {data.error && (
-          <p className="f3-flow-error" role="alert">
-            {data.error}
-          </p>
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertDescription className="flex flex-wrap items-center gap-2">{data.error}</AlertDescription>
+          </Alert>
         )}
         {customerMissing && (
-          <p className="f3-flow-error" role="alert">
-            That customer is no longer available. Choose a customer again to continue.
-          </p>
+          <Alert variant="destructive">
+            <CircleAlert />
+            <AlertDescription className="flex flex-wrap items-center gap-2">
+              That customer is no longer available. Choose a customer again to continue.
+            </AlertDescription>
+          </Alert>
         )}
-        <div className="f3-search-card f3-staff-customer-picker">
-          <label>
-            Customer
-            <Select
-              value={customerMissing ? '' : customerId}
-              disabled={data.loading || !!data.error || busy || activeStep === 'held'}
-              onValueChange={(value) => chooseCustomer(value)}
-              required
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={data.loading ? 'Loading demo customers…' : 'Choose a demo customer'} />
-              </SelectTrigger>
-              <SelectContent>
-                {data.customers.map((row) => (
-                  <SelectItem key={row.id} value={row.id}>
-                    {row.name} · {row.email}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-          {customer && (
-            <p>
-              {customer.email} · {customer.phone}
-            </p>
-          )}
-        </div>
+        <Card>
+          <CardContent className="space-y-2.5">
+            <Field className="max-w-xl">
+              <FieldLabel htmlFor="staff-booking-customer">Customer</FieldLabel>
+              <Select
+                value={customerMissing ? '' : customerId}
+                disabled={data.loading || !!data.error || busy || activeStep === 'held'}
+                onValueChange={(value) => chooseCustomer(value)}
+                required
+              >
+                <SelectTrigger id="staff-booking-customer" className="w-full">
+                  <SelectValue placeholder={data.loading ? 'Loading demo customers…' : 'Choose a demo customer'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {data.customers.map((row) => (
+                    <SelectItem key={row.id} value={row.id}>
+                      {row.name} · {row.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            {customer && (
+              <p className="text-sm text-muted-foreground">
+                {customer.email} · {customer.phone}
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </section>
       {activeStep === 'search' && (
         <FlightSearchPage
@@ -282,16 +291,15 @@ function StaffBookingContent() {
         />
       )}
       {activeStep !== 'search' && itinerary && (
-        <main className="f3-search f3-flow f3-staff-flow">
-          <header className="f3-staff-flow__header">
-            <p className="f3-search-eyebrow">
-              STEP {stageIndex + 1} OF {STAFF_BOOKING_STAGES.length} · {STAFF_BOOKING_STAGES[stageIndex]?.label}
-            </p>
+        <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 text-left md:py-10 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
+          <header className="space-y-1">
             <h1>{stageCopy.title}</h1>
-            <p className="f3-staff-flow__intro">{stageCopy.intro}</p>
+            <p className="text-muted-foreground">{stageCopy.intro}</p>
           </header>
           <StaffBookingStepper stages={STAFF_BOOKING_STAGES} current={stageIndex} />
-          <div className={`f3-flow-columns${activeStep === 'seats' ? ' f3-flow-columns--seats' : ''}`}>
+          <div
+            className={`grid items-start gap-6 [&>div]:min-w-0 ${activeStep === 'seats' ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[minmax(0,1fr)_260px]'}`}
+          >
             <div>
               {activeStep === 'passengers' && (
                 <PassengersPage
@@ -335,11 +343,13 @@ function StaffBookingContent() {
                 />
               )}
               {activeStep === 'held' && held && (
-                <section className="f3-passenger-card f3-staff-receipt">
-                  <span className="f3-staff-held">Held · awaiting payment</span>
-                  <p className="f3-staff-receipt__label">Booking reference</p>
-                  <h2 className="f3-staff-receipt__reference">{held.reference}</h2>
-                  <dl className="f3-staff-receipt__facts">
+                <Card className="min-w-0 gap-4 p-5 sm:p-6 [&>p]:text-sm [&>p]:text-muted-foreground">
+                  <span className="inline-flex w-fit rounded-md border border-warning/25 bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning">
+                    Held · awaiting payment
+                  </span>
+                  <p className="text-xs font-medium text-muted-foreground">Booking reference</p>
+                  <h2 className="font-mono text-3xl font-semibold tracking-widest">{held.reference}</h2>
+                  <dl className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3.5 border-y py-4 [&_dt]:text-xs [&_dt]:text-muted-foreground [&_dd]:mt-1 [&_dd]:font-semibold">
                     <div>
                       <dt>Customer</dt>
                       <dd>{customer ? customer.name : 'Selected customer'}</dd>
@@ -355,41 +365,53 @@ function StaffBookingContent() {
                       </dd>
                     </div>
                   </dl>
-                  <p className="f3-staff-receipt__note">
+                  <p className="text-sm text-muted-foreground">
                     This booking is not confirmed. The hold ends when the timer runs out or the booking is cancelled.
                   </p>
-                  <div className="f3-flow-actions">
-                    <button className="f3-search-secondary" type="button" onClick={startNewBooking}>
+                  <div className="flex flex-col-reverse items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+                    <Button
+                      variant="outline"
+
+                      type="button"
+                      onClick={startNewBooking}
+                    >
                       Start a new booking
-                    </button>
-                    <Link className="f3-search-primary" to="/booking-lookup" search={{ reference: held.reference }}>
-                      Open booking lookup
-                    </Link>
+                    </Button>
+                    <Button asChild>
+                      <Link to="/booking-lookup" search={{ reference: held.reference }}>
+                        Open booking lookup
+                      </Link>
+                    </Button>
                   </div>
-                </section>
+                </Card>
               )}
             </div>
             {activeStep !== 'seats' && (
-              <aside className="f3-flow-summary" aria-label="Staff trip summary">
-                <p className="f3-search-eyebrow">YOUR CUSTOMER’S TRIP</p>
-                {itinerary.selections.map(({ flight, fare }) => (
-                  <article key={flight.flightId}>
-                    <strong>
-                      {flight.origin} → {flight.destination}
-                    </strong>
-                    <p>
-                      {flight.flightNumber} · {fare.cabin.replace('_', ' ')}
-                    </p>
-                    <p>
-                      {new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
-                        new Date(flight.depAt),
-                      )}
-                    </p>
-                  </article>
-                ))}
-                <strong>{money(itinerary.expectedTotal, tripCurrency)}</strong>
-                <p>The hold lasts 15 minutes from booking creation.</p>
-              </aside>
+              <Card className="order-2 md:order-none lg:sticky lg:top-16" aria-label="Staff trip summary">
+                <CardContent className="space-y-3">
+                  <CardTitle>Your customer’s trip</CardTitle>
+                  {itinerary.selections.map(({ flight, fare }) => (
+                    <article key={flight.flightId} className="space-y-1 border-b pb-3">
+                      <strong>
+                        {flight.origin} → {flight.destination}
+                      </strong>
+                      <p className="text-xs text-muted-foreground">
+                        {flight.flightNumber} · {fare.cabin.replace('_', ' ')}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Intl.DateTimeFormat('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                          timeZone: flight.originTimeZone,
+                        }).format(new Date(flight.depAt))}
+                      </p>
+                    </article>
+                  ))}
+                  <strong className="block text-xl tabular-nums">{money(itinerary.expectedTotal, tripCurrency)}</strong>
+                  <p className="text-xs text-muted-foreground">The hold lasts 15 minutes from booking creation.</p>
+                </CardContent>
+              </Card>
             )}
           </div>
         </main>

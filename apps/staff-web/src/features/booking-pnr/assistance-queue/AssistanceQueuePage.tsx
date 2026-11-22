@@ -1,4 +1,7 @@
+import { CircleAlert } from 'lucide-react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { useCallback, useEffect, useState } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { useBookingPnrApi } from '../api/client'
@@ -59,21 +62,29 @@ export function AssistanceQueuePage() {
   }
 
   return (
-    <main className="assistance-page">
-      <header className="assistance-page__header">
+    <main className="mx-auto flex w-full max-w-[1440px] min-w-0 flex-col gap-4 px-4 pt-4 pb-10 sm:px-6 lg:px-[4%] lg:pt-12 lg:pb-16">
+      <header className="space-y-1 [&_h1]:text-2xl [&_h1]:leading-tight [&_h1]:font-bold [&_h1]:tracking-tight sm:[&_h1]:text-3xl [&_p]:text-sm [&_p]:text-muted-foreground sm:[&_p]:text-base">
         <h1>Special Assistance Queue</h1>
         <p>Review requests from bookings. Oldest departure first.</p>
       </header>
       {error && (
-        <div className="assistance-page__error" role="alert">
-          <p>{error}</p>
-          <Button variant="outline" type="button" onClick={reload}>
-            Reload requests
-          </Button>
-        </div>
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertDescription className="flex flex-col items-start gap-3">
+            <p>{error}</p>
+            <Button variant="outline" size="sm" type="button" onClick={reload}>
+              Reload requests
+            </Button>
+          </AlertDescription>
+        </Alert>
       )}
       {loading ? (
-        <p role="status">Loading assistance requests…</p>
+        <div className="flex flex-col gap-2" aria-busy="true" role="status">
+          <span className="sr-only">Loading assistance requests…</span>
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-2/3" />
+        </div>
       ) : (
         (requests.length > 0 || !error) && <AssistanceQueue requests={requests} onUpdate={update} />
       )}

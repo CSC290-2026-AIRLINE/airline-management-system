@@ -1,4 +1,6 @@
 import type { BookingDetail } from '../api/types'
+import { Accessibility } from 'lucide-react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { lookupDate, lookupDayDate, lookupMoney, lookupTime, ticketLabel } from './lookup-utils'
 
 /**
@@ -22,17 +24,20 @@ export function BookingDetailsBody({ booking }: { booking: BookingDetail }) {
   const open = booking.serviceRequests.filter((request) => request.status === 'requested' || request.status === 'accepted')
   return (
     <>
-      <div className="f3-lookup-detail-grid">
+      <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2 [&_h3]:mb-2 [&_h3]:text-xs [&_h3]:font-medium [&_h3]:text-muted-foreground [&_section]:min-w-0">
         <section>
           <h3>Flights</h3>
           {booking.segments.map((segment) => (
-            <article className="f3-lookup-detail-item" key={segment.bookingSegmentId}>
+            <article
+              className="border-b py-2 last:border-b-0 [&_p]:mt-0.5 [&_p]:text-xs [&_p]:text-muted-foreground [&_strong]:font-medium"
+              key={segment.bookingSegmentId}
+            >
               <strong>
-                {segment.flightNumber} · {lookupDayDate(segment.depAt)}
+                {segment.flightNumber} · {lookupDayDate(segment.depAt, segment.originTimeZone)}
               </strong>
               <p>
-                {segment.origin} {lookupTime(segment.depAt)} → {segment.destination} {lookupTime(segment.arrAt)} ·{' '}
-                {segment.cabin.replace('_', ' ')}
+                {segment.origin} {lookupTime(segment.depAt, segment.originTimeZone)} → {segment.destination}{' '}
+                {lookupTime(segment.arrAt, segment.destinationTimeZone)} · {segment.cabin.replace('_', ' ')}
               </p>
             </article>
           ))}
@@ -46,7 +51,10 @@ export function BookingDetailsBody({ booking }: { booking: BookingDetail }) {
                 coupon.bookingSegmentId === booking.segments[0]?.bookingSegmentId,
             )?.seatCode
             return (
-              <article className="f3-lookup-detail-item" key={person.bookingPassengerId}>
+              <article
+                className="border-b py-2 last:border-b-0 [&_p]:mt-0.5 [&_p]:text-xs [&_p]:text-muted-foreground [&_strong]:font-medium"
+                key={person.bookingPassengerId}
+              >
                 <strong>
                   {person.firstName} {person.lastName} ({person.passengerType}){seat ? ` · ${seat}` : ''}
                 </strong>
@@ -57,30 +65,33 @@ export function BookingDetailsBody({ booking }: { booking: BookingDetail }) {
         <section>
           <h3>Ticket numbers</h3>
           {booking.coupons.map((coupon) => (
-            <p className="f3-lookup-ticket" key={coupon.couponId}>
+            <p className="py-0.5 font-mono text-sm tabular-nums" key={coupon.couponId}>
               {ticketLabel(coupon.ticketNumber)}
             </p>
           ))}
         </section>
         <section>
           <h3>Total</h3>
-          <div className="f3-lookup-detail-item">
+          <div className="border-b py-2 last:border-b-0 [&_p]:mt-0.5 [&_p]:text-xs [&_p]:text-muted-foreground [&_strong]:font-medium">
             <strong>{lookupMoney(booking.total, booking.currency)}</strong>
             <p>Booked {lookupDate(booking.bookedAt)}</p>
           </div>
         </section>
       </div>
       {open.length > 0 && (
-        <div className="f3-lookup-warning" role="status">
-          {open.map((request) => (
-            <p key={request.serviceRequestId}>{assistanceNote(booking, request)}</p>
-          ))}
-        </div>
+        <Alert role="status">
+          <Accessibility />
+          <AlertDescription className="space-y-1">
+            {open.map((request) => (
+              <p key={request.serviceRequestId}>{assistanceNote(booking, request)}</p>
+            ))}
+          </AlertDescription>
+        </Alert>
       )}
       <section>
-        <h3>History</h3>
+        <h3 className="mb-2 text-xs font-medium text-muted-foreground">History</h3>
         {booking.history.length ? (
-          <ol className="f3-lookup-history">
+          <ol className="list-none space-y-1 p-0 text-sm [&_small]:text-xs [&_small]:text-muted-foreground [&_span]:text-xs [&_span]:text-muted-foreground">
             {booking.history.map((entry, index) => (
               <li key={`${entry.at}/${index}`}>
                 {lookupDate(entry.at)} ·{' '}
@@ -95,7 +106,7 @@ export function BookingDetailsBody({ booking }: { booking: BookingDetail }) {
             ))}
           </ol>
         ) : (
-          <p className="f3-lookup-muted">No booking history is available.</p>
+          <p className="text-muted-foreground">No booking history is available.</p>
         )}
       </section>
     </>

@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react'
+import { Card } from '@staff-web/components/ui/card'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { CircleAlert, Info } from 'lucide-react'
 import { X } from 'lucide-react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import type { SearchItinerary } from '@customer-web/features/booking-search/pages/FlightSearchPage'
@@ -8,8 +12,6 @@ import { SeatPicker } from '@customer-web/features/booking-pnr/seats/SeatPicker'
 import { useSeatQuote } from '@customer-web/features/booking-pnr/seats/useSeatQuote'
 import type { SeatMap } from '../api/types'
 import { lookupMoney as money } from '../booking-lookup/lookup-utils'
-import '@customer-web/features/booking-pnr/seats/seat-selection.css'
-import './staff-seat-step.css'
 
 interface StaffSeatStepProps {
   itinerary: SearchItinerary
@@ -66,7 +68,7 @@ export function StaffSeatStep({
       try {
         const results = await Promise.all(
           itinerary.selections.map(async ({ flight }) => {
-            const response = await fetchWithAuth(`/api/flights/${encodeURIComponent(flight.flightId)}/seat-map`, {
+            const response = await fetchWithAuth(`/api/bookings/flights/${encodeURIComponent(flight.flightId)}/seat-map`, {
               signal: controller.signal,
             })
             if (!response.ok) throw new Error('Seat map unavailable')
@@ -139,39 +141,55 @@ export function StaffSeatStep({
   }
 
   return (
-    <section className="seat-selection f3-staff-seat" aria-label="Seat selection" aria-busy={busy}>
+    <section
+      className="min-w-0 space-y-4 text-left [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:m-0 [&_h3]:text-base [&_h3]:font-semibold"
+      aria-label="Seat selection"
+      aria-busy={busy}
+    >
       {error && (
-        <p className="seat-selection__error" role="alert">
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertDescription className="flex flex-wrap items-center gap-2">{error}</AlertDescription>
+        </Alert>
       )}
       {missingCabin && (
-        <p className="seat-selection__error" role="alert">
-          A selected cabin is not available on the assigned aircraft. Go back to flights and choose another cabin.
-        </p>
+        <Alert variant="destructive">
+          <CircleAlert />
+          <AlertDescription className="flex flex-wrap items-center gap-2">
+            A selected cabin is not available on the assigned aircraft. Go back to flights and choose another cabin.
+          </AlertDescription>
+        </Alert>
       )}
       {unavailableChoices.length > 0 && (
-        <div className="seat-selection__warning" role="alert">
-          <p>
-            Some chosen seats are no longer available: {unavailableChoices.map((choice) => choice.seatCode).join(', ')}. Clear them or
-            choose replacement seats.
-          </p>
-          <button
-            className="f3-search-secondary"
-            type="button"
-            disabled={busy}
-            onClick={() => onChange(choices.filter((choice) => !unavailableChoices.includes(choice)))}
-          >
-            Clear unavailable seats
-          </button>
-        </div>
+        <Alert className="border-warning/25 bg-warning-soft text-warning">
+          <CircleAlert />
+          <AlertDescription className="flex flex-wrap items-center gap-2">
+            <p>
+              Some chosen seats are no longer available: {unavailableChoices.map((choice) => choice.seatCode).join(', ')}. Clear them or
+              choose replacement seats.
+            </p>
+            <Button
+              variant="outline"
+
+              type="button"
+              disabled={busy}
+              onClick={() => onChange(choices.filter((choice) => !unavailableChoices.includes(choice)))}
+            >
+              Clear unavailable seats
+            </Button>
+          </AlertDescription>
+        </Alert>
       )}
-      <div className="seat-selection__layout">
-        <div className="seat-selection__map-card">
-          <div className="seat-selection__segments" aria-label="Flights">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <Card className="min-w-0 gap-4 p-4 sm:p-6">
+          <div
+            className="flex flex-wrap gap-2 [&>button[aria-pressed=true]]:border-primary [&>button[aria-pressed=true]]:bg-primary/5"
+            aria-label="Flights"
+          >
             {itinerary.selections.map(({ flight }) => (
-              <button
-                className="f3-search-secondary"
+              <Button
+                variant="outline"
+
                 key={flight.flightId}
                 type="button"
                 disabled={busy}
@@ -179,30 +197,40 @@ export function StaffSeatStep({
                 onClick={() => setFlightId(flight.flightId)}
               >
                 {flight.flightNumber} · {flight.origin} → {flight.destination}
-              </button>
+              </Button>
             ))}
           </div>
           {loadError ? (
-            <div className="seat-selection__error" role="alert">
-              <p>{loadError}</p>
-              <div className="f3-staff-seat__retry">
-                <button
-                  className="f3-search-secondary"
-                  type="button"
-                  onClick={() => {
-                    setLoadError(null)
-                    setRetry((count) => count + 1)
-                  }}
-                >
-                  Try again
-                </button>
-                <button className="f3-search-secondary" type="button" disabled={busy || skipping} onClick={() => void holdWithoutSeats()}>
-                  Hold without seats
-                </button>
-              </div>
-            </div>
+            <Alert variant="destructive">
+              <CircleAlert />
+              <AlertDescription className="flex flex-wrap items-center gap-2">
+                <p>{loadError}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+
+                    type="button"
+                    onClick={() => {
+                      setLoadError(null)
+                      setRetry((count) => count + 1)
+                    }}
+                  >
+                    Try again
+                  </Button>
+                  <Button
+                    variant="outline"
+
+                    type="button"
+                    disabled={busy || skipping}
+                    onClick={() => void holdWithoutSeats()}
+                  >
+                    Hold without seats
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
           ) : !maps ? (
-            <p className="seat-selection__loading" role="status">
+            <p className="m-0 py-8 text-center text-sm text-muted-foreground" role="status">
               Loading seat maps…
             </p>
           ) : null}
@@ -220,8 +248,9 @@ export function StaffSeatStep({
               passengerLabel={`${traveller.givenName} ${traveller.familyName}`}
               legendAction={
                 choices.some((choice) => choice.flightId === flightId) ? (
-                  <button
-                    className="seat-picker__legend-action seat-selection__clear"
+                  <Button
+                    variant="ghost"
+                    className="seat-picker__legend-action"
                     type="button"
                     disabled={busy}
                     aria-label="Clear seats for this flight"
@@ -229,7 +258,7 @@ export function StaffSeatStep({
                   >
                     <X aria-hidden="true" size={14} strokeWidth={2} />
                     Clear seats
-                  </button>
+                  </Button>
                 ) : null
               }
               disabledSeatCodes={allSeats
@@ -252,18 +281,19 @@ export function StaffSeatStep({
               }}
             />
           )}
-        </div>
-        <aside className="seat-selection__summary" aria-label="Passengers and trip summary">
-          <div className="seat-selection__summary-section">
+        </Card>
+        <Card className="gap-0 divide-y overflow-hidden py-0 lg:sticky lg:top-16" aria-label="Passengers and trip summary">
+          <div className="space-y-3 p-5">
             <h2>Passengers on {selection?.flight.flightNumber ?? 'this flight'}</h2>
-            <div className="seat-selection__passengers" aria-label="Choose a passenger">
+            <div className="grid gap-2" aria-label="Choose a passenger">
               {travellers
                 .filter((person) => person.expectedType !== 'infant')
                 .map((person) => {
                   const seat = choices.find((choice) => choice.flightId === flightId && choice.travellerKey === person.key)
                   return (
-                    <button
-                      className="seat-selection__passenger"
+                    <Button
+                      variant="outline"
+                      className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2.5 text-left text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-pressed:border-primary aria-pressed:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 [&_small]:text-xs [&_small]:text-muted-foreground [&_strong]:font-medium [&>span]:flex [&>span]:flex-col"
                       key={person.key}
                       type="button"
                       disabled={busy}
@@ -275,46 +305,62 @@ export function StaffSeatStep({
                           {person.givenName} {person.familyName} ({person.expectedType})
                         </strong>
                       </span>
-                      <span className="seat-selection__seat-code">{seat?.seatCode ?? 'No seat yet'}</span>
-                    </button>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums">{seat?.seatCode ?? 'No seat yet'}</span>
+                    </Button>
                   )
                 })}
             </div>
             {travellers.some((person) => person.expectedType === 'infant') && (
-              <p className="seat-selection__muted">Infants travel on an adult’s lap and do not need a seat.</p>
+              <p className="m-0 text-sm text-muted-foreground">Infants travel on an adult’s lap and do not need a seat.</p>
             )}
             {exitSelected && (
-              <p className="seat-selection__warning" role="status">
-                Exit-row seats require an adult with no assistance request and no infant on their lap.
-              </p>
+              <Alert className="border-warning/25 bg-warning-soft text-warning" role="status">
+                <CircleAlert />
+                <AlertDescription className="flex flex-wrap items-center gap-2">
+                  Exit-row seats require an adult with no assistance request and no infant on their lap.
+                </AlertDescription>
+              </Alert>
             )}
-            <p className="seat-selection__fees">
+            <p className="m-0 flex justify-between gap-3 text-sm font-medium tabular-nums">
               <span>Seat fees</span>
               <strong>{maps ? money(seatFees, currency) : '—'}</strong>
             </p>
-            <p className="seat-selection__fees f3-staff-seat__total">
+            <p className="flex justify-between gap-3 text-base font-semibold tabular-nums">
               <span>Total with seats</span>
               <strong>{quote.total === null ? '—' : money(quote.total, currency)}</strong>
             </p>
             {quote.error && (
-              <div className="seat-selection__error" role="alert">
-                <p>{quote.error}</p>
-                <button className="f3-search-secondary" type="button" disabled={busy || skipping} onClick={quote.retry}>
-                  Retry price
-                </button>
-              </div>
+              <Alert variant="destructive">
+                <CircleAlert />
+                <AlertDescription className="flex flex-wrap items-center gap-2">
+                  <p>{quote.error}</p>
+                  <Button
+                    variant="outline"
+
+                    type="button"
+                    disabled={busy || skipping}
+                    onClick={quote.retry}
+                  >
+                    Retry price
+                  </Button>
+                </AlertDescription>
+              </Alert>
             )}
             {skipError && (
-              <p className="seat-selection__error" role="alert">
-                {skipError}
-              </p>
+              <Alert variant="destructive">
+                <CircleAlert />
+                <AlertDescription className="flex flex-wrap items-center gap-2">{skipError}</AlertDescription>
+              </Alert>
             )}
-            <p className="seat-selection__hint">
-              Pick a passenger, then a seat. Click the seat again to remove it. The seats are held for 15 minutes together with the booking.
-            </p>
-            <div className="seat-selection__actions">
-              <button
-                className="f3-search-primary"
+            <Alert>
+              <Info />
+              <AlertDescription className="flex flex-wrap items-center gap-2">
+                Pick a passenger, then a seat. Click the seat again to remove it. The seats are held for 15 minutes together with the
+                booking.
+              </AlertDescription>
+            </Alert>
+            <div className="grid gap-2 pt-1 [&>*]:w-full">
+              <Button
                 type="button"
                 disabled={busy || skipping || quote.loading || quote.total === null || !!missingCabin || unavailableChoices.length > 0}
                 onClick={() => {
@@ -323,18 +369,30 @@ export function StaffSeatStep({
                 }}
               >
                 {busy ? 'Creating booking…' : choices.length ? 'Create hold with seats' : 'Create hold'}
-              </button>
+              </Button>
               {choices.length > 0 && (
-                <button className="f3-search-secondary" type="button" disabled={busy || skipping} onClick={() => void holdWithoutSeats()}>
+                <Button
+                  variant="outline"
+
+                  type="button"
+                  disabled={busy || skipping}
+                  onClick={() => void holdWithoutSeats()}
+                >
                   {skipping ? 'Checking price…' : 'Create hold without seats'}
-                </button>
+                </Button>
               )}
-              <button className="f3-search-secondary" type="button" disabled={busy || skipping} onClick={onBack}>
+              <Button
+                variant="outline"
+
+                type="button"
+                disabled={busy || skipping}
+                onClick={onBack}
+              >
                 Back to passengers
-              </button>
+              </Button>
             </div>
           </div>
-        </aside>
+        </Card>
       </div>
     </section>
   )

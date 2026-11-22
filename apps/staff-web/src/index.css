@@ -1,5 +1,9 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+/* Book for customer (feature 3) renders customer-web's flight search and booking steps, so Tailwind scans them too. */
+@source '../../customer-web/src/features/booking-search';
+@source '../../customer-web/src/features/booking-pnr';
+@source '../../customer-web/src/components/ui';
 /* Crew rostering (F8) palette and fonts; Tailwind itself is imported once, above. */
 @import './features/crew-rostering/build-pairings/types/tokens.css';
 

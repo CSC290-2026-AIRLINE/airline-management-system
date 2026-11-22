@@ -34,6 +34,9 @@ export interface BookingSegment {
   destination: string
   depAt: string
   arrAt: string
+  // IANA time zones of the two airports; times are shown in the airport's local time.
+  originTimeZone: string
+  destinationTimeZone: string
   serviceDate: string
 }
 
@@ -102,6 +105,8 @@ export interface BookingListItem extends BookingSummary {
   leadPassengerName: string
   trip: string
   travelDate: string | null
+  // Time zone of the departure airport of travelDate.
+  travelTimeZone: string | null
   openServiceRequests: number
 }
 
@@ -239,6 +244,8 @@ export interface ServiceRequestQueueItem extends BookingServiceRequest {
   passengerType: PassengerType
   flightNumber: string | null
   depAt: string | null
+  // Time zone of the departure airport of depAt.
+  depTimeZone: string | null
 }
 
 export interface ServiceRequestUpdate {
