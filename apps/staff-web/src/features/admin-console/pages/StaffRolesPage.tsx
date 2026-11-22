@@ -1,11 +1,11 @@
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { ArrowLeft, CircleAlert, CircleCheck, Plus, SquarePen, Users, X } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@staff-web/components/ui/alert'
 import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@staff-web/components/ui/dialog'
+import { DialogDescription } from '@staff-web/components/ui/dialog'
 import { Input } from '@staff-web/components/ui/input'
 import { Label } from '@staff-web/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
@@ -15,6 +15,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@staff-web/lib/utils'
 import { StaffApiError, type StaffCreateBody } from '../api/staff'
 import { MIN_REASON_LENGTH, useStaff } from '../hooks/useStaff'
+import { ErrorBox, Field, Hint, type BoxError } from '../components/form-fields'
+import { Modal } from '../components/Modal'
 import { NoAccessScreen } from '../components/NoAccessScreen'
 import type { RoleSummary, StaffRow } from '../types'
 
@@ -59,13 +61,6 @@ const STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'inactive', label: 'Inactive' },
 ]
-
-/** A dialog-level error: title + message + the backend code, shown in the red box above the buttons. */
-interface BoxError {
-  title: string
-  message: string
-  code: string
-}
 
 const BOX_TITLES: Record<string, string> = {
   NO_CHANGE: 'Nothing changed',
@@ -154,9 +149,8 @@ function Dropdown({
         aria-label={ariaLabel ? `${ariaLabel}: ${selected?.label ?? placeholder}` : undefined}
         aria-invalid={invalid || undefined}
         className={cn(
-          'w-full gap-1.5 border-input bg-background px-3.5 text-left text-sm font-medium text-foreground focus-visible:ring-2 focus-visible:ring-primary/30',
-          variant === 'field' && 'border-border text-foreground',
-          variant === 'card' && 'border-input bg-accent px-3 text-sm text-foreground max-phone:text-sm',
+          'w-full gap-1.5 border-input bg-background px-3.5 text-left text-sm font-medium text-foreground',
+          variant === 'card' && 'bg-accent px-3 text-sm text-foreground max-phone:text-sm',
           invalid && 'border-danger-line',
         )}
       >
@@ -169,96 +163,12 @@ function Dropdown({
         className={cn('max-h-98.5 max-w-135 border-border font-sans', variant === 'field' && 'max-h-65')}
       >
         {items.map((o) => (
-          <SelectItem key={o.value} value={o.value} className={cn('px-2.5 whitespace-nowrap text-foreground', variant === 'card' && '')}>
+          <SelectItem key={o.value} value={o.value} className={cn('px-2.5 text-foreground', variant === 'card' && '')}>
             {o.label}
           </SelectItem>
         ))}
       </SelectContent>
     </Select>
-  )
-}
-
-function Field({ label, htmlFor, error, children }: { label: ReactNode; htmlFor: string; error?: boolean; children: ReactNode }) {
-  return (
-    <div className="mb-4 flex flex-col gap-1 max-phone:mb-3 max-phone:gap-1.5">
-      <Label
-        htmlFor={htmlFor}
-        className={cn('mb-0.5 text-muted-foreground max-phone:mb-0 max-phone:uppercase', error && 'max-phone:text-danger')}
-      >
-        {label}
-      </Label>
-      {children}
-    </div>
-  )
-}
-
-function Hint({ error, children }: { error?: boolean; children: ReactNode }) {
-  return (
-    <p className={cn('mt-0.5 text-xs leading-tight text-muted-foreground max-phone:mt-0 max-phone:text-xs', error && 'text-danger')}>
-      {children}
-    </p>
-  )
-}
-
-function ErrorBox({ error }: { error: BoxError }) {
-  return (
-    <div className="mb-2 flex flex-col gap-1 rounded-lg border border-danger-line bg-danger-soft px-3.5 py-3 text-danger" role="alert">
-      <strong className="text-sm font-bold">{error.title}</strong>
-      <span className="text-xs leading-snug">{error.message}</span>
-    </div>
-  )
-}
-
-/**
- * Centred pop-up (shadcn `Dialog`). Escape and a click outside both cancel, unless `busy` (a request is in flight).
- * Fonts are set again here because the dialog is portalled outside the admin shell.
- */
-function Modal({
-  title,
-  onClose,
-  busy = false,
-  focusContent = false,
-  className,
-  children,
-}: {
-  /** The dialog's accessible name; the visible heading is part of `children`. */
-  title: string
-  onClose: () => void
-  busy?: boolean
-  /** Focus the dialog itself on open rather than its first control (the × button on Create / Edit). */
-  focusContent?: boolean
-  className?: string
-  children: ReactNode
-}) {
-  const contentRef = useRef<HTMLDivElement>(null)
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !busy) onClose()
-      }}
-    >
-      <DialogContent
-        ref={contentRef}
-        showCloseButton={false}
-        onOpenAutoFocus={(e) => {
-          if (!focusContent) return
-          e.preventDefault()
-          contentRef.current?.focus()
-        }}
-        aria-describedby={undefined}
-        className={cn(' overflow-y-auto border-0 bg-background p-0 font-sans text-foreground sm:', className)}
-        onInteractOutside={(e) => {
-          if (busy) e.preventDefault()
-        }}
-        onEscapeKeyDown={(e) => {
-          if (busy) e.preventDefault()
-        }}
-      >
-        <DialogTitle className="sr-only">{title}</DialogTitle>
-        {children}
-      </DialogContent>
-    </Dialog>
   )
 }
 

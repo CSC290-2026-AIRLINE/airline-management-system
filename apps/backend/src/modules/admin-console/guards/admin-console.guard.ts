@@ -60,7 +60,8 @@ export class AdminConsoleGuard implements CanActivate {
     })
     if (!staff) {
       await this.recordDenied(req, user)
-      throw new ForbiddenException('Admin role required')
+      // Same `{ error: { code, message } }` body as every other admin-console failure.
+      throw new ForbiddenException({ error: { code: 'FORBIDDEN', message: 'Admin role required.' } })
     }
 
     req.admin = {

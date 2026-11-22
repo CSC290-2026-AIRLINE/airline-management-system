@@ -56,12 +56,17 @@ const DISRUPTION_REASONS = [
   { code: 'OTH', category: 'other', description: 'Other' },
 ]
 const AIRLINE_CODE = 'XX'
+// Layouts use Feature 9's cabin format (docs/f9-g3.md, "Seat map layout JSON"): one all-economy cabin each, 180 and 72 seats.
+const A320_LAYOUT = {
+  cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 30, columns: ['A', 'B', 'C', 'D', 'E', 'F'], aisle_after: ['C'] }],
+}
+const ATR72_LAYOUT = { cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 18, columns: ['A', 'B', 'C', 'D'], aisle_after: ['B'] }] }
 const AIRCRAFT_TYPES = [
   {
     code: 'A320',
     manufacturer: 'Airbus',
     model: 'A320-200',
-    layout: { rows: 30, seats_per_row: 6 },
+    layout: A320_LAYOUT,
     hold_weight_limit_kg: 20000,
     max_takeoff_weight_kg: 78000,
     max_range_km: 6100,
@@ -73,7 +78,7 @@ const AIRCRAFT_TYPES = [
     code: 'ATR72',
     manufacturer: 'ATR',
     model: 'ATR 72-600',
-    layout: { rows: 18, seats_per_row: 4 },
+    layout: ATR72_LAYOUT,
     hold_weight_limit_kg: 6000,
     max_takeoff_weight_kg: 23000,
     max_range_km: 1500,

@@ -1,14 +1,15 @@
 import {
+  Accessibility,
   Calendar,
   CalendarClock,
   Globe,
-  Route,
   Gauge,
   ChartColumn,
   ClipboardCheck,
   CreditCard,
   DoorOpen,
   FileText,
+  IdCard,
   Inbox,
   KeyRound,
   ListChecks,
@@ -20,27 +21,40 @@ import {
   PlaneLanding,
   PlaneTakeoff,
   Receipt,
+  Route,
   ScrollText,
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Sofa,
   Star,
   Tag,
   Ticket,
   User,
   UserCheck,
+  UserPlus,
   Users,
   Utensils,
   type LucideIcon,
 } from 'lucide-react'
 
-/** Sidebar contents, shared by the live sidebar and the Role access "Preview as user". `code` is the registered screen code. */
+/** The routes this sidebar links to. Every one of them is registered in the router. */
+export type NavRoute =
+  | '/customer-search'
+  | '/security-screening/screening-queue'
+  | '/aircraft'
+  | '/aircraft-types'
+  | '/readiness'
+  | '/booking-lookup'
+  | '/book-for-customer'
+  | '/assistance'
 
+/** Sidebar contents, shared by the live sidebar and the Role access "Preview as user". `code` is the registered screen code. */
 export interface NavItem {
   label: string
   icon: LucideIcon
   /** Set once the owning team has a route. Items without one stay disabled in the live sidebar. */
-  to?: '/customer-search' | '/security-screening/screening-queue' | '/aircraft' | '/aircraft-types' | '/readiness'
+  to?: NavRoute
   /** Path prefix that keeps the item highlighted on the feature's other pages. */
   activePrefix?: string
 }
@@ -53,8 +67,10 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
     label: 'Customer Management',
     items: [
       { label: 'Customer Search', icon: Search, to: '/customer-search', activePrefix: '/customer-search' },
+      { label: 'Bookings', icon: Ticket, to: '/booking-lookup' },
+      { label: 'Book for Customer', icon: UserPlus, to: '/book-for-customer' },
+      { label: 'Assistance Queue', icon: Accessibility, to: '/assistance' },
       { label: 'Security Screening', icon: ShieldCheck, to: '/security-screening/screening-queue', activePrefix: '/security-screening' },
-      { label: 'Loyalty Programme', icon: Star },
     ],
   },
   {
@@ -101,6 +117,22 @@ export const PRICING_ITEMS = [
   { to: '/pricing/monthly-report', code: 'f04.monthly_report', label: 'Monthly Report', icon: FileText },
 ] as const
 
+/**
+ * The crew rostering screens (Feature 8). `match` lists every path that lights the item up: "Roster runs" is one item
+ * for the three wizard steps and the published rosters they lead to, and "Crew" covers each crew member's profile page.
+ */
+export const CREW_ITEMS = [
+  {
+    to: '/build-pairings',
+    code: 'f08.roster_runs',
+    label: 'Roster runs',
+    icon: Route,
+    match: ['/build-pairings', '/assign-crew', '/fix-publish', '/published-rosters'],
+  },
+  { to: '/setup-crew', code: 'f08.crew', label: 'Crew', icon: IdCard, match: ['/setup-crew'] },
+  { to: '/setup-rule', code: 'f08.rules', label: 'Rules', icon: ListChecks, match: ['/setup-rule'] },
+] as const
+
 /** The Feature 13 (customer service) staff pages: the complaint queue plus its reporting and notification screens. */
 export const CUSTOMER_SERVICE_ITEMS = [
   { to: '/complaints', label: 'Complaint queue', icon: Inbox },
@@ -128,3 +160,11 @@ export const FLIGHT_SCHEDULING_ITEMS: readonly {
   { to: '/routes', label: 'Routes', icon: Route },
   { to: '/congestion', label: 'Congestion', icon: Gauge },
 ]
+
+/** The Feature 11 (loyalty programme) staff pages. */
+export const LOYALTY_ITEMS = [
+  { to: '/loyalty/members', label: 'Member Lookup', icon: Search },
+  { to: '/loyalty/rules', label: 'Loyalty Rules', icon: SlidersHorizontal },
+  { to: '/loyalty/award-release', label: 'Award Release', icon: Star },
+  { to: '/loyalty/lounge', label: 'Lounge Desk', icon: Sofa },
+] as const

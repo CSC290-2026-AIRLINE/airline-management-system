@@ -19,13 +19,38 @@ export interface ScreenGroup {
   screens: ScreenDto[]
 }
 
-/** One row in the `GET /admin/roles` response. `staff_count` is the live count (non-deleted, role-only). */
+/**
+ * One row in the `GET /admin/roles` response. `staff_count` is the live count (non-deleted, role-only).
+ *
+ * `is_system` marks the roles the system owns — the No access role, where the accounts of deleted staff are kept.
+ * They are never offered for deletion.
+ */
 export interface RoleSummary {
   id: string
   code: string
   name: string
   is_admin: boolean
   staff_count: number
+  is_system: boolean
+}
+
+/** Response of `POST /admin/screens`. `changed: false` means the screen was already like this: nothing was written. */
+export interface RegisterScreenResult {
+  ok: true
+  changed: boolean
+  screen: ScreenDto
+  /** `audit_log.seq` of the row this change wrote. Absent when `changed` is false. */
+  audit_seq?: string
+}
+
+/** Response of `GET /admin/staff/:id/screens` — the menu one staff member gets. */
+export interface StaffScreensDto {
+  staff_id: string
+  /** `false` when the account is switched off: they cannot sign in, so they see nothing at all. */
+  active: boolean
+  role: { id: string; code: string; name: string; is_admin: boolean }
+  /** Active screens their role opens, sorted by feature then code. */
+  screens: ScreenDto[]
 }
 
 /** Body of `GET /admin/roles/:id/screens`. */
@@ -69,8 +94,8 @@ export interface AuditEntryDto {
   summary: string | null
   reason: string | null
   /**
-   * Null when `is_sensitive` is true (the row exists but the writer asked us to hide it). The list endpoint never
-   * returns the unmasked value.
+   * In the list: `null` when `is_sensitive` is true. On the entry endpoint: the masked copy (sensitive values read
+   * `[masked]`). Neither endpoint ever returns an unmasked sensitive value.
    */
   before: unknown
   after: unknown
