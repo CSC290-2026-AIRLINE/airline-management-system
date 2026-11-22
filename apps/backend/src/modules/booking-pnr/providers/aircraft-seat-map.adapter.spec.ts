@@ -40,6 +40,21 @@ describe('AircraftSeatMapAdapter', () => {
     expect(map.rows[11].seats[0].type).toBe('exit')
     expect(map.rows[0].seats[3].aisleBefore).toBe(true)
   })
+  it('supports the rows and seats-per-row layout still stored by databases seeded before the cabin format', () => {
+    const map = aircraftSeatMap({ rows: 30, seats_per_row: 6 }, 'a320')
+    expect(map.cabins).toEqual([{ cabin: 'economy', capacity: 180 }])
+    expect(map.rows[0].seats.map((seat) => seat.seatCode)).toEqual(['1A', '1B', '1C', '1D', '1E', '1F'])
+    expect(map.rows[0].seats[3].aisleBefore).toBe(true)
+    // Ten across skips I, matching check-in's seat codes.
+    expect(aircraftSeatMap({ rows: 1, seats_per_row: 10 }, 'wide').rows[0].seats.at(-1)?.seatCode).toBe('1K')
+  })
+  it.each([
+    { rows: 30, seats_per_row: 0 },
+    { rows: 30, seats_per_row: 11 },
+    { rows: 30, seats_per_row: '6' },
+  ])('rejects an unusable seats-per-row layout', (layout) => {
+    expect(() => aircraftSeatMap(layout, 'type')).toThrow('aircraft seat layout is unavailable')
+  })
   it.each([
     {},
     { cabins: [] },

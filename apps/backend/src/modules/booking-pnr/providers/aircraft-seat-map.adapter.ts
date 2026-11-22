@@ -4,6 +4,7 @@ import { BookingError } from '../common/booking-error'
 import type { Cabin, SeatDefinition, SeatMap, SeatMapPort, SeatRow, SeatType } from '../contracts'
 
 const CABINS: Cabin[] = ['first', 'business', 'premium_economy', 'economy']
+const GRID_LETTERS = 'ABCDEFGHJK'
 function invalidLayout(): never {
   throw new BookingError('SEAT_NOT_ALLOWED', 'The aircraft seat layout is unavailable. Please contact the airline.', 422)
 }
@@ -36,8 +37,16 @@ function seatType(value: unknown): SeatType {
 export function aircraftSeatMap(layout: unknown, aircraftTypeId: string): SeatMap {
   const stored = record(layout)
   let cabins = stored.cabins
+  // Databases seeded before the seed moved to the cabin format still hold rows/seats_per_row, and the layout cannot be
+  // changed in place. Letter those seats as check-in does (no I) so both modules agree on codes.
+  const perRow = stored.seats_per_row
+  const columns =
+    stored.columns ??
+    (typeof perRow === 'number' && Number.isInteger(perRow) && perRow >= 1 && perRow <= GRID_LETTERS.length
+      ? [...GRID_LETTERS.slice(0, perRow)]
+      : undefined)
   // Earlier demo aircraft store a single economy cabin as rows/columns, plus typed row lists.
-  if (cabins === undefined && typeof stored.rows === 'number' && Array.isArray(stored.columns)) {
+  if (cabins === undefined && typeof stored.rows === 'number' && Array.isArray(columns)) {
     const types: Record<string, SeatType> = {}
     for (const [key, type] of [
       ['extraLegroomRows', 'extra_legroom'],
@@ -52,7 +61,7 @@ export function aircraftSeatMap(layout: unknown, aircraftTypeId: string): SeatMa
       {
         cabin: 'economy',
         rows: [1, stored.rows],
-        columns: stored.columns,
+        columns,
         seatTypes: types,
         blocked_seats: stored.blockedSeats ?? [],
         ...(stored.aisle_after ? { aisle_after: stored.aisle_after } : {}),
