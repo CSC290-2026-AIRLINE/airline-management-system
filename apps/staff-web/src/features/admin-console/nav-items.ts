@@ -1,4 +1,5 @@
 import {
+  Accessibility,
   Calendar,
   CalendarClock,
   Globe,
@@ -30,18 +31,29 @@ import {
   Ticket,
   User,
   UserCheck,
+  UserPlus,
   Users,
   Utensils,
   type LucideIcon,
 } from 'lucide-react'
 
-/** Sidebar contents, shared by the live sidebar and the Role access "Preview as user". `code` is the registered screen code. */
+/** The routes this sidebar links to. Every one of them is registered in the router. */
+export type NavRoute =
+  | '/customer-search'
+  | '/security-screening/screening-queue'
+  | '/aircraft'
+  | '/aircraft-types'
+  | '/readiness'
+  | '/booking-lookup'
+  | '/book-for-customer'
+  | '/assistance'
 
+/** Sidebar contents, shared by the live sidebar and the Role access "Preview as user". `code` is the registered screen code. */
 export interface NavItem {
   label: string
   icon: LucideIcon
   /** Set once the owning team has a route. Items without one stay disabled in the live sidebar. */
-  to?: '/customer-search' | '/security-screening/screening-queue' | '/aircraft' | '/aircraft-types' | '/readiness'
+  to?: NavRoute
   /** Path prefix that keeps the item highlighted on the feature's other pages. */
   activePrefix?: string
 }
@@ -54,6 +66,9 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
     label: 'Customer Management',
     items: [
       { label: 'Customer Search', icon: Search, to: '/customer-search', activePrefix: '/customer-search' },
+      { label: 'Bookings', icon: Ticket, to: '/booking-lookup' },
+      { label: 'Book for Customer', icon: UserPlus, to: '/book-for-customer' },
+      { label: 'Assistance Queue', icon: Accessibility, to: '/assistance' },
       { label: 'Security Screening', icon: ShieldCheck, to: '/security-screening/screening-queue', activePrefix: '/security-screening' },
       { label: 'Service & Compensation', icon: MessageSquare },
     ],

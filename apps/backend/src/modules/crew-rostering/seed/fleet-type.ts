@@ -11,7 +11,10 @@ const FLEET_TYPE = {
   code: 'A320',
   manufacturer: 'Airbus',
   model: 'A320-200',
-  layout: { rows: 30, seats_per_row: 6 },
+  // Must match the shared seed's A320 layout.
+  layout: {
+    cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 30, columns: ['A', 'B', 'C', 'D', 'E', 'F'], aisle_after: ['C'] }],
+  },
   hold_weight_limit_kg: 20000,
   max_takeoff_weight_kg: 78000,
   max_range_km: 6100,
