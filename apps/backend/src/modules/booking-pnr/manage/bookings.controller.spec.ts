@@ -32,7 +32,8 @@ describe('BookingsController', () => {
     app = module.createNestApplication()
     app.setGlobalPrefix('api')
     app.useGlobalFilters(new BookingErrorFilter())
-    await app.init()
+    // Listen on loopback ourselves: a wildcard port picked by supertest can be shadowed by another local app.
+    await app.listen(0, '127.0.0.1')
   })
   afterAll(async () => app.close())
   beforeEach(() => {
