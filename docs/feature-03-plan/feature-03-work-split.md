@@ -60,7 +60,7 @@ Before writing code for a task, list which stubs it will use and what each one r
 
 
 **Read with:**
-- `iteration-1.md`: rules, routes, pages, SQL
+- `../f3-g13.md`: rules, routes, pages, SQL
 - `feature-03-schema-review.md`
 - `feature-03-ui-notes.md`: every Figma screen, the design tokens, and the design differences D1–D15
 
@@ -813,7 +813,7 @@ This file is meant to work on its own as the starting point for a new chat.
 
 **Keep these files together:**
 - `feature-03-work-split.md` (this file)
-- `iteration-1.md`
+- `../f3-g13.md`
 - `feature-03-schema-review.md`
 - `feature-03-ui-notes.md`
 
@@ -840,8 +840,8 @@ This file is meant to work on its own as the starting point for a new chat.
 
 **Starter prompts for a new chat** (attach the three files named in each prompt):
 
-> I'm Member A in the Feature 3 group. Read `feature-03-work-split.md` (my tasks are section 3: A1–A9, plus B7 lookup and B13; §0 lists the stable IDs), `iteration-1.md`, and `feature-03-ui-notes.md` for the pages. Clone https://github.com/CSC290-2026-AIRLINE/airline-management-system, check which PRs listed in section 11 are merged now, then plan my first task.
+> I'm Member A in the Feature 3 group. Read `feature-03-work-split.md` (my tasks are section 3: A1–A9, plus B7 lookup and B13; §0 lists the stable IDs), `../f3-g13.md`, and `feature-03-ui-notes.md` for the pages. Clone https://github.com/CSC290-2026-AIRLINE/airline-management-system, check which PRs listed in section 11 are merged now, then plan my first task.
 
-> I'm Member B in the Feature 3 group. Read `feature-03-work-split.md` (my tasks are section 4: B1–B12, where B7 is the staff-cancel route, plus B14; B11 stays with me; B13 is A's; §0 lists the stable IDs), `iteration-1.md`, and `feature-03-ui-notes.md` for the pages. Clone https://github.com/CSC290-2026-AIRLINE/airline-management-system, check which PRs listed in section 11 are merged now, then plan my first task.
+> I'm Member B in the Feature 3 group. Read `feature-03-work-split.md` (my tasks are section 4: B1–B12, where B7 is the staff-cancel route, plus B14; B11 stays with me; B13 is A's; §0 lists the stable IDs), `../f3-g13.md`, and `feature-03-ui-notes.md` for the pages. Clone https://github.com/CSC290-2026-AIRLINE/airline-management-system, check which PRs listed in section 11 are merged now, then plan my first task.
 
-> I'm Member C in the Feature 3 group. Read `feature-03-work-split.md` (my tasks are section 5: C1–C12, where C12 is Feature 6's BookingProvider; C7 calls B14 for the flight-cancel policy; §0 lists the stable IDs), `iteration-1.md`, and `feature-03-ui-notes.md` for the pages. Clone https://github.com/CSC290-2026-AIRLINE/airline-management-system, check which PRs listed in section 11 are merged now, then plan my first task.
+> I'm Member C in the Feature 3 group. Read `feature-03-work-split.md` (my tasks are section 5: C1–C12, where C12 is Feature 6's BookingProvider; C7 calls B14 for the flight-cancel policy; §0 lists the stable IDs), `../f3-g13.md`, and `feature-03-ui-notes.md` for the pages. Clone https://github.com/CSC290-2026-AIRLINE/airline-management-system, check which PRs listed in section 11 are merged now, then plan my first task.
