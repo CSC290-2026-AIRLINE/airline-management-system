@@ -64,7 +64,6 @@ export class CargoTestToolsController {
   @Post('flights')
   async createTestFlights() {
     const aircraftType = await this.ensureAircraftType()
-    const aircraft = await this.ensureAircraft(aircraftType.id)
     const routes = await this.db.route.findMany({ where: { is_active: true } })
 
     if (routes.length === 0) {
@@ -78,6 +77,8 @@ export class CargoTestToolsController {
     for (let dayOffset = 1; dayOffset <= 3; dayOffset++) {
       for (let ri = 0; ri < routes.length; ri++) {
         const route = routes[ri]
+        // One test aircraft per route: flight_timetable_no_aircraft_overlap refuses two flights on one aircraft at the same time.
+        const aircraft = await this.ensureAircraft(aircraftType.id, ri, route.origin)
         const flightNumber = `FY${(ri + 1) * 100 + 1}`
         const depHourLocal = DEP_HOURS_LOCAL[ri % DEP_HOURS_LOCAL.length]
 
@@ -113,7 +114,7 @@ export class CargoTestToolsController {
       }
     }
 
-    return { created, skipped, aircraftId: aircraft.id, aircraftTypeId: aircraftType.id }
+    return { created, skipped, aircraftTypeId: aircraftType.id }
   }
 
   @Post('bookings')
@@ -273,15 +274,16 @@ export class CargoTestToolsController {
     return this.db.aircraft_type.create({ data: TEST_AIRCRAFT_TYPE })
   }
 
-  private async ensureAircraft(typeId: string) {
-    const existing = await this.db.aircraft.findFirst({ where: { tail_number: TEST_TAIL, deleted_at: null } })
+  private async ensureAircraft(typeId: string, routeIndex: number, baseAirport: string) {
+    const tail = `${TEST_TAIL}-${routeIndex + 1}`
+    const existing = await this.db.aircraft.findFirst({ where: { tail_number: tail, deleted_at: null } })
     if (existing) return existing
     return this.db.aircraft.create({
       data: {
-        tail_number: TEST_TAIL,
+        tail_number: tail,
         aircraft_type_id: typeId,
         entry_into_service_date: new Date('2020-01-15T00:00:00Z'),
-        base_airport_code: 'BKK',
+        base_airport_code: baseAirport,
       },
     })
   }
