@@ -48,7 +48,7 @@ type BookingState = { kind: 'loading' } | { kind: 'error'; error: string } | { k
 
 type CatalogState =
   | { kind: 'idle' }
-  | { kind: 'ready'; flightId: string; products: Product[]; setting: CabinSetting }
+  | { kind: 'ready'; flightId: string; products: Product[]; setting: CabinSetting; cutoffAt: string; orderWindowOpen: boolean }
   | { kind: 'error'; flightId: string; error: string }
 
 type Tab = 'meals' | 'snacks' | 'duty-free'
@@ -67,9 +67,12 @@ function tabLabel(tab: Tab): string {
   return 'Duty-free'
 }
 
-function tabSubtitle(tab: Tab): string {
+function tabSubtitle(tab: Tab, mealService: CabinSetting['mealService'] | null): string {
   if (tab === 'meals') {
-    return 'Tap a meal for the selected passenger. Meals are free on complimentary flights and for tier members. Premium meals are always charged. Passengers who choose nothing get the default meal at no charge.'
+    if (mealService === 'paid') {
+      return 'Tap a meal for the selected passenger. Meals are charged in this cabin; tier members get a regular meal free. Premium meals are always charged. Passengers who order nothing can buy a meal on board.'
+    }
+    return 'Tap a meal for the selected passenger. The included meal is free, and so is a regular meal for tier members. Premium meals are always charged. Passengers who choose nothing get the default meal at no charge.'
   }
   if (tab === 'snacks') return 'Served in your cabin. Charged at full price, tier or not.'
   return 'Order ahead and collect on board. Alcohol is for adults only and ID is checked at collection.'
@@ -193,9 +196,9 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
     if (!flight) return
     let cancelled = false
     fetchShop(readyBooking, selectedFlightId, flight.cabinClass, fetchWithAuth)
-      .then(({ products, setting }) => {
+      .then(({ products, setting, cutoffAt, orderWindowOpen }) => {
         if (cancelled) return
-        setCatalogState({ kind: 'ready', flightId: selectedFlightId, products, setting })
+        setCatalogState({ kind: 'ready', flightId: selectedFlightId, products, setting, cutoffAt, orderWindowOpen })
       })
       .catch((e: unknown) => {
         if (cancelled) return
@@ -247,8 +250,12 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
 
   const booking = bookingState.kind === 'ready' ? bookingState.booking : null
   const selectedFlight = booking?.flights.find((f) => f.id === selectedFlightId) ?? null
-  const cutoffAt = selectedFlight ? (selectedFlight.cutoffAt ?? defaultCutoffFor(selectedFlight.scheduledDeparture)) : null
-  const isOpen = cutoffAt ? new Date(cutoffAt).getTime() > now : false
+  // The backend decides whether ordering is open (it uses the F1 simulation clock and this cabin's own window), so
+  // its answer wins once the catalog has loaded. The browser clock only closes the window live while the page is open.
+  const shop = catalogState.kind === 'ready' && catalogState.flightId === selectedFlightId ? catalogState : null
+  const cutoffAt =
+    shop?.cutoffAt || (selectedFlight ? (selectedFlight.cutoffAt ?? defaultCutoffFor(selectedFlight.scheduledDeparture)) : null)
+  const isOpen = shop ? shop.orderWindowOpen && (!cutoffAt || new Date(cutoffAt).getTime() > now) : false
 
   const catalog: { kind: 'loading' | 'error' | 'ready'; products: Product[]; setting: CabinSetting | null; error: string | null } =
     catalogState.kind === 'ready' && catalogState.flightId === selectedFlightId
@@ -492,7 +499,7 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
 
       <FlightSwitcher flights={booking.flights} selectedId={selectedFlight.id} onSelect={handleFlightSwitch} />
 
-      <CountdownBanner cutoffAt={cutoffAt} isOpen={isOpen} />
+      <CountdownBanner cutoffAt={cutoffAt} isOpen={isOpen} windowHours={shop?.setting.orderWindowHours ?? null} />
 
       {catalog.kind === 'ready' && catalog.setting ? <CabinInfoStrip setting={catalog.setting} /> : <Skeleton className="h-12 w-full" />}
 
@@ -507,7 +514,7 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
               <CardTitle>
                 {tabLabel(activeTab)} for {selectedPassenger?.firstName ?? ''}
               </CardTitle>
-              <CardDescription>{tabSubtitle(activeTab)}</CardDescription>
+              <CardDescription>{tabSubtitle(activeTab, catalog.setting?.mealService ?? null)}</CardDescription>
             </CardHeader>
 
             {catalog.kind === 'loading' ? (

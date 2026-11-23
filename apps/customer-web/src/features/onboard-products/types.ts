@@ -156,6 +156,9 @@ export interface Product {
   // True only for the "Default meal" pseudo-product that means
   // "no pre-order, serve whatever the cabin has".
   isDefaultChoice: boolean
+  // Replaces the price text when set (the no-pre-order choice on a
+  // paid cabin is not "Free": nothing is served unless bought on board).
+  priceLabel?: string
 }
 
 // Cabin's meal policy for a flight. Mirrors the `cabin_setting` row in

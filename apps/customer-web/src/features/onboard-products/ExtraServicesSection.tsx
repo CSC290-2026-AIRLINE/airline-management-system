@@ -120,7 +120,7 @@ export function ExtraServicesSection({ booking, preset, initialCancelTarget, ref
           {cutoffState.kind === 'open' ? (
             <Alert role="status" className="border-green-200 bg-green-50 text-green-800">
               <AlertDescription className="col-start-2 text-green-800">
-                Ordering open · Closes {formatDateTime(cutoffState.cutoffAt)}, 48 hours before departure.
+                Ordering open · Closes {formatDateTime(cutoffState.cutoffAt)}.
               </AlertDescription>
             </Alert>
           ) : (

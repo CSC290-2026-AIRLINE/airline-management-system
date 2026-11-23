@@ -85,7 +85,7 @@ function MealRadioList({
                 {p.description ? <span className="text-sm text-muted-foreground">{p.description}</span> : null}
               </span>
               <span className="shrink-0 text-sm font-medium tabular-nums">
-                {p.unitPrice === 0 ? 'Free' : formatMoney(p.unitPrice, 'USD')}
+                {p.priceLabel ?? (p.unitPrice === 0 ? 'Free' : formatMoney(p.unitPrice, 'USD'))}
               </span>
             </label>
           )

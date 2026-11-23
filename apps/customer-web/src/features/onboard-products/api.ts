@@ -225,7 +225,8 @@ const THUMB_COLOR: Record<ProductCategory, string> = {
   duty_free: '#ede9fe',
 }
 
-// The "no pre-order" choice: the passenger gets the cabin's default meal and no order line is created.
+// The "no pre-order" choice: no order line is created. On a complimentary cabin the passenger gets the included
+// default meal; on a paid cabin nothing is served unless they buy on board, so it is labelled that way.
 const DEFAULT_MEAL: Product = {
   id: 'default-meal',
   category: 'meal',
@@ -237,6 +238,16 @@ const DEFAULT_MEAL: Product = {
   thumbnailColor: THUMB_COLOR.meal,
   imageUrl: '/products/default-meal.svg',
   isDefaultChoice: true,
+}
+
+function noPreorderChoice(mealService: CabinSetting['mealService']): Product {
+  if (mealService !== 'paid') return DEFAULT_MEAL
+  return {
+    ...DEFAULT_MEAL,
+    name: 'No pre-order',
+    description: 'Meals are charged in this cabin. You can buy one on board instead.',
+    priceLabel: 'On board',
+  }
 }
 
 export interface ShopData {
@@ -279,7 +290,7 @@ export async function fetchShop(booking: Booking, flightId: string, cabin: Cabin
     }))
   const hasMeals = products.some((p) => p.category === 'meal')
   return {
-    products: hasMeals && wire.settings.mealService !== 'none' ? [DEFAULT_MEAL, ...products] : products,
+    products: hasMeals && wire.settings.mealService !== 'none' ? [noPreorderChoice(wire.settings.mealService), ...products] : products,
     setting: {
       flightId,
       cabin,

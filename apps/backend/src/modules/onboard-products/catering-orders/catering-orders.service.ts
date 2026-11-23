@@ -223,6 +223,9 @@ export class CateringOrdersService {
       throw new ApiErrorException('CATERING_VOID', 'Cannot generate a catering order for a cancelled flight.', 409)
     }
     const existing = await this.db.catering_order.findUnique({ where: { flight_id: flightId } })
+    if (existing?.status === 'void') {
+      throw new ApiErrorException('CATERING_VOID', 'Catering order is voided.', 409)
+    }
     if (existing && (existing.status === 'loaded' || existing.status === 'closed')) {
       throw new ApiErrorException('CATERING_CLOSED', 'Catering order is already loaded or closed.', 409)
     }
@@ -430,36 +433,58 @@ export class CateringOrdersService {
       }
     }
 
-    // The default meal for the passengers who did not order one. Only
-    // a complimentary cabin includes a meal.
+    // The default meal (doc, ordering step 6). A complimentary cabin
+    // plans the included meal for every passenger who ordered none. A
+    // paid cabin plans a buffer of default meals for on-board sales:
+    // onboard_buffer_percent of its passengers, rounded up.
     const summary = await this.passengerSummary([flightId])
     const passengers = summary.get(flightId)
     const defaults = await this.defaultOfferings(flightId, routeId)
     for (const cabin of CABINS) {
       const settings = resolved[cabin]
-      if (settings.mealService !== 'complimentary') continue
-      if (settings.includedPerPassenger <= 0) continue
       const productId = defaults.get(cabin)
       if (!productId) continue
       const counts = passengers?.perCabin.get(cabin)
-      const withoutMeal = Math.max(0, (counts?.passengers ?? 0) - (counts?.ordered ?? 0))
-      const required = withoutMeal * settings.includedPerPassenger
+      let required = 0
+      if (settings.mealService === 'complimentary') {
+        const withoutMeal = Math.max(0, (counts?.passengers ?? 0) - (counts?.ordered ?? 0))
+        required = withoutMeal * Math.max(0, settings.includedPerPassenger)
+      } else if (settings.mealService === 'paid') {
+        required = Math.ceil(((counts?.passengers ?? 0) * Math.max(0, settings.onboardBufferPercent ?? 0)) / 100)
+      }
       if (required <= 0) continue
       addLine(cabin, productId, required, 'default')
     }
 
-    // The shortfall against what the warehouse can still give plus what
-    // is already on the aircraft for this flight. Counting the transfers
-    // keeps a refresh after the transfer from reporting a false
-    // shortage. The stock is pooled per product, so two lines of the
-    // same product cannot both claim the same units.
+    // The shortfall (doc, step 7). The pool per product is what the
+    // warehouse can still give, plus the stock this flight's paid orders
+    // still hold (their reservation covers them, so it must not count
+    // against them), plus what is already on the aircraft for this
+    // flight (so a refresh after the transfer is not short). Lines share
+    // the pool, so two lines cannot claim the same units.
     const stockRows = await this.db.warehouse_stock.findMany({ where: { warehouse_id: warehouseId } })
     const transferred = await this.db.stock_transfer_line.findMany({
       where: { stock_transfer: { flight_id: flightId } },
       select: { product_id: true, quantity: true },
     })
+    const released = orders.length
+      ? await this.db.stock_movement.findMany({
+          where: { type: 'release', product_order_id: { in: orders.map((o) => o.id) } },
+          select: { product_order_id: true, product_id: true },
+        })
+      : []
+    const releasedKeys = new Set(released.map((r) => `${r.product_order_id}|${r.product_id}`))
     const pool = new Map(stockRows.map((s) => [s.product_id, Math.max(0, s.quantity_on_hand - s.quantity_reserved)]))
-    for (const t of transferred) pool.set(t.product_id, (pool.get(t.product_id) ?? 0) + t.quantity)
+    const add = (productId: string, quantity: number) => pool.set(productId, (pool.get(productId) ?? 0) + quantity)
+    for (const order of orders) {
+      for (const line of order.product_order_line) {
+        if (!releasedKeys.has(`${order.id}|${line.product_id}`)) add(line.product_id, line.quantity)
+      }
+    }
+    // A held reservation cannot exceed what is physically on hand.
+    const onHand = new Map(stockRows.map((s) => [s.product_id, s.quantity_on_hand]))
+    for (const [productId, left] of pool) pool.set(productId, Math.min(left, onHand.get(productId) ?? 0))
+    for (const t of transferred) add(t.product_id, t.quantity)
     return [...byKey.values()].map((line) => {
       const left = pool.get(line.productId) ?? 0
       pool.set(line.productId, Math.max(0, left - line.quantityRequired))
@@ -496,67 +521,56 @@ export class CateringOrdersService {
     return out
   }
 
-  // The passengers on a flight: the passengers of the customers with a
-  // paid order, plus the passengers who ordered a meal. F3b does not
-  // ship a passenger manifest yet, so this is what F12 can see.
+  // The passengers on each flight, per cabin, from F3b: every
+  // non-infant passenger on a confirmed booking with a segment on the
+  // flight (the doc: "confirmed passengers per flight"). "Ordered" is
+  // the passengers among them with a meal on a paid order. Both sides
+  // use booking_passenger ids, so the two counts line up.
   private async passengerSummary(flightIds: string[]): Promise<Map<string, PassengerSummary>> {
     const out = new Map<string, PassengerSummary>()
     if (flightIds.length === 0) return out
+    const segments = await this.db.booking_segment.findMany({
+      where: { flight_id: { in: flightIds }, booking: { status: 'confirmed' } },
+      select: {
+        flight_id: true,
+        cabin: true,
+        booking: { select: { booking_passenger: { where: { passenger_type: { not: 'infant' } }, select: { id: true } } } },
+      },
+    })
     const orders = await this.db.product_order.findMany({
       where: { flight_id: { in: flightIds }, status: 'confirmed' },
-      include: { product_order_line: { where: { deleted_at: null } } },
+      include: { product_order_line: { where: { deleted_at: null, category: 'meal' } } },
     })
-    if (orders.length === 0) return out
 
-    const customerIds = [...new Set(orders.map((o) => o.customer_id))]
-    const links = await this.db.customer_passenger.findMany({
-      where: { customer_id: { in: customerIds } },
-      select: { customer_id: true, passenger_id: true },
-    })
-    const perCustomer = new Map<string, Set<string>>()
-    for (const link of links) {
-      const set = perCustomer.get(link.customer_id) ?? new Set<string>()
-      set.add(link.passenger_id)
-      perCustomer.set(link.customer_id, set)
+    const key = (flightId: string, cabin: string) => `${flightId}|${cabin}`
+    const people = new Map<string, Set<string>>()
+    for (const segment of segments) {
+      const set = people.get(key(segment.flight_id, segment.cabin)) ?? new Set<string>()
+      for (const p of segment.booking.booking_passenger) set.add(p.id)
+      people.set(key(segment.flight_id, segment.cabin), set)
     }
-
-    const flightPassengers = new Map<string, Set<string>>()
-    const flightOrdered = new Map<string, Set<string>>()
-    const cabinPassengers = new Map<string, Set<string>>()
-    const cabinOrdered = new Map<string, Set<string>>()
+    const withMeal = new Map<string, Set<string>>()
     for (const order of orders) {
-      const passengers = flightPassengers.get(order.flight_id) ?? new Set<string>()
-      const ordered = flightOrdered.get(order.flight_id) ?? new Set<string>()
-      const cabinPeople = cabinPassengers.get(order.cabin) ?? new Set<string>()
-      const cabinMeals = cabinOrdered.get(order.cabin) ?? new Set<string>()
-      for (const passengerId of perCustomer.get(order.customer_id) ?? []) {
-        passengers.add(passengerId)
-        cabinPeople.add(passengerId)
-      }
+      const set = withMeal.get(key(order.flight_id, order.cabin)) ?? new Set<string>()
       for (const line of order.product_order_line) {
-        if (line.category !== 'meal' || !line.booking_passenger_id) continue
-        ordered.add(line.booking_passenger_id)
-        cabinMeals.add(line.booking_passenger_id)
+        if (line.booking_passenger_id) set.add(line.booking_passenger_id)
       }
-      flightPassengers.set(order.flight_id, passengers)
-      flightOrdered.set(order.flight_id, ordered)
-      cabinPassengers.set(order.cabin, cabinPeople)
-      cabinOrdered.set(order.cabin, cabinMeals)
+      withMeal.set(key(order.flight_id, order.cabin), set)
     }
 
     for (const flightId of flightIds) {
-      const passengers = flightPassengers.get(flightId) ?? new Set<string>()
-      const ordered = flightOrdered.get(flightId) ?? new Set<string>()
       const perCabin = new Map<string, { passengers: number; ordered: number }>()
-      for (const [cabin, people] of cabinPassengers) {
-        const meals = cabinOrdered.get(cabin) ?? new Set<string>()
-        perCabin.set(cabin, { passengers: people.size, ordered: Math.min(meals.size, people.size) })
+      let passengers = 0
+      let orderedMeals = 0
+      for (const cabin of CABINS) {
+        const onBoard = people.get(key(flightId, cabin)) ?? new Set<string>()
+        const meals = withMeal.get(key(flightId, cabin)) ?? new Set<string>()
+        const ordered = [...meals].filter((id) => onBoard.has(id)).length
+        perCabin.set(cabin, { passengers: onBoard.size, ordered })
+        passengers += onBoard.size
+        orderedMeals += ordered
       }
-      out.set(flightId, {
-        passengers: new Set([...passengers, ...ordered]).size,
-        orderedMeals: ordered.size,
-        perCabin,
-      })
+      out.set(flightId, { passengers, orderedMeals, perCabin })
     }
     return out
   }

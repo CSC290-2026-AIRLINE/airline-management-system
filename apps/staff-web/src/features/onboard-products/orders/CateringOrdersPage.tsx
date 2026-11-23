@@ -145,7 +145,7 @@ function groupByCabin(lines: CateringOrderLine[]): { cabin: Cabin | 'all'; lines
 
 // The stage changes that need an "are you sure" first. `null` means no
 // dialog is open.
-type PendingAction = 'transfer' | 'close'
+type PendingAction = 'transfer'
 
 // -- component -------------------------------------------------------------
 
@@ -291,33 +291,8 @@ export function CateringOrdersPage() {
     }
   }
 
-  async function handleCloseOut() {
-    if (selectedId == null) return
-    setBusy(true)
-    try {
-      const order = await api.orders.closeCateringOrderApi(selectedId)
-      setOrders((prev) => ({ ...prev, [selectedId]: order }))
-      await refreshFlights()
-      // The staff API has no separate close route: the order is closed
-      // out by the flight report, so say what the server answered with.
-      showToast('success', order.status === 'closed' ? 'Catering order closed out.' : 'Order confirmed as loaded.')
-    } catch (err) {
-      if (err instanceof CateringApiError) {
-        showToast('error', err.message)
-      } else {
-        const message = err instanceof Error ? err.message : 'Could not close out the order.'
-        showToast('error', message)
-      }
-    } finally {
-      setBusy(false)
-      setPendingAction(null)
-    }
-  }
-
-  // Run the action the open dialog is waiting for.
   function confirmPendingAction() {
     if (pendingAction === 'transfer') void handleTransfer()
-    else if (pendingAction === 'close') void handleCloseOut()
   }
 
   // -- derived state ------------------------------------------------------
@@ -365,13 +340,6 @@ export function CateringOrdersPage() {
           `This loads ${itemCount} item${itemCount === 1 ? '' : 's'} (${formatQuantity(totalUnits)} units) for ${flightNumber} onto the aircraft and takes them out of ` +
           `${selectedWarehouse?.name ?? 'the warehouse'}. The stock leaves the warehouse and cannot be put back from this page.`,
         confirmLabel: 'Transfer to aircraft',
-      }
-    }
-    if (pendingAction === 'close') {
-      return {
-        title: 'Close out this catering order?',
-        body: `The catering order for ${flightNumber} is marked as closed out. It cannot be reopened.`,
-        confirmLabel: 'Close out',
       }
     }
     return null
@@ -552,7 +520,13 @@ export function CateringOrdersPage() {
                       <Button type="button" disabled>
                         Loaded
                       </Button>
-                      <Button type="button" variant="outline" onClick={() => setPendingAction('close')} disabled={busy}>
+                      {/* An order is closed out by submitting the flight report (doc, step 9), so this opens it. */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void navigate({ to: '/catering/flight-report', search: { flightId: selectedFlight.id } })}
+                        disabled={busy}
+                      >
                         Close out
                       </Button>
                     </>
