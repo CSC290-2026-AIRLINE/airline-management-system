@@ -17,12 +17,15 @@ import {
   Monitor,
   Package,
   Percent,
+  Plane,
   PlaneLanding,
   PlaneTakeoff,
   Receipt,
   Route,
   ScrollText,
   Search,
+  Settings,
+  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   Sofa,
@@ -88,7 +91,6 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { label: 'Bookings & Inventory', icon: Ticket },
       { label: 'Payments & Refunds', icon: CreditCard },
-      { label: 'Cargo & Air Freight', icon: Package },
     ],
   },
   {
@@ -159,4 +161,12 @@ export const LOYALTY_ITEMS = [
   { to: '/loyalty/rules', label: 'Loyalty Rules', icon: SlidersHorizontal },
   { to: '/loyalty/award-release', label: 'Award Release', icon: Star },
   { to: '/loyalty/lounge', label: 'Lounge Desk', icon: Sofa },
+] as const
+
+/** The Feature 17 (cargo and air freight) staff pages. */
+export const CARGO_ITEMS = [
+  { to: '/cargo/bookings', label: 'Cargo desk', icon: Package },
+  { to: '/cargo/flights', label: 'Flight cargo', icon: Plane },
+  { to: '/cargo/claims', label: 'Claims', icon: ShieldAlert },
+  { to: '/cargo/settings', label: 'Rates and settings', icon: Settings },
 ] as const
