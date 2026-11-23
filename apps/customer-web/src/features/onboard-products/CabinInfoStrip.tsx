@@ -1,7 +1,6 @@
-// Single-line text strip below the banner that describes the cabin's
-// meal policy for the selected flight. Mirrors the Figma copy
-// ("Meals on this flight: {service}. {description}").
+// The cabin's meal policy for the selected flight ("Meals on this flight: {service}. {description}").
 
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
 import type { CabinSetting } from './types'
 
 interface Props {
@@ -21,8 +20,12 @@ function ledeFor(setting: CabinSetting): string {
 
 export function CabinInfoStrip({ setting }: Props) {
   return (
-    <div className="m-0 px-4 py-3 bg-card border border-border rounded-lg text-foreground text-sm leading-relaxed">
-      <strong className="font-semibold whitespace-nowrap">Meals on this flight: {setting.mealService}.</strong> {ledeFor(setting)}
-    </div>
+    <Alert>
+      <AlertDescription className="col-start-2 text-foreground">
+        <span>
+          <strong className="font-semibold">Meals on this flight: {setting.mealService}.</strong> {ledeFor(setting)}
+        </span>
+      </AlertDescription>
+    </Alert>
   )
 }

@@ -1,0 +1,214 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@theme {
+  --font-sans: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: Georgia, 'Times New Roman', serif;
+  --font-mono: ui-monospace, 'SF Mono', Consolas, monospace;
+
+  /* Flython / FlySmiles palette, from the F11 Figma file. Grey text uses shadcn's text-muted-foreground: a --color-muted
+     here would override shadcn's muted background colour app-wide. */
+  --color-ink: #0a1424;
+  --color-line: #e0e5ed;
+  --color-divider: #e8edf3;
+  --color-field: #dbe2ea;
+  --color-navy: #13264a;
+  --color-link: #1f408c;
+  --color-teal: #0e7490;
+  --color-mint: #d5f1f2;
+  --color-soft: #f7f9fc;
+  --color-canvas: #f6f8fc;
+  --color-gold: #c9a227;
+  --color-gold-ink: #6b4e00;
+  --color-ok: #087338;
+  --color-warn: #995c05;
+  --color-danger: #b42318;
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  /* Tailwind v4's reset leaves buttons with `cursor: default`. Clickable things get a pointer, disabled ones a not-allowed cursor. */
+  :is(
+    button,
+    select,
+    summary,
+    label[for],
+    a[href],
+    input:is([type='checkbox'], [type='radio'], [type='submit'], [type='button'], [type='reset'], [type='file']),
+    [role='button'],
+    [role='tab'],
+    [role='radio'],
+    [role='checkbox'],
+    [role='switch'],
+    [role='combobox'],
+    [role='option'],
+    [role='menuitem'],
+    [role='menuitemcheckbox'],
+    [role='menuitemradio']
+  ):not(:disabled, [aria-disabled='true'], [data-disabled]) {
+    cursor: pointer;
+  }
+
+  :is(button, select, input, textarea):disabled,
+  [aria-disabled='true'],
+  [data-disabled] {
+    cursor: not-allowed;
+  }
+}
+
+/* Starter-template styles from before shadcn. Kept in the base layer so Tailwind utilities override them. */
+@layer base {
+  :root {
+    --text: #6b6375;
+    --text-h: #08060d;
+    --bg: #fff;
+    --legacy-border: #e5e4e7;
+    --code-bg: #f4f3ec;
+    --legacy-accent: #aa3bff;
+    --accent-bg: rgba(170, 59, 255, 0.1);
+    --accent-border: rgba(170, 59, 255, 0.5);
+    --social-bg: rgba(244, 243, 236, 0.5);
+    --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+
+    --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+    --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+    --mono: ui-monospace, Consolas, monospace;
+
+    font: 18px/145% var(--sans);
+    letter-spacing: 0.18px;
+    color-scheme: light;
+    color: var(--text);
+    background: var(--bg);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+
+    @media (max-width: 1024px) {
+      font-size: 16px;
+    }
+  }
+
+  #root {
+    width: 100%;
+    text-align: center;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+  }
+
+  /* Pages marked data-full-bleed (the Feature 11 loyalty pages) fill the window and lay out from the left. */
+  #root:has([data-full-bleed]) {
+    width: auto;
+    border-inline: 0;
+    text-align: left;
+  }
+
+  /* Customer pages that own their own full-bleed shell, like the staff shell does. */
+  #root:has(.f3-customer-layout) {
+    width: 100%;
+    border-inline: 0;
+    text-align: left;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  h1,
+  h2 {
+    font-family: var(--heading);
+    font-weight: 500;
+    color: var(--text-h);
+  }
+
+  h1 {
+    font-size: 56px;
+    letter-spacing: -1.68px;
+    margin: 32px 0;
+    @media (max-width: 1024px) {
+      font-size: 36px;
+      margin: 20px 0;
+    }
+  }
+  h2 {
+    font-size: 24px;
+    line-height: 118%;
+    letter-spacing: -0.24px;
+    margin: 0 0 8px;
+    @media (max-width: 1024px) {
+      font-size: 20px;
+    }
+  }
+  p {
+    margin: 0;
+  }
+
+  code,
+  .counter {
+    font-family: var(--mono);
+    display: inline-flex;
+    border-radius: 4px;
+    color: var(--text-h);
+  }
+
+  code {
+    font-size: 15px;
+    line-height: 135%;
+    padding: 4px 8px;
+    background: var(--code-bg);
+  }
+}

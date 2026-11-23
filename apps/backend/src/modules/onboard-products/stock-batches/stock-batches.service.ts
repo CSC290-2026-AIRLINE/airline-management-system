@@ -59,10 +59,19 @@ export class StockBatchesService {
       const writtenOff: StockBatchDto[] = []
       for (const batch of rows) {
         await tx.stock_batch.update({ where: { id: batch.id }, data: { quantity_remaining: 0 } })
-        await tx.warehouse_stock.update({
-          where: { warehouse_id_product_id: { warehouse_id: batch.warehouse_id, product_id: batch.product_id } },
-          data: { quantity_on_hand: { decrement: batch.quantity_remaining } },
-        })
+        // Expired stock is gone even when orders hold it. If on hand
+        // drops below reserved, the reservation is cut to what is left
+        // (the check constraint needs reserved <= on hand); the paid
+        // orders then show as short on the catering order. One UPDATE,
+        // because the constraint is checked per statement.
+        await tx.$executeRaw`
+          UPDATE warehouse_stock
+          SET quantity_on_hand = quantity_on_hand - ${batch.quantity_remaining},
+              quantity_reserved = LEAST(quantity_reserved, quantity_on_hand - ${batch.quantity_remaining}),
+              updated_at = now()
+          WHERE warehouse_id = ${batch.warehouse_id}::uuid
+            AND product_id = ${batch.product_id}::uuid
+        `
         await tx.stock_movement.create({
           data: {
             product_id: batch.product_id,
@@ -80,9 +89,10 @@ export class StockBatchesService {
       }
       await this.audit.record(
         {
-          actorType: 'staff',
+          // The scheduled job calls this with no staff id.
+          actorType: staffId ? 'staff' : 'system',
           actorId: staffId,
-          actorRole: 'catering',
+          actorRole: staffId ? 'catering' : null,
           sourceFeature: 'onboard-products',
           action: 'stock_batch.write_off_expired',
           entityType: 'stock_batch',

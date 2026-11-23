@@ -6,16 +6,18 @@ import { useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { ProductInUseError, useOnboardApi } from '@staff-web/features/onboard-products/api'
 import type { Product, ProductCategory, SpecialMealCode } from '@staff-web/features/onboard-products/api/types'
-import {
-  ConfirmDeleteDialog,
-  KebabMenu,
-  PhotoPlaceholder,
-  ProductDialog,
-  Toast,
-  type ToastData,
-  type ToastKind,
-} from '@staff-web/features/onboard-products/catalog'
-import styles from './CatalogPage.module.css'
+import { Plus } from 'lucide-react'
+import { toast } from 'sonner'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Badge } from '@staff-web/components/ui/badge'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
+import { Switch } from '@staff-web/components/ui/switch'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
+import { PageHeader, StatCard } from '@staff-web/features/onboard-products/ui'
+import { ConfirmDeleteDialog, KebabMenu, PhotoPlaceholder, ProductDialog } from '@staff-web/features/onboard-products/catalog'
 
 type Filter = 'all' | 'meals' | 'snacks-and-drinks' | 'duty-free'
 
@@ -42,10 +44,6 @@ function matchesFilter(p: Product, filter: Filter): boolean {
   return p.category === 'duty_free'
 }
 
-function nextToastId(): number {
-  return Date.now() + Math.floor(Math.random() * 1000)
-}
-
 export const Route = createFileRoute('/_authenticated/catering/catalog')({
   component: CatalogPage,
 })
@@ -62,7 +60,6 @@ function CatalogPage() {
   const [deleting, setDeleting] = useState<Product | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [toast, setToast] = useState<ToastData | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -98,8 +95,9 @@ function CatalogPage() {
 
   const filtered = useMemo(() => products.filter((p) => matchesFilter(p, filter)), [products, filter])
 
-  function showToast(kind: ToastKind, message: string) {
-    setToast({ id: nextToastId(), kind, message })
+  function showToast(kind: 'success' | 'error', message: string) {
+    if (kind === 'success') toast.success(message)
+    else toast.error(message)
   }
 
   async function handleToggle(product: Product) {
@@ -148,109 +146,105 @@ function CatalogPage() {
   }
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Product Catalog</h1>
-          <p className={styles.subtitle}>
-            Meals, snacks, drinks and duty-free items with their prices. What each route offers is set under Offered menu.
-          </p>
-        </div>
-      </header>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Product Catalog"
+        description="Meals, snacks, drinks and duty-free items with their prices. What each route offers is set under Offered menu."
+      />
 
-      {toast && <Toast toast={toast} onDismiss={() => setToast(null)} />}
-
-      <section className={styles.stats} aria-label="Catalog stats">
+      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Catalog stats">
         <StatCard label="Products" value={stats.products} />
         <StatCard label="Active" value={stats.active} />
         <StatCard label="Premium meals" value={stats.premiumMeals} />
         <StatCard label="Special meal codes" value={stats.specialMealCodes} />
       </section>
 
-      <div className={styles.controls}>
-        <div className={styles.pills} role="tablist" aria-label="Filter products by category">
-          {(
-            [
-              { id: 'all', label: 'All' },
-              { id: 'meals', label: 'Meals' },
-              { id: 'snacks-and-drinks', label: 'Snacks and drinks' },
-              { id: 'duty-free', label: 'Duty-free' },
-            ] as const
-          ).map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              role="tab"
-              aria-selected={filter === opt.id}
-              className={`${styles.pill} ${filter === opt.id ? styles.pillActive : ''}`}
-              onClick={() => setFilter(opt.id)}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        <button type="button" className={styles.addButton} onClick={() => setDialogState({ mode: 'add' })}>
-          + Add product
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Tabs value={filter} onValueChange={(value) => setFilter(value as Filter)}>
+          <TabsList aria-label="Filter products by category" className="h-auto flex-wrap justify-start">
+            {(
+              [
+                { id: 'all', label: 'All' },
+                { id: 'meals', label: 'Meals' },
+                { id: 'snacks-and-drinks', label: 'Snacks and drinks' },
+                { id: 'duty-free', label: 'Duty-free' },
+              ] as const
+            ).map((opt) => (
+              <TabsTrigger key={opt.id} value={opt.id} className="px-4 py-2">
+                {opt.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <Button type="button" onClick={() => setDialogState({ mode: 'add' })}>
+          <Plus aria-hidden="true" />
+          Add product
+        </Button>
       </div>
 
-      <div className={styles.card}>
-        <div className={styles.cardHeader}>
-          <h2 className={styles.cardTitle}>Products</h2>
-          <p className={styles.cardSubtitle}>
+      <Card className="gap-4">
+        <CardHeader>
+          <CardTitle>Products</CardTitle>
+          <CardDescription>
             Switch a product off to hide it from the shop, or delete it for good. Existing orders keep their name and price.
-          </p>
-        </div>
-
-        {loading ? (
-          <p className={styles.message}>Loading products…</p>
-        ) : loadError ? (
-          <p className={styles.errorMessage} role="alert">
-            {loadError}
-          </p>
-        ) : filtered.length === 0 ? (
-          <p className={styles.message}>No products in this filter. Try a different category or add a new one.</p>
-        ) : (
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th scope="col" className={styles.thPhoto}>
-                    Photo
-                  </th>
-                  <th scope="col">Name</th>
-                  <th scope="col">Category</th>
-                  <th scope="col">Type code</th>
-                  <th scope="col" className={styles.thPrice}>
-                    Price
-                  </th>
-                  <th scope="col">Status</th>
-                  <th scope="col" className={styles.thActions}>
-                    <span className={styles.srOnly}>Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex flex-col gap-2" aria-busy="true">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          ) : loadError ? (
+            <Alert variant="destructive" role="alert">
+              <AlertDescription>{loadError}</AlertDescription>
+            </Alert>
+          ) : filtered.length === 0 ? (
+            <p className="m-0 py-8 text-center text-sm text-muted-foreground">
+              No products in this filter. Try a different category or add a new one.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-16">Photo</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Type code</TableHead>
+                  <TableHead className="text-right">Price</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-12">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filtered.map((p) => (
-                  <tr key={p.id} className={styles.row}>
-                    <td className={styles.tdPhoto}>
+                  <TableRow key={p.id}>
+                    <TableCell>
                       <PhotoPlaceholder product={p} />
-                    </td>
-                    <td>
-                      <span className={styles.name}>{p.name}</span>
-                      {p.isPremium && <span className={styles.premiumBadge}>Premium</span>}
-                    </td>
-                    <td>{CATEGORY_LABEL[p.category]}</td>
-                    <td>{TYPE_CODE_LABEL[p.typeCode]}</td>
-                    <td className={styles.tdPrice}>{formatPrice(p.priceAmount)}</td>
-                    <td>
-                      <StatusSwitch
-                        isActive={p.isActive}
-                        onToggle={() => void handleToggle(p)}
-                        ariaLabel={`Switch ${p.name} ${p.isActive ? 'off' : 'on'}`}
-                      />
-                    </td>
-                    <td className={styles.tdActions}>
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      <span className="inline-flex flex-wrap items-center gap-2">
+                        {p.name}
+                        {p.isPremium && <Badge variant="secondary">Premium</Badge>}
+                      </span>
+                    </TableCell>
+                    <TableCell>{CATEGORY_LABEL[p.category]}</TableCell>
+                    <TableCell>{p.typeCode === 'STD' ? '-' : <Badge variant="outline">{TYPE_CODE_LABEL[p.typeCode]}</Badge>}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatPrice(p.priceAmount)}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                        <Switch
+                          checked={p.isActive}
+                          onCheckedChange={() => void handleToggle(p)}
+                          aria-label={`Switch ${p.name} ${p.isActive ? 'off' : 'on'}`}
+                        />
+                        {p.isActive ? 'Active' : 'Off'}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
                       <KebabMenu
                         label={`Actions for ${p.name}`}
                         actions={[
@@ -265,14 +259,14 @@ function CatalogPage() {
                           },
                         ]}
                       />
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
       {dialogState.mode !== 'closed' && (
         <ProductDialog
@@ -297,33 +291,6 @@ function CatalogPage() {
         />
       )}
     </div>
-  )
-}
-
-function StatCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div className={styles.statCard}>
-      <p className={styles.statLabel}>{label}</p>
-      <p className={styles.statValue}>{value}</p>
-    </div>
-  )
-}
-
-function StatusSwitch({ isActive, onToggle, ariaLabel }: { isActive: boolean; onToggle: () => void; ariaLabel: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={isActive}
-      aria-label={ariaLabel}
-      className={`${styles.statusSwitch} ${isActive ? styles.statusOn : styles.statusOff}`}
-      onClick={onToggle}
-    >
-      <span className={styles.statusTrack} aria-hidden="true">
-        <span className={styles.statusThumb} />
-      </span>
-      <span className={styles.statusLabel}>{isActive ? 'Active' : 'Off'}</span>
-    </button>
   )
 }
 

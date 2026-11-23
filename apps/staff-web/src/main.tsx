@@ -2,6 +2,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ClerkProvider, useAuth } from '@clerk/clerk-react'
 import { RouterProvider } from '@tanstack/react-router'
+import './index.css'
+import './App.css'
+// Last, so shadcn's --border and --accent win over the same names in index.css.
 import './globals.css'
 import { router } from './router'
 

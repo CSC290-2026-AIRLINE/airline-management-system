@@ -1,6 +1,6 @@
 // Top-of-page green success notice shown on the Booking Details page
 // after a customer just paid for an order. Matches the Figma's Page 8
-// "Order PO-2052 confirmed. Your items are loaded for the flight."
+// "Order PO-2052 confirmed. Your items are reserved and will be served on board."
 // banner.
 //
 // Renders nothing when `orderId` is null (the unpreseted Booking
@@ -23,7 +23,7 @@ export function OrderConfirmedNotice({ orderId }: Props) {
       role="status"
     >
       <p className="m-0">
-        <strong className="font-semibold">Order {orderId} confirmed.</strong> Your items are loaded for the flight.
+        <strong className="font-semibold">Order {orderId} confirmed.</strong> Your items are reserved and will be served on board.
       </p>
     </div>
   )

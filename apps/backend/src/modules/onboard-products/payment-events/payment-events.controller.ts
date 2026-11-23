@@ -6,6 +6,8 @@
 // applies so the error envelope is the spec-mandated one.
 
 import { Body, Controller, HttpCode, Post, UseFilters } from '@nestjs/common'
+import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
+import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { F12ExceptionFilter } from '../common/exception.filter'
 import { PaymentEventsService } from './payment-events.service'
 
@@ -16,7 +18,7 @@ export class PaymentEventsController {
 
   @Post()
   @HttpCode(200)
-  async handle(@Body() body: unknown) {
-    return this.events.handle(body)
+  async handle(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
+    return this.events.handle(body, user?.id)
   }
 }

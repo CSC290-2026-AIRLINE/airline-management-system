@@ -5,6 +5,11 @@
 // "Default meal" pseudo-product is rendered with the catalogue's
 // thumbnailColor (a green tint in the dev mock) to match the Figma.
 
+import { Minus, Plus } from 'lucide-react'
+import { Badge } from '@customer-web/components/ui/badge'
+import { Button } from '@customer-web/components/ui/button'
+import { RadioGroup, RadioGroupItem } from '@customer-web/components/ui/radio-group'
+import { cn } from '@customer-web/lib/utils'
 import type { Product } from './types'
 import { formatMoney } from './format'
 
@@ -12,7 +17,6 @@ interface Props {
   products: Product[]
   selectedMealProductId: string | null
   quantities: Map<string, number>
-  passengerFirstName: string
   currency: string
   onSelectMeal: (productId: string) => void
   onAddOne: (productId: string) => void
@@ -28,8 +32,8 @@ export function ProductList(props: Props) {
       <MealRadioList
         products={props.products}
         selectedId={props.selectedMealProductId}
-        passengerFirstName={props.passengerFirstName}
         onSelect={props.onSelectMeal}
+        currency={props.currency}
         disabled={!!props.disabled}
       />
     )
@@ -49,72 +53,47 @@ export function ProductList(props: Props) {
 function MealRadioList({
   products,
   selectedId,
-  passengerFirstName,
   onSelect,
+  currency,
   disabled,
 }: {
   products: Product[]
   selectedId: string | null
-  passengerFirstName: string
   onSelect: (id: string) => void
+  currency: string
   disabled: boolean
 }) {
   return (
-    <div className="border-t border-[#e8edf3] flex flex-col">
-      <div className="bg-[#f8fafc] text-muted-foreground font-sans text-xs font-semibold tracking-[0.48px] uppercase px-6 py-2.5 border-b border-[#e8edf3]">
-        Meal for {passengerFirstName.toUpperCase()}
-      </div>
-      <div
-        className="bg-[#f8fafc] grid items-center gap-3.5 px-6 py-2 text-muted-foreground text-xs font-semibold tracking-[0.48px] uppercase border-b border-[#e8edf3]"
-        style={{ gridTemplateColumns: '22px 64px minmax(0, 1fr) 64px 72px' }}
-        aria-hidden="true"
-      >
-        <span />
-        <span />
-        <span className="whitespace-nowrap text-left">Meal</span>
-        <span className="whitespace-nowrap text-left">Type</span>
-        <span className="whitespace-nowrap text-right">Price</span>
-      </div>
-      {products.map((p) => {
-        const isSelected = p.id === selectedId
-        return (
-          <button
-            key={p.id}
-            type="button"
-            role="radio"
-            aria-checked={isSelected}
-            data-selected={isSelected}
-            className="grid items-center gap-3.5 px-6 py-3 bg-white border-0 border-b border-[#e8edf3] text-left font-sans text-inherit cursor-pointer w-full relative transition-colors hover:bg-[#f8fafc] focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[-2px] disabled:opacity-60 disabled:cursor-not-allowed data-[selected=true]:bg-[#e8eef7] data-[selected=true]:hover:bg-[#e8eef7] before:content-[''] before:absolute before:left-0 before:top-[-1px] before:bottom-[-1px] before:w-[3px] data-[selected=true]:before:bg-primary"
-            style={{ gridTemplateColumns: '22px 64px minmax(0, 1fr) 64px 72px' }}
-            onClick={() => onSelect(p.id)}
-            disabled={disabled}
-          >
-            <span
-              className="w-[22px] h-[22px] rounded-[11px] border-2 bg-white inline-flex items-center justify-center flex-none data-[selected=true]:border-primary"
-              data-selected={isSelected}
-              aria-hidden="true"
+    <div className="flex flex-col border-t">
+      <RadioGroup value={selectedId ?? ''} onValueChange={(value) => onSelect(String(value))} disabled={disabled} className="gap-0">
+        {products.map((p) => {
+          const isSelected = p.id === selectedId
+          return (
+            <label
+              key={p.id}
+              className={cn(
+                'flex cursor-pointer items-center gap-3 border-b px-4 py-3 transition-colors hover:bg-muted sm:px-6',
+                isSelected && 'bg-secondary hover:bg-secondary',
+                disabled && 'cursor-not-allowed opacity-60',
+              )}
             >
-              {isSelected && <span className="w-2.5 h-2.5 rounded-full bg-primary" />}
-            </span>
-            <ProductThumb imageUrl={p.imageUrl} color={p.thumbnailColor} />
-            <span className="flex flex-col min-w-0">
-              <span className="flex items-center gap-1.5">
-                <span className="text-foreground text-sm font-semibold whitespace-nowrap overflow-hidden text-ellipsis">{p.name}</span>
-                {p.isPremium && (
-                  <span className="bg-[#fff4db] text-[#8a5300] font-mono text-[11px] font-normal rounded-md px-1.5 py-0.5 whitespace-nowrap">
-                    Premium
-                  </span>
-                )}
+              <RadioGroupItem value={p.id} />
+              <ProductThumb imageUrl={p.imageUrl} color={p.thumbnailColor} />
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="text-sm font-semibold">{p.name}</span>
+                  {p.isPremium ? <Badge variant="warning">Premium</Badge> : null}
+                  {p.typeCode ? <Badge variant="outline">{p.typeCode}</Badge> : null}
+                </span>
+                {p.description ? <span className="text-sm text-muted-foreground">{p.description}</span> : null}
               </span>
-              <span className="text-muted-foreground text-[13px] leading-[1.4] mt-0.5 line-clamp-1">{p.description}</span>
-            </span>
-            <span className="font-mono text-xs font-normal text-[#1d4ed8] whitespace-nowrap">{p.typeCode ?? ''}</span>
-            <span className="font-mono text-sm font-medium text-primary tabular-nums text-right whitespace-nowrap">
-              {p.unitPrice === 0 ? 'Free' : formatMoney(p.unitPrice, 'USD')}
-            </span>
-          </button>
-        )
-      })}
+              <span className="shrink-0 text-sm font-medium tabular-nums">
+                {p.priceLabel ?? (p.unitPrice === 0 ? 'Free' : formatMoney(p.unitPrice, currency))}
+              </span>
+            </label>
+          )
+        })}
+      </RadioGroup>
     </div>
   )
 }
@@ -135,92 +114,80 @@ function AddonTableList({
   disabled: boolean
 }) {
   return (
-    <div className="flex flex-col border-y border-[#e8edf3]">
-      <div
-        className="grid items-center gap-3.5 px-6 py-2 bg-[#f8fafc] text-muted-foreground text-xs font-semibold tracking-[0.48px] uppercase border-b border-[#e8edf3]"
-        style={{ gridTemplateColumns: '64px minmax(0, 1fr) 72px 120px' }}
-        role="row"
-      >
-        <span aria-hidden="true" />
-        <span className="min-w-0 text-left">Item</span>
-        <span className="min-w-0 text-right">Price</span>
-        <span className="min-w-0 text-right">Quantity</span>
-      </div>
-      <ul className="list-none m-0 p-0 flex flex-col">
-        {products.map((p) => {
-          const qty = quantities.get(p.id) ?? 0
-          return (
-            <li
-              key={p.id}
-              className="grid items-center gap-3.5 px-6 py-3 bg-white border-0 border-b border-[#e8edf3]"
-              style={{ gridTemplateColumns: '64px minmax(0, 1fr) 72px 120px' }}
-            >
-              <ProductThumb imageUrl={p.imageUrl} color={p.thumbnailColor} />
-              <span className="flex flex-col min-w-0 text-left">
-                <span className="text-foreground text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">{p.name}</span>
-                <span className="text-muted-foreground text-[13px] leading-[1.4] mt-0.5 line-clamp-1">{p.description}</span>
-              </span>
-              <span className="text-primary font-mono text-sm font-medium tabular-nums text-right">
-                {p.unitPrice === 0 ? 'Free' : formatMoney(p.unitPrice, currency)}
-              </span>
-              <span className="flex justify-end items-center">
-                {qty > 0 ? (
-                  <span
-                    className="inline-flex items-center gap-1 border border-primary rounded-full p-0.5 bg-[#e8eef7] data-[disabled=true]:opacity-55 data-[disabled=true]:pointer-events-none"
-                    data-disabled={disabled || undefined}
-                  >
-                    <button
-                      type="button"
-                      className="w-8 h-8 inline-flex items-center justify-center bg-white border-0 rounded-full font-sans text-lg font-medium text-primary cursor-pointer p-0 leading-none hover:bg-[#f8fafc] focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-1"
-                      aria-label={`Remove one ${p.name}`}
-                      onClick={() => onRemove(p.id)}
-                      disabled={disabled}
-                    >
-                      −
-                    </button>
-                    <span className="min-w-6 text-center text-primary font-mono text-sm font-medium tabular-nums" aria-live="polite">
-                      {qty}
-                    </span>
-                    <button
-                      type="button"
-                      className="w-8 h-8 inline-flex items-center justify-center bg-primary border-0 rounded-full font-sans text-lg font-medium text-white cursor-pointer p-0 leading-none hover:bg-[#1c3556] focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-1"
-                      aria-label={`Add one more ${p.name}`}
-                      onClick={() => onAdd(p.id)}
-                      disabled={disabled}
-                    >
-                      +
-                    </button>
-                  </span>
-                ) : (
-                  <button
+    <ul className="m-0 flex list-none flex-col border-t p-0">
+      {products.map((p) => {
+        const qty = quantities.get(p.id) ?? 0
+        return (
+          <li key={p.id} className="flex flex-wrap items-center gap-3 border-b px-4 py-3 sm:px-6">
+            <ProductThumb imageUrl={p.imageUrl} color={p.thumbnailColor} />
+            <span className="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
+              <span className="text-sm font-medium">{p.name}</span>
+              {p.description ? <span className="text-sm text-muted-foreground">{p.description}</span> : null}
+            </span>
+            <span className="shrink-0 text-sm font-medium tabular-nums">
+              {p.unitPrice === 0 ? 'Free' : formatMoney(p.unitPrice, currency)}
+            </span>
+            <span className="flex w-28 shrink-0 justify-end">
+              {qty > 0 ? (
+                <span className="inline-flex items-center gap-1 rounded-full border bg-secondary p-0.5">
+                  <Button
                     type="button"
-                    className="inline-flex items-center justify-center gap-1.5 rounded-full px-[18px] py-2 text-sm font-semibold bg-primary text-primary-foreground border border-primary hover:bg-[#1c3556] focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                    onClick={() => onAdd(p.id)}
-                    aria-label={`Add ${p.name}`}
+                    variant="outline"
+                    size="icon-sm"
+                    className="rounded-full"
+                    aria-label={`Remove one ${p.name}`}
+                    onClick={() => onRemove(p.id)}
                     disabled={disabled}
                   >
-                    Add
-                  </button>
-                )}
-              </span>
-            </li>
-          )
-        })}
-      </ul>
-    </div>
+                    <Minus />
+                  </Button>
+                  <span className="min-w-6 text-center text-sm font-medium tabular-nums" aria-live="polite">
+                    {qty}
+                  </span>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    className="rounded-full"
+                    aria-label={`Add one more ${p.name}`}
+                    onClick={() => onAdd(p.id)}
+                    disabled={disabled}
+                  >
+                    <Plus />
+                  </Button>
+                </span>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="rounded-full px-4"
+                  aria-label={`Add ${p.name}`}
+                  onClick={() => onAdd(p.id)}
+                  disabled={disabled}
+                >
+                  Add
+                </Button>
+              )}
+            </span>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
-// 48×48 product thumbnail. When the product has an illustration URL,
-// render it inside a 72×40 frame so the wider artwork extends past the
-// rounded clip (matching the Figma's "Illustration" layer). When
-// `imageUrl` is null, fall back to the placeholder color.
+// Product thumbnail, shown only when the product has a photo.
 function ProductThumb({ imageUrl, color }: { imageUrl: string | null; color: string }) {
+  // No photo yet: show nothing rather than an empty colour block.
+  if (!imageUrl) return null
   return (
-    <span className="relative inline-block w-12 h-12 rounded-md flex-none overflow-hidden" style={{ background: color }} aria-hidden="true">
+    <span
+      className="relative hidden size-12 flex-none overflow-hidden rounded-md sm:inline-block"
+      style={{ background: color }}
+      aria-hidden="true"
+    >
       {imageUrl ? (
         <img
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 block pointer-events-none"
+          className="pointer-events-none absolute top-1/2 left-1/2 block -translate-x-1/2 -translate-y-1/2"
           src={imageUrl}
           alt=""
           width={72}

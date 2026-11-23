@@ -32,6 +32,14 @@ export interface FlightReportApi {
   deleteFlightSaleApi: (flightId: string, saleId: string) => Promise<void>
   listReportableFlights: () => Promise<ReportableFlight[]>
   getAircraftStock: (aircraftId: string) => Promise<ReturnType<typeof mapAircraftStockRow>[]>
+  // The resolved meal policy of each cabin on the flight (GET /api/staff/flights/:flightId/cabin-settings).
+  getFlightMealPolicy: (flightId: string) => Promise<FlightMealPolicy[]>
+}
+
+export interface FlightMealPolicy {
+  cabin: string
+  mealService: 'complimentary' | 'paid' | 'none'
+  includedPerPassenger: number
 }
 
 function rethrow(err: unknown, fallback: FlightReportApiError): never {
@@ -128,6 +136,22 @@ export function createFlightReportApi(client: ApiClient): FlightReportApi {
           .map((r) => mapReportableFlight(r as never))
       } catch (err) {
         rethrow(err, new FlightReportApiError('UNKNOWN', 'Could not load reportable flights.', 0))
+      }
+    },
+    async getFlightMealPolicy(flightId) {
+      try {
+        requireId('GET /api/staff/flights/:flightId/cabin-settings', 'flightId', flightId)
+        const wire = await client.get<Record<string, { mealService: FlightMealPolicy['mealService']; includedPerPassenger: number }>>(
+          `/api/staff/flights/${flightId}/cabin-settings`,
+        )
+        return Object.entries(wire ?? {}).map(([cabin, s]) => ({
+          cabin,
+          mealService: s.mealService,
+          includedPerPassenger: Number(s.includedPerPassenger ?? 0),
+        }))
+      } catch (err) {
+        if (err instanceof MissingIdError) return []
+        rethrow(err, new FlightReportApiError('UNKNOWN', 'Could not load the meal policy.', 0))
       }
     },
     async getAircraftStock(aircraftId) {

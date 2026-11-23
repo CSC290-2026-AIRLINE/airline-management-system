@@ -1,54 +1,44 @@
-// Small confirmation dialog used before deleting a product. Shows the
-// product name and refuses with a custom message when PRODUCT_IN_USE comes back.
+// Confirmation before deleting a product. Shows the product name and the PRODUCT_IN_USE message when the delete is refused.
 
-import { useRef } from 'react'
-import { useDialogFocusTrap } from './useDialogFocusTrap'
-import styles from './ProductDialog.module.css'
-import sharedStyles from './ConfirmDeleteDialog.module.css'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 import type { Product } from '../api/types'
 
 interface Props {
   product: Product
   busy: boolean
   errorMessage: string | null
+  /** What the delete does. Defaults to the product wording. */
+  description?: string
   onClose: () => void
   onConfirm: () => void
 }
 
-export function ConfirmDeleteDialog({ product, busy, errorMessage, onClose, onConfirm }: Props) {
-  const dialogRef = useRef<HTMLDivElement | null>(null)
-  useDialogFocusTrap(true, dialogRef, onClose)
-
+export function ConfirmDeleteDialog({ product, busy, errorMessage, description, onClose, onConfirm }: Props) {
   return (
-    <div className={styles.backdrop} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div
-        ref={dialogRef}
-        className={sharedStyles.dialog}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="cd-title"
-        aria-describedby="cd-desc"
-      >
-        <h2 id="cd-title" className={sharedStyles.title}>
-          Delete {product.name}?
-        </h2>
-        <p id="cd-desc" className={sharedStyles.body}>
-          This removes the product from the catalog. Existing orders keep their name and price.
-        </p>
+    <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
+      <DialogContent showCloseButton={false} className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete {product.name}?</DialogTitle>
+          <DialogDescription>
+            {description ?? 'This removes the product from the catalog. Existing orders keep their name and price.'}
+          </DialogDescription>
+        </DialogHeader>
         {errorMessage && (
-          <p className={sharedStyles.error} role="alert">
-            {errorMessage}
-          </p>
+          <Alert variant="destructive" role="alert">
+            <AlertDescription>{errorMessage}</AlertDescription>
+          </Alert>
         )}
-        <div className={sharedStyles.footer}>
-          <button type="button" className={styles.cancelButton} onClick={onClose} disabled={busy}>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
             Cancel
-          </button>
-          <button type="button" className={sharedStyles.deleteButton} onClick={onConfirm} disabled={busy}>
+          </Button>
+          <Button type="button" variant="destructive" onClick={onConfirm} disabled={busy}>
             {busy ? 'Deleting…' : 'Delete'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

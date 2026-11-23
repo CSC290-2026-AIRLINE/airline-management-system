@@ -1,0 +1,141 @@
+import type { BookingTransaction, ServiceRequestInput } from '../contracts'
+import { AssistanceService } from './assistance.service'
+
+describe('AssistanceService', () => {
+  const now = new Date('2026-11-01T00:00:00Z')
+  const passenger = { findFirst: jest.fn() }
+  const segment = { findMany: jest.fn() }
+  const flight = { findMany: jest.fn() }
+  const seat = { findMany: jest.fn() }
+  const requests = { create: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn() }
+  const tx = {
+    $queryRaw: jest.fn(),
+    booking_passenger: passenger,
+    booking_segment: segment,
+    flight,
+    seat_assignment: seat,
+    booking_service_request: requests,
+  } as unknown as BookingTransaction
+  const maps = { getSeatMap: jest.fn() }
+  const service = new AssistanceService({ now: () => now }, maps)
+  const input: ServiceRequestInput = {
+    bookingId: 'booking',
+    bookingPassengerId: 'passenger',
+    bookingSegmentId: 'segment',
+    serviceCode: 'WCHR',
+    requestedAt: now,
+  }
+
+  beforeEach(() => {
+    jest.resetAllMocks()
+    passenger.findFirst.mockResolvedValue({ passenger: { date_of_birth: new Date('2018-06-01T00:00:00Z') } })
+    segment.findMany.mockResolvedValue([{ id: 'segment', flight_id: 'flight' }])
+    flight.findMany.mockResolvedValue([
+      { id: 'flight', dep_at: new Date('2026-11-04T00:00:00Z'), service_date: new Date('2026-11-04T00:00:00Z') },
+    ])
+    seat.findMany.mockResolvedValue([])
+    requests.create.mockResolvedValue({})
+    requests.findFirst.mockResolvedValue(null)
+    requests.findUnique.mockResolvedValue({ id: 'request', status: 'requested' })
+    requests.updateMany.mockResolvedValue({ count: 1 })
+  })
+
+  it('creates a requested assistance record using the booking clock', async () => {
+    await service.createForHold(tx, [input])
+    expect(requests.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: 'requested', service_code: 'WCHR', requested_at: now }),
+    })
+  })
+
+  it('rejects requests that miss their lead time', async () => {
+    flight.findMany.mockResolvedValue([{ id: 'flight', dep_at: new Date('2026-11-01T23:00:00Z'), service_date: now }])
+    await expect(service.createForHold(tx, [input])).rejects.toMatchObject({ code: 'ASSISTANCE_TOO_LATE' })
+    expect(requests.create).not.toHaveBeenCalled()
+  })
+
+  it('requires a medical note and validates unaccompanied minor age', async () => {
+    await expect(service.createForHold(tx, [{ ...input, serviceCode: 'MEDA', note: '  ' }])).rejects.toThrow('note')
+    passenger.findFirst.mockResolvedValue({ passenger: { date_of_birth: new Date('2000-01-01T00:00:00Z') } })
+    await expect(service.createForHold(tx, [{ ...input, serviceCode: 'UMNR', note: 'Guardian contact' }])).rejects.toThrow('aged 5–11')
+  })
+
+  it('rejects an assistance request if the passenger already holds an exit-row seat', async () => {
+    seat.findMany.mockResolvedValue([{ flight_id: 'flight', seat_code: '12A' }])
+    maps.getSeatMap.mockResolvedValue({ rows: [{ seats: [{ seatCode: '12A', type: 'exit' }] }] })
+    await expect(service.createForHold(tx, [input])).rejects.toMatchObject({ code: 'SEAT_NOT_ALLOWED' })
+    expect(requests.create).not.toHaveBeenCalled()
+  })
+
+  it('loads each flight layout only once when checking held seats', async () => {
+    seat.findMany.mockResolvedValue([
+      { flight_id: 'flight', seat_code: '1A' },
+      { flight_id: 'flight', seat_code: '1B' },
+    ])
+    maps.getSeatMap.mockResolvedValue({
+      rows: [
+        {
+          seats: [
+            { seatCode: '1A', type: 'standard' },
+            { seatCode: '1B', type: 'standard' },
+          ],
+        },
+      ],
+    })
+    await service.createForHold(tx, [input])
+    expect(maps.getSeatMap).toHaveBeenCalledTimes(1)
+    expect(requests.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts a medical request exactly 48 hours before departure', async () => {
+    flight.findMany.mockResolvedValue([
+      { id: 'flight', dep_at: new Date('2026-11-03T00:00:00Z'), service_date: new Date('2026-11-03T00:00:00Z') },
+    ])
+    await service.createForHold(tx, [{ ...input, serviceCode: 'MEDA', note: 'Needs assistance' }])
+    expect(requests.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses requests for a passenger who is not part of the booking', async () => {
+    passenger.findFirst.mockResolvedValue(null)
+    await expect(service.createForHold(tx, [input])).rejects.toThrow('Passenger does not belong')
+    expect(requests.create).not.toHaveBeenCalled()
+  })
+
+  it('rejects a live request that overlaps a booking-wide or segment-specific request', async () => {
+    requests.findFirst.mockResolvedValue({ id: 'existing' })
+    await expect(service.createForHold(tx, [input])).rejects.toThrow('already exists')
+    expect(requests.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        OR: [{ booking_segment_id: null }, { booking_segment_id: { in: ['segment'] } }],
+        status: { in: ['requested', 'accepted'] },
+      }),
+      select: { id: true },
+    })
+    expect(requests.create).not.toHaveBeenCalled()
+  })
+
+  it('does not allow the unsupported STCR code', async () => {
+    await expect(service.createForHold(tx, [{ ...input, serviceCode: 'STCR' as ServiceRequestInput['serviceCode'] }])).rejects.toThrow(
+      'Unsupported',
+    )
+    expect(requests.create).not.toHaveBeenCalled()
+  })
+
+  it('accepts a pending request and records the staff member and booking clock time', async () => {
+    await expect(service.reviewRequest(tx, 'request', 'staff', 'accepted')).resolves.toMatchObject({ status: 'accepted', handledAt: now })
+    expect(requests.updateMany).toHaveBeenCalledWith({
+      where: { id: 'request', status: 'requested' },
+      data: expect.objectContaining({ handled_by_staff_id: 'staff', handled_at: now }),
+    })
+  })
+
+  it('requires a reason for rejection and rejects invalid transitions', async () => {
+    await expect(service.reviewRequest(tx, 'request', 'staff', 'rejected', ' ')).rejects.toThrow('reason')
+    await expect(service.reviewRequest(tx, 'request', 'staff', 'completed')).rejects.toThrow('cannot move')
+    expect(requests.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('detects a request changed concurrently', async () => {
+    requests.updateMany.mockResolvedValue({ count: 0 })
+    await expect(service.reviewRequest(tx, 'request', 'staff', 'accepted')).rejects.toThrow('changed by someone else')
+  })
+})

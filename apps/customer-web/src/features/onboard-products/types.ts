@@ -19,7 +19,7 @@ export type ProductOrderStatus = 'pending_payment' | 'confirmed' | 'cancelled' |
 
 export type PriceBasis = 'standard' | 'tier_benefit' | 'included'
 
-export type CabinClass = 'economy' | 'business' | 'first'
+export type CabinClass = 'economy' | 'premium_economy' | 'business' | 'first'
 
 export type BookingStatus = 'confirmed' | 'cancelled' | 'completed'
 
@@ -52,6 +52,8 @@ export interface FlightRef {
   // falls back to `scheduledDeparture - 48h` (the spec default for
   // `cabin_setting.order_window_hours`).
   cutoffAt: string | null
+  // IANA time zone of the departure airport; flight times are shown in it.
+  departureTimeZone?: string | null
 }
 
 export interface Booking {
@@ -156,6 +158,9 @@ export interface Product {
   // True only for the "Default meal" pseudo-product that means
   // "no pre-order, serve whatever the cabin has".
   isDefaultChoice: boolean
+  // Replaces the price text when set (the no-pre-order choice on a
+  // paid cabin is not "Free": nothing is served unless bought on board).
+  priceLabel?: string
 }
 
 // Cabin's meal policy for a flight. Mirrors the `cabin_setting` row in
@@ -203,9 +208,14 @@ export interface PlaceOrderPayload {
   bookingId: string
   flightId: string
   cabin: CabinClass
+  // Already-priced lines (priceBasis + unitPrice resolved server-side).
+  // The mock also accepts them from the client.
   lines: Array<{
     productId: string
-    bookingPassengerId: string | null
+    category: ProductCategory
+    passengerId: string
     quantity: number
+    unitPrice: number
+    priceBasis: PriceBasis
   }>
 }

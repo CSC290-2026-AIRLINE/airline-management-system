@@ -9,11 +9,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { StockApiError, useOnboardApi } from '@staff-web/features/onboard-products/api'
-import { addDays } from '@staff-web/features/onboard-products/dates'
-import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
+import { ArrowLeft, Plus } from 'lucide-react'
+import { toast } from 'sonner'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { PageHeader } from '@staff-web/features/onboard-products/ui'
 import type {
   Product,
-  ProductCategory,
   PurchaseReceipt,
   PurchaseReceiptDraftLine,
   Supplier,
@@ -21,13 +28,8 @@ import type {
 } from '@staff-web/features/onboard-products/api/types'
 import { AddProductDialog } from './AddProductDialog'
 import { ManageListDialog, type ManageListItem } from './ManageListDialog'
-import styles from './ReceiveDeliveryPage.module.css'
 
 const NEW_PRODUCT_SENTINEL = '__new__'
-
-function nextToastId(): number {
-  return Date.now() + Math.floor(Math.random() * 1000)
-}
 
 function formatMoney(amount: number): string {
   return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -41,23 +43,19 @@ interface Row {
   expiresAt: string
 }
 
-function defaultExpiryForCategory(category: ProductCategory): string {
-  if (category === 'duty_free') return ''
-  const days = category === 'meal' ? 2 : 180
-  return addDays(days).slice(0, 10)
-}
-
+// A new row's expiry starts empty: the server then sets it to the received time (on F12's clock) plus the product's
+// own shelf life. Staff can still type a date. (The old browser-side default used the browser's clock and a fixed 2 or
+// 180 days, so new stock could arrive already expired on a shifted simulation clock.)
 function emptyRow(usedProductIds: Set<string>, products: Product[]): Row {
   // Pick the first product not already on the page, so the user doesn't
   // immediately trigger a duplicate-product error.
   const next = products.find((p) => !usedProductIds.has(p.id))
-  const product = next ?? products[0]
   return {
     key: `row-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     productId: next?.id ?? '',
     quantity: '',
     unitCost: '',
-    expiresAt: product ? defaultExpiryForCategory(product.category) : addDays(2).slice(0, 10),
+    expiresAt: '',
   }
 }
 
@@ -82,15 +80,15 @@ export function ReceiveDeliveryPage() {
   const [rows, setRows] = useState<Row[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [toast, setToast] = useState<ToastData | null>(null)
   const [lastReceipt, setLastReceipt] = useState<PurchaseReceipt | null>(null)
   const [addingProductFor, setAddingProductFor] = useState<string | null>(null)
   const [addingProductPrevious, setAddingProductPrevious] = useState<string>('')
   const [managingSuppliers, setManagingSuppliers] = useState(false)
   const [supplierManageBusy, setSupplierManageBusy] = useState(false)
 
-  function showToast(kind: ToastKind, message: string) {
-    setToast({ id: nextToastId(), kind, message })
+  function showToast(kind: 'success' | 'error', message: string) {
+    if (kind === 'success') toast.success(message)
+    else toast.error(message)
   }
 
   // Load warehouses + products once.
@@ -219,11 +217,9 @@ export function ReceiveDeliveryPage() {
       setAddingProductPrevious(current)
       return
     }
-    // When the product changes, reset the expiry to its category default so
-    // the user doesn't carry over a date from a different category.
-    const product = products.find((p) => p.id === newProductId)
-    const newExpiry = product ? defaultExpiryForCategory(product.category) : ''
-    patchRow(rowKey, { productId: newProductId, expiresAt: newExpiry })
+    // When the product changes, clear the expiry so a date typed for another product is not carried over; empty
+    // means the server uses the new product's shelf life.
+    patchRow(rowKey, { productId: newProductId, expiresAt: '' })
   }
 
   async function onSubmit() {
@@ -238,8 +234,7 @@ export function ReceiveDeliveryPage() {
     }
     const lines: PurchaseReceiptDraftLine[] = rows.map((r) => {
       const product = products.find((p) => p.id === r.productId)
-      const fallback = product ? defaultExpiryForCategory(product.category) : ''
-      const expiresAt = r.productId && product?.category === 'duty_free' ? null : r.expiresAt === '' ? fallback || null : r.expiresAt
+      const expiresAt = product?.category === 'duty_free' || r.expiresAt === '' ? null : r.expiresAt
       return {
         productId: r.productId,
         quantity: Number(r.quantity),
@@ -345,119 +340,110 @@ export function ReceiveDeliveryPage() {
 
   if (loadError) {
     return (
-      <p className={styles.error} role="alert">
-        {loadError}
-      </p>
+      <Alert variant="destructive" role="alert">
+        <AlertDescription>{loadError}</AlertDescription>
+      </Alert>
     )
   }
 
   return (
-    <div className={styles.page}>
-      <Link to="/catering/stock" className={styles.backLink}>
-        ← Back to Stock
-      </Link>
+    <div className="flex flex-col gap-6">
+      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start text-muted-foreground">
+        <Link to="/catering/stock">
+          <ArrowLeft aria-hidden="true" />
+          Back to Stock
+        </Link>
+      </Button>
 
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Receive delivery</h1>
-          <p className={styles.subtitle}>
-            Record a supplier delivery into an airport warehouse. Each item you add becomes a batch with its own cost and expiry date.
-          </p>
-        </div>
-      </header>
+      <PageHeader
+        title="Receive delivery"
+        description="Record a supplier delivery into an airport warehouse. Each item you add becomes a batch with its own cost and expiry date."
+      />
 
-      {toast && <Toast toast={toast} onDismiss={() => setToast(null)} />}
-
-      <section className={styles.card} aria-label="Delivery details">
-        <div className={styles.cardHeader}>
-          <h2 className={styles.cardTitle}>Delivery details</h2>
-          <p className={styles.cardSubtitle}>Purchase cost is what the airline pays. It is stored apart from the selling price.</p>
-        </div>
-        <div className={styles.fieldRow}>
-          <div className={styles.field}>
-            <label htmlFor="rd-airport" className={styles.label}>
-              Airport
-            </label>
-            <select id="rd-airport" className={styles.select} value={warehouseId ?? ''} onChange={(e) => setWarehouseId(e.target.value)}>
+      <Card className="gap-4" aria-label="Delivery details">
+        <CardHeader>
+          <CardTitle>Delivery details</CardTitle>
+          <CardDescription>Purchase cost is what the airline pays. It is stored apart from the selling price.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="rd-airport">Airport</Label>
+            <NativeSelect id="rd-airport" className="w-full" value={warehouseId ?? ''} onChange={(e) => setWarehouseId(e.target.value)}>
               {warehouses.map((w) => (
-                <option key={w.id} value={w.id}>
+                <NativeSelectOption key={w.id} value={w.id}>
                   {w.code}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </div>
-          <div className={styles.field}>
-            <label htmlFor="rd-supplier" className={styles.label}>
-              Supplier
-            </label>
-            <div className={styles.supplierRow}>
-              <select
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="rd-supplier">Supplier</Label>
+            <div className="flex gap-2">
+              <NativeSelect
                 id="rd-supplier"
-                className={styles.select}
+                className="w-full"
                 value={supplierId}
                 onChange={(e) => setSupplierId(e.target.value)}
                 disabled={activeSuppliers.length === 0}
               >
-                {activeSuppliers.length === 0 && <option value="">No active suppliers for this airport</option>}
+                {activeSuppliers.length === 0 && <NativeSelectOption value="">No active suppliers for this airport</NativeSelectOption>}
                 {activeSuppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
+                  <NativeSelectOption key={s.id} value={s.id}>
                     {s.name}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
-              <button type="button" className={styles.manageButton} onClick={() => setManagingSuppliers(true)}>
+              </NativeSelect>
+              <Button type="button" variant="outline" onClick={() => setManagingSuppliers(true)}>
                 Manage
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className={styles.card} aria-label="Items received">
-        <div className={styles.cardHeaderRow}>
-          <div>
-            <h2 className={styles.cardTitle}>Items received</h2>
-            <p className={styles.cardSubtitle}>Food expires 2 days after it is received. Nothing is saved until you confirm.</p>
-          </div>
-          <button type="button" className={styles.addButton} onClick={addRow}>
-            + Add item
-          </button>
-        </div>
+      <Card className="gap-4" aria-label="Items received">
+        <CardHeader>
+          <CardTitle>Items received</CardTitle>
+          <CardDescription>Food expires 2 days after it is received. Nothing is saved until you confirm.</CardDescription>
+          <CardAction>
+            <Button type="button" variant="outline" onClick={addRow}>
+              <Plus aria-hidden="true" />
+              Add item
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {lastReceipt && (
+            <Alert role="status" className="border-green-200 bg-green-50 text-green-800">
+              <AlertDescription className="text-green-800">
+                Received {lastReceipt.lines.length} items ({lastReceipt.lines.reduce((a, l) => a + l.quantity, 0)} units,{' '}
+                {formatMoney(lastReceipt.lines.reduce((a, l) => a + l.lineTotal, 0))}) from{' '}
+                {suppliers.find((s) => s.id === lastReceipt.supplierId)?.name ?? 'supplier'} as {lastReceipt.lines.length} new batch
+                {lastReceipt.lines.length === 1 ? '' : 'es'} starting at {lastReceipt.lines[0]?.batchCode}.
+              </AlertDescription>
+            </Alert>
+          )}
 
-        {lastReceipt && (
-          <p className={styles.successBanner} role="status">
-            Received {lastReceipt.lines.length} items ({lastReceipt.lines.reduce((a, l) => a + l.quantity, 0)} units,{' '}
-            {formatMoney(lastReceipt.lines.reduce((a, l) => a + l.lineTotal, 0))}) from{' '}
-            {suppliers.find((s) => s.id === lastReceipt.supplierId)?.name ?? 'supplier'} as {lastReceipt.lines.length} new batch
-            {lastReceipt.lines.length === 1 ? '' : 'es'} starting at {lastReceipt.lines[0]?.batchCode}.
-          </p>
-        )}
+          {error && (
+            <Alert variant="destructive" role="alert">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-        {error && (
-          <p className={styles.error} role="alert">
-            {error}
-          </p>
-        )}
-
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th scope="col">Product</th>
-                <th scope="col" className={styles.qtyCell}>
-                  Quantity
-                </th>
-                <th scope="col" className={styles.costCell}>
-                  Unit cost (USD)
-                </th>
-                <th scope="col">Expiry</th>
-                <th scope="col" className={styles.totalCell}>
-                  Line total
-                </th>
-                <th scope="col" />
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product</TableHead>
+                <TableHead className="w-28 text-right">Quantity</TableHead>
+                <TableHead className="w-36 text-right">Unit cost (USD)</TableHead>
+                <TableHead className="w-44">Expiry</TableHead>
+                <TableHead className="text-right">Line total</TableHead>
+                <TableHead className="w-24">
+                  <span className="sr-only">Remove</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.map((r) => {
                 const q = parseNumber(r.quantity)
                 const c = parseNumber(r.unitCost)
@@ -465,93 +451,81 @@ export function ReceiveDeliveryPage() {
                 const product = products.find((p) => p.id === r.productId)
                 const expiresDisabled = product?.category === 'duty_free'
                 return (
-                  <tr key={r.key}>
-                    <td className={styles.productCell}>
-                      <select
-                        className={styles.select}
+                  <TableRow key={r.key}>
+                    <TableCell className="min-w-56">
+                      <NativeSelect
+                        className="w-full"
                         value={r.productId}
                         onChange={(e) => onProductChange(r.key, e.target.value)}
                         aria-label="Product"
                       >
                         {products.map((p) => (
-                          <option key={p.id} value={p.id} disabled={p.id !== r.productId && usedProductIds.has(p.id)}>
+                          <NativeSelectOption key={p.id} value={p.id} disabled={p.id !== r.productId && usedProductIds.has(p.id)}>
                             {p.name}
-                          </option>
+                          </NativeSelectOption>
                         ))}
-                        <option value={NEW_PRODUCT_SENTINEL}>+ Add new product…</option>
-                      </select>
-                    </td>
-                    <td className={styles.qtyCell}>
-                      <input
+                        <NativeSelectOption value={NEW_PRODUCT_SENTINEL}>+ Add new product…</NativeSelectOption>
+                      </NativeSelect>
+                    </TableCell>
+                    <TableCell>
+                      <Input
                         type="number"
                         min="1"
                         step="1"
-                        className={styles.input}
+                        className="text-right"
                         value={r.quantity}
                         onChange={(e) => patchRow(r.key, { quantity: e.target.value })}
                         aria-label="Quantity"
-                        style={{ textAlign: 'right' }}
                       />
-                    </td>
-                    <td className={styles.costCell}>
-                      <input
+                    </TableCell>
+                    <TableCell>
+                      <Input
                         type="number"
                         min="0"
                         step="0.01"
-                        className={styles.input}
+                        className="text-right"
                         value={r.unitCost}
                         onChange={(e) => patchRow(r.key, { unitCost: e.target.value })}
                         aria-label="Unit cost"
-                        style={{ textAlign: 'right' }}
                       />
-                    </td>
-                    <td>
-                      <input
+                    </TableCell>
+                    <TableCell>
+                      <Input
                         type="date"
-                        className={styles.input}
                         value={r.expiresAt}
                         onChange={(e) => patchRow(r.key, { expiresAt: e.target.value })}
                         disabled={expiresDisabled}
                         aria-label="Expiry"
+                        title="Leave empty to use the product's shelf life from today"
                       />
-                    </td>
-                    <td className={styles.totalCell}>{lineTotal != null ? formatMoney(lineTotal) : '—'}</td>
-                    <td>
-                      <button type="button" className={styles.removeButton} onClick={() => removeRow(r.key)} disabled={rows.length <= 1}>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{lineTotal != null ? formatMoney(lineTotal) : '—'}</TableCell>
+                    <TableCell className="text-right">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeRow(r.key)} disabled={rows.length <= 1}>
                         Remove
-                      </button>
-                    </td>
-                  </tr>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
                 )
               })}
-            </tbody>
-          </table>
-        </div>
-
-        <div className={styles.footer}>
-          <span className={styles.footerSummary}>
-            {totals.lineCount} item{totals.lineCount === 1 ? '' : 's'} · {totals.units} units · total {formatMoney(totals.total)}
+            </TableBody>
+          </Table>
+        </CardContent>
+        <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+          <span className="text-sm text-muted-foreground">
+            {totals.lineCount} item{totals.lineCount === 1 ? '' : 's'} · {totals.units} units · total{' '}
+            <span className="font-semibold text-foreground">{formatMoney(totals.total)}</span>
           </span>
-          <div className={styles.footerActions}>
-            <button
-              type="button"
-              className={styles.cancelButton}
-              onClick={() => void navigate({ to: '/catering/stock' })}
-              disabled={submitting}
-            >
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => void navigate({ to: '/catering/stock' })} disabled={submitting}>
               Cancel
-            </button>
-            <button
-              type="button"
-              className={styles.confirmButton}
-              onClick={() => void onSubmit()}
-              disabled={submitting || validation.length > 0 || loading}
-            >
+            </Button>
+            <Button type="button" onClick={() => void onSubmit()} disabled={submitting || validation.length > 0 || loading}>
               {submitting ? 'Saving…' : 'Confirm receive'}
-            </button>
+            </Button>
           </div>
-        </div>
-      </section>
+        </CardFooter>
+      </Card>
 
       {addingProductFor !== null && (
         <AddProductDialog
@@ -563,10 +537,9 @@ export function ReceiveDeliveryPage() {
             const fallback = products[0]?.id ?? ''
             const next = prev !== '' && prev !== NEW_PRODUCT_SENTINEL ? prev : fallback
             if (next !== '') {
-              const product = products.find((p) => p.id === next)
               patchRow(addingProductFor, {
                 productId: next,
-                expiresAt: product ? defaultExpiryForCategory(product.category) : '',
+                expiresAt: '',
               })
             }
             setAddingProductFor(null)
@@ -580,7 +553,7 @@ export function ReceiveDeliveryPage() {
             void api.products.list().then(setProducts)
             patchRow(addingProductFor, {
               productId: created.id,
-              expiresAt: defaultExpiryForCategory(created.category),
+              expiresAt: '',
             })
             setAddingProductFor(null)
             setAddingProductPrevious('')

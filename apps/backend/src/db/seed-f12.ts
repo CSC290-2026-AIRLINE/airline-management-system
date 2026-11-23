@@ -1,3 +1,4 @@
+import { DEMO_CABIN, DEMO_FLIGHT_ID } from '../modules/onboard-products/common/demo-booking'
 // F12 seed (idempotent). Runs after the base Level 1 seed (which gives
 // us roles, customers, and staff). Inserts the network/route/flight
 // inventory F12 needs to exercise every endpoint: 4 airports, 2
@@ -7,13 +8,12 @@
 // batches (with varied expiry states), 4 catering orders in
 // generated/loaded/closed states, 2 stock transfers with aircraft
 // stock, 1 flight report with lines, 3 on-board product sales, and
-// 4 product orders in every state.
+// (customer orders come from seed-f12-booking.ts, which needs a real booking).
 //
 // Re-running this seed is a no-op: every row is upserted on a stable
 // natural key.
 
 import { randomUUID } from 'node:crypto'
-import { DEMO_CABIN, DEMO_FLIGHT_ID } from '../modules/onboard-products/common/demo-booking'
 import type { PrismaClient } from './generated/prisma/client'
 
 // Stable IDs (deterministic) so re-runs and the F12 dev pages are
@@ -151,6 +151,10 @@ function hoursFromNow(h: number): Date {
 // update the batch. The later stock_transfer / stock_transfer_line /
 // aircraft_stock sections of this seed recreate those rows with the
 // new product_id.
+//
+// A rerun refills a batch to its seeded quantity (handy for testing),
+// and records the difference as an adjust movement (reason
+// count_correction) so the stock_movement ledger still adds up.
 async function upsertStockBatch(
   prisma: PrismaClient,
   b: {
@@ -183,6 +187,22 @@ async function upsertStockBatch(
       data: { product_id: b.product_id },
     })
   }
+  const delta = b.quantity_remaining - (existing.product_id === b.product_id ? existing.quantity_remaining : 0)
+  if (delta !== 0) {
+    await prisma.stock_movement.create({
+      data: {
+        product_id: b.product_id,
+        warehouse_id: b.warehouse_id,
+        stock_batch_id: b.id,
+        type: 'adjust',
+        quantity: delta,
+        reason: 'count_correction',
+        note: 'seed reset of demo stock',
+        created_by_staff_id: null,
+        occurred_at: new Date(),
+      },
+    })
+  }
   await prisma.stock_batch.update({
     where: { id: b.id },
     data: {
@@ -209,17 +229,17 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       icao_code: 'VTBS',
       name: 'Suvarnabhumi',
       city: 'Bangkok',
-      country: 'TH',
+      country: 'th',
       timezone: 'Asia/Bangkok',
       min_turnaround_min: 45,
     },
-    { iata_code: 'NRT', icao_code: 'RJAA', name: 'Narita', city: 'Tokyo', country: 'JP', timezone: 'Asia/Tokyo', min_turnaround_min: 60 },
+    { iata_code: 'NRT', icao_code: 'RJAA', name: 'Narita', city: 'Tokyo', country: 'jp', timezone: 'Asia/Tokyo', min_turnaround_min: 60 },
     {
       iata_code: 'SIN',
       icao_code: 'WSSS',
       name: 'Changi',
       city: 'Singapore',
-      country: 'SG',
+      country: 'sg',
       timezone: 'Asia/Singapore',
       min_turnaround_min: 45,
     },
@@ -228,7 +248,7 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       icao_code: 'VHHH',
       name: 'Hong Kong Intl',
       city: 'Hong Kong',
-      country: 'HK',
+      country: 'hk',
       timezone: 'Asia/Hong_Kong',
       min_turnaround_min: 45,
     },
@@ -237,64 +257,68 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
   }
 
   // --- Aircraft types ----------------------------------------------------
-  await prisma.aircraft_type.upsert({
-    where: { id: IDS.aircraftType.A320 },
-    update: {},
-    create: {
-      id: IDS.aircraftType.A320,
-      code: 'A320',
-      manufacturer: 'Airbus',
-      model: 'A320neo',
-      layout: {},
-      hold_weight_limit_kg: 5000,
-      max_takeoff_weight_kg: 79000,
-      max_range_km: 6300,
-      min_turnaround_minutes: 30,
-      operating_cost_per_hour: 4500,
-      cost_currency: 'USD',
-    },
-  })
-  await prisma.aircraft_type.upsert({
-    where: { id: IDS.aircraftType.B777 },
-    update: {},
-    create: {
-      id: IDS.aircraftType.B777,
-      code: 'B777',
-      manufacturer: 'Boeing',
-      model: '777-300ER',
-      layout: {},
-      hold_weight_limit_kg: 18000,
-      max_takeoff_weight_kg: 350000,
-      max_range_km: 14000,
-      min_turnaround_minutes: 60,
-      operating_cost_per_hour: 12000,
-      cost_currency: 'USD',
-    },
-  })
+  IDS.aircraftType.A320 = (
+    (await prisma.aircraft_type.findUnique({ where: { code: 'A320' } })) ??
+    (await prisma.aircraft_type.create({
+      data: {
+        id: IDS.aircraftType.A320,
+        code: 'A320',
+        manufacturer: 'Airbus',
+        model: 'A320neo',
+        layout: {},
+        hold_weight_limit_kg: 5000,
+        max_takeoff_weight_kg: 79000,
+        max_range_km: 6300,
+        min_turnaround_minutes: 30,
+        operating_cost_per_hour: 4500,
+        cost_currency: 'USD',
+      },
+    }))
+  ).id
+  IDS.aircraftType.B777 = (
+    (await prisma.aircraft_type.findUnique({ where: { code: 'B777' } })) ??
+    (await prisma.aircraft_type.create({
+      data: {
+        id: IDS.aircraftType.B777,
+        code: 'B777',
+        manufacturer: 'Boeing',
+        model: '777-300ER',
+        layout: {},
+        hold_weight_limit_kg: 18000,
+        max_takeoff_weight_kg: 350000,
+        max_range_km: 14000,
+        min_turnaround_minutes: 60,
+        operating_cost_per_hour: 12000,
+        cost_currency: 'USD',
+      },
+    }))
+  ).id
 
   // --- Aircraft (base at BKK) -------------------------------------------
-  await prisma.aircraft.upsert({
-    where: { id: IDS.aircraft.FYA },
-    update: {},
-    create: {
-      id: IDS.aircraft.FYA,
-      tail_number: 'HS-FYA',
-      aircraft_type_id: IDS.aircraftType.A320,
-      entry_into_service_date: new Date('2018-01-01'),
-      base_airport_code: 'BKK',
-    },
-  })
-  await prisma.aircraft.upsert({
-    where: { id: IDS.aircraft.FYB },
-    update: {},
-    create: {
-      id: IDS.aircraft.FYB,
-      tail_number: 'HS-FYB',
-      aircraft_type_id: IDS.aircraftType.B777,
-      entry_into_service_date: new Date('2015-06-01'),
-      base_airport_code: 'BKK',
-    },
-  })
+  IDS.aircraft.FYA = (
+    (await prisma.aircraft.findFirst({ where: { tail_number: 'HS-FYA' } })) ??
+    (await prisma.aircraft.create({
+      data: {
+        id: IDS.aircraft.FYA,
+        tail_number: 'HS-FYA',
+        aircraft_type_id: IDS.aircraftType.A320,
+        entry_into_service_date: new Date('2018-01-01'),
+        base_airport_code: 'BKK',
+      },
+    }))
+  ).id
+  IDS.aircraft.FYB = (
+    (await prisma.aircraft.findFirst({ where: { tail_number: 'HS-FYB' } })) ??
+    (await prisma.aircraft.create({
+      data: {
+        id: IDS.aircraft.FYB,
+        tail_number: 'HS-FYB',
+        aircraft_type_id: IDS.aircraftType.B777,
+        entry_into_service_date: new Date('2015-06-01'),
+        base_airport_code: 'BKK',
+      },
+    }))
+  ).id
 
   await prisma.aircraft.upsert({
     where: { id: IDS.aircraft.FYD },
@@ -309,61 +333,61 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
   })
 
   // --- Route BKK → NRT ---------------------------------------------------
-  await prisma.route.upsert({
-    where: { origin_destination: { origin: 'BKK', destination: 'NRT' } } as never,
-    update: {},
-    create: {
-      id: IDS.route.BKKNRT,
-      origin: 'BKK',
-      destination: 'NRT',
-      distance_km: 4600,
-      block_time_min: 390,
-    },
-  })
-  await prisma.route.upsert({
-    where: { origin_destination: { origin: 'SIN', destination: 'BKK' } } as never,
-    update: {},
-    create: {
-      id: IDS.route.SINBKK,
-      origin: 'SIN',
-      destination: 'BKK',
-      distance_km: 1400,
-      block_time_min: 130,
-    },
-  })
-  await prisma.route.upsert({
-    where: { origin_destination: { origin: 'NRT', destination: 'BKK' } } as never,
-    update: {},
-    create: {
-      id: IDS.route.NRTBKK,
-      origin: 'NRT',
-      destination: 'BKK',
-      distance_km: 4600,
-      block_time_min: 390,
-    },
-  })
+  IDS.route.BKKNRT = (
+    (await prisma.route.findFirst({ where: { origin: 'BKK', destination: 'NRT' } })) ??
+    (await prisma.route.create({
+      data: {
+        origin: 'BKK',
+        destination: 'NRT',
+        distance_km: 4600,
+        block_time_min: 390,
+      },
+    }))
+  ).id
+  IDS.route.SINBKK = (
+    (await prisma.route.findFirst({ where: { origin: 'SIN', destination: 'BKK' } })) ??
+    (await prisma.route.create({
+      data: {
+        origin: 'SIN',
+        destination: 'BKK',
+        distance_km: 1400,
+        block_time_min: 130,
+      },
+    }))
+  ).id
+  IDS.route.NRTBKK = (
+    (await prisma.route.findFirst({ where: { origin: 'NRT', destination: 'BKK' } })) ??
+    (await prisma.route.create({
+      data: {
+        origin: 'NRT',
+        destination: 'BKK',
+        distance_km: 4600,
+        block_time_min: 390,
+      },
+    }))
+  ).id
 
   // --- Fare classes ------------------------------------------------------
-  await prisma.fare_class.upsert({
-    where: { id: IDS.fareClass.ECON },
-    update: {},
-    create: {
-      id: IDS.fareClass.ECON,
-      code: 'ECO',
-      cabin: 'economy',
-      name: 'Economy',
-    },
-  })
-  await prisma.fare_class.upsert({
-    where: { id: IDS.fareClass.BIZ },
-    update: {},
-    create: {
-      id: IDS.fareClass.BIZ,
-      code: 'BIZ',
-      cabin: 'business',
-      name: 'Business',
-    },
-  })
+  IDS.fareClass.ECON = (
+    (await prisma.fare_class.findFirst({ where: { code: 'ECO', cabin: 'economy' } })) ??
+    (await prisma.fare_class.create({
+      data: {
+        code: 'ECO',
+        cabin: 'economy',
+        name: 'Economy',
+      },
+    }))
+  ).id
+  IDS.fareClass.BIZ = (
+    (await prisma.fare_class.findFirst({ where: { code: 'BIZ', cabin: 'business' } })) ??
+    (await prisma.fare_class.create({
+      data: {
+        code: 'BIZ',
+        cabin: 'business',
+        name: 'Business',
+      },
+    }))
+  ).id
 
   // --- Flights -----------------------------------------------------------
   // f-401: BKK → NRT, business, departs in +5h, aircraft FYB (B777)
@@ -796,13 +820,16 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
         },
       })
     }
-    // Also an economy offering for snack/bev/df so staff can pick.
-    if (p.category !== 'meal') {
+    // Economy sells the same menu, so paid meals can be tried there too (P001 is the default meal).
+    {
       const existingEcon = await prisma.product_offering.findFirst({
         where: { product_id: p.id, scope: 'network', cabin: 'economy' },
       })
       if (existingEcon) {
-        await prisma.product_offering.update({ where: { id: existingEcon.id }, data: { is_active: true } })
+        await prisma.product_offering.update({
+          where: { id: existingEcon.id },
+          data: { is_active: true, is_default: p.id === IDS.product.P001 },
+        })
       } else {
         await prisma.product_offering.create({
           data: {
@@ -810,7 +837,7 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
             product_id: p.id,
             scope: 'network',
             cabin: 'economy',
-            is_default: false,
+            is_default: p.id === IDS.product.P001,
             is_active: true,
           },
         })
@@ -958,20 +985,46 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
   })
 
   // --- Warehouse stock (one row per warehouse×product we delivered) -----
-  const whStock = [
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P001, qty: 200 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P002, qty: 120 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P006, qty: 300 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P007, qty: 400 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P009, qty: 250 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P011, qty: 180 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P012, qty: 50 },
+  // On hand is the sum of the warehouse's batches (the doc's invariant),
+  // so it is recomputed, not hardcoded. Reserved is rebuilt from the
+  // ledger: the reserve minus release movements of orders still pending
+  // or confirmed, capped at on hand, so a rerun neither strands nor
+  // invents a reservation. Rows
+  // for products this warehouse no longer stocks are dropped only when
+  // nothing is reserved on them.
+  const stockedProducts = [
+    IDS.product.P001,
+    IDS.product.P002,
+    IDS.product.P006,
+    IDS.product.P007,
+    IDS.product.P009,
+    IDS.product.P011,
+    IDS.product.P012,
   ]
-  for (const ws of whStock) {
+  await prisma.warehouse_stock.deleteMany({
+    where: { warehouse_id: IDS.warehouse.WHBKK, product_id: { notIn: stockedProducts }, quantity_reserved: 0 },
+  })
+  for (const productId of stockedProducts) {
+    const sum = await prisma.stock_batch.aggregate({
+      where: { warehouse_id: IDS.warehouse.WHBKK, product_id: productId },
+      _sum: { quantity_remaining: true },
+    })
+    const onHand = sum._sum.quantity_remaining ?? 0
+    // A reserve movement is -n and a release +n, so what is still held is minus their sum.
+    const held = await prisma.stock_movement.aggregate({
+      where: {
+        warehouse_id: IDS.warehouse.WHBKK,
+        product_id: productId,
+        type: { in: ['reserve', 'release'] },
+        product_order: { is: { status: { in: ['pending_payment', 'confirmed'] } } },
+      },
+      _sum: { quantity: true },
+    })
+    const reserved = Math.min(Math.max(0, -(held._sum.quantity ?? 0)), onHand)
     await prisma.warehouse_stock.upsert({
-      where: { warehouse_id_product_id: { warehouse_id: ws.warehouse_id, product_id: ws.product_id } },
-      update: {},
-      create: { warehouse_id: ws.warehouse_id, product_id: ws.product_id, quantity_on_hand: ws.qty, quantity_reserved: 0 },
+      where: { warehouse_id_product_id: { warehouse_id: IDS.warehouse.WHBKK, product_id: productId } },
+      update: { quantity_on_hand: onHand, quantity_reserved: reserved },
+      create: { warehouse_id: IDS.warehouse.WHBKK, product_id: productId, quantity_on_hand: onHand, quantity_reserved: reserved },
     })
   }
 
@@ -1252,6 +1305,26 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     { flight_id: IDS.flight.F401, product_id: IDS.product.P011, qty: 5, price: '4.00', total: '20.00', currency: 'USD' },
   ]) {
     const paymentId = `00000000-0000-0000-0000-f4010000${s.product_id.slice(-4)}`
+    // product_sale.payment_id is a foreign key to F5's payment table, so the payment row has to exist first.
+    await prisma.payment.upsert({
+      where: { id: paymentId },
+      update: {},
+      create: {
+        id: paymentId,
+        source_feature: 12,
+        purchase_ref: `seed-sale-${s.product_id.slice(-4)}`,
+        idempotency_key: `seed-sale-${s.product_id.slice(-4)}`,
+        status: 'captured',
+        provider: 'fake',
+        currency: s.currency,
+        amount_total: s.total,
+        card_amount: s.total,
+        started_at: hoursFromNow(-2),
+        expires_at: hoursFromNow(-1),
+        authorised_at: hoursFromNow(-1),
+        captured_at: hoursFromNow(-1),
+      },
+    })
     const existingSale = await prisma.product_sale.findFirst({
       where: { flight_id: s.flight_id, product_id: s.product_id, payment_id: paymentId },
     })
@@ -1277,37 +1350,7 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     }
   }
 
-  // --- Product orders (4 covering every status) ------------------------
-  // Need a customer; reuse the first one.
-  const customer = await prisma.customer.findFirst()
-  if (!customer) throw new Error('seedF12 needs a customer row from the level-1 seed first.')
-  const customerId = customer.id
-  for (const po of [
-    { id: IDS.productOrder.PO1, status: 'pending_payment' as const, total: '18.00', payment: null },
-    { id: IDS.productOrder.PO2, status: 'confirmed' as const, total: '46.00', payment: '00000000-0000-0000-0000-0000000000a2' },
-    { id: IDS.productOrder.PO3, status: 'cancelled' as const, total: '12.50', payment: null },
-    { id: IDS.productOrder.PO4, status: 'expired' as const, total: '4.50', payment: null },
-  ]) {
-    const bookingId = `00000000-0000-0000-0000-beef0000000${po.id.slice(-1)}`
-    await prisma.product_order.upsert({
-      where: { id: po.id },
-      update: { status: po.status },
-      create: {
-        id: po.id,
-        customer_id: customerId,
-        booking_id: bookingId,
-        flight_id: IDS.flight.F401,
-        cabin: 'business',
-        status: po.status,
-        total_amount: po.total,
-        currency: 'USD',
-        payment_id: po.payment,
-        paid_at: po.status === 'confirmed' ? hoursFromNow(-2) : null,
-        expires_at: hoursFromNow(48),
-        cancelled_at: po.status === 'cancelled' ? hoursFromNow(-1) : null,
-      },
-    })
-  }
+  // Customer orders are not seeded here: an order needs a real booking (see seed-f12-booking.ts).
 
   console.log('F12 seed complete.')
 }

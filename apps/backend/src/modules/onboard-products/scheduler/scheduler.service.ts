@@ -3,18 +3,22 @@
 // Every tick it does three things:
 //   1. generates the catering order of every flight whose cutoff has
 //      passed (the cutoff is the scheduled departure minus the
-//      shortest cabin order window), and refreshes the orders it
-//      generated before, so the quantities stay in step with the
-//      stock;
+//      shortest cabin order window). Each order is generated once;
+//      staff re-count it with the refresh endpoint;
 //   2. expires the customer orders that were not paid in time and
 //      gives their reserved stock back;
-//   3. writes off the batches that expired.
+//   3. writes off the batches that expired;
+//   4. reacts to flights F2 cancelled (doc, lifecycle step 10): their
+//      open orders are cancelled and refunded, the stock released, and
+//      the catering order voided. F2 has no event subscription yet, so
+//      the job reads the flight status F2 writes.
 //
 // The job calls the same generate logic as the staff endpoint does;
 // it does not go through HTTP.
 
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { DbService } from '../../../db/db.service'
+import { ApiErrorException } from '../common/api-error'
 import { SystemClock } from '../common/clock'
 import { CateringOrdersService } from '../catering-orders/catering-orders.service'
 import { ProductOrdersService } from '../product-orders/product-orders.service'
@@ -60,24 +64,29 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   }
 
   // One pass of the job. Safe to call by hand (the tests do).
-  async tick(): Promise<{ generated: number; expired: number; writtenOff: number }> {
+  async tick(): Promise<{ generated: number; expired: number; writtenOff: number; cancelled: number }> {
     if (this.running) {
       this.logger.warn('The previous tick is still running; this one is skipped.')
-      return { generated: 0, expired: 0, writtenOff: 0 }
+      return { generated: 0, expired: 0, writtenOff: 0, cancelled: 0 }
     }
     this.running = true
     try {
-      const generated = await this.generateCateringOrders()
-      const expired = await this.expireUnpaidOrders()
+      // Write off expired stock and expire unpaid orders before generating, so a new catering order is counted
+      // against the stock that is really there.
+      const cancelled = await this.handleCancelledFlights()
       const writtenOff = await this.writeOffExpiredBatches()
-      return { generated, expired, writtenOff }
+      const expired = await this.expireUnpaidOrders()
+      const generated = await this.generateCateringOrders()
+      return { generated, expired, writtenOff, cancelled }
     } finally {
       this.running = false
     }
   }
 
   // Generates the catering order of every flight that is past its
-  // cutoff, and refreshes the ones that were generated before.
+  // cutoff. An order is written once: re-counting an existing order is
+  // the staff refresh, so the job never rewrites lines that stock has
+  // already moved against.
   private async generateCateringOrders(): Promise<number> {
     const now = this.clock.now()
     const flights = await this.db.flight.findMany({
@@ -97,20 +106,49 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
         if (now.getTime() < cutoff.getTime()) continue
         const existing = await this.db.catering_order.findUnique({
           where: { flight_id: flight.id },
-          select: { status: true },
+          select: { id: true },
         })
-        // A loaded or closed order is never touched.
-        if (existing && (existing.status === 'loaded' || existing.status === 'closed' || existing.status === 'void')) {
-          continue
-        }
+        if (existing) continue
         await this.cateringOrders.generate(flight.id, null)
         generated += 1
       } catch (err) {
+        // A flight from an airport without an F12 warehouse (another
+        // feature's flight) is not catered by F12: skip it quietly
+        // instead of warning on every tick.
+        if (errorCode(err) === 'NO_WAREHOUSE_FOR_AIRPORT') continue
         this.logger.warn(`Could not generate the catering order of flight ${flight.id}: ${describe(err)}`)
       }
     }
     if (generated > 0) this.logger.log(`Generated ${generated} catering order(s).`)
     return generated
+  }
+
+  // Flights F2 cancelled that F12 has not cleaned up yet: open orders to
+  // cancel, or a catering order that is still open. Returns how many
+  // orders were cancelled.
+  private async handleCancelledFlights(): Promise<number> {
+    const flights = await this.db.flight.findMany({
+      where: {
+        status: 'cancelled',
+        OR: [
+          { product_order: { some: { status: { in: ['pending_payment', 'confirmed'] } } } },
+          { catering_order: { is: { status: 'generated' } } },
+        ],
+      },
+      select: { id: true, catering_order: { select: { status: true } } },
+      take: MAX_FLIGHTS_PER_TICK,
+    })
+    let cancelled = 0
+    for (const flight of flights) {
+      try {
+        cancelled += await this.productOrders.cancelForCancelledFlight(flight.id, this.clock.now())
+        if (flight.catering_order?.status === 'generated') await this.cateringOrders.void(flight.id, null)
+      } catch (err) {
+        this.logger.warn(`Could not clean up cancelled flight ${flight.id}: ${describe(err)}`)
+      }
+    }
+    if (cancelled > 0) this.logger.log(`Cancelled ${cancelled} order(s) on cancelled flight(s).`)
+    return cancelled
   }
 
   // Closes the customer orders that were not paid in time and gives
@@ -151,8 +189,20 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-// The message of an error, without the stack.
+// The F12 error code of an ApiErrorException, or null.
+function errorCode(err: unknown): string | null {
+  if (!(err instanceof ApiErrorException)) return null
+  const body = err.getResponse() as { error?: { code?: string } }
+  return body.error?.code ?? null
+}
+
+// The message of an error, without the stack. An ApiErrorException's
+// own message is generic, so its F12 code and message are used.
 function describe(err: unknown): string {
+  if (err instanceof ApiErrorException) {
+    const body = err.getResponse() as { error?: { code?: string; message?: string } }
+    return `${body.error?.code ?? 'ERROR'}: ${body.error?.message ?? err.message}`
+  }
   if (err instanceof Error) return err.message
   return String(err)
 }

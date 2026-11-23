@@ -49,13 +49,13 @@ function parseInput(body: unknown): CabinSettingInput {
   }
   if (b.mealService !== undefined) {
     if (b.mealService !== null && !(ALLOWED_MEAL_SERVICE as readonly string[]).includes(b.mealService as string)) {
-      throw new ApiErrorException('SETTING_INVALID', 'mealService must be complimentary, paid or none.', 400)
+      throw new ApiErrorException('MEAL_POLICY_INVALID', 'mealService must be complimentary, paid or none.', 400)
     }
     out.mealService = b.mealService as CabinSettingInput['mealService']
   }
   if (b.mealSelection !== undefined) {
     if (b.mealSelection !== null && !(ALLOWED_MEAL_SELECTION as readonly string[]).includes(b.mealSelection as string)) {
-      throw new ApiErrorException('SETTING_INVALID', 'mealSelection must be choose or fixed.', 400)
+      throw new ApiErrorException('MEAL_POLICY_INVALID', 'mealSelection must be choose or fixed.', 400)
     }
     out.mealSelection = b.mealSelection as CabinSettingInput['mealSelection']
   }

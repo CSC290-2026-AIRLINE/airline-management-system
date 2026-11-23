@@ -14,7 +14,7 @@
 //   - every status change is guarded, so a repeated call cannot move
 //     an order twice.
 
-import { DEMO_CABIN, DEMO_FLIGHT_ID, demoEnabled } from '../common/demo-booking'
+import { demoEnabled } from '../common/demo-booking'
 import { PaymentEventsService } from '../payment-events/payment-events.service'
 import { Injectable } from '@nestjs/common'
 import type { Prisma } from '../../../db/generated/prisma/client'
@@ -26,9 +26,17 @@ import { SystemClock } from '../common/clock'
 import { FlightContextService } from '../common/flight-context.service'
 import { resolveOfferings, type OfferingRow } from '../common/menu'
 import { toNumber, type F12Cabin } from '../common/mapping'
-import { cutoffAt, isOrderWindowOpen, orderExpiresAt, priceOrder, type OrderLineInput, roundMoney } from '../common/order-pricing'
-import { ReservationsService } from '../common/reservations.service'
-import { StubBookingsService, StubPaymentsService, StubTierService } from '../common/cross-module-ports'
+import {
+  cutoffAt,
+  isOrderWindowOpen,
+  orderExpiresAt,
+  priceBasisFor,
+  priceOrder,
+  roundMoney,
+  type OrderLineInput,
+} from '../common/order-pricing'
+import { ReservationsService, validAtDepartureApplies } from '../common/reservations.service'
+import { DbBookingsService, StubPaymentsService, DbTierService } from '../common/cross-module-ports'
 import { CabinSettingsService } from '../cabin-settings/cabin-settings.service'
 import {
   parseCheckoutInput,
@@ -50,6 +58,7 @@ interface ProductRow {
   is_premium: boolean
   is_active: boolean
   image_key: string | null
+  shelf_life_days: number | null
 }
 
 @Injectable()
@@ -58,9 +67,9 @@ export class ProductOrdersService {
     private readonly db: DbService,
     private readonly clock: SystemClock,
     private readonly audit: AuditService,
-    private readonly bookings: StubBookingsService,
+    private readonly bookings: DbBookingsService,
     private readonly payments: StubPaymentsService,
-    private readonly tiers: StubTierService,
+    private readonly tiers: DbTierService,
     private readonly settings: CabinSettingsService,
     private readonly cateringSettings: CateringSettingsService,
     private readonly flightContext: FlightContextService,
@@ -69,42 +78,33 @@ export class ProductOrdersService {
   ) {}
 
   async demoBooking(customerId: string, id: string) {
-    if (!demoEnabled() || (id !== 'demo' && id !== customerId)) {
-      throw new ApiErrorException('NOT_FOUND', 'Onboard booking not found.', 404)
-    }
-    const customer = await this.db.customer.findUniqueOrThrow({ where: { id: customerId }, include: { passenger: true } })
-    const flight = await this.flightContext.getFlight(DEMO_FLIGHT_ID)
-    const settings = await this.settings.resolveForFlight(flight.id, DEMO_CABIN)
-    const passenger = customer.passenger
-    return {
-      id: customerId,
-      reference: 'F12-DEMO',
-      status: 'confirmed',
-      passengers: [
-        { id: passenger.id, firstName: passenger.first_name, lastName: passenger.last_name, type: 'adult', isAccountHolder: true },
-      ],
-      flights: [
-        {
+    if (!demoEnabled()) throw new ApiErrorException('NOT_FOUND', 'Onboard booking not found.', 404)
+    const booking = await this.db.booking.findFirst({
+      where: { customer_id: customerId, booking_reference: 'FTEST2', ...(id === 'demo' ? {} : { id }) },
+      include: { booking_segment: { orderBy: { segment_order: 'asc' } } },
+    })
+    if (!booking) throw new ApiErrorException('NOT_FOUND', 'Seed FTEST2 for this customer before running the demo.', 404)
+    const flights = await Promise.all(
+      booking.booking_segment.map(async (segment) => {
+        const flight = await this.flightContext.getFlight(segment.flight_id)
+        const settings = await this.settings.resolveForFlight(flight.id, segment.cabin as F12Cabin)
+        return {
           id: flight.id,
           flightNumber: flight.flightNumber,
-          origin: { code: flight.origin, city: flight.origin },
-          destination: { code: flight.destination, city: flight.destination },
+          cabinClass: segment.cabin,
           scheduledDeparture: flight.scheduledDeparture.toISOString(),
-          cabinClass: DEMO_CABIN,
-          seatNumbers: [],
           cutoffAt: cutoffAt(flight.scheduledDeparture, settings.orderWindowHours).toISOString(),
-        },
-      ],
-      totalPassengers: 1,
-      tripType: 'one_way',
-      routeSummary: `${flight.origin} to ${flight.destination}`,
-    }
+        }
+      }),
+    )
+    return { id: booking.id, reference: booking.booking_reference, flights }
   }
 
   async demoPayment(customerId: string, id: string, status: unknown) {
     if (!demoEnabled()) throw new ApiErrorException('NOT_FOUND', 'Demo payments are unavailable.', 404)
     const order = await this.get(customerId, id)
-    if (order.flightId !== DEMO_FLIGHT_ID || order.bookingId !== customerId || !order.paymentId) {
+    const booking = await this.demoBooking(customerId, order.bookingId)
+    if (!booking.flights.some((flight) => flight.id === order.flightId) || !order.paymentId) {
       throw new ApiErrorException('NOT_FOUND', 'Demo payment not found.', 404)
     }
     await this.paymentEvents.handle({ reference: order.id, paymentId: order.paymentId, status })
@@ -116,7 +116,9 @@ export class ProductOrdersService {
   // GET /catalog: the menu for a flight and cabin, with the resolved
   // policy, the prices, the dietary badges, the stock status and the
   // order window.
-  async catalog(query: { bookingId?: string; flightId?: string; cabin?: string }, customerId: string): Promise<unknown> {
+  // customerId, when given, prices each product for that customer the same way checkout will (the complimentary
+  // allowance and the tier benefit), so the shop shows what the customer will actually pay.
+  async catalog(query: { bookingId?: string; flightId?: string; cabin?: string }, customerId?: string): Promise<unknown> {
     const flightId = query.flightId
     if (!flightId) throw new ApiErrorException('LINE_INVALID', 'flightId is required.', 400)
     const flight = await this.flightContext.getFlight(flightId)
@@ -129,7 +131,7 @@ export class ProductOrdersService {
     const productIds = menu.map((m) => m.productId)
     const products = productIds.length
       ? await this.db.product.findMany({
-          where: { id: { in: productIds }, deleted_at: null, is_active: true },
+          where: { id: { in: productIds }, deleted_at: null },
           include: { product_dietary: true },
         })
       : []
@@ -143,7 +145,43 @@ export class ProductOrdersService {
       warehouseId = null
     }
     const stockRows = warehouseId ? await this.db.warehouse_stock.findMany({ where: { warehouse_id: warehouseId } }) : []
-    const availableByProduct = new Map(stockRows.map((s) => [s.product_id, s.quantity_on_hand - s.quantity_reserved]))
+
+    // A missing or failing tier lookup is treated as no tier and never blocks the menu (doc, F11 contract).
+    let hasTier = false
+    if (customerId) {
+      try {
+        hasTier = (await this.tiers.getTierForCustomer(customerId)) !== 'none'
+      } catch {
+        hasTier = false
+      }
+    }
+    const pricing = { mealService: settings.mealService, includedPerPassenger: settings.includedPerPassenger, hasTier }
+    const customerPrice = (p: { id: string; category: string; price_amount: unknown; is_premium: boolean }) => {
+      const basis = priceBasisFor(
+        {
+          productId: p.id,
+          category: p.category as OrderLineInput['category'],
+          quantity: 1,
+          priceAmount: toNumber(p.price_amount),
+          isPremium: p.is_premium,
+        },
+        pricing,
+      )
+      return { basis, amount: basis === 'standard' ? toNumber(p.price_amount) : 0 }
+    }
+    // The same rule as the reservation at checkout: where it applies, only stock still valid at departure counts.
+    const valid = warehouseId
+      ? await this.reservations.validQuantities(warehouseId, productIds, flight.scheduledDeparture)
+      : new Map<string, number>()
+    const shelfLife = new Map(products.map((p) => [p.id, p.shelf_life_days]))
+    const availableByProduct = new Map(
+      stockRows.map((s) => {
+        const usable = validAtDepartureApplies(shelfLife.get(s.product_id) ?? null, settings.orderWindowHours)
+          ? Math.min(s.quantity_on_hand, valid.get(s.product_id) ?? 0)
+          : s.quantity_on_hand
+        return [s.product_id, usable - s.quantity_reserved]
+      }),
+    )
 
     return {
       flightId,
@@ -153,23 +191,26 @@ export class ProductOrdersService {
       arrivalAirport: flight.destination,
       scheduledDeparture: flight.scheduledDeparture.toISOString(),
       bookingId: query.bookingId ?? null,
-      currency: await this.cateringSettings.baseCurrency(),
       cabin,
       settings,
       complimentarySnackAvailable:
-        settings.snackService === 'complimentary' && !(await this.hasComplimentarySnack(this.db, customerId, flightId)),
+        !!customerId && settings.snackService === 'complimentary' && !(await this.hasComplimentarySnack(this.db, customerId, flightId)),
       cutoffAt: cutoff.toISOString(),
       orderWindowOpen: isOrderWindowOpen(now, cutoff),
+      // Prices are in F4's base currency (the doc: no currency column on product); the shop shows this code.
+      currency: await this.cateringSettings.baseCurrency(),
       products: products.map((p) => {
         const available = availableByProduct.get(p.id) ?? 0
         return {
           id: p.id,
           sku: p.sku,
           name: p.name,
-          description: p.description,
           category: p.category,
           typeCode: p.type_code,
           priceAmount: toNumber(p.price_amount),
+          // What this customer pays for one unit, and why (standard, tier_benefit or included).
+          customerPriceAmount: customerPrice(p).amount,
+          priceBasis: customerPrice(p).basis,
           isPremium: p.is_premium,
           imageKey: p.image_key,
           dietaryAttributes: p.product_dietary.map((d) => d.attribute),
@@ -202,22 +243,20 @@ export class ProductOrdersService {
   async checkout(customerId: string, rawInput: unknown): Promise<ProductOrderDto> {
     const input: CheckoutInput = parseCheckoutInput(rawInput)
 
-    if (input.flightId === DEMO_FLIGHT_ID) {
-      if (input.bookingId !== customerId || input.cabin !== DEMO_CABIN) {
-        throw new ApiErrorException('BOOKING_NOT_CONFIRMED', 'The demo booking does not match this flight and cabin.', 409)
-      }
-      const demo = await this.demoBooking(customerId, input.bookingId)
-      const passengerId = demo.passengers[0].id
-      if (input.lines.some((line) => line.bookingPassengerId && line.bookingPassengerId !== passengerId)) {
-        throw new ApiErrorException('LINE_INVALID', 'The passenger is not on this booking.', 400)
-      }
-    }
     const booking = await this.bookings.getBooking(input.bookingId)
     if (!booking || booking.status !== 'confirmed') {
       throw new ApiErrorException('BOOKING_NOT_CONFIRMED', 'The booking is not confirmed.', 409)
     }
     if (booking.customerId && booking.customerId !== customerId) {
       throw new ApiErrorException('BOOKING_NOT_CONFIRMED', 'The booking belongs to another customer.', 403)
+    }
+
+    if (!booking.segments.some((s) => s.flightId === input.flightId && s.cabin === input.cabin)) {
+      throw new ApiErrorException('BOOKING_NOT_CONFIRMED', 'The booking has no seat on that flight and cabin.', 409)
+    }
+    const passengerIds = new Set(booking.passengers.map((p) => p.id))
+    if (input.lines.some((l) => l.bookingPassengerId && !passengerIds.has(l.bookingPassengerId))) {
+      throw new ApiErrorException('BOOKING_NOT_CONFIRMED', 'A passenger on the order is not on the booking.', 409)
     }
 
     const flight = await this.flightContext.getFlight(input.flightId)
@@ -317,6 +356,10 @@ export class ProductOrdersService {
           flightId: input.flightId,
           occurredAt: now,
           productName: products.get(productId)?.name,
+          // Only stock still valid at departure counts, where that rule can apply (see validAtDepartureApplies).
+          ...(validAtDepartureApplies(products.get(productId)?.shelf_life_days ?? null, settings.orderWindowHours)
+            ? { validAt: flight.scheduledDeparture }
+            : {}),
         })
       }
       if (totalAmount === 0) {
@@ -332,6 +375,10 @@ export class ProductOrdersService {
           currency,
           customerId,
         })
+        // F5 refused the payment at once: nothing is stored (the transaction rolls back, so the reservation goes too).
+        if (payment.status === 'failed') {
+          throw new ApiErrorException('PAYMENT_FAILED', 'The payment was not accepted.', 402)
+        }
         await tx.product_order.update({ where: { id: order.id }, data: { payment_id: payment.paymentId } })
       }
       await this.audit.record(
@@ -361,19 +408,19 @@ export class ProductOrdersService {
         customer_id: customerId,
         ...(bookingId ? { booking_id: bookingId } : {}),
       },
-      include: { product_order_line: { include: { product: true } }, flight: { include: { route: true } } },
+      include: { product_order_line: { include: { product: true } }, flight: true },
       orderBy: { created_at: 'desc' },
     })
-    return Promise.all(rows.map((row) => this.toDto(row)))
+    return Promise.all(rows.map((row) => this.toDtoWithCutoff(row)))
   }
 
   async get(customerId: string, orderId: string): Promise<ProductOrderDto> {
     const row = await this.db.product_order.findFirst({
       where: { id: orderId, customer_id: customerId },
-      include: { product_order_line: { include: { product: true } }, flight: { include: { route: true } } },
+      include: { product_order_line: { include: { product: true } }, flight: true },
     })
     if (!row) throw new ApiErrorException('NOT_FOUND', 'Order not found.', 404)
-    return this.toDto(row)
+    return this.toDtoWithCutoff(row)
   }
 
   // -- cancel ---------------------------------------------------------------
@@ -495,7 +542,10 @@ export class ProductOrdersService {
   }
 
   // Releases the stock an order holds. Shared with the payment-event
-  // handler and the expiry job.
+  // handler, the expiry job and the flight-cancellation step. A product
+  // already released (the stock transfer releases paid orders) is
+  // skipped: release() spots a repeat through a unique violation, which
+  // would abort the caller's transaction.
   async releaseOrderStock(
     tx: Prisma.TransactionClient,
     orderId: string,
@@ -504,8 +554,14 @@ export class ProductOrdersService {
     warehouseId: string,
     occurredAt: Date,
   ): Promise<void> {
+    const released = await tx.stock_movement.findMany({
+      where: { type: 'release', product_order_id: orderId },
+      select: { product_id: true },
+    })
+    const done = new Set(released.map((r) => r.product_id))
     const byProduct = new Map<string, number>()
     for (const line of lines) {
+      if (done.has(line.product_id)) continue
       byProduct.set(line.product_id, (byProduct.get(line.product_id) ?? 0) + line.quantity)
     }
     for (const [productId, quantity] of byProduct) {
@@ -518,6 +574,57 @@ export class ProductOrdersService {
         occurredAt,
       })
     }
+  }
+
+  // Doc, lifecycle step 10: F2 cancelled the flight, so every open order
+  // on it is cancelled, its stock released, and a paid one refunded
+  // through F5. Called by the scheduled job; returns how many orders it
+  // cancelled. Each order's move is guarded, so a run that overlaps a
+  // payment or a customer cancel does not apply twice.
+  async cancelForCancelledFlight(flightId: string, now: Date): Promise<number> {
+    const open = await this.db.product_order.findMany({
+      where: { flight_id: flightId, status: { in: ['pending_payment', 'confirmed'] } },
+      include: { product_order_line: { where: { deleted_at: null } } },
+    })
+    if (open.length === 0) return 0
+    const warehouse = await this.warehouseForFlight(flightId)
+    let cancelled = 0
+    for (const order of open) {
+      const changed = await this.db.$transaction(async (tx) => {
+        const updated = await tx.product_order.updateMany({
+          where: { id: order.id, status: order.status },
+          data: { status: 'cancelled', cancelled_at: now },
+        })
+        if (updated.count === 0) return false
+        await tx.product_order_line.updateMany({
+          where: { product_order_id: order.id, deleted_at: null },
+          data: { deleted_at: now },
+        })
+        if (warehouse) {
+          await this.releaseOrderStock(tx, order.id, order.flight_id, order.product_order_line, warehouse, now)
+        }
+        await this.audit.record(
+          {
+            actorType: 'system',
+            actorId: null,
+            actorRole: null,
+            sourceFeature: 'onboard-products',
+            action: 'product_order.cancel',
+            entityType: 'product_order',
+            entityId: order.id,
+            summary: `Flight ${flightId} was cancelled, so order ${order.id} was cancelled and its stock released.`,
+          },
+          tx,
+        )
+        return true
+      })
+      if (!changed) continue
+      cancelled += 1
+      if (order.status === 'confirmed' && order.payment_id) {
+        await this.payments.refund(order.payment_id, toNumber(order.total_amount), 'the flight was cancelled')
+      }
+    }
+    return cancelled
   }
 
   // The menu for a flight and cabin, resolved from the offering rows.
@@ -575,7 +682,7 @@ export class ProductOrdersService {
         })
       }
       if ((product.category === 'snack' || product.category === 'beverage') && !settings.snacksEnabled) {
-        throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Snacks and drinks are not offered in this cabin.', 409)
+        throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Snacks are not offered in this cabin.', 409)
       }
       if (product.category === 'duty_free' && !settings.dutyFreeEnabled) {
         throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Duty-free is not offered in this cabin.', 409)
@@ -647,7 +754,15 @@ export class ProductOrdersService {
     return 'economy'
   }
 
-  private async toDto(row: {
+  private async toDtoWithCutoff(row: Parameters<ProductOrdersService['toDto']>[0]): Promise<ProductOrderDto> {
+    const dto = this.toDto(row)
+    const flight = await this.flightContext.getFlight(row.flight_id)
+    const settings = await this.settings.resolveForFlight(row.flight_id, row.cabin as F12Cabin)
+    dto.cutoffAt = cutoffAt(flight.scheduledDeparture, settings.orderWindowHours).toISOString()
+    return dto
+  }
+
+  private toDto(row: {
     id: string
     booking_id: string
     flight_id: string
@@ -660,7 +775,7 @@ export class ProductOrdersService {
     expires_at: Date
     cancelled_at: Date | null
     created_at: Date
-    flight: { flight_number: string; scheduled_dep_at: Date; route: { origin: string; destination: string } }
+    flight?: { flight_number: string }
     product_order_line: Array<{
       id: string
       product_id: string
@@ -671,8 +786,7 @@ export class ProductOrdersService {
       price_basis: string
       product: { name: string }
     }>
-  }): Promise<ProductOrderDto> {
-    const settings = await this.settings.resolveForFlight(row.flight_id, row.cabin as F12Cabin)
+  }): ProductOrderDto {
     const status = row.status as ProductOrderStatus
     const lines: ProductOrderLineDto[] = row.product_order_line.map((line) => ({
       id: line.id,
@@ -689,10 +803,7 @@ export class ProductOrdersService {
       id: row.id,
       bookingId: row.booking_id,
       flightId: row.flight_id,
-      flightNumber: row.flight.flight_number,
-      flightOriginCode: row.flight.route.origin,
-      flightDestinationCode: row.flight.route.destination,
-      cutoffAt: cutoffAt(row.flight.scheduled_dep_at, settings.orderWindowHours).toISOString(),
+      flightNumber: row.flight?.flight_number ?? '',
       cabin: row.cabin,
       status,
       totalAmount: toNumber(row.total_amount),
@@ -701,6 +812,7 @@ export class ProductOrdersService {
       paymentStatus: this.paymentStatus(status, row.payment_id),
       paidAt: row.paid_at ? row.paid_at.toISOString() : null,
       expiresAt: row.expires_at.toISOString(),
+      cutoffAt: row.expires_at.toISOString(), // replaced by toDtoWithCutoff
       cancelledAt: row.cancelled_at ? row.cancelled_at.toISOString() : null,
       createdAt: row.created_at.toISOString(),
       lines,

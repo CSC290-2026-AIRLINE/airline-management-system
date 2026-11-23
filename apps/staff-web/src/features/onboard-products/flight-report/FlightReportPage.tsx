@@ -6,29 +6,38 @@
 // catering order; the page then flips to the read-only view.
 /* eslint-disable react-hooks/set-state-in-effect -- sync setState mirrors an external source or fires once on mount */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearch } from '@tanstack/react-router'
 import { useOnboardApi } from '@staff-web/features/onboard-products/api'
 import { FlightReportApiError } from '@staff-web/features/onboard-products/api/errors'
-import { Toast, useDialogFocusTrap, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
+import { Plus } from 'lucide-react'
+import { toast } from 'sonner'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Badge } from '@staff-web/components/ui/badge'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { cn } from '@staff-web/lib/utils'
+import { PageHeader, StatCard } from '@staff-web/features/onboard-products/ui'
 import type { FlightReport, Product, ProductCategory, ProductSale } from '@staff-web/features/onboard-products/api/types'
-import type { ReportableFlight } from '@staff-web/features/onboard-products/api/flight-report'
-import styles from './FlightReportPage.module.css'
+import type { FlightMealPolicy, ReportableFlight } from '@staff-web/features/onboard-products/api/flight-report'
 
 // -- helpers --------------------------------------------------------------
 
-function nextToastId(): number {
-  return Date.now() + Math.floor(Math.random() * 1000)
-}
-
-function formatDateTime(iso: string): string {
+// Flight times are shown in the departure airport's local time (like F2's flight pages), falling back to the
+// browser's zone when the server sends none.
+function formatDateTime(iso: string, timeZone?: string | null): string {
   return new Date(iso).toLocaleString('en-US', {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: 'UTC',
+    ...(timeZone ? { timeZone } : {}),
   })
 }
 
@@ -71,7 +80,9 @@ interface AfterFlight {
   detail: string
 }
 
-function computeAfterFlight(category: ProductCategory, initial: number): AfterFlight {
+// `left` is what remains after served, sold, wasted and damaged.
+function computeAfterFlight(category: ProductCategory, left: number): AfterFlight {
+  const initial = Math.max(0, left)
   if (category === 'meal') {
     return {
       text: `Discarded: aircraft stock becomes 0 (${formatQuantity(initial)} thrown away)`,
@@ -93,6 +104,25 @@ function computeAfterFlight(category: ProductCategory, initial: number): AfterFl
   }
 }
 
+const CABIN_ORDER = ['economy', 'premium_economy', 'business', 'first']
+
+function cabinName(cabin: string): string {
+  const name = cabin.replace('_', ' ')
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}
+
+// "Economy: paid · Business: complimentary, 1 meal each", from the flight's resolved cabin settings.
+function mealPolicySummary(policy: FlightMealPolicy[]): string {
+  return [...policy]
+    .sort((a, b) => CABIN_ORDER.indexOf(a.cabin) - CABIN_ORDER.indexOf(b.cabin))
+    .map((p) => {
+      if (p.mealService === 'complimentary') return `${cabinName(p.cabin)}: complimentary, ${p.includedPerPassenger} meal each`
+      if (p.mealService === 'paid') return `${cabinName(p.cabin)}: paid`
+      return `${cabinName(p.cabin)}: no meal service`
+    })
+    .join(' · ')
+}
+
 // Row shape used inside the page state. One per (flight, product).
 interface UsageRow {
   productId: string
@@ -103,8 +133,6 @@ interface UsageRow {
   served: number
   wasted: number
   damaged: number
-  // Cached preview state for the right-most column.
-  after: AfterFlight
 }
 
 function buildUsageRows(
@@ -114,6 +142,24 @@ function buildUsageRows(
   report: FlightReport | null,
 ): UsageRow[] {
   const rows: UsageRow[] = []
+  // A submitted report is shown as submitted: its own lines, with the numbers that were entered. The aircraft stock
+  // no longer has the meals by then (they are discarded), so building from it would drop those rows.
+  if (report?.status === 'submitted') {
+    for (const line of report.lines) {
+      const category = products.find((p) => p.id === line.productId)?.category ?? 'meal'
+      rows.push({
+        productId: line.productId,
+        productName: line.productName,
+        category,
+        initial: line.initialQuantity,
+        sold: line.sold,
+        served: line.served,
+        wasted: line.wasted,
+        damaged: line.damaged,
+      })
+    }
+    return sortRows(rows)
+  }
   const byProduct = new Map<string, number>()
   for (const r of aircraftRows) {
     byProduct.set(r.productId, (byProduct.get(r.productId) ?? 0) + r.quantity)
@@ -137,18 +183,20 @@ function buildUsageRows(
       served: saved?.served ?? 0,
       wasted: saved?.wasted ?? 0,
       damaged: saved?.damaged ?? 0,
-      after: computeAfterFlight(product.category, initialClamped),
     })
   }
-  // Sort: meals first, then snack, beverage, duty-free, then by name.
+  return sortRows(rows)
+}
+
+// Meals first, then snack, beverage, duty-free, then by name.
+function sortRows(rows: UsageRow[]): UsageRow[] {
   const order: ProductCategory[] = ['meal', 'snack', 'beverage', 'duty_free']
-  rows.sort((a, b) => {
+  return rows.sort((a, b) => {
     const ai = order.indexOf(a.category)
     const bi = order.indexOf(b.category)
     if (ai !== bi) return ai - bi
     return a.productName.localeCompare(b.productName)
   })
-  return rows
 }
 
 function emptyInputs(rows: UsageRow[]): Record<string, { served: string; wasted: string; damaged: string }> {
@@ -172,10 +220,10 @@ export function FlightReportPage() {
   const [sales, setSales] = useState<ProductSale[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [rows, setRows] = useState<UsageRow[]>([])
+  const [mealPolicy, setMealPolicy] = useState<FlightMealPolicy[]>([])
   const [inputs, setInputs] = useState<Record<string, { served: string; wasted: string; damaged: string }>>({})
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [toast, setToast] = useState<ToastData | null>(null)
   const [busy, setBusy] = useState(false)
   const [recordOpen, setRecordOpen] = useState(false)
   // Sale being edited, or null when the dialog is closed or in "add" mode.
@@ -187,20 +235,13 @@ export function FlightReportPage() {
   const [recordUnitPrice, setRecordUnitPrice] = useState<string>('0')
   const [recordError, setRecordError] = useState<string | null>(null)
   const [recordBusy, setRecordBusy] = useState(false)
-  const dialogRef = useRef<HTMLDivElement>(null)
-  const confirmRef = useRef<HTMLDivElement>(null)
 
-  // The record/edit dialog is open in either mode. The confirm-delete
-  // dialog is tracked separately and uses its own focus-trap ref.
+  // The record/edit dialog is open in either mode. The confirm-delete dialog is tracked separately.
   const dialogIsOpen = recordOpen || editingSale != null
-  useDialogFocusTrap(dialogIsOpen, dialogRef, () => {
-    setRecordOpen(false)
-    setEditingSale(null)
-  })
-  useDialogFocusTrap(confirmDelete != null, confirmRef, () => setConfirmDelete(null))
 
-  function showToast(kind: ToastKind, message: string) {
-    setToast({ id: nextToastId(), kind, message })
+  function showToast(kind: 'success' | 'error', message: string) {
+    if (kind === 'success') toast.success(message)
+    else toast.error(message)
   }
 
   // Initial load: list reportable flights, preselect from URL or first.
@@ -251,6 +292,15 @@ export function FlightReportPage() {
     const flight = flights.find((f) => f.id === selectedId)
     const aId = flight?.aircraftId ?? null
     setAircraftId(aId)
+    api.flightReport
+      .getFlightMealPolicy(selectedId)
+      .then((policy) => {
+        if (!cancelled) setMealPolicy(policy)
+      })
+      .catch(() => {
+        // Only the policy chip depends on it; the report still works.
+        if (!cancelled) setMealPolicy([])
+      })
     Promise.all([
       api.flightReport.getFlightReport(selectedId),
       api.flightReport.listFlightSales(selectedId),
@@ -479,31 +529,25 @@ export function FlightReportPage() {
 
   if (loadError) {
     return (
-      <p className={styles.errorMessage} role="alert">
-        {loadError}
-      </p>
+      <Alert variant="destructive" role="alert">
+        <AlertDescription>{loadError}</AlertDescription>
+      </Alert>
     )
   }
 
   const selectedFlight = flights.find((f) => f.id === selectedId) ?? null
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Flight Report</h1>
-          <p className={styles.subtitle}>
-            Report what was served, sold, wasted and damaged. This is a flight total, not a passenger history.
-          </p>
-        </div>
-        <div className={styles.headerRight}>
-          <span className={styles.policyChip}>Policy · Complimentary, 1 meal each</span>
-        </div>
-      </header>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Flight Report"
+        description="Report what was served, sold, wasted and damaged. This is a flight total, not a passenger history."
+        actions={
+          selectedId && mealPolicy.length > 0 ? <Badge variant="outline">Policy · {mealPolicySummary(mealPolicy)}</Badge> : undefined
+        }
+      />
 
-      {toast && <Toast toast={toast} onDismiss={() => setToast(null)} />}
-
-      <div className={styles.pickerBar} role="tablist" aria-label="Reportable flights">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" role="tablist" aria-label="Reportable flights">
         {flights.map((f) => {
           const active = f.id === selectedId
           return (
@@ -512,397 +556,395 @@ export function FlightReportPage() {
               type="button"
               role="tab"
               aria-selected={active}
-              className={`${styles.pickerChip} ${active ? styles.pickerChipActive : ''}`}
+              className={cn(
+                'flex flex-col gap-1 rounded-xl border bg-card p-4 text-left shadow-sm transition-colors outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                active && 'border-primary ring-1 ring-primary',
+              )}
               onClick={() => onSelectFlight(f.id)}
             >
-              <div className={styles.pickerChipTop}>
-                <span className={styles.pickerChipCode}>{f.flightNumber}</span>
-                {f.reportSubmitted && <span className={styles.pickerChipSubmitted}>Submitted</span>}
-              </div>
-              <span className={styles.pickerChipRoute}>
+              <span className="flex items-center justify-between gap-2">
+                <span className="font-semibold">{f.flightNumber}</span>
+                {f.reportSubmitted && <Badge variant="secondary">Submitted</Badge>}
+              </span>
+              <span className="text-sm">
                 {f.departureAirport} → {f.arrivalAirport}
               </span>
-              <span className={styles.pickerChipMeta}>{formatDateTime(f.scheduledDeparture)}</span>
+              <span className="text-xs text-muted-foreground">{formatDateTime(f.scheduledDeparture, f.departureTimeZone)}</span>
             </button>
           )
         })}
-        {flights.length === 0 && !loading && <p className={styles.message}>No flights are ready to report on yet.</p>}
+        {flights.length === 0 && !loading && <p className="m-0 text-sm text-muted-foreground">No flights are ready to report on yet.</p>}
       </div>
 
       {selectedFlight && (
-        <section className={styles.detailCard} aria-label="Flight report detail">
-          <div className={styles.detailHeader}>
-            <h2 className={styles.cardTitle}>
+        <Card className="gap-4" aria-label="Flight report detail">
+          <CardHeader>
+            <CardTitle className="text-xl">
               {selectedFlight.flightNumber} · {selectedFlight.departureAirport} → {selectedFlight.arrivalAirport}
-            </h2>
-            <p className={styles.detailSubtitle}>
-              aircraft {selectedFlight.aircraftId.toUpperCase()} · {formatDateTime(selectedFlight.scheduledDeparture)}
-            </p>
-          </div>
-
-          <h3 className={styles.cardTitle} style={{ fontSize: 18, marginTop: 12 }}>
-            Usage by product
-          </h3>
-          <p className={styles.cardSubtitle}>
-            Meals sold on board are paid through F5 first. A sale is recorded only after F5 reports paid.
-          </p>
-
-          {submitted && (
-            <div className={styles.submittedBanner} role="status">
-              Report submitted. Aircraft stock is updated and the catering order is closed.
+            </CardTitle>
+            <CardDescription>
+              Aircraft {selectedFlight.aircraftTailNumber ?? selectedFlight.aircraftId} ·{' '}
+              {formatDateTime(selectedFlight.scheduledDeparture, selectedFlight.departureTimeZone)}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div>
+              <h3 className="m-0 text-lg font-semibold">Usage by product</h3>
+              <p className="m-0 text-sm text-muted-foreground">
+                Meals sold on board are paid through F5 first. A sale is recorded only after F5 reports paid.
+              </p>
             </div>
-          )}
 
-          {!submitted && rows.length === 0 && (
-            <p className={styles.message}>
-              {loading ? 'Loading…' : 'No products are loaded on this flight yet. Transfer stock from the catering order first.'}
-            </p>
-          )}
+            {submitted && (
+              <Alert role="status" className="border-green-200 bg-green-50 text-green-800">
+                <AlertDescription className="text-green-800">
+                  Report submitted. Aircraft stock is updated and the catering order is closed.
+                </AlertDescription>
+              </Alert>
+            )}
 
-          {rows.length > 0 && (
-            <>
-              <div className={styles.tableWrap}>
-                <table className={styles.usageTable}>
-                  <colgroup>
-                    <col />
-                    <col style={{ width: 90 }} />
-                    <col style={{ width: 90 }} />
-                    <col style={{ width: 90 }} />
-                    <col style={{ width: 90 }} />
-                    <col style={{ width: 90 }} />
-                    <col style={{ width: 100 }} />
-                    <col />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>Product</th>
-                      <th className="numeric">Initial</th>
-                      <th className="numeric">Served</th>
-                      <th className="numeric">Sold</th>
-                      <th className="numeric">Wasted</th>
-                      <th className="numeric">Damaged</th>
-                      <th className="numeric">Remaining</th>
-                      <th>After the flight</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+            {!submitted && rows.length === 0 && (
+              <p className="m-0 py-6 text-center text-sm text-muted-foreground">
+                {loading ? 'Loading…' : 'No products are loaded on this flight yet. Transfer stock from the catering order first.'}
+              </p>
+            )}
+
+            {rows.length > 0 && (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Product</TableHead>
+                      <TableHead className="text-right">Initial</TableHead>
+                      <TableHead className="w-20 text-right">Served</TableHead>
+                      <TableHead className="text-right">Sold</TableHead>
+                      <TableHead className="w-20 text-right">Wasted</TableHead>
+                      <TableHead className="w-20 text-right">Damaged</TableHead>
+                      <TableHead className="text-right">Remaining</TableHead>
+                      <TableHead>After the flight</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {rows.map((r) => {
                       const served = parseNonNegativeInt(inputs[r.productId]?.served ?? '0')
                       const wasted = parseNonNegativeInt(inputs[r.productId]?.wasted ?? '0')
                       const damaged = parseNonNegativeInt(inputs[r.productId]?.damaged ?? '0')
                       const remaining = r.initial - served - r.sold - wasted - damaged
                       const short = remaining < 0
+                      // The preview follows what is typed: it is about the quantity left, not the starting one.
+                      const after = computeAfterFlight(r.category, remaining)
                       return (
-                        <tr key={r.productId} className={short ? styles.shortRow : ''}>
-                          <td>
-                            <div className={styles.itemCell}>
-                              <span className={styles.itemName}>{r.productName}</span>
-                              <span className={styles.itemCategory}>{categoryLabel(r.category)}</span>
-                            </div>
-                          </td>
-                          <td className="numeric">{formatQuantity(r.initial)}</td>
-                          <td className="numeric">
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              inputMode="numeric"
-                              className={`${styles.numInput} ${short ? styles.numInputShort : ''}`}
-                              value={inputs[r.productId]?.served ?? '0'}
-                              onChange={(e) => setInput(r.productId, 'served', e.target.value)}
-                              disabled={submitted || busy}
-                              aria-label={`${r.productName} served`}
-                            />
-                          </td>
-                          <td className="numeric">{formatQuantity(r.sold)}</td>
-                          <td className="numeric">
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              inputMode="numeric"
-                              className={`${styles.numInput} ${short ? styles.numInputShort : ''}`}
-                              value={inputs[r.productId]?.wasted ?? '0'}
-                              onChange={(e) => setInput(r.productId, 'wasted', e.target.value)}
-                              disabled={submitted || busy}
-                              aria-label={`${r.productName} wasted`}
-                            />
-                          </td>
-                          <td className="numeric">
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              inputMode="numeric"
-                              className={`${styles.numInput} ${short ? styles.numInputShort : ''}`}
-                              value={inputs[r.productId]?.damaged ?? '0'}
-                              onChange={(e) => setInput(r.productId, 'damaged', e.target.value)}
-                              disabled={submitted || busy}
-                              aria-label={`${r.productName} damaged`}
-                            />
-                          </td>
-                          <td className={`numeric ${styles.remainingCell} ${short ? styles.remainingShort : ''}`}>
-                            {formatQuantity(remaining)}
-                          </td>
-                          <td>
-                            <span
-                              className={`${styles.afterCell} ${
-                                r.after.kind === 'discarded'
-                                  ? styles.afterDiscarded
-                                  : r.after.kind === 'carried'
-                                    ? styles.afterCarried
-                                    : styles.afterKept
-                              }`}
-                            >
-                              {r.after.text}
+                        <TableRow key={r.productId}>
+                          <TableCell>
+                            <span className="flex flex-col">
+                              <span className="font-medium">{r.productName}</span>
+                              <span className="text-xs text-muted-foreground">{categoryLabel(r.category)}</span>
                             </span>
-                          </td>
-                        </tr>
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{formatQuantity(r.initial)}</TableCell>
+                          <TableCell>
+                            <UsageInput
+                              label={`${r.productName} served`}
+                              value={inputs[r.productId]?.served ?? '0'}
+                              onChange={(v) => setInput(r.productId, 'served', v)}
+                              disabled={submitted || busy}
+                              invalid={short}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{formatQuantity(r.sold)}</TableCell>
+                          <TableCell>
+                            <UsageInput
+                              label={`${r.productName} wasted`}
+                              value={inputs[r.productId]?.wasted ?? '0'}
+                              onChange={(v) => setInput(r.productId, 'wasted', v)}
+                              disabled={submitted || busy}
+                              invalid={short}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <UsageInput
+                              label={`${r.productName} damaged`}
+                              value={inputs[r.productId]?.damaged ?? '0'}
+                              onChange={(v) => setInput(r.productId, 'damaged', v)}
+                              disabled={submitted || busy}
+                              invalid={short}
+                            />
+                          </TableCell>
+                          <TableCell className={cn('text-right font-semibold tabular-nums', short && 'text-destructive')}>
+                            {formatQuantity(remaining)}
+                          </TableCell>
+                          <TableCell className="min-w-48 whitespace-normal">
+                            <span
+                              className={cn(
+                                'block text-sm',
+                                after.kind === 'discarded'
+                                  ? 'text-destructive'
+                                  : after.kind === 'carried'
+                                    ? 'text-foreground'
+                                    : 'text-muted-foreground',
+                              )}
+                            >
+                              {after.text}
+                            </span>
+                          </TableCell>
+                        </TableRow>
                       )
                     })}
-                  </tbody>
-                </table>
-              </div>
+                  </TableBody>
+                </Table>
 
-              {!submitted && hasMismatch && (
-                <div className={styles.mismatchBanner} role="alert">
-                  {mismatchMessage}
-                </div>
-              )}
-
-              <div className={styles.actionRow}>
-                {!submitted ? (
-                  <>
-                    <button
-                      type="button"
-                      className={styles.submitButton}
-                      onClick={() => void handleSubmit()}
-                      disabled={busy || hasMismatch}
-                    >
-                      Submit flight report
-                    </button>
-                    <button type="button" className={styles.resetButton} onClick={handleReset} disabled={busy}>
-                      Reset
-                    </button>
-                  </>
-                ) : (
-                  <span className={styles.submittedBadge}>Submitted · {report?.submittedAt ? formatDateTime(report.submittedAt) : ''}</span>
+                {!submitted && hasMismatch && (
+                  <Alert variant="destructive" role="alert">
+                    <AlertDescription>{mismatchMessage}</AlertDescription>
+                  </Alert>
                 )}
-              </div>
-            </>
-          )}
-        </section>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {!submitted ? (
+                    <>
+                      <Button type="button" onClick={() => void handleSubmit()} disabled={busy || hasMismatch}>
+                        Submit flight report
+                      </Button>
+                      <Button type="button" variant="outline" onClick={handleReset} disabled={busy}>
+                        Reset
+                      </Button>
+                    </>
+                  ) : (
+                    <Badge variant="secondary">
+                      Submitted · {report?.submittedAt ? formatDateTime(report.submittedAt, selectedFlight?.departureTimeZone) : ''}
+                    </Badge>
+                  )}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {selectedFlight && (
-        <section className={styles.detailCard} aria-label="Sales on this flight">
-          <div className={styles.salesHeader}>
-            <div>
-              <h2 className={styles.cardTitle}>Sales on this flight</h2>
-              <p className={styles.cardSubtitle}>Totals from the sold column, at the selling price. Margin uses the batch purchase cost.</p>
-            </div>
-            <button
-              type="button"
-              className={styles.recordButton}
-              onClick={openRecordDialog}
-              disabled={submitted}
-              title={submitted ? 'This flight has been reported; no more sales can be recorded.' : undefined}
-            >
-              + Record on-board sale
-            </button>
-          </div>
-
-          {sales.length === 0 ? (
-            <p className={styles.salesEmpty}>No on-board sales recorded for this flight yet.</p>
-          ) : (
-            <>
-              <div className={styles.tableWrap}>
-                <table className={styles.salesTable}>
-                  <colgroup>
-                    <col />
-                    <col style={{ width: 100 }} />
-                    <col style={{ width: 130 }} />
-                    <col style={{ width: 130 }} />
-                    <col style={{ width: 130 }} />
-                    <col style={{ width: 130 }} />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>Product</th>
-                      <th className="numeric">Quantity</th>
-                      <th className="numeric">Unit price</th>
-                      <th className="numeric">Unit cost</th>
-                      <th className="numeric">Total</th>
-                      <th className={styles.actionsCol}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+        <Card className="gap-4" aria-label="Sales on this flight">
+          <CardHeader>
+            <CardTitle>Sales on this flight</CardTitle>
+            <CardDescription>Totals from the sold column, at the selling price. Margin uses the batch purchase cost.</CardDescription>
+            <CardAction>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={openRecordDialog}
+                disabled={submitted}
+                title={submitted ? 'This flight has been reported; no more sales can be recorded.' : undefined}
+              >
+                <Plus aria-hidden="true" />
+                Record on-board sale
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {sales.length === 0 ? (
+              <p className="m-0 py-6 text-center text-sm text-muted-foreground">No on-board sales recorded for this flight yet.</p>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Product</TableHead>
+                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead className="text-right">Unit price</TableHead>
+                      <TableHead className="text-right">Unit cost</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="w-40">
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {sales.map((s) => (
-                      <tr key={s.id}>
-                        <td>{s.productName}</td>
-                        <td className="numeric">{formatQuantity(s.quantity)}</td>
-                        <td className="numeric">{formatMoney(s.unitPriceAmount)}</td>
-                        <td className="numeric">{s.unitCostAmount == null ? '—' : formatMoney(s.unitCostAmount)}</td>
-                        <td className="numeric">{formatMoney(s.totalAmount)}</td>
-                        <td className={styles.actionsCol}>
-                          <div className={styles.salesActions}>
-                            <button
+                      <TableRow key={s.id}>
+                        <TableCell className="font-medium">{s.productName}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatQuantity(s.quantity)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMoney(s.unitPriceAmount)}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {s.unitCostAmount == null ? '—' : formatMoney(s.unitCostAmount)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{formatMoney(s.totalAmount)}</TableCell>
+                        <TableCell className="text-right">
+                          <span className="inline-flex gap-2">
+                            <Button
                               type="button"
-                              className={styles.salesActionButton}
+                              variant="outline"
+                              size="sm"
                               onClick={() => openEditDialog(s)}
                               disabled={submitted}
                               aria-label={`Edit sale of ${s.productName}`}
                             >
                               Edit
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type="button"
-                              className={`${styles.salesActionButton} ${styles.salesActionRemove}`}
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
                               onClick={() => openDeleteConfirm(s)}
                               disabled={submitted}
                               aria-label={`Remove sale of ${s.productName}`}
                             >
                               Remove
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                            </Button>
+                          </span>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </TableBody>
+                </Table>
 
-              <div className={styles.salesTotals}>
-                <div className={styles.totalCard}>
-                  <p className={styles.totalLabel}>Items sold</p>
-                  <p className={styles.totalValue}>{formatQuantity(salesItems)}</p>
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                  <StatCard label="Items sold" value={formatQuantity(salesItems)} />
+                  <StatCard label="Sales" value={formatMoney(salesTotal)} />
+                  <StatCard label="Cost" value={hasAnyCost ? formatMoney(salesCost) : '—'} />
+                  <StatCard label="Gross margin" value={hasAnyCost ? formatMoney(salesMargin) : '—'} />
                 </div>
-                <div className={styles.totalCard}>
-                  <p className={styles.totalLabel}>Sales</p>
-                  <p className={styles.totalValue}>{formatMoney(salesTotal)}</p>
-                </div>
-                <div className={styles.totalCard}>
-                  <p className={styles.totalLabel}>Cost</p>
-                  <p className={styles.totalValue}>{hasAnyCost ? formatMoney(salesCost) : '—'}</p>
-                </div>
-                <div className={`${styles.totalCard} ${styles.totalCardHighlight}`}>
-                  <p className={`${styles.totalLabel} ${styles.totalLabelHighlight}`}>Gross margin</p>
-                  <p className={`${styles.totalValue} ${styles.totalValueHighlight}`}>{hasAnyCost ? formatMoney(salesMargin) : '—'}</p>
-                </div>
-              </div>
-            </>
-          )}
-        </section>
+              </>
+            )}
+          </CardContent>
+        </Card>
       )}
 
-      {dialogIsOpen && (
-        <div
-          className={styles.dialogOverlay}
-          role="dialog"
-          aria-modal="true"
-          aria-label={editingSale ? 'Edit on-board sale' : 'Record on-board sale'}
-        >
-          <div className={styles.dialog} ref={dialogRef}>
-            <h3 className={styles.dialogTitle}>{editingSale ? 'Edit on-board sale' : 'Record on-board sale'}</h3>
-            <p className={styles.dialogSubtitle}>
+      <Dialog
+        open={dialogIsOpen}
+        onOpenChange={(open) => {
+          if (!open && !recordBusy) {
+            setRecordOpen(false)
+            setEditingSale(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingSale ? 'Edit on-board sale' : 'Record on-board sale'}</DialogTitle>
+            <DialogDescription>
               {editingSale
                 ? 'Update the quantity or unit price for this sale.'
                 : 'Pick a product loaded on this flight, set the selling price and the quantity sold.'}
-            </p>
-            {recordError && <div className={styles.dialogError}>{recordError}</div>}
-            <div className={styles.dialogRow}>
-              <label className={styles.dialogLabel} htmlFor="record-product">
-                Product
-              </label>
-              <select
+            </DialogDescription>
+          </DialogHeader>
+          {recordError && (
+            <Alert variant="destructive" role="alert">
+              <AlertDescription>{recordError}</AlertDescription>
+            </Alert>
+          )}
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="record-product">Product</Label>
+              <NativeSelect
                 id="record-product"
-                className={styles.dialogSelect}
+                className="w-full"
                 value={recordProductId}
                 onChange={(e) => setRecordProductId(e.target.value)}
                 disabled={recordBusy || editingSale != null}
               >
                 {rows.map((r) => (
-                  <option key={r.productId} value={r.productId}>
+                  <NativeSelectOption key={r.productId} value={r.productId}>
                     {r.productName}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
-            <div className={styles.dialogRow}>
-              <label className={styles.dialogLabel} htmlFor="record-unit-price">
-                Unit price
-              </label>
-              <input
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="record-unit-price">Unit price</Label>
+              <Input
                 id="record-unit-price"
                 type="number"
                 min={0}
                 step={0.01}
                 inputMode="decimal"
-                className={styles.dialogInput}
                 value={recordUnitPrice}
                 onChange={(e) => setRecordUnitPrice(e.target.value)}
                 disabled={recordBusy}
               />
             </div>
-            <div className={styles.dialogRow}>
-              <label className={styles.dialogLabel} htmlFor="record-qty">
-                Quantity
-              </label>
-              <input
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="record-qty">Quantity</Label>
+              <Input
                 id="record-qty"
                 type="number"
                 min={1}
                 step={1}
                 inputMode="numeric"
-                className={styles.dialogInput}
                 value={recordQty}
                 onChange={(e) => setRecordQty(e.target.value)}
                 disabled={recordBusy}
               />
             </div>
-            <div className={styles.dialogActions}>
-              <button
-                type="button"
-                className={styles.resetButton}
-                onClick={() => {
-                  setRecordOpen(false)
-                  setEditingSale(null)
-                }}
-                disabled={recordBusy}
-              >
-                Cancel
-              </button>
-              <button type="button" className={styles.submitButton} onClick={() => void handleSaveSale()} disabled={recordBusy}>
-                {editingSale ? 'Save changes' : 'Record sale'}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setRecordOpen(false)
+                setEditingSale(null)
+              }}
+              disabled={recordBusy}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void handleSaveSale()} disabled={recordBusy}>
+              {editingSale ? 'Save changes' : 'Record sale'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {confirmDelete != null && (
-        <div className={styles.dialogOverlay} role="dialog" aria-modal="true" aria-label="Remove sale">
-          <div className={styles.dialog} ref={confirmRef}>
-            <h3 className={styles.dialogTitle}>Remove this sale?</h3>
-            <p className={styles.dialogSubtitle}>
-              {formatQuantity(confirmDelete.quantity)} × {confirmDelete.productName} at {formatMoney(confirmDelete.unitPriceAmount)} will be
-              removed from this flight.
-            </p>
-            <div className={styles.dialogActions}>
-              <button type="button" className={styles.resetButton} onClick={() => setConfirmDelete(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={`${styles.submitButton} ${styles.submitButtonDanger}`}
-                onClick={() => void handleConfirmDelete()}
-              >
-                Remove sale
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog open={confirmDelete != null} onOpenChange={(open) => !open && setConfirmDelete(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove this sale?</DialogTitle>
+            <DialogDescription>
+              {confirmDelete
+                ? `${formatQuantity(confirmDelete.quantity)} × ${confirmDelete.productName} at ${formatMoney(confirmDelete.unitPriceAmount)} will be removed from this flight.`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConfirmDelete(null)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" onClick={() => void handleConfirmDelete()}>
+              Remove sale
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  )
+}
+
+/** A small number field for the served / wasted / damaged columns. */
+function UsageInput({
+  label,
+  value,
+  onChange,
+  disabled,
+  invalid,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  disabled: boolean
+  invalid: boolean
+}) {
+  return (
+    <Input
+      type="number"
+      min={0}
+      step={1}
+      inputMode="numeric"
+      className="ml-auto w-16 px-2 text-right"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      aria-label={label}
+      aria-invalid={invalid ? true : undefined}
+    />
   )
 }

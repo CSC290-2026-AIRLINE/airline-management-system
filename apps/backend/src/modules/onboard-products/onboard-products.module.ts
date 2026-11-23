@@ -11,7 +11,8 @@ import { Global, Module } from '@nestjs/common'
 import { SystemClock } from './common/clock'
 import { AuditService } from './common/audit.service'
 import { FlightsService } from './common/flights.service'
-import { NoopStorageService, StubBookingsService, StubPaymentsService, StubTierService } from './common/cross-module-ports'
+import { AuditModule } from '../admin-console/audit/audit.module'
+import { NoopStorageService, DbBookingsService, StubPaymentsService, DbTierService } from './common/cross-module-ports'
 import { SharedModule } from './common/shared.module'
 import { ProductsModule } from './products/products.module'
 import { OfferingsModule } from './offerings/offerings.module'
@@ -37,6 +38,7 @@ import { SchedulerModule } from './scheduler/scheduler.module'
 @Global()
 @Module({
   imports: [
+    AuditModule,
     SharedModule,
     ProductsModule,
     OfferingsModule,
@@ -59,7 +61,7 @@ import { SchedulerModule } from './scheduler/scheduler.module'
     PaymentEventsModule,
     SchedulerModule,
   ],
-  providers: [SystemClock, AuditService, FlightsService, NoopStorageService, StubBookingsService, StubPaymentsService, StubTierService],
-  exports: [SystemClock, AuditService, FlightsService, NoopStorageService, StubBookingsService, StubPaymentsService, StubTierService],
+  providers: [SystemClock, AuditService, FlightsService, NoopStorageService, DbBookingsService, StubPaymentsService, DbTierService],
+  exports: [SystemClock, AuditService, FlightsService, NoopStorageService, DbBookingsService, StubPaymentsService, DbTierService],
 })
 export class OnboardProductsModule {}

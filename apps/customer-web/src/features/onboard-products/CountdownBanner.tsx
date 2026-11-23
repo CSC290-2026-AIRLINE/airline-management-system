@@ -3,14 +3,19 @@
 // (the cutoff is hours/days away, so minute precision is plenty).
 
 import { useEffect, useState } from 'react'
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
 import { formatCountdown, formatDateTime } from './format'
 
 interface Props {
   cutoffAt: string | null
   isOpen: boolean
+  // The cabin's order window in hours, from its resolved cabin setting.
+  windowHours: number | null
+  // The departure airport's time zone, so the close time matches the flight times.
+  timeZone?: string | null
 }
 
-export function CountdownBanner({ cutoffAt, isOpen }: Props) {
+export function CountdownBanner({ cutoffAt, isOpen, windowHours, timeZone }: Props) {
   // Captured once on mount; refreshed by the interval below. Capturing
   // via useState initializer avoids the "synchronous setState in effect"
   // rule — the value is stable for the first render, then the interval
@@ -24,13 +29,9 @@ export function CountdownBanner({ cutoffAt, isOpen }: Props) {
 
   if (!isOpen) {
     return (
-      <div
-        className="flex items-center gap-2.5 px-4 py-3 text-sm leading-relaxed border border-border rounded-lg bg-[#f5f5f7] text-[#525866]"
-        role="status"
-      >
-        <span className="w-2 h-2 rounded-full bg-[#98a2b3] flex-none" aria-hidden="true" />
-        <span>Ordering closed for this flight.</span>
-      </div>
+      <Alert role="status" className="text-muted-foreground">
+        <AlertDescription className="col-start-2 text-muted-foreground">Ordering closed for this flight.</AlertDescription>
+      </Alert>
     )
   }
 
@@ -38,19 +39,11 @@ export function CountdownBanner({ cutoffAt, isOpen }: Props) {
   const countdown = msRemaining > 0 ? formatCountdown(msRemaining) : '0 m'
 
   return (
-    <div
-      className="flex items-center gap-2.5 px-4 py-3 text-sm leading-relaxed border rounded-lg"
-      style={{
-        background: 'oklch(0.95 0.06 148)',
-        color: 'oklch(0.48 0.15 148)',
-        borderColor: 'oklch(0.88 0.10 148)',
-      }}
-      role="status"
-    >
-      <span className="w-2 h-2 rounded-full flex-none" style={{ background: 'oklch(0.48 0.15 148)' }} aria-hidden="true" />
-      <span>
-        Ordering open · Orders close {cutoffAt ? formatDateTime(cutoffAt) : ''} (in {countdown}).
-      </span>
-    </div>
+    <Alert role="status" className="border-green-200 bg-green-50 text-green-800">
+      <AlertDescription className="col-start-2 text-green-800">
+        Ordering open · Orders close {cutoffAt ? formatDateTime(cutoffAt, timeZone) : ''}
+        {windowHours ? `, ${windowHours} hours before departure` : ''}, in {countdown}.
+      </AlertDescription>
+    </Alert>
   )
 }

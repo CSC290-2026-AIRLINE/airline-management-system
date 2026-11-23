@@ -154,6 +154,8 @@ export interface CateringOrderLine {
   productName: string
   quantityRequired: number
   quantityShort: number
+  // On hand at the order's warehouse, from the server. Null on an older server that does not send it.
+  quantityInWarehouse: number | null
   source: 'order' | 'default'
 }
 
@@ -194,6 +196,12 @@ export interface Flight {
   cutoffAt: string
   warehouseId: string
   isCancelled: boolean
+  // IANA zone of the departure airport; times are shown in it, like F2's flight pages.
+  departureTimeZone: string | null
+  // From the server's F12 clock: false once the cutoff has passed.
+  orderingOpen: boolean
+  // From the server's F12 clock: true once the scheduled departure has passed.
+  departed: boolean
 }
 
 // What is on the aircraft after a transfer, per (aircraft, product, batch).

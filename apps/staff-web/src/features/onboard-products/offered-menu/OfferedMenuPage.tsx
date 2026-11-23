@@ -3,7 +3,18 @@
 // detail in Network default mode, and each route row's Edit button opens
 // Route detail in Whole route mode.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Badge } from '@staff-web/components/ui/badge'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { PageHeader } from '@staff-web/features/onboard-products/ui'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useOnboardApi } from '@staff-web/features/onboard-products/api'
 import type {
@@ -16,18 +27,13 @@ import type {
   RouteSummary,
 } from '@staff-web/features/onboard-products/api/types'
 import { resolveCabinSettings } from '@staff-web/features/onboard-products/offered-menu/resolve'
-import { ConfirmDialog, Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
-import styles from './OfferedMenuPage.module.css'
+import { ConfirmDialog } from '@staff-web/features/onboard-products/catalog'
 
 const PAGE_SIZE = 15
 
 const CABINS: Cabin[] = ['economy', 'premium_economy', 'business']
 
 const ROUTE_TABLE_CABINS: Cabin[] = ['economy', 'premium_economy', 'business']
-
-function nextToastId(): number {
-  return Date.now() + Math.floor(Math.random() * 1000)
-}
 
 function summariseCabin(
   settings: CabinSetting[],
@@ -84,10 +90,9 @@ export function OfferedMenuPage() {
   const [busy, setBusy] = useState(false)
   const [clearingException, setClearingException] = useState<FlightException | null>(null)
 
-  const [toast, setToast] = useState<ToastData | null>(null)
-
-  function showToast(kind: ToastKind, message: string) {
-    setToast({ id: nextToastId(), kind, message })
+  function showToast(kind: 'success' | 'error', message: string) {
+    if (kind === 'success') toast.success(message)
+    else toast.error(message)
   }
 
   useEffect(() => {
@@ -235,356 +240,335 @@ export function OfferedMenuPage() {
   const summary = routeRows == null ? '…' : `${routeRows.routes.length} routes shown · ${routeRows.totalCustomized} customized`
 
   if (loading && !network) {
-    return <p className={styles.message}>Loading offered menu…</p>
+    return (
+      <div className="flex flex-col gap-3" aria-busy="true">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    )
   }
   if (error) {
     return (
-      <p className={styles.error} role="alert">
-        {error}
-      </p>
+      <Alert variant="destructive" role="alert">
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
     )
   }
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Offered menu</h1>
-          <p className={styles.subtitle}>
-            Everything each route offers in each cabin: the meals on the menu and the rules for how meals and extras work. Open a route to
-            edit both.
-          </p>
-        </div>
-      </header>
-
-      {toast && <Toast toast={toast} onDismiss={() => setToast(null)} />}
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Offered menu"
+        description="Everything each route offers in each cabin: the meals on the menu and the rules for how meals and extras work. Open a route to edit both."
+      />
 
       {network && (
-        <section className={styles.card} aria-label="Network default">
-          <div className={styles.cardHeader}>
-            <div>
-              <h2 className={styles.cardTitle}>Network default</h2>
-              <p className={styles.cardSubtitle}>
-                The starting rules for all {routeRows?.total ?? ''} routes in the network. A route or a single flight can override them.
-              </p>
-            </div>
-            <button type="button" className={styles.secondaryButton} onClick={() => navigate({ to: '/catering/offered-menu/network' })}>
-              Edit network default
-            </button>
-          </div>
-          <div className={styles.networkTiles}>
+        <Card className="gap-4" aria-label="Network default">
+          <CardHeader>
+            <CardTitle>Network default</CardTitle>
+            <CardDescription>
+              The starting rules for all {routeRows?.total ?? ''} routes in the network. A route or a single flight can override them.
+            </CardDescription>
+            <CardAction>
+              <Button type="button" variant="outline" onClick={() => navigate({ to: '/catering/offered-menu/network' })}>
+                Edit network default
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-3">
             {CABINS.map((cabin) => {
               const summary = summariseCabin(network.cabinSettings, network.offerings, cabin)
               return (
-                <div key={cabin} className={styles.networkTile}>
-                  <p className={styles.tileLabel}>{cabin.replace('_', ' ')}</p>
-                  <p className={styles.tileBody}>{summary.service}</p>
+                <div key={cabin} className="flex flex-col gap-1 rounded-lg border bg-muted/40 p-4">
+                  <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{cabin.replace('_', ' ')}</span>
+                  <span className="text-sm font-medium">{summary.service}</span>
                 </div>
               )
             })}
-          </div>
-        </section>
+          </CardContent>
+        </Card>
       )}
 
-      <section className={styles.card} aria-label="Routes">
-        <div className={styles.cardHeader}>
-          <div>
-            <h2 className={styles.cardTitle}>Routes</h2>
-            <p className={styles.cardSubtitle}>
-              Meal rules and menu per cabin. A route inherits the network rules and standard menu until you customize it.
-            </p>
-          </div>
-          <p className={styles.count}>{summary}</p>
-        </div>
-
-        <div className={styles.filters}>
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Search route</span>
-            <input
-              type="search"
-              className={styles.filterInput}
-              placeholder="Search route"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Cabin</span>
-            <select className={styles.filterInput} value={cabinFilter} onChange={(e) => setCabinFilter(e.target.value as 'all' | Cabin)}>
-              <option value="all">All cabins</option>
-              <option value="economy">Economy</option>
-              <option value="premium_economy">Premium economy</option>
-              <option value="business">Business</option>
-            </select>
-          </label>
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Offers meal</span>
-            <select className={styles.filterInput} value={mealFilter} onChange={(e) => setMealFilter(e.target.value)}>
-              <option value="">Any meal</option>
-              {mealProducts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Meal service</span>
-            <select
-              className={styles.filterInput}
-              value={serviceFilter}
-              onChange={(e) => setServiceFilter(e.target.value as typeof serviceFilter)}
-            >
-              <option value="all">Any</option>
-              <option value="complimentary">Complimentary</option>
-              <option value="paid">Paid</option>
-              <option value="none">None</option>
-            </select>
-          </label>
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Show</span>
-            <select
-              className={styles.filterInput}
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-            >
-              <option value="all">All</option>
-              <option value="customized">Customized</option>
-              <option value="inherited">Inherited</option>
-            </select>
-          </label>
-        </div>
-        <button type="button" className={styles.clearLink} onClick={clearFilters}>
-          Clear filters
-        </button>
-
-        <div className={styles.bulkBar}>
-          <div>
-            <p className={styles.bulkTitle}>Bulk edit</p>
-            <p className={styles.bulkSubtitle}>Applies to all {routeRows?.routes.length ?? 0} matching routes, not only this page.</p>
-          </div>
-          <div className={styles.bulkControls}>
-            <select className={styles.filterInput} value={bulkMealId} onChange={(e) => setBulkMealId(e.target.value)}>
-              <option value="">Pick a meal</option>
-              {mealProducts.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <select className={styles.filterInput} value={bulkCabin} onChange={(e) => setBulkCabin(e.target.value as Cabin)}>
-              <option value="economy">Economy</option>
-              <option value="premium_economy">Premium economy</option>
-              <option value="business">Business</option>
-            </select>
-            <button
-              type="button"
-              className={styles.primaryButton}
-              disabled={busy || !bulkMealId}
-              onClick={() => setBulkConfirm({ kind: 'offer' })}
-            >
-              {busy ? 'Working…' : `Offer on ${routeRows?.routes.length ?? 0} routes`}
-            </button>
-            <button
-              type="button"
-              className={styles.dangerButton}
-              disabled={busy || !bulkMealId}
-              onClick={() => setBulkConfirm({ kind: 'withdraw' })}
-            >
-              Withdraw from {routeRows?.routes.length ?? 0} routes
-            </button>
-          </div>
-        </div>
-
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th scope="col">Route</th>
-                {ROUTE_TABLE_CABINS.map((c) => (
-                  <th scope="col" key={c}>
-                    {cabinLabel(c)}
-                  </th>
+      <Card className="gap-4" aria-label="Routes">
+        <CardHeader>
+          <CardTitle>Routes</CardTitle>
+          <CardDescription>
+            Meal rules and menu per cabin. A route inherits the network rules and standard menu until you customize it.
+          </CardDescription>
+          <CardAction className="text-sm text-muted-foreground">{summary}</CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <FilterField label="Search route">
+              <Input type="search" placeholder="Search route" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </FilterField>
+            <FilterField label="Cabin">
+              <NativeSelect className="w-full" value={cabinFilter} onChange={(e) => setCabinFilter(e.target.value as 'all' | Cabin)}>
+                <NativeSelectOption value="all">All cabins</NativeSelectOption>
+                <NativeSelectOption value="economy">Economy</NativeSelectOption>
+                <NativeSelectOption value="premium_economy">Premium economy</NativeSelectOption>
+                <NativeSelectOption value="business">Business</NativeSelectOption>
+              </NativeSelect>
+            </FilterField>
+            <FilterField label="Offers meal">
+              <NativeSelect className="w-full" value={mealFilter} onChange={(e) => setMealFilter(e.target.value)}>
+                <NativeSelectOption value="">Any meal</NativeSelectOption>
+                {mealProducts.map((p) => (
+                  <NativeSelectOption key={p.id} value={p.id}>
+                    {p.name}
+                  </NativeSelectOption>
                 ))}
-                <th scope="col" className={styles.thActions}>
-                  <span className={styles.srOnly}>Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
+              </NativeSelect>
+            </FilterField>
+            <FilterField label="Meal service">
+              <NativeSelect
+                className="w-full"
+                value={serviceFilter}
+                onChange={(e) => setServiceFilter(e.target.value as typeof serviceFilter)}
+              >
+                <NativeSelectOption value="all">Any</NativeSelectOption>
+                <NativeSelectOption value="complimentary">Complimentary</NativeSelectOption>
+                <NativeSelectOption value="paid">Paid</NativeSelectOption>
+                <NativeSelectOption value="none">None</NativeSelectOption>
+              </NativeSelect>
+            </FilterField>
+            <FilterField label="Show">
+              <NativeSelect
+                className="w-full"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+              >
+                <NativeSelectOption value="all">All</NativeSelectOption>
+                <NativeSelectOption value="customized">Customized</NativeSelectOption>
+                <NativeSelectOption value="inherited">Inherited</NativeSelectOption>
+              </NativeSelect>
+            </FilterField>
+          </div>
+          <div className="flex justify-end">
+            <Button type="button" variant="link" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4">
+            <div>
+              <p className="m-0 text-sm font-semibold">Bulk edit</p>
+              <p className="m-0 text-sm text-muted-foreground">
+                Applies to all {routeRows?.routes.length ?? 0} matching routes, not only this page.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <NativeSelect className="w-full sm:w-56" value={bulkMealId} onChange={(e) => setBulkMealId(e.target.value)}>
+                <NativeSelectOption value="">Pick a meal</NativeSelectOption>
+                {mealProducts.map((p) => (
+                  <NativeSelectOption key={p.id} value={p.id}>
+                    {p.name}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <NativeSelect className="w-full sm:w-44" value={bulkCabin} onChange={(e) => setBulkCabin(e.target.value as Cabin)}>
+                <NativeSelectOption value="economy">Economy</NativeSelectOption>
+                <NativeSelectOption value="premium_economy">Premium economy</NativeSelectOption>
+                <NativeSelectOption value="business">Business</NativeSelectOption>
+              </NativeSelect>
+              <Button type="button" disabled={busy || !bulkMealId} onClick={() => setBulkConfirm({ kind: 'offer' })}>
+                {busy ? 'Working…' : `Offer on ${routeRows?.routes.length ?? 0} routes`}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={busy || !bulkMealId}
+                onClick={() => setBulkConfirm({ kind: 'withdraw' })}
+              >
+                Withdraw from {routeRows?.routes.length ?? 0} routes
+              </Button>
+            </div>
+          </div>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Route</TableHead>
+                {ROUTE_TABLE_CABINS.map((c) => (
+                  <TableHead key={c}>{cabinLabel(c)}</TableHead>
+                ))}
+                <TableHead className="w-16">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {visibleRoutes.map((r) => (
-                <tr key={r.id} className={styles.row}>
-                  <td>
+                <TableRow key={r.id}>
+                  <TableCell>
                     <Link
                       to="/catering/offered-menu/$routeId"
                       params={{ routeId: r.id }}
                       search={{ flight: null }}
-                      className={styles.routeLink}
+                      className="flex flex-col no-underline"
                     >
-                      <span className={styles.routeCode}>
+                      <span className="font-medium text-foreground">
                         {r.originAirport} → {r.destinationAirport}
                       </span>
-                      <span className={styles.routeSub}>
+                      <span className="text-xs text-muted-foreground">
                         {r.originCity} to {r.destinationCity}
                       </span>
                     </Link>
-                  </td>
+                  </TableCell>
                   {ROUTE_TABLE_CABINS.map((c) => {
                     const status = r.cabinStatuses[c]
                     if (!status) {
-                      return (
-                        <td key={c}>
-                          <span className={styles.cabinName}>—</span>
-                        </td>
-                      )
+                      return <TableCell key={c}>—</TableCell>
                     }
                     return (
-                      <td key={c}>
-                        <span className={styles.cabinName}>{capitalize(status.mealService)}</span>
-                        {status.state === 'custom' && <span className={styles.customBadge}>Custom</span>}
-                      </td>
+                      <TableCell key={c}>
+                        <span className="inline-flex flex-wrap items-center gap-2">
+                          {capitalize(status.mealService)}
+                          {status.state === 'custom' && <Badge variant="secondary">Custom</Badge>}
+                        </span>
+                      </TableCell>
                     )
                   })}
-                  <td className={styles.tdActions}>
-                    <Link
-                      to="/catering/offered-menu/$routeId"
-                      params={{ routeId: r.id }}
-                      search={{ flight: null }}
-                      className={styles.editButton}
-                    >
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
+                  <TableCell className="text-right">
+                    <Button asChild variant="outline" size="sm">
+                      <Link to="/catering/offered-menu/$routeId" params={{ routeId: r.id }} search={{ flight: null }}>
+                        Edit
+                      </Link>
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
 
-        <div className={styles.paging}>
-          <p className={styles.pagingInfo}>
-            Showing {visibleRoutes.length === 0 ? 0 : page * rowsPerPage + 1}–{page * rowsPerPage + visibleRoutes.length} of{' '}
-            {routeRows?.routes.length ?? 0} routes
-          </p>
-          <div className={styles.pagingControls}>
-            <label className={styles.rowsLabel}>
-              <span className={styles.filterLabel}>Rows</span>
-              <select
-                className={styles.filterInput}
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <p className="m-0 text-muted-foreground">
+              Showing {visibleRoutes.length === 0 ? 0 : page * rowsPerPage + 1}–{page * rowsPerPage + visibleRoutes.length} of{' '}
+              {routeRows?.routes.length ?? 0} routes
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-muted-foreground">Rows</span>
+              <NativeSelect
+                className="w-20"
+                aria-label="Rows per page"
                 value={String(rowsPerPage)}
                 onChange={(e) => {
                   setRowsPerPage(Number(e.target.value))
                   setPage(0)
                 }}
               >
-                <option value="15">15</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-              </select>
-            </label>
-            <button type="button" className={styles.pageButton} disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
-              Previous
-            </button>
-            <span className={styles.pageOf}>
-              Page {page + 1} of {totalPages}
-            </span>
-            <button type="button" className={styles.pageButton} disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)}>
-              Next
-            </button>
+                <NativeSelectOption value="15">15</NativeSelectOption>
+                <NativeSelectOption value="25">25</NativeSelectOption>
+                <NativeSelectOption value="50">50</NativeSelectOption>
+              </NativeSelect>
+              <Button type="button" variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                Previous
+              </Button>
+              <span className="text-muted-foreground">
+                Page {page + 1} of {totalPages}
+              </span>
+              <Button type="button" variant="outline" size="sm" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                Next
+              </Button>
+            </div>
           </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className={styles.card} aria-label="Single-flight exceptions">
-        <div className={styles.cardHeader}>
-          <div>
-            <h2 className={styles.cardTitle}>Single-flight exceptions</h2>
-            <p className={styles.cardSubtitle}>
-              Flights that override their route&rsquo;s rules. To add one, open the route and pick a flight.
-            </p>
+      <Card className="gap-4" aria-label="Single-flight exceptions">
+        <CardHeader>
+          <CardTitle>Single-flight exceptions</CardTitle>
+          <CardDescription>Flights that override their route&rsquo;s rules. To add one, open the route and pick a flight.</CardDescription>
+          <CardAction className="text-sm text-muted-foreground">{exceptionTotal} flights</CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="max-w-sm">
+            <FilterField label="Search flight">
+              <Input
+                type="search"
+                placeholder="Search flight"
+                value={exceptionSearch}
+                onChange={(e) => setExceptionSearch(e.target.value)}
+              />
+            </FilterField>
           </div>
-        </div>
-        <div className={styles.filters}>
-          <label className={styles.filterField}>
-            <span className={styles.filterLabel}>Search flight</span>
-            <input
-              type="search"
-              className={styles.filterInput}
-              placeholder="Search flight"
-              value={exceptionSearch}
-              onChange={(e) => setExceptionSearch(e.target.value)}
-            />
-          </label>
-          <p className={styles.count}>{exceptionTotal} flights</p>
-        </div>
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th scope="col">Flight</th>
-                <th scope="col">Cabin</th>
-                <th scope="col">Settings changed</th>
-                <th scope="col" className={styles.thActions}>
-                  <span className={styles.srOnly}>Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Flight</TableHead>
+                <TableHead>Cabin</TableHead>
+                <TableHead>Settings changed</TableHead>
+                <TableHead className="w-32">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {visibleExceptions.map((e) => (
-                <tr key={`${e.id}-${e.cabin}`} className={styles.row}>
-                  <td>
-                    <span className={styles.flightCode}>{e.flightNumber}</span>
-                    <span className={styles.routeSub}>
-                      {e.route || '—'} · {formatDate(e.scheduledDeparture)}
+                <TableRow key={`${e.id}-${e.cabin}`}>
+                  <TableCell>
+                    <span className="flex flex-col">
+                      <span className="font-medium">{e.flightNumber}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {e.route || '—'} · {formatDate(e.scheduledDeparture)}
+                      </span>
                     </span>
-                  </td>
-                  <td className={styles.cabinName}>{cabinLabel(e.cabin)}</td>
-                  <td>{e.changedSettings.join(', ')}</td>
-                  <td className={styles.tdActions}>
-                    <Link
-                      to="/catering/offered-menu/$routeId"
-                      params={{ routeId: e.routeId }}
-                      search={{ flight: e.id }}
-                      className={styles.editButton}
-                    >
-                      Edit
-                    </Link>
-                    <button type="button" className={styles.dangerLink} onClick={() => setClearingException(e)}>
-                      Clear
-                    </button>
-                  </td>
-                </tr>
+                  </TableCell>
+                  <TableCell>{cabinLabel(e.cabin)}</TableCell>
+                  <TableCell>{e.changedSettings.join(', ')}</TableCell>
+                  <TableCell className="text-right">
+                    <span className="inline-flex gap-2">
+                      <Button asChild variant="outline" size="sm">
+                        <Link to="/catering/offered-menu/$routeId" params={{ routeId: e.routeId }} search={{ flight: e.id }}>
+                          Edit
+                        </Link>
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setClearingException(e)}
+                      >
+                        Clear
+                      </Button>
+                    </span>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
-        <div className={styles.paging}>
-          <p className={styles.pagingInfo}>
-            {visibleExceptions.length} of {exceptions.length} shown
-          </p>
-          <div className={styles.pagingControls}>
-            <button
-              type="button"
-              className={styles.pageButton}
-              disabled={exceptionPage === 0}
-              onClick={() => setExceptionPage((p) => Math.max(0, p - 1))}
-            >
-              Previous
-            </button>
-            <span className={styles.pageOf}>
-              Page {exceptionPage + 1} of {exceptionPages}
-            </span>
-            <button
-              type="button"
-              className={styles.pageButton}
-              disabled={exceptionPage + 1 >= exceptionPages}
-              onClick={() => setExceptionPage((p) => p + 1)}
-            >
-              Next
-            </button>
+            </TableBody>
+          </Table>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <p className="m-0 text-muted-foreground">
+              {visibleExceptions.length} of {exceptions.length} shown
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={exceptionPage === 0}
+                onClick={() => setExceptionPage((p) => Math.max(0, p - 1))}
+              >
+                Previous
+              </Button>
+              <span className="text-muted-foreground">
+                Page {exceptionPage + 1} of {exceptionPages}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={exceptionPage + 1 >= exceptionPages}
+                onClick={() => setExceptionPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
           </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
       {bulkConfirm && routeRows && (
         <ConfirmDialog
@@ -619,6 +603,15 @@ export function OfferedMenuPage() {
           onConfirm={() => void handleClearException()}
         />
       )}
+    </div>
+  )
+}
+
+function FilterField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Label>{label}</Label>
+      {children}
     </div>
   )
 }

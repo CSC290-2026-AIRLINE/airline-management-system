@@ -36,10 +36,11 @@ npm install
 
 Run `npm install` again after every `git pull`. It no longer generates the Prisma client; run `npm run db:generate` (see step 5).
 
-Before starting the apps for the first time, apply database migrations (see step 7):
+Before starting the apps for the first time, start Docker Desktop and apply the committed database migrations (see step 7):
 
 ```bash
-npm run db:migrate
+npm run db:up
+npm run db:prepare
 ```
 
 ## 5. Start Everything (peak command)
@@ -113,40 +114,21 @@ cp .claude/settings.example.json .claude/settings.json
 - Adjust the `permissions.allow` and `permissions.deny` lists to match your workflow.
 - Replace or remove the example `env` block if you don't use a custom model endpoint.
 
-## Feature 12 local demo
+## G10 Staff Feature Testing
 
-Use Node.js 24, start Docker Desktop, and configure the three local environment files
-as described above. The browser apps use the project's separate development Clerk
-instances. Sign in as a customer on customer web and as staff on staff web.
+See [G10 local testing](docs/g10-local-testing.md) for the fresh-checkout sequence, local Security role assignment and persisted Watchlist verification. Backend development startup, tests and builds now generate Prisma Client automatically. This does not apply database migrations automatically; run `npm run db:prepare` after pulling database changes.
 
-Set these values in the local environment files.
+## F2 and F12 integration demo
 
-- In `apps/backend/.env`, set `NODE_ENV="development"` and `F12_DEMO_ENABLED="true"`.
-- In `apps/customer-web/.env`, set `VITE_F12_DEMO_ENABLED="true"`.
+Run the configured stack and sign in on staff web. Open `/routes`, create an
+unused route between two existing airports, then open `/catering/offered-menu`
+and find that route. Open it to inspect its inherited cabin and menu settings.
 
-Run these commands from the repository root.
+For the optional F12 checkout demo, sign in once on customer web and create
+booking `FTEST2` for that account.
 
-```powershell
-npm.cmd install
-npm.cmd run db:up
-npm.cmd run db:generate
-npm.cmd run db:migrate:deploy
-npm.cmd run db:seed
-npm.cmd run dev
+```cmd
+npm.cmd run db:seed:f12-booking -w apps/backend -- your-customer-email@example.com
 ```
 
-Open [Customer web](http://localhost:5151/dashboard), select **Open onboard products demo booking**,
-and add Sparkling water from **Snacks and drinks** on flight **FL412**. Place the order and
-select **Simulate successful payment**. In [Staff Catering Orders](http://localhost:6161/catering/orders),
-select **FL412** and use **Reload customer orders** to see the confirmed quantity. Cancel the
-order from the customer booking details and reload the staff view to see it removed.
-The staff stock page shows reservations while orders are active.
-
-The seed creates local staff and customer database fixtures for automated tests.
-Browser sign-in uses your development Clerk accounts. The demo booking belongs to the
-signed-in customer and uses the same seeded flight, menu and stock as the staff app.
-Run the shared smoke test from a second terminal while the backend is running.
-
-```powershell
-npm.cmd run test:f12:integration -w apps/backend
-```
+Then open `/bookings/FTEST2` on customer web.

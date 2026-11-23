@@ -1,8 +1,9 @@
+/* eslint-disable react-refresh/only-export-components -- shadcn exports helpers beside the components */
 'use client'
 
 import * as React from 'react'
 import { Toast as ToastPrimitive } from '@base-ui/react/toast'
-import { cn } from 'cn'
+import { cn } from '@staff-web/lib/utils'
 
 import { Button } from '@staff-web/components/ui/button'
 import { XIcon, CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from 'lucide-react'

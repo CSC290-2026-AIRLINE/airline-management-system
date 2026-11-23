@@ -1,9 +1,8 @@
-// Segmented control: a row of pill buttons where exactly one is "selected".
-// Used for the multi-option choices on the Route detail page (meal service,
-// meal selection, order window, included meals, on-board buffer).
+// Segmented control: a row of buttons where exactly one is selected. Used for the multi-option choices on the Route detail
+// and Network default pages (meal service, meal selection, order window, included meals, on-board buffer).
 
 import type { ReactNode } from 'react'
-import styles from './SegmentedControl.module.css'
+import { ToggleGroup, ToggleGroupItem } from '@staff-web/components/ui/toggle-group'
 
 export interface SegmentOption<T extends string | number> {
   value: T
@@ -20,23 +19,28 @@ interface Props<T extends string | number> {
 
 export function SegmentedControl<T extends string | number>({ value, options, onChange, ariaLabel, disabled }: Props<T>) {
   return (
-    <div className={styles.group} role="radiogroup" aria-label={ariaLabel}>
-      {options.map((opt) => {
-        const selected = opt.value === value
-        return (
-          <button
-            key={String(opt.value)}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            className={selected ? styles.segmentActive : styles.segment}
-            onClick={() => !disabled && onChange(opt.value)}
-            disabled={disabled}
-          >
-            {opt.label}
-          </button>
-        )
-      })}
-    </div>
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      value={String(value)}
+      onValueChange={(next) => {
+        // A single-select group reports '' when the selected item is pressed again; keep the current choice.
+        const option = options.find((o) => String(o.value) === next)
+        if (option) onChange(option.value)
+      }}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      className="w-full"
+    >
+      {options.map((opt) => (
+        <ToggleGroupItem
+          key={String(opt.value)}
+          value={String(opt.value)}
+          className="h-auto flex-auto px-2.5 py-2 text-center leading-tight whitespace-normal data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+        >
+          {opt.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   )
 }

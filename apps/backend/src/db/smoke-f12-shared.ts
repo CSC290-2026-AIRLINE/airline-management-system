@@ -27,10 +27,11 @@ async function request<T>(token: string, endpoint: string, method = 'GET', body?
 }
 
 async function main() {
-  const [customer, staff] = await Promise.all([
-    db.customer.findFirstOrThrow({ where: { deleted_at: null }, include: { user: true } }),
+  const [fixture, staff] = await Promise.all([
+    db.booking.findFirstOrThrow({ where: { booking_reference: 'FTEST2' }, include: { customer: { include: { user: true } } } }),
     db.staff.findFirstOrThrow({ where: { deleted_at: null }, include: { user: true } }),
   ])
+  const customer = fixture.customer
   const buyer = jwt.sign({ sub: customer.user_id, email: customer.user.email })
   const caterer = jwt.sign({ sub: staff.user_id, email: staff.user.email })
   const booking = await request<{ id: string; flights: [{ id: string; cabinClass: string; cutoffAt: string }] }>(

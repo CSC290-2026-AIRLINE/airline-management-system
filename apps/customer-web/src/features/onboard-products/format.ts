@@ -5,28 +5,25 @@
 import type { PassengerRef, ProductOrderLine } from './types'
 
 // en-GB matches the Figma copy ("Mon 12 Oct", "09:40").
-const DATE_LONG = new Intl.DateTimeFormat('en-GB', {
-  weekday: 'short',
-  day: 'numeric',
-  month: 'short',
-})
+const DATE_LONG_OPTIONS: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' }
+const TIME_24H_OPTIONS: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: false }
+const DATE_LONG = new Intl.DateTimeFormat('en-GB', DATE_LONG_OPTIONS)
+const TIME_24H = new Intl.DateTimeFormat('en-GB', TIME_24H_OPTIONS)
 
-const TIME_24H = new Intl.DateTimeFormat('en-GB', {
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-})
-
-export function formatDate(iso: string): string {
-  return DATE_LONG.format(new Date(iso))
+// timeZone is an IANA zone (e.g. "Asia/Tokyo"). Flight times are shown in the departure airport's local time, the
+// same as the booking pages (F3b); without one the browser's zone is used.
+export function formatDate(iso: string, timeZone?: string | null): string {
+  const f = timeZone ? new Intl.DateTimeFormat('en-GB', { ...DATE_LONG_OPTIONS, timeZone }) : DATE_LONG
+  return f.format(new Date(iso))
 }
 
-export function formatTime(iso: string): string {
-  return TIME_24H.format(new Date(iso))
+export function formatTime(iso: string, timeZone?: string | null): string {
+  const f = timeZone ? new Intl.DateTimeFormat('en-GB', { ...TIME_24H_OPTIONS, timeZone }) : TIME_24H
+  return f.format(new Date(iso))
 }
 
-export function formatDateTime(iso: string): string {
-  return `${DATE_LONG.format(new Date(iso))}, ${TIME_24H.format(new Date(iso))}`
+export function formatDateTime(iso: string, timeZone?: string | null): string {
+  return `${formatDate(iso, timeZone)}, ${formatTime(iso, timeZone)}`
 }
 
 export function formatMoney(amount: number, currency: string): string {
