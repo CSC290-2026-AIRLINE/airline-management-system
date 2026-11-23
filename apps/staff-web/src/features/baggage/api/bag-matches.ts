@@ -38,6 +38,8 @@ export interface BagMatch {
     description: string | null
     reportedAt: string
     reportedByStaff: boolean
+    /** The account holder who filed the case for another traveller on their booking; null when the owner or staff filed it. */
+    reportedByCustomerName: string | null
     /** The passenger attached a bag photo. */
     hasPhoto: boolean
   }

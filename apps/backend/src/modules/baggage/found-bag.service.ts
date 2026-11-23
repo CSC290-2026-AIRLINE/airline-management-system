@@ -49,6 +49,9 @@ export function toFoundBag(row: found_bag): FoundBag {
   }
 }
 
+/** A found bag the airline still has in hand or on the way: its tag cannot be recorded on a second found bag. */
+const LIVE_FOUND_BAG_STATUSES = ['held', 'matched', 'sent']
+
 function alreadyRecorded(): FoundBagError {
   return new FoundBagError(FOUND_BAG_ERROR_CODES.FOUND_BAG_EXISTS, 'This checked bag is already recorded as found')
 }
@@ -101,6 +104,24 @@ export class FoundBagService {
 
       if (existing) {
         throw alreadyRecorded()
+      }
+    }
+
+    // A tag Feature 6 has not linked (or not linked yet) can still be on a live found bag: recording it twice would
+    // leave two bags with one tag, so point staff at the one already on file. No unique index backs this; it is a
+    // friendly check for the desk, not a guard against two desks recording the same tag at the same instant.
+    if (tagNumber) {
+      const sameTag = await this.db.found_bag.findFirst({
+        where: { tag_number: tagNumber, status: { in: LIVE_FOUND_BAG_STATUSES } },
+        select: { id: true, status: true },
+        orderBy: { created_at: 'desc' },
+      })
+
+      if (sameTag) {
+        throw new FoundBagError(
+          FOUND_BAG_ERROR_CODES.FOUND_BAG_EXISTS,
+          `Tag ${tagNumber} is already on found bag FB-${sameTag.id.slice(0, 4).toUpperCase()} (${sameTag.status}); open that bag instead`,
+        )
       }
     }
 

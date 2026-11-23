@@ -41,6 +41,9 @@ export interface LostReportCase {
   closedAt: Date | null
   createdAt: Date
   updatedAt: Date
+
+  /** The reason staff gave when they cancelled the case (from audit_log); null for any other case, or one the passenger cancelled. */
+  cancelReason: string | null
 }
 
 /** A ticketed passenger and flight on a booking, so staff can pick who is reporting and for which flight. */

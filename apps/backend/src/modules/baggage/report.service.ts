@@ -279,8 +279,18 @@ export class ReportService {
     return this.repository.listForRequester(passenger.bookingPassengerId, access.customerId ?? null)
   }
 
-  listConfirmedFlights(access: ReportAccessInput): Promise<VerifiedReportFlight[]> {
-    return this.bookings.listConfirmedFlights(access)
+  /**
+   * The flown flights on the verified booking. An empty list is a valid answer (nothing has flown yet); a booking that
+   * does not verify gets the same error as every other passenger call, so the form can tell the two apart.
+   */
+  async listConfirmedFlights(access: ReportAccessInput): Promise<VerifiedReportFlight[]> {
+    const flights = await this.bookings.listConfirmedFlights(access)
+
+    if (flights.length === 0 && !(await this.bookings.verifyPassenger(access))) {
+      throw new BaggageError(BAGGAGE_ERROR_CODES.INVALID_REPORT, 'Booking verification failed')
+    }
+
+    return flights
   }
 
   /**

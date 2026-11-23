@@ -25,6 +25,7 @@ import {
   type PhotoPreview,
 } from './lost-report-form'
 import { readBaggageApiError } from '../api-error'
+import { caseRecoveryErrorMessage } from './case-page-recovery'
 import './PassengerLostBagReportPage.css'
 
 interface CreatedReport {
@@ -197,7 +198,8 @@ export function PassengerLostBagReportPage() {
       const [response, travellers] = await Promise.all([fetchWithAuth(`/api/customer/lost-report-flights?${query}`), travellersRequest])
       if (!isCurrent()) return
       if (!response.ok) {
-        const message = await getResponseMessage(response, 'Eligible flights could not be loaded. Try again.')
+        // A wrong reference or surname is answered "Booking verification failed"; say so plainly, not "nothing flown yet".
+        const message = caseRecoveryErrorMessage(await getResponseMessage(response, 'Eligible flights could not be loaded. Try again.'))
         if (!isCurrent()) return
         dispatch({
           type: 'flights-failed',

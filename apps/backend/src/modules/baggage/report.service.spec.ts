@@ -293,6 +293,17 @@ describe('ReportService', () => {
     expect(reports[0].bookingPassengerId).toBe('BP001')
   })
 
+  it('answers an empty flight list for a verified booking with nothing flown yet', async () => {
+    await expect(service.listConfirmedFlights(access)).resolves.toEqual([])
+  })
+
+  it('refuses the flight list when the booking does not verify, so a wrong surname is not shown as "nothing flown yet"', async () => {
+    await expect(service.listConfirmedFlights({ ...access, surname: 'Wrong' })).rejects.toMatchObject({
+      code: 'INVALID_REPORT',
+      message: 'Booking verification failed',
+    })
+  })
+
   it('allows the owner to cancel an open report', async () => {
     const created = await service.create(validInput)
 

@@ -53,7 +53,7 @@ export function CaseDetailCard({
       <div className="flex flex-wrap items-center gap-3">
         <h2
           id="case-detail-title"
-          className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
         >
           {report.caseNumber}
         </h2>
@@ -67,6 +67,9 @@ export function CaseDetailCard({
         <Fact label="Bag">{bagSummary(report)}</Fact>
         <Fact label="Tag">{report.tagNumber ?? 'No tag'}</Fact>
         <Fact label="Reported">{`${formatEventTime(report.reportedAt)} · by ${report.reportedByStaffId ? 'staff' : 'customer'}`}</Fact>
+        {report.status === 'cancelled' && (
+          <Fact label="Cancelled">{report.cancelReason ? `by staff · “${report.cancelReason}”` : 'by the passenger'}</Fact>
+        )}
       </dl>
 
       {report.description && (

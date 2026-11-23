@@ -118,6 +118,25 @@ function makeSvc() {
 }
 
 describe('BagMatchReviewService.getById', () => {
+  it.each([
+    [
+      'the bag owner filed it',
+      { passenger_id: 'pax-lina', customer: { passenger_id: 'pax-lina', passenger: { first_name: 'Lina', last_name: 'Haddad' } } },
+      null,
+    ],
+    ['staff filed it', { passenger_id: 'pax-lina', customer: null }, null],
+    [
+      'the account holder filed it for another traveller',
+      { passenger_id: 'pax-lina', customer: { passenger_id: 'pax-omar', passenger: { first_name: 'Omar', last_name: 'Haddad' } } },
+      'Omar Haddad',
+    ],
+  ])('names the account holder only when they filed for someone else (%s)', async (_case, reporter, expected) => {
+    const { svc, db } = makeSvc()
+    db.bag_match.findUnique.mockResolvedValueOnce(matchRow({ lost_bag_report: { ...matchRow().lost_bag_report, ...reporter } }))
+
+    await expect(svc.getById(MATCH_ID)).resolves.toMatchObject({ report: { passengerFirstName: 'Lina', reportedByCustomerName: expected } })
+  })
+
   it('returns both sides, the score and where the bag is now', async () => {
     const { svc } = makeSvc()
 

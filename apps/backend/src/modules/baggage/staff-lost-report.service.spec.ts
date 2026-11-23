@@ -46,6 +46,8 @@ const booking = { contact_email: 'somchai@example.com', contact_phone: '+66 81 2
 
 function makeSvc() {
   const db = {
+    // The reason staff gave when they cancelled (read back for the case detail).
+    audit_log: { findMany: jest.fn().mockResolvedValue([{ entity_id: REPORT_ID, reason: 'Filed for a traveller who has no account' }]) },
     booking: { findUnique: jest.fn().mockResolvedValue(null) },
     booking_coupon: {
       findFirst: jest.fn().mockResolvedValue({
@@ -472,6 +474,35 @@ describe('StaffLostReportService reads', () => {
     expect(cases.map((item) => item.flightDestination)).toEqual(['HKT', 'USM'])
   })
 
+  it('adds the staff reason to cancelled cases only, in one audit query', async () => {
+    const { svc, db } = makeSvc()
+    const CANCELLED_ID = '00000000-0000-4000-8000-0000000000c2'
+    db.lost_bag_report.findMany.mockResolvedValueOnce([
+      reportRow({ status: 'open' }),
+      reportRow({ id: CANCELLED_ID, status: 'cancelled', closed_at: SIM_NOW }),
+    ])
+    db.audit_log.findMany.mockResolvedValueOnce([
+      { entity_id: CANCELLED_ID, reason: 'Duplicate of LB-2026-000002' },
+      { entity_id: CANCELLED_ID, reason: 'An older reason' },
+    ])
+
+    const cases = await svc.list()
+
+    expect(cases.map((c) => c.cancelReason)).toEqual([null, 'Duplicate of LB-2026-000002'])
+    expect(db.audit_log.findMany).toHaveBeenCalledTimes(1)
+    expect(db.audit_log.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ entity_id: { in: [CANCELLED_ID] } }) }),
+    )
+  })
+
+  it('reads no audit rows when nothing in the list is cancelled', async () => {
+    const { svc, db } = makeSvc()
+    db.lost_bag_report.findMany.mockResolvedValueOnce([reportRow({ status: 'open' })])
+
+    await expect(svc.list()).resolves.toMatchObject([{ cancelReason: null }])
+    expect(db.audit_log.findMany).not.toHaveBeenCalled()
+  })
+
   it('lists with combined filters, newest first, and short-circuits malformed ones', async () => {
     const { svc, db } = makeSvc()
 
@@ -526,7 +557,17 @@ describe('StaffLostReportService.cancel', () => {
       }),
       db,
     )
-    expect(report).toMatchObject({ status: 'cancelled' })
+    // The case detail shows the reason, read back from the audit row the cancellation wrote.
+    expect(report).toMatchObject({ status: 'cancelled', cancelReason: 'Filed for a traveller who has no account' })
+    expect(db.audit_log.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          entity_id: { in: [REPORT_ID] },
+          action: 'status_change',
+          after: { path: ['status'], equals: 'cancelled' },
+        }),
+      }),
+    )
   })
 
   it.each(['matched', 'delivering', 'closed', 'cancelled'])('refuses a %s case', async (status) => {

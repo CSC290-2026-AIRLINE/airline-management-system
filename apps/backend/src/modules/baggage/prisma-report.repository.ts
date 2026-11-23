@@ -194,6 +194,7 @@ export class PrismaReportRepository implements ReportRepository {
           select: {
             flight_number: true,
             service_date: true,
+            actual_destination: true,
             route: { select: { origin: true, destination: true } },
           },
         },
@@ -373,7 +374,8 @@ export class PrismaReportRepository implements ReportRepository {
         flightNumber: row.flight.flight_number,
         serviceDate: row.flight.service_date,
         origin: row.flight.route.origin,
-        destination: row.flight.route.destination,
+        // A diverted flight ended where Feature 2 sent it, as the report form's flight list already shows.
+        destination: row.flight.actual_destination ?? row.flight.route.destination,
       },
       bag: {
         type: row.bag_type,

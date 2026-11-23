@@ -32,6 +32,8 @@ export interface LostReportCase {
   closedAt: string | null
   createdAt: string
   updatedAt: string
+  /** The reason staff gave when they cancelled the case; null otherwise, or when the passenger cancelled it. */
+  cancelReason: string | null
 }
 
 /** One recovery or delivery cost of a case. Money is a 2-decimal string in the finance base currency (baht). */

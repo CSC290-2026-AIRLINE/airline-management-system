@@ -133,6 +133,8 @@ export function toLostReportCase(row: ReportRow): LostReportCase {
     closedAt: row.closed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    // Filled in by withCancelReasons where a case is read back; a case just written was never cancelled.
+    cancelReason: null,
   }
 }
 
@@ -459,7 +461,40 @@ export class StaffLostReportService {
       throw new FoundBagError(FOUND_BAG_ERROR_CODES.REPORT_NOT_FOUND, 'Lost bag report not found')
     }
 
-    return toLostReportCase(row)
+    const [report] = await this.withCancelReasons([toLostReportCase(row)])
+
+    return report
+  }
+
+  /**
+   * Adds the reason staff gave to each cancelled case, in one query. The case has no column for it: the reason lives on
+   * the audit row that staff cancellation writes with the status change (a passenger's own cancellation has none).
+   */
+  private async withCancelReasons(cases: LostReportCase[]): Promise<LostReportCase[]> {
+    const cancelledIds = cases.filter((c) => c.status === 'cancelled').map((c) => c.id)
+
+    if (cancelledIds.length === 0) {
+      return cases
+    }
+
+    const entries = await this.db.audit_log.findMany({
+      where: {
+        entity_type: 'lost_bag_report',
+        entity_id: { in: cancelledIds },
+        action: 'status_change',
+        after: { path: ['status'], equals: 'cancelled' },
+        reason: { not: null },
+      },
+      orderBy: { seq: 'desc' },
+      select: { entity_id: true, reason: true },
+    })
+    const reasons = new Map<string, string>()
+
+    for (const entry of entries) {
+      if (entry.entity_id && entry.reason && !reasons.has(entry.entity_id)) reasons.set(entry.entity_id, entry.reason)
+    }
+
+    return cases.map((c) => ({ ...c, cancelReason: reasons.get(c.id) ?? null }))
   }
 
   /**
@@ -555,7 +590,7 @@ export class StaffLostReportService {
       take: MAX_LIST_ROWS,
     })
 
-    return rows.map(toLostReportCase)
+    return this.withCancelReasons(rows.map(toLostReportCase))
   }
 
   private async insert(report: NewReport): Promise<LostReportCase> {

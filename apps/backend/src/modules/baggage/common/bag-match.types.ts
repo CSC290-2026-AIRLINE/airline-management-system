@@ -48,6 +48,11 @@ export interface MatchReportSide {
   description: string | null
   reportedAt: Date
   reportedByStaff: boolean
+  /**
+   * The account holder who filed the case for another traveller on their booking; null when the bag's owner filed it
+   * themselves or staff filed it at the desk.
+   */
+  reportedByCustomerName: string | null
   /** The passenger attached a bag photo (staff fetch it from GET staff/lost-reports/:id/photo). */
   hasPhoto: boolean
 }

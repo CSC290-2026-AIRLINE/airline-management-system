@@ -45,6 +45,14 @@ function shortName(staff: StaffName): string {
   return `${staff.firstName} ${staff.lastName.charAt(0)}.`
 }
 
+/** Who filed the case: the bag's owner, an account holder for a traveller on their booking, or the desk. */
+function reportedBy(report: BagMatch['report']): string {
+  const owner = `${report.passengerFirstName} ${report.passengerLastName}`
+  if (report.reportedByStaff) return `by baggage staff for ${owner}`
+  if (report.reportedByCustomerName) return `by ${report.reportedByCustomerName} for ${owner}`
+  return `by ${owner}`
+}
+
 function Row({ label, report, bag, verdict }: { label: string; report: string; bag: string; verdict: Verdict }) {
   return (
     <tr className="border-b border-[#eef0f4] last:border-b-0">
@@ -104,7 +112,7 @@ function Comparison({ match }: { match: BagMatch }) {
           <Row label="Details" report={r.description ?? 'None'} bag={b.description ?? 'None'} verdict="none" />
           <Row
             label="When / where"
-            report={`Reported ${formatEventTime(r.reportedAt)} by ${r.passengerFirstName} ${r.passengerLastName}`}
+            report={`Reported ${formatEventTime(r.reportedAt)} ${reportedBy(r)}`}
             bag={`Found ${formatEventTime(b.foundAt)}, now at ${b.currentAirport}`}
             verdict="none"
           />
@@ -228,7 +236,7 @@ export function MatchDetailCard({
       <div className="flex flex-wrap items-center gap-2">
         <h2
           id="match-detail-title"
-          className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
         >
           {matchRef(match.id)}
         </h2>

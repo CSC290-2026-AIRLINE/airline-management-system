@@ -54,6 +54,7 @@ const MATCH_INCLUDE = {
   lost_bag_report: {
     include: {
       passenger: { select: { first_name: true, last_name: true } },
+      customer: { select: { passenger_id: true, passenger: { select: { first_name: true, last_name: true } } } },
       flight: { select: { flight_number: true, service_date: true } },
       booking_coupon: { select: { booking_passenger: { select: { booking: { select: { booking_reference: true } } } } } },
     },
@@ -79,6 +80,12 @@ type MatchRow = Prisma.bag_matchGetPayload<{ include: typeof MATCH_INCLUDE }>
 
 function toStaffName(row: { id: string; first_name: string; last_name: string } | null): StaffName | null {
   return row ? { id: row.id, firstName: row.first_name, lastName: row.last_name } : null
+}
+
+/** The account holder's name when they filed the case for another traveller on their booking (see MatchReportSide). */
+function filedForAnother(report: MatchRow['lost_bag_report']): string | null {
+  const filer = report.customer
+  return filer && filer.passenger_id !== report.passenger_id ? `${filer.passenger.first_name} ${filer.passenger.last_name}`.trim() : null
 }
 
 export function toBagMatch(row: MatchRow): BagMatch {
@@ -135,6 +142,7 @@ export function toBagMatch(row: MatchRow): BagMatch {
       description: report.description,
       reportedAt: report.reported_at,
       reportedByStaff: report.reported_by_staff_id !== null,
+      reportedByCustomerName: filedForAnother(report),
       hasPhoto: report.photo_url !== null,
     },
     foundBag: {

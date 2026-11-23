@@ -185,6 +185,28 @@ describe('FoundBagService.record', () => {
     expect(db.found_bag.create).not.toHaveBeenCalled()
   })
 
+  it('refuses a tag already on a live found bag even when Feature 6 does not link it, and names that bag', async () => {
+    const { svc, db } = makeSvc()
+    db.found_bag.findFirst.mockResolvedValue({ id: '4e5ac81e-800b-43d9-885d-f23315d1735b', status: 'held' })
+
+    await expect(svc.record({ ...validInput, tagNumber: '0999000005' })).rejects.toMatchObject({
+      code: 'FOUND_BAG_EXISTS',
+      status: 409,
+      message: 'Tag 0999000005 is already on found bag FB-4E5A (held); open that bag instead',
+    })
+    expect(db.found_bag.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tag_number: '0999000005', status: { in: ['held', 'matched', 'sent'] } } }),
+    )
+    expect(db.found_bag.create).not.toHaveBeenCalled()
+  })
+
+  it('records a tag that no live found bag carries', async () => {
+    const { svc, db } = makeSvc()
+
+    await expect(svc.record({ ...validInput, tagNumber: '0999000005' })).resolves.toMatchObject({ tagNumber: '0999000005' })
+    expect(db.found_bag.create).toHaveBeenCalledTimes(1)
+  })
+
   it('maps a unique-index race (P2002) to FOUND_BAG_EXISTS with HTTP 409', async () => {
     const { svc, db } = makeSvc()
     db.checked_bag.findFirst.mockResolvedValue(knownCheckedBag)

@@ -360,6 +360,16 @@ describe('PrismaReportRepository passenger case summary projection', () => {
     return { repository, findUnique, auditFindMany, auditFindFirst, locationFindMany }
   }
 
+  it('shows a diverted flight ending at the airport it was diverted to', async () => {
+    const harness = summaryHarness()
+    const row = await harness.findUnique()
+    harness.findUnique.mockResolvedValueOnce({ ...row, flight: { ...row.flight, actual_destination: 'ICN' } })
+
+    const result = await harness.repository.findPassengerCaseSummaryByReportId(reportId)
+
+    expect(result?.flight).toMatchObject({ origin: 'BKK', destination: 'ICN' })
+  })
+
   it('projects only passenger-safe data and orders lifecycle stages despite rewound simulation timestamps', async () => {
     const lostAt = new Date('2026-10-20T10:30:00.000Z')
     const closedAt = new Date('2026-10-20T02:00:00.000Z')
