@@ -1,3 +1,4 @@
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { useState, type FormEvent } from 'react'
 import { Button } from '@staff-web/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
@@ -7,12 +8,10 @@ import type { SaveStationContactBody, StationContact } from '../api/found-bags'
 import { errorMessage } from '../hooks/useFoundBags'
 import { cn } from '@staff-web/lib/utils'
 import { displayPhone, formatPhoneNumber, phoneHref, phoneNumberProblem } from '../phone-number'
-import { F10Card, FIELD_BOX, Field, FormError, LIST_CARD, LIST_PAD } from './primitives'
+import { F10Card, Field, FormError, LIST_CARD, LIST_PAD } from './primitives'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const AIRPORT_PATTERN = /^[A-Za-z]{3}$/
-
-const SMALL_BUTTON = 'h-auto rounded-lg border-[#d8dce6] px-3.5 py-2 text-sm leading-normal font-semibold text-[#14213d] shadow-none'
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false)
@@ -21,7 +20,6 @@ function CopyButton({ text, label }: { text: string; label: string }) {
       type="button"
       variant="outline"
       aria-label={label}
-      className={SMALL_BUTTON}
       onClick={() => {
         void navigator.clipboard?.writeText(text).then(() => {
           setCopied(true)
@@ -87,13 +85,13 @@ function ContactDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-xl font-sans leading-normal tracking-normal text-[#14213d] sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-4" noValidate>
           <DialogHeader className="text-left">
-            <DialogTitle className="m-0 font-sans text-[22px] font-semibold text-[#14213d]">
+            <DialogTitle className="text-lg font-semibold text-foreground">
               {contact ? `${contact.airportCode} baggage desk` : 'Add an airport desk'}
             </DialogTitle>
-            <DialogDescription className="text-sm text-[#677287]">
+            <DialogDescription className="text-sm text-muted-foreground">
               {contact ? `${contact.airportName}, ${contact.city}` : 'Add the baggage desk of an airport we fly to.'}
             </DialogDescription>
           </DialogHeader>
@@ -105,7 +103,6 @@ function ContactDialog({
                 placeholder="e.g. BKK"
                 value={airportCode}
                 onChange={(e) => setAirportCode(e.target.value)}
-                className={FIELD_BOX}
               />
             </Field>
           )}
@@ -116,7 +113,6 @@ function ContactDialog({
               placeholder="e.g. Flython Baggage Service, Hall 2"
               value={deskName}
               onChange={(e) => setDeskName(e.target.value)}
-              className={FIELD_BOX}
             />
           </Field>
           <Field label="Phone" htmlFor="contact-phone">
@@ -128,7 +124,6 @@ function ContactDialog({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               onBlur={() => setPhone((v) => formatPhoneNumber(v) ?? v)}
-              className={FIELD_BOX}
             />
           </Field>
           <Field label="Email (optional)" htmlFor="contact-email">
@@ -139,19 +134,14 @@ function ContactDialog({
               placeholder="e.g. bkk.baggage@flython.example"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className={FIELD_BOX}
             />
           </Field>
           <FormError message={error} />
           <DialogFooter>
-            <Button type="button" variant="outline" className={SMALL_BUTTON} onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={saving}
-              className="h-auto rounded-lg bg-[#14213d] px-3.5 py-2 text-sm leading-normal font-semibold text-white hover:bg-[#14213d]/90"
-            >
+            <Button type="submit" disabled={saving} className="bg-primary text-primary-foreground hover:bg-primary/90">
               {saving ? 'Saving…' : 'Save contact'}
             </Button>
           </DialogFooter>
@@ -180,15 +170,12 @@ export function AirportContactsCard({
     <F10Card aria-labelledby="airport-contacts" className={LIST_CARD}>
       <div className={cn('flex items-start gap-3', LIST_PAD)}>
         <div className="flex flex-1 flex-col gap-1">
-          <h2
-            id="airport-contacts"
-            className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
-          >
+          <h2 id="airport-contacts" className="m-0 font-sans text-2xl font-semibold tracking-tight text-foreground max-md:text-xl">
             Airport contacts
           </h2>
-          <p className="text-base text-[#677287]">Call the station that holds a bag.</p>
+          <p className="text-base text-muted-foreground">Call the station that holds a bag.</p>
         </div>
-        <Button type="button" variant="outline" className={SMALL_BUTTON} onClick={() => setEditing(null)}>
+        <Button type="button" variant="outline" onClick={() => setEditing(null)}>
           Add airport
         </Button>
       </div>
@@ -200,86 +187,80 @@ export function AirportContactsCard({
       )}
 
       <div className="overflow-x-auto max-md:hidden">
-        <table className="w-full min-w-[900px] table-fixed border-collapse text-left">
-          <thead>
-            <tr className="border-b border-[#d8dce6] text-sm text-[#677287]">
-              <th scope="col" className="w-[182px] py-2.5 pr-3 pl-5 font-medium">
+        <Table className="w-full min-w-[900px] table-fixed border-collapse text-left">
+          <TableHeader>
+            <TableRow className="border-b border-border text-sm text-muted-foreground">
+              <TableHead scope="col" className="h-auto px-0 whitespace-normal w-[182px] py-2.5 pr-3 pl-6 font-medium">
                 Airport
-              </th>
-              <th scope="col" className="py-2.5 pr-3 font-medium">
+              </TableHead>
+              <TableHead scope="col" className="h-auto px-0 whitespace-normal py-2.5 pr-3 font-medium">
                 Desk
-              </th>
-              <th scope="col" className="w-[242px] py-2.5 pr-3 font-medium">
+              </TableHead>
+              <TableHead scope="col" className="h-auto px-0 whitespace-normal w-[242px] py-2.5 pr-3 font-medium">
                 Phone
-              </th>
-              <th scope="col" className="w-[262px] py-2.5 pr-3 font-medium">
+              </TableHead>
+              <TableHead scope="col" className="h-auto px-0 whitespace-normal w-[262px] py-2.5 pr-3 font-medium">
                 Email
-              </th>
-              <th scope="col" className="w-[80px] py-2.5 pr-5">
+              </TableHead>
+              <TableHead scope="col" className="h-auto px-0 whitespace-normal w-[80px] py-2.5 pr-6">
                 <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {loading &&
               [0, 1, 2].map((i) => (
-                <tr key={i} className="border-b border-[#eef0f4]">
-                  <td colSpan={5} className="px-5 py-3">
+                <TableRow key={i} className="border-b border-border">
+                  <TableCell colSpan={5} className="p-0 whitespace-normal px-6 py-3">
                     <Skeleton className="h-9 w-full" />
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
             {!loading && contacts.length === 0 && !error && (
-              <tr>
-                <td colSpan={5} className="px-5 py-6 text-center text-sm text-[#677287]">
+              <TableRow>
+                <TableCell colSpan={5} className="p-0 whitespace-normal px-6 py-6 text-center text-sm text-muted-foreground">
                   No airport desk saved yet. Use Add airport to save the first one.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
             {!loading &&
               contacts.map((c) => (
-                <tr key={c.airportCode} className="border-b border-[#eef0f4] hover:bg-[#f4f6fa]">
-                  <td className="py-3 pr-3 pl-5">
+                <TableRow key={c.airportCode} className="border-b border-border hover:bg-accent">
+                  <TableCell className="p-0 whitespace-normal py-3 pr-3 pl-6">
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-base text-[#14213d]">{c.airportCode}</span>
-                      <span className="truncate text-xs text-[#677287]">
+                      <span className="text-base text-foreground">{c.airportCode}</span>
+                      <span className="truncate text-xs text-muted-foreground">
                         {c.city && c.city !== c.airportName ? `${c.city} ${c.airportName}` : c.airportName}
                       </span>
                     </div>
-                  </td>
-                  <td className="py-3 pr-3 text-base text-[#14213d]">{c.deskName}</td>
-                  <td className="py-3 pr-3">
+                  </TableCell>
+                  <TableCell className="p-0 whitespace-normal py-3 pr-3 text-base text-foreground">{c.deskName}</TableCell>
+                  <TableCell className="p-0 whitespace-normal py-3 pr-3">
                     <div className="flex items-center gap-2">
-                      <a href={phoneHref(c.phone)} className="text-base whitespace-nowrap text-[#14213d] hover:underline">
+                      <a href={phoneHref(c.phone)} className="text-base whitespace-nowrap text-foreground hover:underline">
                         {displayPhone(c.phone)}
                       </a>
                       <CopyButton text={displayPhone(c.phone)} label={`Copy ${c.airportCode} phone number`} />
                     </div>
-                  </td>
-                  <td className="truncate py-3 pr-3 text-base text-[#14213d]">
+                  </TableCell>
+                  <TableCell className="p-0 whitespace-normal truncate py-3 pr-3 text-base text-foreground">
                     {c.email ? (
                       <a href={`mailto:${c.email}`} className="hover:underline">
                         {c.email}
                       </a>
                     ) : (
-                      <span className="text-[#677287]">No email</span>
+                      <span className="text-muted-foreground">No email</span>
                     )}
-                  </td>
-                  <td className="py-3 pr-5">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      aria-label={`Edit ${c.airportCode} contact`}
-                      className={SMALL_BUTTON}
-                      onClick={() => setEditing(c)}
-                    >
+                  </TableCell>
+                  <TableCell className="p-0 whitespace-normal py-3 pr-6">
+                    <Button type="button" variant="outline" aria-label={`Edit ${c.airportCode} contact`} onClick={() => setEditing(c)}>
                       Edit
                     </Button>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {/* Phones get one card per airport instead of the wide table. */}
@@ -291,44 +272,38 @@ export function AirportContactsCard({
             </li>
           ))}
         {!loading && contacts.length === 0 && !error && (
-          <li className="rounded-xl border border-[#cbd5e1] bg-white px-4 py-6 text-center text-sm text-[#677287]">
+          <li className="rounded-xl border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
             No airport desk saved yet. Use Add airport to save the first one.
           </li>
         )}
         {!loading &&
           contacts.map((c) => (
-            <li key={c.airportCode} className="flex flex-col gap-2 rounded-xl border border-[#cbd5e1] bg-white p-4">
+            <li key={c.airportCode} className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-base text-[#14213d]">
+                  <span className="text-base text-foreground">
                     {c.airportCode} · {c.deskName}
                   </span>
-                  <span className="truncate text-xs text-[#677287]">
+                  <span className="truncate text-xs text-muted-foreground">
                     {c.city && c.city !== c.airportName ? `${c.city} ${c.airportName}` : c.airportName}
                   </span>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  aria-label={`Edit ${c.airportCode} contact`}
-                  className={SMALL_BUTTON}
-                  onClick={() => setEditing(c)}
-                >
+                <Button type="button" variant="outline" aria-label={`Edit ${c.airportCode} contact`} onClick={() => setEditing(c)}>
                   Edit
                 </Button>
               </div>
               <div className="flex items-center gap-2">
-                <a href={phoneHref(c.phone)} className="flex-1 text-base text-[#14213d] hover:underline">
+                <a href={phoneHref(c.phone)} className="flex-1 text-base text-foreground hover:underline">
                   {displayPhone(c.phone)}
                 </a>
                 <CopyButton text={displayPhone(c.phone)} label={`Copy ${c.airportCode} phone number`} />
               </div>
               {c.email ? (
-                <a href={`mailto:${c.email}`} className="truncate text-sm text-[#14213d] hover:underline">
+                <a href={`mailto:${c.email}`} className="truncate text-sm text-foreground hover:underline">
                   {c.email}
                 </a>
               ) : (
-                <span className="text-sm text-[#677287]">No email</span>
+                <span className="text-sm text-muted-foreground">No email</span>
               )}
             </li>
           ))}

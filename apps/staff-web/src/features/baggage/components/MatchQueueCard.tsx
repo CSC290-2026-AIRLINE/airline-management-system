@@ -1,3 +1,5 @@
+import { Button } from '@staff-web/components/ui/button'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { cn } from '@staff-web/lib/utils'
 import type { BagMatch } from '../api/bag-matches'
@@ -32,10 +34,10 @@ export function MatchQueueCard({
   return (
     <F10Card aria-labelledby="match-queue" className={LIST_CARD}>
       <div className={cn('flex items-center gap-3', LIST_PAD)}>
-        <h2 id="match-queue" className="m-0 flex-1 font-sans text-[22px] font-semibold text-[#14213d]">
+        <h2 id="match-queue" className="m-0 font-sans flex-1 text-lg font-semibold text-foreground">
           Match queue
         </h2>
-        {!loading && <p className="text-xs whitespace-nowrap text-[#677287]">{meta}</p>}
+        {!loading && <p className="text-xs whitespace-nowrap text-muted-foreground">{meta}</p>}
       </div>
 
       {error && (
@@ -44,76 +46,78 @@ export function MatchQueueCard({
         </div>
       )}
 
-      <table className="w-full table-fixed border-collapse text-left max-md:hidden">
-        <thead>
-          <tr className="border-b border-[#d8dce6] text-sm font-medium text-[#677287]">
-            <th scope="col" className="w-[132px] py-2.5 pr-3 pl-5 font-medium max-md:w-[104px]">
+      <Table className="w-full table-fixed border-collapse text-left max-md:hidden">
+        <TableHeader>
+          <TableRow className="border-b border-border text-sm font-medium text-muted-foreground">
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal w-[132px] py-2.5 pr-3 pl-6 font-medium max-md:w-[104px]">
               Level
-            </th>
-            <th scope="col" className="w-[88px] py-2.5 pr-3 font-medium">
+            </TableHead>
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal w-[88px] py-2.5 pr-3 font-medium">
               Case
-            </th>
-            <th scope="col" className="py-2.5 pr-3 font-medium">
+            </TableHead>
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal py-2.5 pr-3 font-medium">
               Found bag
-            </th>
-            <th scope="col" className="w-[120px] py-2.5 pr-5 font-medium">
+            </TableHead>
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal w-[120px] py-2.5 pr-6 font-medium">
               Status
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {loading &&
             [0, 1, 2].map((i) => (
-              <tr key={i} className="border-b border-[#eef0f4]">
-                <td colSpan={4} className="px-5 py-3">
+              <TableRow key={i} className="border-b border-border">
+                <TableCell colSpan={4} className="p-0 whitespace-normal px-6 py-3">
                   <Skeleton className="h-6 w-full" />
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
           {!loading && matches.length === 0 && !error && (
-            <tr>
-              <td colSpan={4} className="px-5 py-6 text-center text-sm text-[#677287]">
+            <TableRow>
+              <TableCell colSpan={4} className="p-0 whitespace-normal px-6 py-6 text-center text-sm text-muted-foreground">
                 No matches here.
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           )}
           {!loading &&
             matches.map((m) => {
               const selected = m.id === selectedId
               return (
-                <tr
+                <TableRow
                   key={m.id}
                   aria-selected={selected}
-                  className={cn(
-                    'cursor-pointer border-b border-[#eef0f4] hover:bg-[#f4f6fa]',
-                    selected && 'bg-[#eaf2ff] hover:bg-[#eaf2ff]',
-                  )}
+                  className={cn('cursor-pointer border-b border-border hover:bg-accent', selected && 'bg-accent hover:bg-accent')}
                   onClick={() => onSelect(m.id)}
                 >
-                  <td className="py-3 pr-3 pl-5">
+                  <TableCell className="p-0 whitespace-normal py-3 pr-3 pl-6">
                     {/* The button carries keyboard access; the whole row is still clickable for the mouse. */}
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
                       aria-label={`Match ${matchRef(m.id)}`}
                       onClick={(e) => {
                         e.stopPropagation()
                         onSelect(m.id)
                       }}
-                      className="rounded outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      className="h-auto justify-start gap-0 px-0 py-0 font-normal whitespace-normal hover:bg-transparent dark:hover:bg-transparent rounded outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     >
                       <Pill tone={MATCH_LEVEL_TONES[m.level]}>{MATCH_LEVEL_LABELS[m.level]}</Pill>
-                    </button>
-                  </td>
-                  <td className="truncate py-3 pr-3 text-base text-[#14213d]">{caseShortNumber(m.report.caseNumber)}</td>
-                  <td className="truncate py-3 pr-3 text-base text-[#14213d]">{bagRef(m.foundBag.id)}</td>
-                  <td className="py-3 pr-5">
+                    </Button>
+                  </TableCell>
+                  <TableCell className="p-0 whitespace-normal truncate py-3 pr-3 text-base text-foreground">
+                    {caseShortNumber(m.report.caseNumber)}
+                  </TableCell>
+                  <TableCell className="p-0 whitespace-normal truncate py-3 pr-3 text-base text-foreground">
+                    {bagRef(m.foundBag.id)}
+                  </TableCell>
+                  <TableCell className="p-0 whitespace-normal py-3 pr-6">
                     <Pill tone={MATCH_STATUS_TONES[m.status]}>{MATCH_STATUS_LABELS[m.status]}</Pill>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )
             })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
       <MobileList label="Match queue" loading={loading} empty={matches.length === 0 && !error ? 'No matches here.' : null}>
         {matches.map((m) => (
           <MobileRow

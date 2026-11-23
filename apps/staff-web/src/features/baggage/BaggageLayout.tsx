@@ -11,7 +11,9 @@ export function BaggageLayout({ children }: { children: ReactNode }) {
 
   return (
     <BaggageDeskContext.Provider value={desk}>
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-4 leading-normal text-navy md:p-6 lg:p-8">{children}</div>
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-4 tracking-normal text-foreground md:p-6 lg:p-8">
+        {children}
+      </div>
     </BaggageDeskContext.Provider>
   )
 }

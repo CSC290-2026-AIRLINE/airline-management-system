@@ -16,7 +16,7 @@ import {
 } from '../constants'
 import { useFlightsInto } from '../hooks/useBaggageFlights'
 import { errorMessage, type Airport } from '../hooks/useFoundBags'
-import { F10Card, FIELD_BOX, Field, FormError, SelectBox } from './primitives'
+import { F10Card, Field, FormError, SelectBox } from './primitives'
 
 const TYPE_OPTIONS = BAG_TYPES.map((t) => ({ value: t, label: BAG_TYPE_LABELS[t] }))
 const COLOUR_OPTIONS = BAG_COLOURS.map((c) => ({ value: c, label: colourLabel(c) }))
@@ -83,13 +83,10 @@ export function RecordFoundBagCard({
     <F10Card aria-labelledby="record-found-bag">
       <div className="flex items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <h2
-            id="record-found-bag"
-            className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
-          >
+          <h2 id="record-found-bag" className="m-0 font-sans text-2xl font-semibold tracking-tight text-foreground max-md:text-xl">
             Record a found bag
           </h2>
-          <p className="text-sm text-[#677287] md:hidden">Add every bag nobody collected; matching runs on save.</p>
+          <p className="text-sm text-muted-foreground md:hidden">Add every bag nobody collected; matching runs on save.</p>
         </div>
         <Button
           type="button"
@@ -98,7 +95,7 @@ export function RecordFoundBagCard({
           aria-expanded={open}
           aria-controls="record-found-bag-form"
           onClick={() => setOpen((o) => !o)}
-          className="size-9 shrink-0 rounded-full border-[#d8dce6] p-0 text-[#14213d] md:hidden"
+          className="size-9 shrink-0 rounded-full border-border p-0 text-foreground md:hidden"
         >
           {open ? <Minus aria-hidden className="size-4" /> : <Plus aria-hidden className="size-4" />}
         </Button>
@@ -138,7 +135,6 @@ export function RecordFoundBagCard({
                 onBlur={(e) => checkTag(e.target.value)}
                 aria-invalid={tagError ? true : undefined}
                 aria-describedby={tagError ? 'fb-tag-error' : undefined}
-                className={FIELD_BOX}
               />
               {tagError && (
                 <span id="fb-tag-error" className="text-xs text-danger">
@@ -147,14 +143,7 @@ export function RecordFoundBagCard({
               )}
             </Field>
             <Field label="Brand" htmlFor="fb-brand">
-              <Input
-                id="fb-brand"
-                maxLength={100}
-                placeholder="e.g. Samsonite"
-                value={brand}
-                onChange={(e) => setBrand(e.target.value)}
-                className={FIELD_BOX}
-              />
+              <Input id="fb-brand" maxLength={100} placeholder="e.g. Samsonite" value={brand} onChange={(e) => setBrand(e.target.value)} />
             </Field>
             <Field label="Came off flight" htmlFor="fb-flight">
               <SelectBox
@@ -172,17 +161,12 @@ export function RecordFoundBagCard({
               placeholder="Marks, stickers, condition"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className={FIELD_BOX}
             />
           </Field>
         </div>
         <FormError message={error} />
         <div className="flex justify-end max-md:flex-col max-md:items-stretch">
-          <Button
-            type="submit"
-            disabled={saving || !airport}
-            className="h-auto rounded-lg bg-[#fca311] px-5 py-3 text-sm leading-normal font-semibold text-[#14213d] hover:bg-[#fca311]/90"
-          >
+          <Button type="submit" disabled={saving || !airport}>
             {saving ? 'Saving…' : 'Save and run matching'}
           </Button>
         </div>

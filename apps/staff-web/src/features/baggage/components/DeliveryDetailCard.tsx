@@ -24,9 +24,7 @@ import { errorMessage } from '../hooks/useFoundBags'
 import { displayPhone } from '../phone-number'
 import { CaseCosts } from './CaseCosts'
 import { HandOverForm } from './HandOverForm'
-import { F10Card, FIELD_BOX, Field, FormError, Pill, SelectBox } from './primitives'
-
-const PRIMARY_BUTTON = 'h-auto rounded-lg bg-[#14213d] px-3.5 py-2 text-sm leading-normal font-semibold text-white hover:bg-[#14213d]/90'
+import { F10Card, Field, FormError, Pill, SelectBox } from './primitives'
 
 const TYPE_OPTIONS = DELIVERY_TYPES.map((t) => ({ value: t, label: DELIVERY_TYPE_LABELS[t] }))
 
@@ -50,8 +48,8 @@ function nextSteps(d: BagDelivery): NextStep[] {
 function Fact({ label, children }: { label: string; children: string }) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <dt className="shrink-0 text-sm font-medium whitespace-nowrap text-[#677287]">{label}</dt>
-      <dd className="min-w-0 flex-1 text-right text-base break-words text-[#14213d]">{children}</dd>
+      <dt className="shrink-0 text-sm font-medium whitespace-nowrap text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 flex-1 text-right text-base break-words text-foreground">{children}</dd>
     </div>
   )
 }
@@ -104,7 +102,7 @@ function ChoiceForm({ delivery, onSave }: { delivery: BagDelivery; onSave: (body
 
   return (
     <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-4" noValidate>
-      <h3 className="m-0 font-sans text-[22px] font-semibold text-[#14213d]">Delivery choice</h3>
+      <h3 className="m-0 font-sans text-lg font-semibold text-foreground">Delivery choice</h3>
       <Field label="Send to" htmlFor={id('type')}>
         <SelectBox id={id('type')} value={type} onValueChange={(v) => setType(v as DeliveryType)} options={TYPE_OPTIONS} />
       </Field>
@@ -121,12 +119,12 @@ function ChoiceForm({ delivery, onSave }: { delivery: BagDelivery; onSave: (body
         </Field>
       ) : (
         <Field label="Address" htmlFor={id('address')}>
-          <Input id={id('address')} maxLength={500} value={address} onChange={(e) => setAddress(e.target.value)} className={FIELD_BOX} />
+          <Input id={id('address')} maxLength={500} value={address} onChange={(e) => setAddress(e.target.value)} />
         </Field>
       )}
       <FormError message={error} />
       <div className="flex justify-end">
-        <Button type="submit" disabled={busy} className={PRIMARY_BUTTON}>
+        <Button type="submit" disabled={busy}>
           {busy ? 'Saving…' : 'Save choice'}
         </Button>
       </div>
@@ -165,13 +163,13 @@ function StatusForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="m-0 font-sans text-[22px] font-semibold text-[#14213d]">Set delivery status</h3>
+      <h3 className="m-0 font-sans text-lg font-semibold text-foreground">Set delivery status</h3>
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <SelectBox id={`status-${delivery.id}`} value={step} onValueChange={(v) => setStep(v as NextStep)} options={options} />
         </div>
         {step !== 'delivered' && (
-          <Button type="button" disabled={busy} onClick={() => void update()} className={PRIMARY_BUTTON}>
+          <Button type="button" disabled={busy} onClick={() => void update()}>
             {busy ? 'Saving…' : 'Update'}
           </Button>
         )}
@@ -185,15 +183,15 @@ function StatusForm({
 function CheckItem({ check }: { check: OwnershipCheck }) {
   const who = COLLECTOR_LABELS[check.collector]
   return (
-    <li className="flex flex-col gap-1 rounded-lg bg-[#f4f6fa] px-3.5 py-2.5">
+    <li className="flex flex-col gap-1 rounded-lg bg-accent px-3.5 py-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Pill tone={check.passed ? 'green' : 'red'}>{check.passed ? 'Owner verified' : 'Not verified'}</Pill>
-        <span className="text-xs text-[#677287]">
+        <span className="text-xs text-muted-foreground">
           {check.staffName ? `${check.staffName}, ` : ''}
           {formatEventTime(check.checkedAt)}
         </span>
       </div>
-      <p className="text-sm text-[#14213d]">{`${who} · ${ID_DOCUMENT_LABELS[check.documentType]} ending ${check.documentLast4}`}</p>
+      <p className="text-sm text-foreground">{`${who} · ${ID_DOCUMENT_LABELS[check.documentType]} ending ${check.documentLast4}`}</p>
       {check.mismatches.length > 0 && (
         <p className="text-sm text-danger">
           {`Did not match: ${check.mismatches.map((m) => OWNERSHIP_MISMATCH_LABELS[m].toLowerCase()).join(', ')}`}
@@ -238,7 +236,11 @@ export function DeliveryDetailCard({
   if (!delivery) {
     return (
       <F10Card>
-        {error ? <FormError message={error} /> : <p className="text-sm text-[#677287]">Choose a delivery to see its status and costs.</p>}
+        {error ? (
+          <FormError message={error} />
+        ) : (
+          <p className="text-sm text-muted-foreground">Choose a delivery to see its status and costs.</p>
+        )}
       </F10Card>
     )
   }
@@ -250,10 +252,7 @@ export function DeliveryDetailCard({
   return (
     <F10Card aria-labelledby="delivery-detail-title">
       <div className="flex flex-wrap items-center gap-3">
-        <h2
-          id="delivery-detail-title"
-          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
-        >
+        <h2 id="delivery-detail-title" className="m-0 font-sans text-2xl font-semibold tracking-tight text-foreground max-md:text-xl">
           {delivery.caseNumber}
         </h2>
         <Pill tone={DELIVERY_STATUS_TONES[delivery.status]}>{DELIVERY_STATUS_LABELS[delivery.status]}</Pill>
@@ -270,7 +269,7 @@ export function DeliveryDetailCard({
 
       {canChoose && (
         <>
-          <Separator className="bg-[#d8dce6]" />
+          <Separator className="bg-border" />
           <ChoiceForm
             key={`${delivery.id}:${delivery.updatedAt}`}
             delivery={delivery}
@@ -281,7 +280,7 @@ export function DeliveryDetailCard({
 
       {steps.length > 0 && (
         <>
-          <Separator className="bg-[#d8dce6]" />
+          <Separator className="bg-border" />
           <StatusForm
             key={`${delivery.id}:${delivery.status}`}
             delivery={delivery}
@@ -293,9 +292,9 @@ export function DeliveryDetailCard({
 
       {delivery.ownershipChecks.length > 0 && (
         <>
-          <Separator className="bg-[#d8dce6]" />
+          <Separator className="bg-border" />
           <div className="flex flex-col gap-3">
-            <h3 className="m-0 font-sans text-[22px] font-semibold text-[#14213d]">Ownership checks</h3>
+            <h3 className="m-0 font-sans text-lg font-semibold text-foreground">Ownership checks</h3>
             <ul className="flex flex-col gap-2">
               {delivery.ownershipChecks.map((c) => (
                 <CheckItem key={c.id} check={c} />
@@ -305,7 +304,7 @@ export function DeliveryDetailCard({
         </>
       )}
 
-      <Separator className="bg-[#d8dce6]" />
+      <Separator className="bg-border" />
 
       <CaseCosts
         key={delivery.reportId}

@@ -6,7 +6,7 @@ import { Skeleton } from '@staff-web/components/ui/skeleton'
 import type { AddBagCostBody, BagCostSummary } from '../api/lost-reports'
 import { BAG_COST_KINDS, BAG_COST_KIND_LABELS, formatBaht, type BagCostKind } from '../constants'
 import { errorMessage } from '../hooks/useFoundBags'
-import { Field, FIELD_BOX, FormError, SelectBox } from './primitives'
+import { Field, FormError, SelectBox } from './primitives'
 
 const KIND_OPTIONS = BAG_COST_KINDS.map((k) => ({ value: k, label: BAG_COST_KIND_LABELS[k] }))
 
@@ -68,57 +68,60 @@ export function CaseCosts({
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="m-0 font-sans text-[22px] font-semibold text-[#14213d]">Costs (paid by the airline)</h3>
+      <h3 className="m-0 font-sans text-lg font-semibold text-foreground">Costs (paid by the airline)</h3>
 
       {loading && <Skeleton className="h-12 w-full" />}
       <FormError message={error} />
 
-      {!loading && costs.length === 0 && !error && <p className="text-sm text-[#677287]">No costs recorded yet.</p>}
+      {!loading && costs.length === 0 && !error && <p className="text-sm text-muted-foreground">No costs recorded yet.</p>}
       {costs.length > 0 && (
         <>
           <ul className="flex flex-col gap-2.5">
             {costs.map((c) => (
               <li key={c.id} className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium whitespace-nowrap text-[#677287]">{BAG_COST_KIND_LABELS[c.kind]}</span>
-                <span className="flex min-w-0 flex-1 items-center justify-end gap-1 text-base text-[#14213d]">
+                <span className="text-sm font-medium whitespace-nowrap text-muted-foreground">{BAG_COST_KIND_LABELS[c.kind]}</span>
+                <span className="flex min-w-0 flex-1 items-center justify-end gap-1 text-base text-foreground">
                   {formatBaht(c.amount)}
                   {/* Not in Figma: a cost entered by mistake can be taken back, after a second press. */}
                   {confirmId === c.id ? (
                     <span className="flex items-center gap-1 text-sm">
-                      <button
+                      <Button
+                        variant="ghost"
                         type="button"
                         disabled={busy}
                         onClick={() => void run(() => onRemove(c.id)).then(() => setConfirmId(null))}
-                        className="rounded px-1 font-semibold text-danger outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                        className="h-auto justify-start gap-0 px-0 py-0 font-normal whitespace-normal hover:bg-transparent dark:hover:bg-transparent rounded px-1 font-semibold text-danger outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
                       >
                         Remove
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="ghost"
                         type="button"
                         disabled={busy}
                         onClick={() => setConfirmId(null)}
-                        className="rounded px-1 text-[#677287] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                        className="h-auto justify-start gap-0 px-0 py-0 font-normal whitespace-normal hover:bg-transparent dark:hover:bg-transparent rounded px-1 text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
                       >
                         Keep
-                      </button>
+                      </Button>
                     </span>
                   ) : (
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
                       aria-label={`Remove ${BAG_COST_KIND_LABELS[c.kind].toLowerCase()} cost of ${formatBaht(c.amount)}`}
                       title="Remove cost"
                       disabled={busy}
                       onClick={() => setConfirmId(c.id)}
-                      className="rounded p-0.5 text-[#677287] outline-none hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                      className="h-auto justify-start gap-0 px-0 py-0 font-normal whitespace-normal hover:bg-transparent dark:hover:bg-transparent rounded p-0.5 text-muted-foreground outline-none hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
                     >
                       <X className="size-3.5" aria-hidden />
-                    </button>
+                    </Button>
                   )}
                 </span>
               </li>
             ))}
           </ul>
-          <div className="flex justify-between border-t border-[#d8dce6] pt-2 text-sm font-semibold text-[#14213d]">
+          <div className="flex justify-between border-t border-border pt-2 text-sm font-semibold text-foreground">
             <span>Total</span>
             <span>{formatBaht(summary?.total ?? 0)}</span>
           </div>
@@ -138,18 +141,12 @@ export function CaseCosts({
                 placeholder="Amount in ฿"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className={FIELD_BOX}
               />
             </Field>
           </div>
           <FormError message={formError} />
           <div className="flex justify-end">
-            <Button
-              type="submit"
-              variant="outline"
-              disabled={busy}
-              className="h-auto rounded-lg border-[#d8dce6] px-3.5 py-2 text-sm leading-normal font-semibold text-[#14213d] shadow-none"
-            >
+            <Button type="submit" variant="outline" disabled={busy} className="shadow-none">
               {busy ? 'Saving…' : 'Record cost'}
             </Button>
           </div>

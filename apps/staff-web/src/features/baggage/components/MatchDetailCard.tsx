@@ -1,3 +1,4 @@
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Button } from '@staff-web/components/ui/button'
@@ -22,18 +23,15 @@ import {
 } from '../constants'
 import { errorMessage } from '../hooks/useFoundBags'
 import { CasePhoto } from './CasePhoto'
-import { F10Card, FIELD_BOX, Field, FormError, Pill } from './primitives'
+import { F10Card, Field, FormError, Pill } from './primitives'
 
 type Verdict = 'same' | 'different' | 'none'
 
 const CELL_TONES: Record<Verdict, string> = {
   same: 'bg-success-soft text-success-strong',
   different: 'bg-danger-soft text-danger',
-  none: 'text-[#14213d]',
+  none: 'text-foreground',
 }
-
-const OUTLINE_BUTTON =
-  'h-auto rounded-lg border border-[#d8dce6] bg-white px-3.5 py-2 text-sm leading-normal font-semibold text-[#14213d] shadow-none hover:bg-[#f4f6fa]'
 
 /** Same or different when both sides have a value; nothing to compare otherwise. */
 function compare(a: string | null, b: string | null): Verdict {
@@ -55,13 +53,20 @@ function reportedBy(report: BagMatch['report']): string {
 
 function Row({ label, report, bag, verdict }: { label: string; report: string; bag: string; verdict: Verdict }) {
   return (
-    <tr className="border-b border-[#eef0f4] last:border-b-0">
-      <th scope="row" className="w-[110px] px-3 py-2.5 align-top text-sm font-medium text-[#677287]">
+    <TableRow className="border-b border-border last:border-b-0">
+      <TableHead
+        scope="row"
+        className="h-auto px-0 whitespace-normal w-[110px] px-3 py-2.5 align-top text-sm font-medium text-muted-foreground"
+      >
         {label}
-      </th>
-      <td className={cn('px-3 py-2.5 align-top text-base break-words', CELL_TONES[verdict])}>{report}</td>
-      <td className={cn('px-3 py-2.5 align-top text-base break-words', CELL_TONES[verdict])}>{bag}</td>
-    </tr>
+      </TableHead>
+      <TableCell className={cn('p-0 whitespace-normal', 'px-3 py-2.5 align-top text-base break-words', CELL_TONES[verdict])}>
+        {report}
+      </TableCell>
+      <TableCell className={cn('p-0 whitespace-normal', 'px-3 py-2.5 align-top text-base break-words', CELL_TONES[verdict])}>
+        {bag}
+      </TableCell>
+    </TableRow>
   )
 }
 
@@ -74,20 +79,20 @@ function Comparison({ match }: { match: BagMatch }) {
   const sameCheckedFlight: Verdict = checked ? (checked.flightId === r.flightId ? 'same' : 'different') : 'none'
 
   return (
-    <div className="overflow-hidden rounded-lg border border-[#d8dce6]">
-      <table className="w-full table-fixed border-collapse text-left">
-        <thead>
-          <tr className="border-b border-[#eef0f4] bg-[#eef0f4] text-sm font-medium text-[#14213d]">
-            <td className="w-[110px] px-3 py-2.5" />
-            <th scope="col" className="px-3 py-2.5 font-medium">
+    <div className="overflow-hidden rounded-lg border border-border">
+      <Table className="w-full table-fixed border-collapse text-left">
+        <TableHeader>
+          <TableRow className="border-b border-border bg-muted text-sm font-medium text-foreground">
+            <TableCell className="p-0 whitespace-normal w-[110px] px-3 py-2.5" />
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal px-3 py-2.5 font-medium">
               Report {caseShortNumber(r.caseNumber)}
-            </th>
-            <th scope="col" className="px-3 py-2.5 font-medium">
+            </TableHead>
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal px-3 py-2.5 font-medium">
               Found {bagRef(b.id)}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           <Row label="Tag" report={r.tagNumber ?? 'No tag'} bag={b.tagNumber ?? 'No tag'} verdict={compare(r.tagNumber, b.tagNumber)} />
           <Row label="Flight" report={r.flightNumber} bag={b.flightNumber ?? 'Not known'} verdict={sameFlight} />
           <Row
@@ -116,8 +121,8 @@ function Comparison({ match }: { match: BagMatch }) {
             bag={`Found ${formatEventTime(b.foundAt)}, now at ${b.currentAirport}`}
             verdict="none"
           />
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }
@@ -158,7 +163,7 @@ function ReviewForm({
 
   return (
     <>
-      <Separator className="bg-[#d8dce6]" />
+      <Separator className="bg-border" />
       <Field label="Note (required)" htmlFor={noteId}>
         <Input
           id={noteId}
@@ -166,7 +171,6 @@ function ReviewForm({
           placeholder="e.g. Tag and strap match; booking checked"
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          className={FIELD_BOX}
         />
       </Field>
       <FormError message={error} />
@@ -175,16 +179,11 @@ function ReviewForm({
           type="button"
           disabled={busy}
           onClick={() => void run(() => onReject(note.trim()))}
-          className="h-auto rounded-lg border border-[#d61313] bg-white px-3.5 py-2 text-sm leading-normal font-semibold text-[#d61313] shadow-none hover:bg-danger-soft"
+          className="border-destructive text-destructive hover:bg-danger-soft"
         >
           Not the same bag
         </Button>
-        <Button
-          type="button"
-          disabled={busy}
-          onClick={confirm}
-          className="h-auto rounded-lg bg-[#fca311] px-3.5 py-2 text-sm leading-normal font-semibold text-[#14213d] hover:bg-[#fca311]/90"
-        >
+        <Button type="button" disabled={busy} onClick={confirm}>
           {busy ? 'Saving…' : 'Confirm owner'}
         </Button>
       </div>
@@ -216,7 +215,7 @@ export function MatchDetailCard({
     return (
       // On phones the queue is on its own screen, so the prompt to pick a match is not needed there.
       <F10Card className="max-md:hidden">
-        <p className="text-sm text-[#677287]">Choose a match in the queue to compare the report with the found bag.</p>
+        <p className="text-sm text-muted-foreground">Choose a match in the queue to compare the report with the found bag.</p>
       </F10Card>
     )
   }
@@ -234,10 +233,7 @@ export function MatchDetailCard({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <h2
-          id="match-detail-title"
-          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
-        >
+        <h2 id="match-detail-title" className="m-0 font-sans text-2xl font-semibold tracking-tight text-foreground max-md:text-xl">
           {matchRef(match.id)}
         </h2>
         <Pill tone={MATCH_STATUS_TONES[match.status]}>{MATCH_STATUS_LABELS[match.status]}</Pill>
@@ -253,13 +249,13 @@ export function MatchDetailCard({
         caseNumber={match.report.caseNumber}
       />
 
-      <p className="text-sm text-[#677287]">
+      <p className="text-sm text-muted-foreground">
         Booking {match.report.bookingReference}
         {match.linkedBy ? ` · linked by ${shortName(match.linkedBy)}` : ''}
       </p>
 
       {!open && reviewed && (
-        <p className="rounded-lg bg-[#eef0f4] px-3.5 py-3 text-base break-words text-[#14213d]">
+        <p className="rounded-lg bg-muted px-3.5 py-3 text-base break-words text-foreground">
           {match.reviewNote ? `${reviewed}: ${match.reviewNote}` : `Rejected by ${reviewed}`}
         </p>
       )}
@@ -275,16 +271,13 @@ export function MatchDetailCard({
 
       {!open && (
         <div className="flex flex-wrap justify-end gap-2">
-          <Button asChild className={OUTLINE_BUTTON}>
+          <Button asChild>
             <Link to="/baggage/lost-bag-cases" search={{ case: match.report.id, status: 'all' }}>
               Open case
             </Link>
           </Button>
           {match.status === 'confirmed' && (
-            <Button
-              asChild
-              className="h-auto rounded-lg bg-[#14213d] px-3.5 py-2 text-sm leading-normal font-semibold text-white hover:bg-[#14213d]/90"
-            >
+            <Button asChild className="bg-primary text-primary-foreground hover:bg-primary/90">
               <Link to="/baggage/deliveries" search={{ case: match.report.id, status: 'all' }}>
                 Go to Deliveries
               </Link>

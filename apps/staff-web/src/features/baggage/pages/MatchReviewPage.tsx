@@ -18,12 +18,8 @@ export function MatchReviewPage({ selectedId, onSelect }: { selectedId: string |
   return (
     <>
       <header className={`flex flex-col gap-2 ${listOnly}`}>
-        <h1 className="m-0 font-sans text-[48px] leading-none font-extrabold tracking-[-2.4px] text-[#14213d] max-md:text-[36px]">
-          Match review
-        </h1>
-        <p className="text-lg tracking-[-0.9px] text-[#677287]">
-          The system only suggests. Check the details and the booking before a bag moves.
-        </p>
+        <h1 className="m-0 font-sans text-3xl font-semibold tracking-tight text-foreground max-md:text-2xl">Match review</h1>
+        <p className="text-muted-foreground">The system only suggests. Check the details and the booking before a bag moves.</p>
         <SimulatedToday />
       </header>
 

@@ -1,3 +1,4 @@
+import { Label } from '@staff-web/components/ui/label'
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Button } from '@staff-web/components/ui/button'
@@ -61,22 +62,19 @@ export function CaseMatches({
 
   return (
     <>
-      <h3 className="m-0 font-sans text-[22px] font-semibold text-[#14213d]">Matches</h3>
+      <h3 className="m-0 font-sans text-lg font-semibold text-foreground">Matches</h3>
       {shown.length === 0 ? (
-        <p className="text-sm text-[#677287]">No matches yet.</p>
+        <p className="text-sm text-muted-foreground">No matches yet.</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {shown.map((m) => (
-            <li key={m.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-[#d8dce6] px-3 py-2.5">
+            <li key={m.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2.5">
               <Pill tone={MATCH_LEVEL_TONES[m.level]}>{MATCH_LEVEL_LABELS[m.level]}</Pill>
-              <span className="min-w-[8rem] flex-1 text-base break-words text-[#14213d]">
+              <span className="min-w-[8rem] flex-1 text-base break-words text-foreground">
                 {bagRef(m.foundBag.id)} at {m.foundBag.currentAirport}
               </span>
               <Pill tone={MATCH_STATUS_TONES[m.status]}>{MATCH_STATUS_LABELS[m.status]}</Pill>
-              <Button
-                asChild
-                className="h-auto rounded-lg border border-[#d8dce6] bg-white px-3.5 py-2 text-sm leading-normal font-semibold text-[#14213d] shadow-none hover:bg-[#f4f6fa]"
-              >
+              <Button asChild className="border bg-card shadow-none hover:bg-accent">
                 <Link to="/baggage/match-review" search={{ match: m.id }}>
                   Review
                 </Link>
@@ -88,11 +86,11 @@ export function CaseMatches({
 
       {canLink && (
         <>
-          <Separator className="bg-[#d8dce6]" />
+          <Separator className="bg-border" />
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="case-link-bag" className="text-sm font-medium text-[#474950]">
+            <Label htmlFor="case-link-bag" className="text-sm font-medium text-foreground">
               Link a found bag by hand
-            </label>
+            </Label>
             <div className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
                 <SearchSelectBox
@@ -105,12 +103,7 @@ export function CaseMatches({
                   disabled={options.length === 0 || busy}
                 />
               </div>
-              <Button
-                type="button"
-                disabled={!chosen || busy}
-                onClick={() => void link()}
-                className="h-auto rounded-lg bg-[#14213d] px-3.5 py-2 text-sm leading-normal font-semibold text-white hover:bg-[#14213d]/90"
-              >
+              <Button type="button" disabled={!chosen || busy} onClick={() => void link()}>
                 {busy ? 'Linking…' : 'Link'}
               </Button>
             </div>

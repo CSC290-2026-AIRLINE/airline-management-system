@@ -13,8 +13,8 @@ import { F10Card, Pill } from './primitives'
 function Fact({ label, children }: { label: string; children: string }) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <dt className="shrink-0 text-sm font-medium whitespace-nowrap text-[#677287]">{label}</dt>
-      <dd className="min-w-0 flex-1 text-right text-base break-words text-[#14213d]">{children}</dd>
+      <dt className="shrink-0 text-sm font-medium whitespace-nowrap text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 flex-1 text-right text-base break-words text-foreground">{children}</dd>
     </div>
   )
 }
@@ -51,10 +51,7 @@ export function CaseDetailCard({
   return (
     <F10Card aria-labelledby="case-detail-title">
       <div className="flex flex-wrap items-center gap-3">
-        <h2
-          id="case-detail-title"
-          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
-        >
+        <h2 id="case-detail-title" className="m-0 font-sans text-2xl font-semibold tracking-tight text-foreground max-md:text-xl">
           {report.caseNumber}
         </h2>
         <Pill tone={REPORT_STATUS_TONES[report.status]}>{REPORT_STATUS_LABELS[report.status]}</Pill>
@@ -73,7 +70,7 @@ export function CaseDetailCard({
       </dl>
 
       {report.description && (
-        <p className="rounded-lg bg-[#eef0f4] px-3.5 py-3 text-base break-words text-[#14213d]">“{report.description}”</p>
+        <p className="rounded-lg bg-muted px-3.5 py-3 text-base break-words text-foreground">“{report.description}”</p>
       )}
 
       <CasePhoto key={`photo-${report.id}`} reportId={report.id} hasPhoto={report.photoUrl !== null} caseNumber={report.caseNumber} />
@@ -86,7 +83,7 @@ export function CaseDetailCard({
         onLink={onLink}
       />
 
-      <Separator className="bg-[#d8dce6]" />
+      <Separator className="bg-border" />
 
       <CaseCosts
         key={report.id}
@@ -100,7 +97,7 @@ export function CaseDetailCard({
 
       {canCancel && (
         <>
-          <Separator className="bg-[#d8dce6]" />
+          <Separator className="bg-border" />
           <CaseCancel key={`cancel-${report.id}`} caseNumber={report.caseNumber} onCancel={onCancel} />
         </>
       )}

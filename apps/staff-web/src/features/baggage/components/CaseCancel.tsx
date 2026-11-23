@@ -2,10 +2,7 @@ import { useState } from 'react'
 import { Button } from '@staff-web/components/ui/button'
 import { Input } from '@staff-web/components/ui/input'
 import { errorMessage } from '../hooks/useFoundBags'
-import { FIELD_BOX, Field, FormError } from './primitives'
-
-const DANGER_BUTTON =
-  'h-auto rounded-lg border border-[#d61313] bg-white px-3.5 py-2 text-sm leading-normal font-semibold text-[#d61313] shadow-none hover:bg-danger-soft'
+import { Field, FormError } from './primitives'
 
 /** "Cancel case": for a case with no confirmed bag yet. Staff give the reason, which is kept with the change. */
 export function CaseCancel({ caseNumber, onCancel }: { caseNumber: string; onCancel: (reason: string) => Promise<unknown> }) {
@@ -34,7 +31,7 @@ export function CaseCancel({ caseNumber, onCancel }: { caseNumber: string; onCan
   if (!asking) {
     return (
       <div className="flex justify-end">
-        <Button type="button" onClick={() => setAsking(true)} className={DANGER_BUTTON}>
+        <Button type="button" variant="destructive" onClick={() => setAsking(true)}>
           Cancel case
         </Button>
       </div>
@@ -51,7 +48,6 @@ export function CaseCancel({ caseNumber, onCancel }: { caseNumber: string; onCan
           placeholder="e.g. Filed for a traveller who cannot reach the case"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          className={FIELD_BOX}
         />
       </Field>
       <FormError message={error} />
@@ -64,11 +60,10 @@ export function CaseCancel({ caseNumber, onCancel }: { caseNumber: string; onCan
             setReason('')
             setError(null)
           }}
-          className="h-auto rounded-lg border border-[#d8dce6] bg-white px-3.5 py-2 text-sm leading-normal font-semibold text-[#14213d] shadow-none hover:bg-[#f4f6fa]"
         >
           Keep case
         </Button>
-        <Button type="button" disabled={busy} onClick={() => void cancel()} className={DANGER_BUTTON}>
+        <Button type="button" variant="destructive" disabled={busy} onClick={() => void cancel()}>
           {busy ? 'Cancelling…' : `Cancel ${caseNumber}`}
         </Button>
       </div>

@@ -36,12 +36,8 @@ export function FoundBagsPage({
   return (
     <>
       <header className={`flex flex-col gap-2 ${listOnly}`}>
-        <h1 className="m-0 font-sans text-[48px] leading-none font-extrabold tracking-[-2.4px] text-[#14213d] max-md:text-[36px]">
-          Found bags
-        </h1>
-        <p className="text-lg tracking-[-0.9px] text-[#677287]">
-          Record every bag nobody collected, and add a location each time it is seen or sent.
-        </p>
+        <h1 className="m-0 font-sans text-3xl font-semibold tracking-tight text-foreground max-md:text-2xl">Found bags</h1>
+        <p className="text-muted-foreground">Record every bag nobody collected, and add a location each time it is seen or sent.</p>
         <SimulatedToday />
       </header>
 

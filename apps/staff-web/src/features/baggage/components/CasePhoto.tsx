@@ -1,3 +1,4 @@
+import { Button } from '@staff-web/components/ui/button'
 import { useState } from 'react'
 import { XIcon } from 'lucide-react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
@@ -12,17 +13,14 @@ function PhotoViewer({ url, alt }: { url: string; alt: string }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button
+        <Button
+          variant="ghost"
           type="button"
           aria-label="View the photo full size"
-          className="cursor-zoom-in self-start rounded-lg outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="h-auto justify-start gap-0 px-0 py-0 font-normal whitespace-normal hover:bg-transparent dark:hover:bg-transparent cursor-zoom-in self-start rounded-lg outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
-          <img
-            src={url}
-            alt={alt}
-            className="max-h-64 w-full max-w-[320px] rounded-lg border border-[#d8dce6] bg-[#f8fafc] object-contain"
-          />
-        </button>
+          <img src={url} alt={alt} className="max-h-64 w-full max-w-[320px] rounded-lg border border-border bg-muted object-contain" />
+        </Button>
       </DialogTrigger>
       <DialogPortal>
         <DialogOverlay className="bg-black/85" />
@@ -40,7 +38,7 @@ function PhotoViewer({ url, alt }: { url: string; alt: string }) {
           />
           <DialogPrimitive.Close
             aria-label="Close"
-            className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white outline-none hover:bg-white/20 focus-visible:ring-[3px] focus-visible:ring-white/60"
+            className="absolute top-4 right-4 rounded-full bg-card/10 p-2 text-primary-foreground outline-none hover:bg-card/20 focus-visible:ring-[3px] focus-visible:ring-white/60"
           >
             <XIcon aria-hidden className="size-6" />
           </DialogPrimitive.Close>
@@ -59,15 +57,15 @@ export function CasePhoto({ reportId, hasPhoto, caseNumber }: { reportId: string
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="m-0 text-sm font-medium text-[#677287]">Photo from the passenger</h3>
+      <h3 className="m-0 font-sans m-0 text-sm font-medium text-muted-foreground">Photo from the passenger</h3>
       {!hasPhoto ? (
-        <p className="text-base text-[#14213d]">No photo</p>
+        <p className="text-base text-foreground">No photo</p>
       ) : photo.loading ? (
         <Skeleton className="h-48 w-full max-w-[320px] rounded-lg" />
       ) : photo.url ? (
         <PhotoViewer url={photo.url} alt={`Bag photo for case ${caseNumber}`} />
       ) : (
-        <p className="text-sm text-[#677287]">{photo.error ?? 'The photo could not be loaded.'}</p>
+        <p className="text-sm text-muted-foreground">{photo.error ?? 'The photo could not be loaded.'}</p>
       )}
     </div>
   )

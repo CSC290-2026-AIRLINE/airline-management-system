@@ -39,18 +39,15 @@ export function DivertedFlightCard({ onRecord }: { onRecord: (flightId: string) 
 
   return (
     <F10Card aria-labelledby="diverted-flight-title">
-      <h2
-        id="diverted-flight-title"
-        className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
-      >
+      <h2 id="diverted-flight-title" className="m-0 font-sans text-2xl font-semibold tracking-tight text-foreground max-md:text-xl">
         Bags from a diverted flight
       </h2>
       {diverted.loading ? (
-        <p className="text-sm text-[#677287]">Loading diverted flights…</p>
+        <p className="text-sm text-muted-foreground">Loading diverted flights…</p>
       ) : diverted.error ? (
         <FormError message={diverted.error} />
       ) : diverted.flights.length === 0 ? (
-        <p className="text-sm text-[#677287]">No diverted flight has bags waiting to be added.</p>
+        <p className="text-sm text-muted-foreground">No diverted flight has bags waiting to be added.</p>
       ) : (
         <>
           <div className="flex items-end gap-3 max-md:flex-col max-md:items-stretch">
@@ -62,12 +59,7 @@ export function DivertedFlightCard({ onRecord }: { onRecord: (flightId: string) 
                 options={diverted.flights.map((f) => ({ value: f.id, label: flightLabel(f) }))}
               />
             </Field>
-            <Button
-              type="button"
-              disabled={busy || !flightId}
-              onClick={() => void record()}
-              className="h-auto min-h-[46px] shrink-0 rounded-lg bg-[#14213d] px-5 py-3 text-sm leading-normal font-semibold text-white hover:bg-[#14213d]/90"
-            >
+            <Button type="button" disabled={busy || !flightId} onClick={() => void record()}>
               {busy ? 'Adding…' : 'Add bags in its hold'}
             </Button>
           </div>

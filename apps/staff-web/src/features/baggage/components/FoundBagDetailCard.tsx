@@ -25,15 +25,15 @@ import {
 import { useDepartures, useFlight } from '../hooks/useBaggageFlights'
 import { errorMessage, type Airport } from '../hooks/useFoundBags'
 import { useLiveCaseForTag } from '../hooks/useLostReports'
-import { F10Card, FIELD_BOX, Field, FormError, Pill, SelectBox } from './primitives'
+import { F10Card, Field, FormError, Pill, SelectBox } from './primitives'
 
-const H4 = 'm-0 font-sans text-[22px] font-semibold text-[#14213d]'
+const H4 = 'm-0 font-sans text-lg font-semibold text-foreground'
 
 function Fact({ label, children }: { label: string; children: string }) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <dt className="shrink-0 text-sm font-medium whitespace-nowrap text-[#677287]">{label}</dt>
-      <dd className="min-w-0 flex-1 text-right text-base text-[#14213d]">{children}</dd>
+      <dt className="shrink-0 text-sm font-medium whitespace-nowrap text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 flex-1 text-right text-base text-foreground">{children}</dd>
     </div>
   )
 }
@@ -55,12 +55,12 @@ function eventText(e: BagLocationEvent, flightNumber?: string): string {
 /** One timeline line. A sent event names its flight once the lookup answers. */
 function EventText({ event }: { event: BagLocationEvent }) {
   const { flight } = useFlight(event.action === 'sent' ? event.sentOnFlightId : null)
-  return <p className="min-w-0 flex-1 text-base text-[#14213d]">{eventText(event, flight?.flightNumber)}</p>
+  return <p className="min-w-0 flex-1 text-base text-foreground">{eventText(event, flight?.flightNumber)}</p>
 }
 
 /** "Timeline": oldest first, the latest event marked in gold. */
 function Timeline({ events }: { events: BagLocationEvent[] }) {
-  if (events.length === 0) return <p className="text-sm text-[#677287]">No location recorded yet.</p>
+  if (events.length === 0) return <p className="text-sm text-muted-foreground">No location recorded yet.</p>
   return (
     <ol className="flex flex-col">
       {events.map((e, i) => {
@@ -68,11 +68,11 @@ function Timeline({ events }: { events: BagLocationEvent[] }) {
         return (
           <li key={e.id} className="flex gap-3">
             <div aria-hidden className="flex flex-col items-center gap-1 pt-1.5">
-              <span className={cn('size-2.5 rounded-full', last ? 'bg-[#fca311]' : 'bg-[#14213d]')} />
-              {!last && <span className="w-px flex-1 bg-[#d8dce6]" />}
+              <span className={cn('size-2.5 rounded-full', last ? 'bg-primary' : 'bg-muted-foreground')} />
+              {!last && <span className="w-px flex-1 bg-border" />}
             </div>
             <div className={cn('flex min-w-0 flex-1 flex-col gap-1', !last && 'pb-4')}>
-              <p className="text-xs text-[#677287]">
+              <p className="text-xs text-muted-foreground">
                 {formatEventTime(e.occurredAt)} · {e.staffId ? 'Staff' : 'System'}
               </p>
               <div className="flex items-center gap-2">
@@ -135,21 +135,10 @@ function CheckDivertedBag({
       </div>
       <FormError message={error} />
       <div className="flex justify-end gap-2 max-md:flex-col">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={busy}
-          onClick={() => void run(onContinue)}
-          className="h-auto rounded-lg border-[#d8dce6] px-3.5 py-2 text-sm leading-normal font-semibold text-[#14213d]"
-        >
+        <Button type="button" variant="outline" disabled={busy} onClick={() => void run(onContinue)}>
           Goes on with the flight
         </Button>
-        <Button
-          type="button"
-          disabled={busy}
-          onClick={() => void run(() => onSave(bagType, colour))}
-          className="h-auto rounded-lg bg-[#14213d] px-3.5 py-2 text-sm leading-normal font-semibold text-white hover:bg-[#14213d]/90"
-        >
+        <Button type="button" disabled={busy} onClick={() => void run(() => onSave(bagType, colour))}>
           Save type and colour
         </Button>
       </div>
@@ -176,15 +165,12 @@ function OpenOwnerCase({ onOpen }: { onOpen: () => Promise<void> }) {
   return (
     <div className="flex flex-col gap-3">
       <h3 className={H4}>Owner has not reported it?</h3>
-      <p className="text-base text-[#677287]">The tag is on a booking, so a case can be opened for its owner with this bag as the match.</p>
+      <p className="text-base text-muted-foreground">
+        The tag is on a booking, so a case can be opened for its owner with this bag as the match.
+      </p>
       <FormError message={error} />
       <div className="flex justify-end">
-        <Button
-          type="button"
-          disabled={busy}
-          onClick={() => void open()}
-          className="h-auto rounded-lg bg-[#14213d] px-3.5 py-2 text-sm leading-normal font-semibold text-white hover:bg-[#14213d]/90"
-        >
+        <Button type="button" disabled={busy} onClick={() => void open()}>
           {busy ? 'Opening…' : 'Open case for owner'}
         </Button>
       </div>
@@ -252,7 +238,7 @@ function AddLocation({
       <div className="flex flex-col gap-3">
         <div className="flex gap-3">
           <Field label="Airport" htmlFor="loc-airport">
-            <Input id="loc-airport" value={eventAirport} readOnly className={FIELD_BOX} />
+            <Input id="loc-airport" value={eventAirport} readOnly />
           </Field>
           <Field label="What happened" htmlFor="loc-action">
             <SelectBox
@@ -295,17 +281,12 @@ function AddLocation({
             placeholder="e.g. Baggage store, shelf B4"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className={FIELD_BOX}
           />
         </Field>
       </div>
       <FormError message={error} />
       <div className="flex justify-end">
-        <Button
-          type="submit"
-          disabled={saving}
-          className="h-auto rounded-lg bg-[#14213d] px-3.5 py-2 text-sm leading-normal font-semibold text-white hover:bg-[#14213d]/90"
-        >
+        <Button type="submit" disabled={saving} className="bg-primary text-primary-foreground hover:bg-primary/90">
           {saving ? 'Adding…' : 'Add location'}
         </Button>
       </div>
@@ -357,7 +338,7 @@ export function FoundBagDetailCard({
     return (
       // On phones the list is on its own screen, so the prompt to pick a bag is not needed there.
       <F10Card className="max-md:hidden">
-        <p className="text-sm text-[#677287]">Choose a bag in the list to see where it has been and add a location.</p>
+        <p className="text-sm text-muted-foreground">Choose a bag in the list to see where it has been and add a location.</p>
       </F10Card>
     )
   }
@@ -373,15 +354,12 @@ export function FoundBagDetailCard({
   return (
     <F10Card aria-labelledby="bag-detail-title">
       {needsCheck && (
-        <p className="rounded-lg bg-[#fff4de] px-3.5 py-3 text-base text-[#94651c]">
+        <p className="rounded-lg bg-muted px-3.5 py-3 text-base text-warning">
           This bag came off a diverted flight. Check it, then add the type and colour.
         </p>
       )}
       <div className="flex flex-wrap items-center gap-3">
-        <h2
-          id="bag-detail-title"
-          className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
-        >
+        <h2 id="bag-detail-title" className="m-0 font-sans text-2xl font-semibold tracking-tight text-foreground max-md:text-xl">
           {bagRef(bag.id)}
         </h2>
         <Pill tone={STATUS_TONES[bag.status]}>{STATUS_LABELS[bag.status]}</Pill>
@@ -398,9 +376,9 @@ export function FoundBagDetailCard({
 
       {needsCheck && (
         <>
-          <Separator className="bg-[#d8dce6]" />
+          <Separator className="bg-border" />
           <CheckDivertedBag onSave={onCompleteDetails} onContinue={onContinueWithFlight} />
-          <Separator className="bg-[#d8dce6]" />
+          <Separator className="bg-border" />
         </>
       )}
 
@@ -408,11 +386,11 @@ export function FoundBagDetailCard({
       {canOpenCase && liveCase.checked && (
         <>
           {liveCase.caseNumber ? (
-            <p className="text-base text-[#677287]">The owner already reported this bag: case {liveCase.caseNumber}.</p>
+            <p className="text-base text-muted-foreground">The owner already reported this bag: case {liveCase.caseNumber}.</p>
           ) : (
             <OpenOwnerCase key={bag.id} onOpen={onOpenOwnerCase} />
           )}
-          <Separator className="bg-[#d8dce6]" />
+          <Separator className="bg-border" />
         </>
       )}
 
@@ -421,7 +399,7 @@ export function FoundBagDetailCard({
 
       {!needsCheck && !closed && (
         <>
-          <Separator className="bg-[#d8dce6]" />
+          <Separator className="bg-border" />
           <AddLocation key={bag.id} history={history} airports={airports} onAdd={onRecordMove} />
         </>
       )}

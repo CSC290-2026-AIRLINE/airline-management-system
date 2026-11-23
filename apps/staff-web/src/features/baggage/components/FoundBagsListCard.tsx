@@ -1,3 +1,5 @@
+import { Button } from '@staff-web/components/ui/button'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { useState } from 'react'
 import { Input } from '@staff-web/components/ui/input'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
@@ -5,7 +7,7 @@ import { cn } from '@staff-web/lib/utils'
 import type { FoundBagListItem } from '../api/found-bags'
 import { FOUND_BAG_STATUSES, STATUS_LABELS, STATUS_TONES, bagRef, bagSummary, type FoundBagStatus } from '../constants'
 import { PAGE_SIZE, usePage } from '../hooks/usePage'
-import { Chip, F10Card, FIELD_BOX, FilterRow, FormError, LIST_CARD, LIST_PAD, MobileList, MobileRow, Pager, Pill } from './primitives'
+import { Chip, F10Card, FilterRow, FormError, LIST_CARD, LIST_PAD, MobileList, MobileRow, Pager, Pill } from './primitives'
 
 /** "Card / Found bags list": search, status chips and the table. Rows select a bag for the detail card. */
 export function FoundBagsListCard({
@@ -33,7 +35,7 @@ export function FoundBagsListCard({
   return (
     <F10Card aria-labelledby="found-bags-list" className={LIST_CARD}>
       <div className={cn('flex items-center gap-3 max-md:flex-col max-md:items-stretch', LIST_PAD)}>
-        <h2 id="found-bags-list" className="m-0 font-sans flex-1 text-[22px] font-semibold text-[#14213d]">
+        <h2 id="found-bags-list" className="m-0 font-sans flex-1 text-lg font-semibold text-foreground">
           Found bags
         </h2>
         <Input
@@ -42,7 +44,7 @@ export function FoundBagsListCard({
           placeholder="Search by tag number"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className={cn(FIELD_BOX, 'w-60 max-md:w-full')}
+          className={cn('w-60 max-md:w-full')}
         />
       </div>
 
@@ -65,80 +67,78 @@ export function FoundBagsListCard({
         </div>
       )}
 
-      <table className="w-full table-fixed border-collapse text-left max-md:hidden">
-        <thead>
-          <tr className="border-b border-[#d8dce6] text-sm font-medium text-[#677287]">
-            <th scope="col" className="py-2.5 pr-3 pl-5 font-medium">
+      <Table className="w-full table-fixed border-collapse text-left max-md:hidden">
+        <TableHeader>
+          <TableRow className="border-b border-border text-sm font-medium text-muted-foreground">
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal py-2.5 pr-3 pl-6 font-medium">
               Bag
-            </th>
-            <th scope="col" className="w-[122px] py-2.5 pr-3 font-medium">
+            </TableHead>
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal w-[122px] py-2.5 pr-3 font-medium">
               Tag
-            </th>
-            <th scope="col" className="w-[76px] py-2.5 pr-3 font-medium">
+            </TableHead>
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal w-[76px] py-2.5 pr-3 font-medium">
               Now at
-            </th>
-            <th scope="col" className="w-[120px] py-2.5 pr-5 font-medium">
+            </TableHead>
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal w-[120px] py-2.5 pr-6 font-medium">
               Status
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {loading &&
             [0, 1, 2].map((i) => (
-              <tr key={i} className="border-b border-[#eef0f4]">
-                <td colSpan={4} className="px-5 py-3">
+              <TableRow key={i} className="border-b border-border">
+                <TableCell colSpan={4} className="p-0 whitespace-normal px-6 py-3">
                   <Skeleton className="h-9 w-full" />
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
           {!loading && shown.length === 0 && !error && (
-            <tr>
-              <td colSpan={4} className="px-5 py-6 text-center text-sm text-[#677287]">
+            <TableRow>
+              <TableCell colSpan={4} className="p-0 whitespace-normal px-6 py-6 text-center text-sm text-muted-foreground">
                 {query ? 'No found bag has that tag number.' : 'No found bags here yet.'}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           )}
           {!loading &&
             paged.items.map((bag) => {
               const selected = bag.id === selectedId
               const diverted = bag.source === 'diverted_flight'
               return (
-                <tr
+                <TableRow
                   key={bag.id}
                   aria-selected={selected}
-                  className={cn(
-                    'cursor-pointer border-b border-[#eef0f4] hover:bg-[#f4f6fa]',
-                    selected && 'bg-[#eaf2ff] hover:bg-[#eaf2ff]',
-                  )}
+                  className={cn('cursor-pointer border-b border-border hover:bg-accent', selected && 'bg-accent hover:bg-accent')}
                   onClick={() => onSelect(bag.id)}
                 >
-                  <td className="py-3 pr-3 pl-5">
+                  <TableCell className="p-0 whitespace-normal py-3 pr-3 pl-6">
                     {/* The button carries keyboard access; the whole row is still clickable for the mouse. */}
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
                         onSelect(bag.id)
                       }}
-                      className="flex w-full flex-col gap-0.5 rounded text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      className="h-auto justify-start gap-0 px-0 py-0 font-normal whitespace-normal hover:bg-transparent dark:hover:bg-transparent flex w-full flex-col gap-0.5 rounded text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     >
-                      <span className="truncate text-base text-[#14213d]">
+                      <span className="truncate text-base text-foreground">
                         {bagRef(bag.id)}
                         {diverted && ' · diverted flight'}
                       </span>
-                      <span className="truncate text-xs text-[#677287]">{bagSummary(bag)}</span>
-                    </button>
-                  </td>
-                  <td className="py-3 pr-3 text-base text-[#14213d]">{bag.tagNumber ?? 'No tag'}</td>
-                  <td className="py-3 pr-3 text-base text-[#14213d]">{bag.nowAt}</td>
-                  <td className="py-3 pr-5">
+                      <span className="truncate text-xs text-muted-foreground">{bagSummary(bag)}</span>
+                    </Button>
+                  </TableCell>
+                  <TableCell className="p-0 whitespace-normal py-3 pr-3 text-base text-foreground">{bag.tagNumber ?? 'No tag'}</TableCell>
+                  <TableCell className="p-0 whitespace-normal py-3 pr-3 text-base text-foreground">{bag.nowAt}</TableCell>
+                  <TableCell className="p-0 whitespace-normal py-3 pr-6">
                     <Pill tone={STATUS_TONES[bag.status]}>{STATUS_LABELS[bag.status]}</Pill>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )
             })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
       <MobileList
         label="Found bags"
         loading={loading}

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Button } from '@staff-web/components/ui/button'
+import { Card, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 import { BackLink, Chip, F10Card, FilterRow, SimulatedToday } from '../components/primitives'
 import { CaseDetailCard } from '../components/CaseDetailCard'
 import { CasesListCard } from '../components/CasesListCard'
@@ -12,10 +13,12 @@ import { filterLostReportCases, getFlightOriginOptions } from './lost-report-fil
 
 function Kpi({ value, label }: { value: number | null; label: string }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1 rounded-xl border border-[#cbd5e1] bg-white px-[18px] py-3.5">
-      <p className="text-[36px] leading-normal font-extrabold text-[#14213d] max-md:text-[28px]">{value ?? '–'}</p>
-      <p className="text-sm font-medium text-[#677287]">{label}</p>
-    </div>
+    <Card className="min-w-0 flex-1 gap-1 py-4">
+      <CardHeader className="gap-1">
+        <CardTitle className="text-3xl font-semibold">{value ?? '–'}</CardTitle>
+        <CardDescription>{label}</CardDescription>
+      </CardHeader>
+    </Card>
   )
 }
 
@@ -62,20 +65,12 @@ export function LostBagCasesPage({
     <>
       <header className={`flex items-end justify-between gap-4 max-md:flex-col max-md:items-stretch ${listOnly}`}>
         <div className="flex flex-col gap-2">
-          <h1 className="m-0 font-sans text-[48px] leading-none font-extrabold tracking-[-2.4px] text-[#14213d] max-md:text-[36px]">
-            Lost bag cases
-          </h1>
-          <p className="text-lg tracking-[-0.9px] text-[#677287]">
-            Every lost or misrouted bag report. Pick a case to see its matches and delivery.
-          </p>
+          <h1 className="m-0 font-sans text-3xl font-semibold tracking-tight text-foreground max-md:text-2xl">Lost bag cases</h1>
+          <p className="text-muted-foreground">Every lost or misrouted bag report. Pick a case to see its matches and delivery.</p>
           <SimulatedToday />
         </div>
         {!creating && (
-          <Button
-            type="button"
-            onClick={() => setCreating(true)}
-            className="h-auto shrink-0 rounded-lg bg-[#fca311] px-5 py-3 text-sm leading-normal font-semibold text-[#14213d] hover:bg-[#fca311]/90"
-          >
+          <Button type="button" onClick={() => setCreating(true)}>
             New case
           </Button>
         )}

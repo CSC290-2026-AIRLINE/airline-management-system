@@ -1,3 +1,5 @@
+import { Button } from '@staff-web/components/ui/button'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { cn } from '@staff-web/lib/utils'
 import type { BagDelivery } from '../api/bag-deliveries'
@@ -30,10 +32,10 @@ export function DeliveriesListCard({
   return (
     <F10Card aria-labelledby="deliveries-list" className={LIST_CARD}>
       <div className={cn('flex items-center gap-3', LIST_PAD)}>
-        <h2 id="deliveries-list" className="m-0 flex-1 font-sans text-[22px] font-semibold text-[#14213d]">
+        <h2 id="deliveries-list" className="m-0 font-sans flex-1 text-lg font-semibold text-foreground">
           {title}
         </h2>
-        {!loading && <p className="text-xs whitespace-nowrap text-[#677287]">{meta}</p>}
+        {!loading && <p className="text-xs whitespace-nowrap text-muted-foreground">{meta}</p>}
       </div>
 
       {error && (
@@ -42,38 +44,38 @@ export function DeliveriesListCard({
         </div>
       )}
 
-      <table className="w-full table-fixed border-collapse text-left max-md:hidden">
-        <thead>
-          <tr className="border-b border-[#d8dce6] text-sm font-medium text-[#677287]">
-            <th scope="col" className="w-[120px] py-2.5 pr-3 pl-5 font-medium max-md:w-[96px]">
+      <Table className="w-full table-fixed border-collapse text-left max-md:hidden">
+        <TableHeader>
+          <TableRow className="border-b border-border text-sm font-medium text-muted-foreground">
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal w-[120px] py-2.5 pr-3 pl-6 font-medium max-md:w-[96px]">
               Case
-            </th>
-            <th scope="col" className="py-2.5 pr-3 font-medium max-sm:hidden">
+            </TableHead>
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal py-2.5 pr-3 font-medium max-sm:hidden">
               Send to
-            </th>
-            <th scope="col" className="w-[170px] py-2.5 pr-3 font-medium max-sm:w-auto max-sm:pr-5">
+            </TableHead>
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal w-[170px] py-2.5 pr-3 font-medium max-sm:w-auto max-sm:pr-6">
               Status
-            </th>
-            <th scope="col" className="w-[96px] py-2.5 pr-5 text-right font-medium max-md:hidden">
+            </TableHead>
+            <TableHead scope="col" className="h-auto px-0 whitespace-normal w-[96px] py-2.5 pr-6 text-right font-medium max-md:hidden">
               Cost
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {loading &&
             [0, 1, 2].map((i) => (
-              <tr key={i} className="border-b border-[#eef0f4]">
-                <td colSpan={4} className="px-5 py-3">
+              <TableRow key={i} className="border-b border-border">
+                <TableCell colSpan={4} className="p-0 whitespace-normal px-6 py-3">
                   <Skeleton className="h-8 w-full" />
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
           {!loading && deliveries.length === 0 && !error && (
-            <tr>
-              <td colSpan={4} className="px-5 py-6 text-center text-sm text-[#677287]">
+            <TableRow>
+              <TableCell colSpan={4} className="p-0 whitespace-normal px-6 py-6 text-center text-sm text-muted-foreground">
                 No deliveries here.
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           )}
           {!loading &&
             paged.items.map((d) => {
@@ -81,43 +83,41 @@ export function DeliveriesListCard({
               const destination = deliveryDestination(d)
               const cost = Number(d.totalCost)
               return (
-                <tr
+                <TableRow
                   key={d.id}
                   aria-selected={selected}
-                  className={cn(
-                    'cursor-pointer border-b border-[#eef0f4] hover:bg-[#f4f6fa]',
-                    selected && 'bg-[#eaf2ff] hover:bg-[#eaf2ff]',
-                  )}
+                  className={cn('cursor-pointer border-b border-border hover:bg-accent', selected && 'bg-accent hover:bg-accent')}
                   onClick={() => onSelect(d.reportId)}
                 >
-                  <td className="py-3 pr-3 pl-5 align-top">
+                  <TableCell className="p-0 whitespace-normal py-3 pr-3 pl-6 align-top">
                     {/* The button carries keyboard access; the whole row is still clickable for the mouse. */}
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
                         onSelect(d.reportId)
                       }}
-                      className="flex max-w-full flex-col items-start rounded text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      className="h-auto justify-start gap-0 px-0 py-0 font-normal whitespace-normal hover:bg-transparent dark:hover:bg-transparent flex max-w-full flex-col items-start rounded text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     >
-                      <span className="text-base text-[#14213d]">{caseShortNumber(d.caseNumber)}</span>
-                      <span className="max-w-full truncate text-xs text-[#677287]">{`${d.passengerFirstName} ${d.passengerLastName}`}</span>
-                    </button>
-                  </td>
-                  <td className="py-3 pr-3 align-top max-sm:hidden">
-                    <p className="line-clamp-2 text-base break-words text-[#14213d]">{destination ?? 'Not chosen yet'}</p>
-                  </td>
-                  <td className="py-3 pr-3 align-top max-sm:pr-5">
+                      <span className="text-base text-foreground">{caseShortNumber(d.caseNumber)}</span>
+                      <span className="max-w-full truncate text-xs text-muted-foreground">{`${d.passengerFirstName} ${d.passengerLastName}`}</span>
+                    </Button>
+                  </TableCell>
+                  <TableCell className="p-0 whitespace-normal py-3 pr-3 align-top max-sm:hidden">
+                    <p className="line-clamp-2 text-base break-words text-foreground">{destination ?? 'Not chosen yet'}</p>
+                  </TableCell>
+                  <TableCell className="p-0 whitespace-normal py-3 pr-3 align-top max-sm:pr-6">
                     <Pill tone={DELIVERY_STATUS_TONES[d.status]}>{DELIVERY_STATUS_LABELS[d.status]}</Pill>
-                  </td>
-                  <td className="py-3 pr-5 text-right align-top text-base text-[#14213d] max-md:hidden">
+                  </TableCell>
+                  <TableCell className="p-0 whitespace-normal py-3 pr-6 text-right align-top text-base text-foreground max-md:hidden">
                     {cost > 0 ? formatBaht(cost) : '–'}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )
             })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
       <MobileList label={title} loading={loading} empty={deliveries.length === 0 && !error ? 'No deliveries here.' : null}>
         {paged.items.map((d) => {
           const cost = Number(d.totalCost)

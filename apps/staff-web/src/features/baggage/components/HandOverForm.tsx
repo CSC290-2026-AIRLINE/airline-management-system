@@ -1,3 +1,4 @@
+import { Label } from '@staff-web/components/ui/label'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Button } from '@staff-web/components/ui/button'
 import { Checkbox } from '@staff-web/components/ui/checkbox'
@@ -5,7 +6,7 @@ import { Input } from '@staff-web/components/ui/input'
 import type { HandOverBody } from '../api/bag-deliveries'
 import { COLLECTOR_LABELS, ID_DOCUMENT_LABELS, ID_DOCUMENT_TYPES, type IdDocumentType } from '../constants'
 import { errorMessage } from '../hooks/useFoundBags'
-import { FIELD_BOX, Field, FormError, SelectBox } from './primitives'
+import { Field, FormError, SelectBox } from './primitives'
 
 const DOCUMENT_OPTIONS = ID_DOCUMENT_TYPES.map((d) => ({ value: d, label: ID_DOCUMENT_LABELS[d] }))
 /** Handover to someone sent by the passenger is listed but can't be picked yet; picking it shows why for a few seconds. */
@@ -74,7 +75,7 @@ export function HandOverForm({ deliveryId, onHandOver }: { deliveryId: string; o
 
   return (
     <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-4" noValidate aria-labelledby={id('title')}>
-      <h4 id={id('title')} className="m-0 text-base font-semibold text-[#14213d]">
+      <h4 id={id('title')} className="m-0 font-sans text-base font-semibold text-foreground">
         Check the owner
       </h4>
       <Field label="Collected by" htmlFor={id('collector')}>
@@ -86,7 +87,7 @@ export function HandOverForm({ deliveryId, onHandOver }: { deliveryId: string; o
         />
       </Field>
       {representativeTried && (
-        <p role="status" className="m-0 rounded-lg bg-[#fff4dd] px-3 py-2 text-sm leading-normal text-[#76551d]">
+        <p role="status" className="m-0 rounded-lg bg-muted px-3 py-2 text-sm leading-normal text-warning">
           {REPRESENTATIVE_UNAVAILABLE_NOTE}
         </p>
       )}
@@ -98,18 +99,11 @@ export function HandOverForm({ deliveryId, onHandOver }: { deliveryId: string; o
             autoComplete="off"
             value={bookingReference}
             onChange={(e) => setBookingReference(e.target.value)}
-            className={`${FIELD_BOX} uppercase`}
+            className="uppercase"
           />
         </Field>
         <Field label="Passenger surname" htmlFor={id('surname')}>
-          <Input
-            id={id('surname')}
-            maxLength={100}
-            autoComplete="off"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            className={FIELD_BOX}
-          />
+          <Input id={id('surname')} maxLength={100} autoComplete="off" value={lastName} onChange={(e) => setLastName(e.target.value)} />
         </Field>
       </div>
       <div className="flex gap-3 max-sm:flex-col">
@@ -128,7 +122,6 @@ export function HandOverForm({ deliveryId, onHandOver }: { deliveryId: string; o
             autoComplete="off"
             value={documentNumber}
             onChange={(e) => setDocumentNumber(e.target.value)}
-            className={FIELD_BOX}
           />
         </Field>
       </div>
@@ -139,20 +132,16 @@ export function HandOverForm({ deliveryId, onHandOver }: { deliveryId: string; o
           onCheckedChange={(v) => setDocumentChecked(v === true)}
           className="mt-0.5"
         />
-        <label htmlFor={id('doc-checked')} className="text-sm leading-normal text-[#14213d]">
+        <Label htmlFor={id('doc-checked')} className="text-sm leading-normal font-normal text-foreground">
           The photo and name on the document match the passenger.
-        </label>
+        </Label>
       </div>
       <Field label="Note (optional)" htmlFor={id('note')}>
-        <Input id={id('note')} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} className={FIELD_BOX} />
+        <Input id={id('note')} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
       <FormError message={error} />
       <div className="flex justify-end">
-        <Button
-          type="submit"
-          disabled={busy}
-          className="h-auto rounded-lg bg-[#fca311] px-3.5 py-2 text-sm leading-normal font-semibold text-[#14213d] hover:bg-[#fca311]/90"
-        >
+        <Button type="submit" disabled={busy}>
           {busy ? 'Checking…' : 'Check and hand over'}
         </Button>
       </div>

@@ -1,6 +1,10 @@
+import { Input } from '@staff-web/components/ui/input'
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
+import { Card } from '@staff-web/components/ui/card'
 import { Label } from '@staff-web/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@staff-web/components/ui/popover'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
@@ -14,32 +18,26 @@ import { useDesk } from '../hooks/useBaggageDesk'
  * They wrap the shadcn components so the screens keep the app's focus and keyboard behaviour.
  */
 
-const PILL_TONES: Record<PillTone, string> = {
-  amber: 'bg-[#fff4de] text-[#7a4e00]',
-  grey: 'bg-[#e6eaf2] text-[#14213d]',
-  red: 'bg-[#fdecec] text-[#d61313]',
-  green: 'bg-success-soft text-success-strong',
+const PILL_VARIANTS: Record<PillTone, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  amber: 'outline',
+  grey: 'secondary',
+  red: 'destructive',
+  green: 'default',
 }
 
-/** "F10 / Pill" */
+/** A status badge. */
 export function Pill({ tone, children }: { tone: PillTone; children: ReactNode }) {
-  return (
-    <span className={cn('inline-flex shrink-0 rounded-full px-2.5 py-[3px] text-xs whitespace-nowrap', PILL_TONES[tone])}>{children}</span>
-  )
+  return <Badge variant={PILL_VARIANTS[tone]}>{children}</Badge>
 }
 
-/** White card with the 12px radius and slate border used by every F10 staff card. */
-export function F10Card({ className, children, ...props }: React.ComponentProps<'section'>) {
+/** The shadcn Card, with the padding the staff cards share. */
+export function F10Card({ className, children, ...props }: React.ComponentProps<'div'>) {
   return (
-    <section className={cn('flex flex-col gap-4 rounded-xl border border-[#cbd5e1] bg-white p-5', className)} {...props}>
+    <Card className={cn('gap-4 p-5', className)} {...props}>
       {children}
-    </section>
+    </Card>
   )
 }
-
-/** Classes for the "Box" of a text field: 46px tall, light fill, 8px radius. */
-export const FIELD_BOX =
-  'h-auto min-h-[46px] w-full rounded-lg border-[#d8dce6] bg-[#f8fafc] px-3.5 py-[11px] text-base leading-normal text-[#14213d] shadow-none placeholder:text-[#b8bcca] md:text-base'
 
 /** "Field / …": label above a control. */
 export function Field({
@@ -54,10 +52,8 @@ export function Field({
   className?: string
 }) {
   return (
-    <div className={cn('flex min-w-0 flex-1 flex-col gap-1.5', className)}>
-      <Label htmlFor={htmlFor} className="text-sm leading-normal font-medium text-[#47494f]">
-        {label}
-      </Label>
+    <div className={cn('flex min-w-0 flex-1 flex-col gap-2', className)}>
+      <Label htmlFor={htmlFor}>{label}</Label>
       {children}
     </div>
   )
@@ -68,7 +64,7 @@ export interface Option {
   label: string
 }
 
-/** A field box that opens a list (Figma's box with the chevron-down icon). */
+/** A dropdown: the shadcn Select. */
 export function SelectBox({
   id,
   value,
@@ -86,7 +82,7 @@ export function SelectBox({
 }) {
   return (
     <Select value={value} onValueChange={onValueChange} disabled={disabled}>
-      <SelectTrigger id={id} className={cn(FIELD_BOX, 'data-[size=default]:h-auto [&_svg:not([class*=text-])]:text-[#14213d]')}>
+      <SelectTrigger id={id} className="w-full">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent
@@ -175,17 +171,10 @@ export function SearchSelectBox({
   return (
     <Popover open={open} onOpenChange={changeOpen}>
       <PopoverTrigger asChild disabled={disabled}>
-        <button
-          id={id}
-          type="button"
-          className={cn(
-            FIELD_BOX,
-            'flex items-center justify-between gap-2 border text-left outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50',
-          )}
-        >
-          <span className={cn('min-w-0 truncate', !current && 'text-[#b8bcca]')}>{current ? current.label : placeholder}</span>
-          <ChevronDown className="size-4 shrink-0 text-[#14213d]" aria-hidden />
-        </button>
+        <Button id={id} type="button" variant="outline" className="w-full justify-between font-normal">
+          <span className={cn('min-w-0 truncate', !current && 'text-muted-foreground')}>{current ? current.label : placeholder}</span>
+          <ChevronDown className="size-4 shrink-0 opacity-50" aria-hidden />
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         side="bottom"
@@ -193,9 +182,9 @@ export function SearchSelectBox({
         avoidCollisions={false}
         className="flex w-(--radix-popover-trigger-width) min-w-[16rem] flex-col gap-1 p-1 font-sans"
       >
-        <div className="flex items-center gap-2 border-b border-[#d8dce6] px-2.5 py-2">
-          <Search className="size-4 shrink-0 text-[#677287]" aria-hidden />
-          <input
+        <div className="flex items-center gap-2 border-b border-border px-2.5 py-2">
+          <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <Input
             autoFocus
             value={query}
             onChange={(event) => {
@@ -209,11 +198,11 @@ export function SearchSelectBox({
             aria-expanded
             aria-controls={listId}
             aria-activedescendant={shown[activeIndex] ? `${listId}-${activeIndex}` : undefined}
-            className="min-w-0 flex-1 bg-transparent text-sm text-[#14213d] outline-none placeholder:text-[#b8bcca]"
+            className="h-auto min-w-0 flex-1 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
         </div>
         {shown.length === 0 ? (
-          <p className="px-2.5 py-2 text-sm text-[#677287]">Nothing matches your search.</p>
+          <p className="px-2.5 py-2 text-sm text-muted-foreground">Nothing matches your search.</p>
         ) : (
           <ul ref={listRef} id={listId} role="listbox" className="m-0 max-h-[min(16rem,40vh)] list-none overflow-y-auto p-0">
             {shown.map((o, index) => (
@@ -226,7 +215,7 @@ export function SearchSelectBox({
                 onMouseMove={() => setActive(index)}
                 onClick={() => choose(o)}
                 className={cn(
-                  'flex cursor-default items-center justify-between gap-2 rounded-sm px-2.5 py-1.5 text-sm text-[#14213d] select-none',
+                  'flex cursor-default items-center justify-between gap-2 rounded-sm px-2.5 py-1.5 text-sm text-foreground select-none',
                   index === activeIndex && 'bg-accent',
                 )}
               >
@@ -244,17 +233,9 @@ export function SearchSelectBox({
 /** "Chip / …" status filter. */
 export function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        'rounded-full border px-3.5 py-1.5 text-sm leading-normal font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-        active ? 'border-[#14213d] bg-[#14213d] text-white' : 'border-[#d8dce6] bg-white text-[#14213d] hover:bg-[#f4f6fa]',
-      )}
-    >
+    <Button type="button" size="sm" variant={active ? 'default' : 'outline'} aria-pressed={active} onClick={onClick}>
       {children}
-    </button>
+    </Button>
   )
 }
 
@@ -262,13 +243,11 @@ export function Chip({ active, onClick, children }: { active: boolean; onClick: 
 export function FormError({ message }: { message: string | null }) {
   if (!message) return null
   return (
-    <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
-      {message}
-    </p>
+    <Alert variant="destructive">
+      <AlertDescription>{message}</AlertDescription>
+    </Alert>
   )
 }
-
-const PAGER_BUTTON = 'h-auto rounded-lg border-[#d8dce6] px-3 py-1.5 text-sm leading-normal font-semibold text-[#14213d]'
 
 /** "1–20 of 57" with Previous and Next under a list. Hidden when everything fits on one page. */
 export function Pager({
@@ -292,15 +271,15 @@ export function Pager({
   const last = Math.min(total, (page + 1) * pageSize)
 
   return (
-    <nav aria-label={label} className="flex items-center justify-between gap-3 px-5 py-2 max-md:px-0">
-      <p className="text-sm text-[#677287]" aria-live="polite">
+    <nav aria-label={label} className="flex items-center justify-between gap-3 px-6 py-2 max-md:px-0">
+      <p className="text-sm text-muted-foreground" aria-live="polite">
         {first}–{last} of {total}
       </p>
       <div className="flex gap-2">
-        <Button type="button" variant="outline" disabled={page === 0} onClick={() => onPage(page - 1)} className={PAGER_BUTTON}>
+        <Button type="button" variant="outline" size="sm" disabled={page === 0} onClick={() => onPage(page - 1)}>
           Previous
         </Button>
-        <Button type="button" variant="outline" disabled={page >= pageCount - 1} onClick={() => onPage(page + 1)} className={PAGER_BUTTON}>
+        <Button type="button" variant="outline" size="sm" disabled={page >= pageCount - 1} onClick={() => onPage(page + 1)}>
           Next
         </Button>
       </div>
@@ -313,7 +292,7 @@ export function Pager({
  * frames); `LIST_PAD` keeps the header in line with those cards.
  */
 export const LIST_CARD = 'gap-3 px-0 pt-5 pb-2 max-md:border-0 max-md:bg-transparent max-md:p-0'
-export const LIST_PAD = 'px-5 max-md:px-0'
+export const LIST_PAD = 'px-6 max-md:px-0'
 
 /** One row of a list on phones: a white card with a title, a status pill and up to two lines under it. */
 export function MobileRow({
@@ -333,25 +312,27 @@ export function MobileRow({
 }) {
   return (
     <li>
-      <button
+      <Button
+        variant="ghost"
         type="button"
         aria-current={selected || undefined}
         onClick={onSelect}
         className={cn(
-          'flex w-full items-center gap-2 rounded-xl border bg-white p-4 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
-          selected ? 'border-[#14213d]' : 'border-[#cbd5e1]',
+          'h-auto justify-start gap-0 px-0 py-0 font-normal whitespace-normal hover:bg-transparent dark:hover:bg-transparent',
+          'flex w-full items-center gap-2 rounded-xl border bg-card p-4 text-left shadow-sm',
+          selected && 'border-primary',
         )}
       >
         <span className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="flex items-start justify-between gap-2">
-            <span className="min-w-0 text-base break-words text-[#14213d]">{title}</span>
+            <span className="min-w-0 font-medium break-words">{title}</span>
             {pill}
           </span>
-          {line && <span className="truncate text-sm text-[#14213d]">{line}</span>}
-          {meta && <span className="truncate text-xs text-[#677287]">{meta}</span>}
+          {line && <span className="truncate text-sm text-foreground">{line}</span>}
+          {meta && <span className="truncate text-xs text-muted-foreground">{meta}</span>}
         </span>
-        <ChevronRight aria-hidden className="size-4 shrink-0 text-[#677287]" />
-      </button>
+        <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      </Button>
     </li>
   )
 }
@@ -377,7 +358,7 @@ export function MobileList({
           </li>
         ))
       ) : empty ? (
-        <li className="rounded-xl border border-[#cbd5e1] bg-white px-4 py-6 text-center text-sm text-[#677287]">{empty}</li>
+        <li className="rounded-xl border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">{empty}</li>
       ) : (
         children
       )}
@@ -388,14 +369,10 @@ export function MobileList({
 /** "< Lost bag cases": back from a detail to its list on phones, where the two do not fit side by side. */
 export function BackLink({ label, onBack }: { label: string; onBack: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onBack}
-      className="flex items-center gap-1.5 self-start rounded text-sm font-semibold text-[#14213d] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:hidden"
-    >
-      <ChevronLeft aria-hidden className="size-4" />
+    <Button variant="ghost" size="sm" type="button" onClick={onBack} className="self-start md:hidden">
+      <ChevronLeft aria-hidden />
       {label}
-    </button>
+    </Button>
   )
 }
 
@@ -414,9 +391,9 @@ export function SimulatedToday() {
   const { now } = useDesk()
   if (!now) return null
   return (
-    <p className="self-start rounded-md border border-[#d8dce6] bg-white px-2 py-1 text-xs text-[#677287]">
+    <Badge variant="outline" className="self-start font-normal">
       Simulated today · {SIM_DAY.format(now)}
-    </p>
+    </Badge>
   )
 }
 
@@ -424,7 +401,7 @@ export function SimulatedToday() {
 export function FilterRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div role="group" aria-label={label} className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:items-stretch">
-      <span className="w-[90px] text-sm font-medium text-[#677287]">{label}</span>
+      <span className="w-[90px] text-sm font-medium text-muted-foreground">{label}</span>
       <div className="flex min-w-0 flex-1 flex-wrap gap-2 max-md:-mx-4 max-md:flex-nowrap max-md:overflow-x-auto max-md:px-4 max-md:pb-1 [&>*]:shrink-0">
         {children}
       </div>
