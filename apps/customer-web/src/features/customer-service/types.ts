@@ -31,11 +31,13 @@ export interface Complaint {
   issue: string | null
   description: string
   openedAt: string
+  resolvedAt: string | null
+  closedAt: string | null
   updatedAt: string
   bookingRef?: string | null
   flightRoute?: string
   mealDetail?: string | null
-  fromSource?: 'Customer' | 'No account' | 'Feature 10'
+  fromSource?: 'Customer' | 'Feature 10'
   openedLabel?: string
   events?: CaseEvent[]
 }
@@ -51,12 +53,6 @@ export interface NewComplaint {
   description: string
   booking_reference?: string
 }
-
-export const TYPES: { value: ComplaintType; icon: string; label: string; desc: string }[] = [
-  { value: 'employee', icon: '👤', label: 'Employee', desc: 'Conduct, attitude or service of staff' },
-  { value: 'flight', icon: '✈️', label: 'Flight', desc: 'Delay, cancellation, seat or cleanliness' },
-  { value: 'food', icon: '🍽️', label: 'Food', desc: 'Meal quality, allergies or a missing meal' },
-]
 
 // The options the backend accepts (customer-service.constants.ts).
 export const LOCATIONS = [

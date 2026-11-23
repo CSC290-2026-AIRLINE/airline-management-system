@@ -26,6 +26,9 @@ export function useComplaintsApi() {
     create: (complaint: NewComplaint) => request<Complaint>('', { method: 'POST', body: JSON.stringify(complaint) }),
     list: () => request<Complaint[]>(''),
     get: (caseNumber: string) => request<Complaint>(`/${encodeURIComponent(caseNumber.trim().toUpperCase())}`),
+    /** Reopens a closed case. The backend allows it only within 7 days of closing and says why otherwise. */
+    reopen: (caseNumber: string) =>
+      request<Complaint>(`/${encodeURIComponent(caseNumber.trim().toUpperCase())}/reopen`, { method: 'POST' }),
     getNotificationPreferences: () => request<NotificationPreferenceRow[]>('/api/customers/me/notification-preferences'),
     updateNotificationPreferences: (preferences: NotificationPreferenceRow[]) =>
       request<NotificationPreferenceRow[]>('/api/customers/me/notification-preferences', {

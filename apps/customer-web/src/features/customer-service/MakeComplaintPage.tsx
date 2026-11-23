@@ -1,11 +1,10 @@
-import { useState } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useUser } from '@clerk/clerk-react'
-import { useAppAuth } from '@customer-web/auth/AuthProvider'
+import type { AppUser } from '@customer-web/auth/AuthProvider'
 import { errorMessage, useComplaintsApi } from './api'
-import { alertStyle, btnPrimary, btnSecondary, inputStyle } from './styles'
+import { alertStyle, btnPrimary, btnSecondary, cardStyle, focusRing, inputStyle, mutedStyle } from './styles'
 import { FLIGHT_ISSUES, FOOD_ISSUES, LOCATIONS, type ComplaintType, type NewComplaint } from './types'
-import { ComplaintPage, Field } from './ui'
+import { AccountGate, ComplaintPage, ComplaintsNav, Field } from './ui'
 
 const MIN_DESCRIPTION = 20
 
@@ -73,12 +72,43 @@ function FoodIcon({ selected }: { selected: boolean }) {
   )
 }
 
+const TYPE_CARDS: { value: ComplaintType; label: string; desc: string; Icon: (props: { selected: boolean }) => ReactNode }[] = [
+  { value: 'employee', label: 'Employee', desc: 'A staff member at check-in, the gate, onboard or by phone', Icon: EmployeeIcon },
+  { value: 'flight', label: 'Flight', desc: 'Delay, cancellation, seat or cleanliness', Icon: FlightIcon },
+  { value: 'food', label: 'Food', desc: 'The meal on board', Icon: FoodIcon },
+]
+
+const LOST_BAG_NOTE = 'Lost bag? Report it to Lost and Found. If the bag is not found, they open a case for you.'
+
+function PageHeader() {
+  return (
+    <div style={{ marginBottom: '24px', textAlign: 'left' }}>
+      <h1 style={{ margin: '0 0 6px', fontSize: '26px', fontWeight: 700, color: '#0A1424', letterSpacing: '-0.02em', textAlign: 'left' }}>
+        Make a complaint
+      </h1>
+      <p style={{ margin: 0, fontSize: '14px', color: '#677287', textAlign: 'left' }}>
+        Tell us what went wrong. A supervisor reads every case.
+      </p>
+    </div>
+  )
+}
+
 export function MakeComplaintPage() {
+  return (
+    <ComplaintPage>
+      <ComplaintsNav current="/complaints" />
+      <PageHeader />
+      <AccountGate signInTitle="Sign in to make a complaint" redirect="/complaints" note={LOST_BAG_NOTE}>
+        {(user) => <ComplaintForm user={user} />}
+      </AccountGate>
+    </ComplaintPage>
+  )
+}
+
+function ComplaintForm({ user }: { user: AppUser }) {
   const navigate = useNavigate()
-  const { user } = useAppAuth()
-  const { user: clerkUser } = useUser()
-  const displayName = clerkUser?.fullName || user?.email || 'your account'
   const api = useComplaintsApi()
+  const [checkNumber, setCheckNumber] = useState('')
 
   // Type selection
   const [type, setType] = useState<ComplaintType>('employee')
@@ -108,7 +138,6 @@ export function MakeComplaintPage() {
     } else {
       setIssue('')
     }
-    setDescription('')
   }
 
   function validate(): boolean {
@@ -128,10 +157,6 @@ export function MakeComplaintPage() {
   }
 
   async function submit() {
-    if (!user) {
-      void navigate({ to: '/login', search: { redirect: '/complaints' } })
-      return
-    }
     if (!validate()) return
 
     const body: NewComplaint =
@@ -168,20 +193,17 @@ export function MakeComplaintPage() {
     }
   }
 
+  function checkCase(e: FormEvent) {
+    e.preventDefault()
+    const caseNumber = checkNumber.trim().toUpperCase()
+    if (!caseNumber) return
+    void navigate({ to: '/complaints/check', search: { caseNumber } })
+  }
+
   const issuesList = type === 'food' ? FOOD_ISSUES : FLIGHT_ISSUES
 
   return (
-    <ComplaintPage>
-      {/* Page Header */}
-      <div style={{ marginBottom: '24px', textAlign: 'left' }}>
-        <h1 style={{ margin: '0 0 6px', fontSize: '26px', fontWeight: 700, color: '#0A1424', letterSpacing: '-0.02em', textAlign: 'left' }}>
-          Make a complaint
-        </h1>
-        <p style={{ margin: 0, fontSize: '14px', color: '#677287', textAlign: 'left' }}>
-          Tell us what went wrong. A supervisor reads every case.
-        </p>
-      </div>
-
+    <>
       {submitError && (
         <div style={{ ...alertStyle, marginBottom: '24px', textAlign: 'left' }} role="alert">
           {submitError}
@@ -205,143 +227,55 @@ export function MakeComplaintPage() {
             textAlign: 'left',
           }}
         >
-          {/* Section 1: Who are you */}
-          <div>
-            <h2 style={{ margin: '0 0 14px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>1. Who are you?</h2>
-            {user ? (
-              <div
-                style={{
-                  padding: '16px 18px',
-                  borderRadius: '12px',
-                  backgroundColor: '#EEF4FF',
-                  border: '1.5px solid #2563EB',
-                  textAlign: 'left',
-                }}
-              >
-                <div style={{ fontWeight: 600, fontSize: '15px', color: '#0A1424', textAlign: 'left' }}>Signed in</div>
-                <div style={{ fontSize: '13px', color: '#677287', marginTop: '2px', textAlign: 'left' }}>
-                  Signed in as <strong>{displayName}</strong>
-                  {user.email ? ` (${user.email})` : ''}.
-                </div>
-              </div>
-            ) : (
-              <div
-                style={{
-                  padding: '16px 18px',
-                  borderRadius: '12px',
-                  backgroundColor: '#FFFBEB',
-                  border: '1.5px solid #F59E0B',
-                  textAlign: 'left',
-                }}
-              >
-                <div style={{ fontWeight: 600, fontSize: '15px', color: '#B45309', textAlign: 'left' }}>Sign in required</div>
-                <div style={{ fontSize: '13px', color: '#78350F', marginTop: '4px', textAlign: 'left' }}>
-                  Complaints require a Flython account so you can track case status and history.
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void navigate({ to: '/login', search: { redirect: '/complaints' } })}
-                  style={{ ...btnPrimary, marginTop: '12px' }}
-                >
-                  Sign in to Flython
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Section 2: What is it about? */}
+          {/* Section 1: What is it about? */}
           <div>
             <h2 style={{ margin: '0 0 14px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>
-              2. What is it about?
+              1. What is it about?
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-              {/* Employee */}
-              <div
-                onClick={() => chooseType('employee')}
-                style={{
-                  padding: '16px 18px',
-                  borderRadius: '12px',
-                  backgroundColor: type === 'employee' ? '#EEF4FF' : '#FFFFFF',
-                  border: `1.5px solid ${type === 'employee' ? '#2563EB' : '#DBE2EA'}`,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                  textAlign: 'left',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <div style={{ width: '44px', height: '44px', flexShrink: 0 }}>
-                  <EmployeeIcon selected={type === 'employee'} />
-                </div>
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontWeight: 600, fontSize: '15px', color: '#0A1424', textAlign: 'left' }}>Employee</div>
-                  <div style={{ fontSize: '13px', color: '#677287', marginTop: '2px', lineHeight: 1.4, textAlign: 'left' }}>
-                    A staff member at check-in, the gate, onboard or by phone
-                  </div>
-                </div>
-              </div>
-
-              {/* Flight */}
-              <div
-                onClick={() => chooseType('flight')}
-                style={{
-                  padding: '16px 18px',
-                  borderRadius: '12px',
-                  backgroundColor: type === 'flight' ? '#EEF4FF' : '#FFFFFF',
-                  border: `1.5px solid ${type === 'flight' ? '#2563EB' : '#DBE2EA'}`,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                  textAlign: 'left',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <div style={{ width: '44px', height: '44px', flexShrink: 0 }}>
-                  <FlightIcon selected={type === 'flight'} />
-                </div>
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontWeight: 600, fontSize: '15px', color: '#0A1424', textAlign: 'left' }}>Flight</div>
-                  <div style={{ fontSize: '13px', color: '#677287', marginTop: '2px', lineHeight: 1.4, textAlign: 'left' }}>
-                    Delay, cancellation, seat or cleanliness
-                  </div>
-                </div>
-              </div>
-
-              {/* Food */}
-              <div
-                onClick={() => chooseType('food')}
-                style={{
-                  padding: '16px 18px',
-                  borderRadius: '12px',
-                  backgroundColor: type === 'food' ? '#EEF4FF' : '#FFFFFF',
-                  border: `1.5px solid ${type === 'food' ? '#2563EB' : '#DBE2EA'}`,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px',
-                  textAlign: 'left',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <div style={{ width: '44px', height: '44px', flexShrink: 0 }}>
-                  <FoodIcon selected={type === 'food'} />
-                </div>
-                <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontWeight: 600, fontSize: '15px', color: '#0A1424', textAlign: 'left' }}>Food</div>
-                  <div style={{ fontSize: '13px', color: '#677287', marginTop: '2px', lineHeight: 1.4, textAlign: 'left' }}>
-                    The meal on board
-                  </div>
-                </div>
-              </div>
+            <div role="group" aria-label="Complaint type" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+              {TYPE_CARDS.map(({ value, label, desc, Icon }) => {
+                const selected = type === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => chooseType(value)}
+                    className={focusRing}
+                    style={{
+                      padding: '16px 18px',
+                      borderRadius: '12px',
+                      backgroundColor: selected ? '#EEF4FF' : '#FFFFFF',
+                      border: `1.5px solid ${selected ? '#2563EB' : '#DBE2EA'}`,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-start',
+                      gap: '8px',
+                      textAlign: 'left',
+                      font: 'inherit',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <span aria-hidden="true" style={{ width: '44px', height: '44px', flexShrink: 0 }}>
+                      <Icon selected={selected} />
+                    </span>
+                    <span style={{ display: 'block', textAlign: 'left' }}>
+                      <span style={{ display: 'block', fontWeight: 600, fontSize: '15px', color: '#0A1424' }}>{label}</span>
+                      <span style={{ display: 'block', fontSize: '13px', color: '#677287', marginTop: '2px', lineHeight: 1.4 }}>
+                        {desc}
+                      </span>
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           </div>
 
-          {/* Section 3: Dynamic Category Details */}
+          {/* Section 2: Dynamic Category Details */}
           <div>
             <h2 style={{ margin: '0 0 14px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>
-              3. {type === 'food' ? 'Food details' : type === 'flight' ? 'Flight details' : 'Employee details'}
+              2. {type === 'food' ? 'Food details' : type === 'flight' ? 'Flight details' : 'Employee details'}
             </h2>
 
             {/* FOOD TYPE SPECIFIC UI */}
@@ -425,6 +359,7 @@ export function MakeComplaintPage() {
                     ))}
                   </select>
                 </Field>
+                <p style={{ ...mutedStyle, margin: 0, fontSize: '12px' }}>{LOST_BAG_NOTE}</p>
               </div>
             )}
 
@@ -504,16 +439,16 @@ export function MakeComplaintPage() {
             }}
           >
             <div style={{ fontSize: '13px', color: '#677287', textAlign: 'left' }}>
-              We email a copy to <strong>{user?.email || 'your account email'}</strong>.
+              We email a copy to <strong>{user.email || 'your account email'}</strong>.
             </div>
             <button
               type="button"
-              disabled={submitting || !user}
+              disabled={submitting}
               onClick={() => void submit()}
               style={{
                 ...btnPrimary,
-                opacity: submitting || !user ? 0.7 : 1,
-                cursor: submitting || !user ? 'not-allowed' : 'pointer',
+                opacity: submitting ? 0.7 : 1,
+                cursor: submitting ? 'not-allowed' : 'pointer',
               }}
             >
               {submitting ? 'Sending complaint…' : 'Send complaint'}
@@ -568,43 +503,39 @@ export function MakeComplaintPage() {
             </div>
           </div>
 
-          {/* Card: Already sent a complaint? */}
-          <div
-            style={{
-              backgroundColor: '#FFFFFF',
-              borderRadius: '16px',
-              border: '1px solid #DBE2EA',
-              padding: '24px',
-              boxShadow: '0 2px 8px rgba(10, 20, 36, 0.04)',
-              textAlign: 'left',
-            }}
-          >
-            <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}>
-              Already sent a complaint?
+          {/* Card: Check a case (account-only: the backend returns only this account's cases) */}
+          <form onSubmit={checkCase} aria-labelledby="check-case-title" style={cardStyle}>
+            <h3
+              id="check-case-title"
+              style={{ margin: '0 0 12px', fontSize: '18px', fontWeight: 700, color: '#0A1424', textAlign: 'left' }}
+            >
+              Check a case
             </h3>
-            <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#677287', lineHeight: 1.4, textAlign: 'left' }}>
-              See the status and full history of your cases.
-            </p>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="text"
+                value={checkNumber}
+                onChange={(e) => setCheckNumber(e.target.value)}
+                placeholder="CS-2026-000000"
+                aria-label="Case number"
+                autoComplete="off"
+                style={{ ...inputStyle, flex: 1, minWidth: 0, textTransform: 'uppercase' }}
+              />
+              <button type="submit" style={btnPrimary}>
+                Check
+              </button>
+            </div>
+            <p style={{ ...mutedStyle, margin: '10px 0 12px', lineHeight: 1.4 }}>You can see only cases made from your account.</p>
             <button
               type="button"
-              onClick={() => {
-                void navigate({
-                  to: '/complaints/check',
-                  search: { caseNumber: undefined },
-                })
-              }}
-              style={{
-                ...btnSecondary,
-                width: '100%',
-                justifyContent: 'center',
-                boxSizing: 'border-box',
-              }}
+              onClick={() => void navigate({ to: '/complaints/check', search: { caseNumber: undefined } })}
+              style={{ ...btnSecondary, width: '100%', boxSizing: 'border-box' }}
             >
-              Your complaints →
+              All your complaints →
             </button>
-          </div>
+          </form>
         </div>
       </div>
-    </ComplaintPage>
+    </>
   )
 }

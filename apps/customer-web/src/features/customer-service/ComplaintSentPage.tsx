@@ -1,11 +1,11 @@
 import { useEffect, useEffectEvent, useState } from 'react'
-import { useNavigate, useSearch } from '@tanstack/react-router'
-import { useAppAuth } from '@customer-web/auth/AuthProvider'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import type { AppUser } from '@customer-web/auth/AuthProvider'
 import { errorMessage, useComplaintsApi } from './api'
-import { alertStyle, btnPrimary, btnSecondary, successStyle } from './styles'
+import { alertStyle, btnPrimary, btnSecondary, focusRing, mutedStyle, successStyle } from './styles'
 import { FLIGHT_ISSUES, FOOD_ISSUES, LOCATIONS, optionLabel, type CaseStatus, type Complaint } from './types'
 import { formatDateTime } from './format'
-import { ComplaintPage } from './ui'
+import { AccountGate, ComplaintPage, ComplaintsNav } from './ui'
 
 const TRACKER_STEPS: { status: CaseStatus; label: string }[] = [
   { status: 'with_supervisor', label: 'With supervisor' },
@@ -16,16 +16,54 @@ const TRACKER_STEPS: { status: CaseStatus; label: string }[] = [
 
 export function ComplaintSentPage() {
   const { caseNumber } = useSearch({ from: '/complaints/sent' })
+  return (
+    <ComplaintPage>
+      <ComplaintsNav />
+      {/* Page Header */}
+      <div style={{ marginBottom: '24px', textAlign: 'left' }}>
+        <h1 style={{ margin: '0 0 6px', fontSize: '26px', fontWeight: 700, color: '#0A1424', letterSpacing: '-0.02em', textAlign: 'left' }}>
+          Make a complaint
+        </h1>
+        <p style={{ margin: 0, fontSize: '14px', color: '#677287', textAlign: 'left' }}>
+          Tell us what went wrong. A supervisor reads every case.
+        </p>
+      </div>
+      <AccountGate
+        signInTitle="Sign in to see your case"
+        redirect={caseNumber ? `/complaints/sent?caseNumber=${encodeURIComponent(caseNumber)}` : '/complaints/check'}
+      >
+        {(user) =>
+          caseNumber ? (
+            <SentCase key={caseNumber} caseNumber={caseNumber} user={user} />
+          ) : (
+            <div role="alert" style={alertStyle}>
+              No case number was given.{' '}
+              <Link
+                to="/complaints/check"
+                search={{ caseNumber: undefined }}
+                className={focusRing}
+                style={{ color: 'inherit', fontWeight: 600 }}
+              >
+                See your complaints
+              </Link>
+            </div>
+          )
+        }
+      </AccountGate>
+    </ComplaintPage>
+  )
+}
+
+/** The case just sent. Keyed by case number, so a new one starts from loading. */
+function SentCase({ caseNumber, user }: { caseNumber: string; user: AppUser }) {
   const navigate = useNavigate()
-  const { user } = useAppAuth()
   const api = useComplaintsApi()
   const [complaint, setComplaint] = useState<Complaint | null>(null)
-  const [error, setError] = useState<string | null>(caseNumber ? null : 'No case number was given.')
+  const [error, setError] = useState<string | null>(null)
 
   const fetchCase = useEffectEvent((n: string) => api.get(n))
 
   useEffect(() => {
-    if (!caseNumber) return
     let cancelled = false
     fetchCase(caseNumber).then(
       (row) => {
@@ -40,29 +78,38 @@ export function ComplaintSentPage() {
     }
   }, [caseNumber])
 
+  if (error) {
+    return (
+      <div role="alert" style={{ ...alertStyle, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <span>
+          We couldn't load case {caseNumber}. {error}
+        </span>
+        <Link
+          to="/complaints/check"
+          search={{ caseNumber: undefined }}
+          className={focusRing}
+          style={{ color: 'inherit', fontWeight: 600, alignSelf: 'flex-start' }}
+        >
+          See your complaints
+        </Link>
+      </div>
+    )
+  }
+  if (!complaint) {
+    return (
+      <p role="status" style={mutedStyle}>
+        Loading your case…
+      </p>
+    )
+  }
+
   const currentStepIdx = Math.max(
     0,
-    TRACKER_STEPS.findIndex((s) => s.status === (complaint?.status ?? 'with_supervisor')),
+    TRACKER_STEPS.findIndex((s) => s.status === complaint.status),
   )
 
   return (
-    <ComplaintPage>
-      {/* Page Header */}
-      <div style={{ marginBottom: '24px', textAlign: 'left' }}>
-        <h1 style={{ margin: '0 0 6px', fontSize: '26px', fontWeight: 700, color: '#0A1424', letterSpacing: '-0.02em', textAlign: 'left' }}>
-          Make a complaint
-        </h1>
-        <p style={{ margin: 0, fontSize: '14px', color: '#677287', textAlign: 'left' }}>
-          Tell us what went wrong. A supervisor reads every case.
-        </p>
-      </div>
-
-      {error && (
-        <div role="alert" style={{ ...alertStyle, marginBottom: '24px' }}>
-          {error}
-        </div>
-      )}
-
+    <>
       {/* Two Column Layout matching Figma 05 */}
       <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
         {/* Left Column: Complaint Sent Card (784px) */}
@@ -82,14 +129,14 @@ export function ComplaintSentPage() {
         >
           {/* Green Success Banner */}
           <div style={successStyle}>
-            {`Thank you. Your complaint was sent. We emailed a copy to ${complaint?.contactEmail || user?.email || 'your account email'}.`}
+            {`Thank you. Your complaint was sent. We emailed a copy to ${complaint.contactEmail || user.email}.`}
           </div>
 
           {/* Case Number Display */}
           <div>
             <div style={{ fontSize: '13px', color: '#677287' }}>Case number</div>
             <div style={{ fontSize: '30px', fontWeight: 700, color: '#0A1424', marginTop: '4px', letterSpacing: '-0.02em' }}>
-              {caseNumber || 'CS-2026-000124'}
+              {complaint.caseNumber}
             </div>
           </div>
 
@@ -105,7 +152,7 @@ export function ComplaintSentPage() {
               }}
             >
               <span style={{ color: '#677287', flex: 1 }}>Type</span>
-              <span style={{ fontWeight: 500, color: '#0A1424', flex: 1, textTransform: 'capitalize' }}>{complaint?.type || 'Food'}</span>
+              <span style={{ fontWeight: 500, color: '#0A1424', flex: 1, textTransform: 'capitalize' }}>{complaint.type}</span>
             </div>
             <div
               style={{
@@ -117,9 +164,9 @@ export function ComplaintSentPage() {
               }}
             >
               <span style={{ color: '#677287', flex: 1 }}>From</span>
-              <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>{complaint?.passengerName || '—'} · Customer</span>
+              <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>{complaint.passengerName || '—'} · Customer</span>
             </div>
-            {complaint?.flightNumber && (
+            {complaint.flightNumber && (
               <div
                 style={{
                   display: 'flex',
@@ -135,7 +182,7 @@ export function ComplaintSentPage() {
                 </span>
               </div>
             )}
-            {complaint?.issue && (
+            {complaint.issue && (
               <div
                 style={{
                   display: 'flex',
@@ -151,7 +198,7 @@ export function ComplaintSentPage() {
                 </span>
               </div>
             )}
-            {complaint?.location && (
+            {complaint.location && (
               <div
                 style={{
                   display: 'flex',
@@ -187,9 +234,7 @@ export function ComplaintSentPage() {
               }}
             >
               <span style={{ color: '#677287', flex: 1 }}>Opened</span>
-              <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>
-                {complaint ? formatDateTime(complaint.openedAt) : 'Just now'}
-              </span>
+              <span style={{ fontWeight: 500, color: '#0A1424', flex: 1 }}>{formatDateTime(complaint.openedAt)}</span>
             </div>
           </div>
 
@@ -255,7 +300,7 @@ export function ComplaintSentPage() {
                 void navigate({
                   to: '/complaints/check',
                   search: {
-                    caseNumber: caseNumber || complaint?.caseNumber,
+                    caseNumber: complaint.caseNumber,
                   },
                 })
               }
@@ -311,6 +356,6 @@ export function ComplaintSentPage() {
           </div>
         </div>
       </div>
-    </ComplaintPage>
+    </>
   )
 }

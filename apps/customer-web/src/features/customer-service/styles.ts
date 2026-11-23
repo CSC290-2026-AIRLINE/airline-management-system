@@ -10,7 +10,6 @@ export const inputStyle: CSSProperties = {
   boxSizing: 'border-box',
   backgroundColor: '#FFFFFF',
   color: '#0A1424',
-  outline: 'none',
   transition: 'border-color 0.15s ease',
 }
 
@@ -74,3 +73,18 @@ export const mutedStyle: CSSProperties = {
   fontSize: '13px',
   color: '#677287',
 }
+
+export const cardStyle: CSSProperties = {
+  backgroundColor: '#FFFFFF',
+  borderRadius: '16px',
+  border: '1px solid #DBE2EA',
+  padding: '24px',
+  boxShadow: '0 2px 8px rgba(10, 20, 36, 0.04)',
+  textAlign: 'left',
+}
+
+/** Tailwind classes for a visible keyboard focus ring (inline styles cannot target :focus-visible). */
+export const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB]'
+
+/** The same ring drawn inside the element, for full-width rows in a clipped list. */
+export const focusRingInset = 'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#2563EB]'
