@@ -4,6 +4,7 @@ import { DbModule } from './db/db.module'
 import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
+import { OnboardProductsModule } from './modules/onboard-products/onboard-products.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
 import { LoyaltyModule } from './modules/loyalty/loyalty.module'
 import { CheckinBoardingModule } from './modules/checkin-boarding/checkin-boarding.module'
@@ -43,6 +44,7 @@ import { FlightSchedulingModule } from './modules/flight-scheduling/flight-sched
     LoyaltyModule,
     BookingSearchModule,
     BookingPnrModule,
+    OnboardProductsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
