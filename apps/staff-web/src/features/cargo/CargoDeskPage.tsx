@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Package, Search, Wrench, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Download, Loader2, Package, Search, Wrench, X } from 'lucide-react'
 import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@staff-web/components/ui/dropdown-menu'
 import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { NativeSelect } from '@staff-web/components/ui/native-select'
+import { Tabs, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@staff-web/components/ui/tooltip'
 import { Route } from '@staff-web/routes/_authenticated/cargo/bookings.index'
 import type { CargoDeskStatus } from '@staff-web/routes/_authenticated/cargo/bookings.index'
+import { fmtAwb } from './awb'
 import { useCargoApi, type DeskBooking, type DeskListResult } from './cargo-api'
 
 /* ── Constants ───────────────────────────────────────────────────────── */
@@ -112,6 +116,7 @@ export function CargoDeskPage() {
   const [tick, setTick] = useState(0)
   const [page, setPage] = useState(1)
   const [toast, setToast] = useState<string | null>(null)
+  const [csvBusy, setCsvBusy] = useState(false)
 
   const filterKey = `${status}|${flight ?? ''}|${shipDate ?? ''}|${commodity ?? ''}|${debouncedSearch}`
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey)
@@ -197,10 +202,9 @@ export function CargoDeskPage() {
           />
         </div>
 
-        <select
+        <NativeSelect
           value={flight ?? ''}
           onChange={(e) => navigate({ search: (prev) => ({ ...prev, flight: e.target.value || undefined }), replace: true })}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="">Flight: all</option>
           {filters.flights.map((f) => (
@@ -208,31 +212,36 @@ export function CargoDeskPage() {
               {f.flightNumber}
             </option>
           ))}
-        </select>
+        </NativeSelect>
 
-        <label className="flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm shadow-sm">
-          <span className="whitespace-nowrap text-muted-foreground">Ship date:</span>
-          <input
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="shipDate" className="whitespace-nowrap text-muted-foreground">
+            Ship date:
+          </Label>
+          <Input
+            id="shipDate"
             type="date"
             value={shipDate ?? ''}
             onChange={(e) => navigate({ search: (prev) => ({ ...prev, shipDate: e.target.value || undefined }), replace: true })}
-            className="bg-transparent text-sm text-foreground focus:outline-none"
+            className="w-auto"
           />
           {shipDate && (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              aria-label="Clear ship date"
               onClick={() => navigate({ search: (prev) => ({ ...prev, shipDate: undefined }), replace: true })}
-              className="text-muted-foreground hover:text-foreground"
             >
               <X className="size-3.5" />
-            </button>
+            </Button>
           )}
-        </label>
+        </div>
 
-        <select
+        <NativeSelect
           value={commodity ?? ''}
           onChange={(e) => navigate({ search: (prev) => ({ ...prev, commodity: e.target.value || undefined }), replace: true })}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="">Commodity: all</option>
           {filters.commodityTypes.map((c) => (
@@ -240,33 +249,58 @@ export function CargoDeskPage() {
               {c.name}
             </option>
           ))}
-        </select>
+        </NativeSelect>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto h-9"
+          disabled={csvBusy}
+          onClick={async () => {
+            setCsvBusy(true)
+            try {
+              await api.downloadBookingsCsv({
+                status,
+                q: debouncedSearch || undefined,
+                flightId: flight,
+                shipDate,
+                commodityTypeId: commodity,
+              })
+            } catch (e) {
+              setToast(e instanceof Error ? e.message : 'CSV download failed')
+            } finally {
+              setCsvBusy(false)
+            }
+          }}
+        >
+          {csvBusy ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Download className="mr-1.5 size-3.5" />}
+          Download CSV
+        </Button>
       </div>
 
       {/* Main card */}
       <div className="mt-4 rounded-xl border bg-white p-5 dark:bg-card">
         {/* Status tabs */}
-        <div className="-mx-1 flex gap-0 overflow-x-auto border-b" role="tablist">
-          {STATUS_TABS.map((tab) => {
-            const isActive = status === tab.value
-            const count = counts[tab.value]
-            return (
-              <button
-                key={tab.value}
-                role="tab"
-                aria-selected={isActive}
-                className={`relative shrink-0 px-3 pb-2 pt-1 text-sm transition-colors ${
-                  isActive ? 'font-medium text-foreground' : 'text-slate-400 hover:text-slate-600'
-                }`}
-                onClick={() => navigate({ search: (prev) => ({ ...prev, status: tab.value }), replace: true })}
-              >
-                {tab.label}
-                {count != null && count > 0 && <span className="ml-1 text-xs tabular-nums opacity-60">{count}</span>}
-                {isActive && <span className="absolute inset-x-0 -bottom-px h-0.5 bg-foreground" />}
-              </button>
-            )
-          })}
-        </div>
+        <Tabs
+          value={status}
+          onValueChange={(value) => navigate({ search: (prev) => ({ ...prev, status: value as CargoDeskStatus }), replace: true })}
+        >
+          <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-none border-b bg-transparent p-0">
+            {STATUS_TABS.map((tab) => {
+              const count = counts[tab.value]
+              return (
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  className="flex-none rounded-none border-0 border-b-2 border-transparent px-3 pt-1 pb-2 data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                >
+                  {tab.label}
+                  {count != null && count > 0 && <span className="ml-1 text-xs tabular-nums opacity-60">{count}</span>}
+                </TabsTrigger>
+              )
+            })}
+          </TabsList>
+        </Tabs>
 
         {/* Tab description */}
         <p className="mt-3 text-xs text-slate-500">{tabDescription(status, settings)}</p>
@@ -367,7 +401,7 @@ function BookingRow({ booking: b }: { booking: DeskBooking }) {
     >
       <TableCell className="py-2.5">
         <div className="text-sm font-semibold">{b.bookingRef}</div>
-        <div className="text-xs text-slate-400">{b.awbNumber ? `AWB ${b.awbNumber}` : 'No AWB, never paid'}</div>
+        <div className="text-xs text-slate-400">{b.awbNumber ? `AWB ${fmtAwb(b.awbNumber)}` : 'No AWB, never paid'}</div>
       </TableCell>
       <TableCell className="py-2.5">
         <div className="whitespace-nowrap text-sm">

@@ -237,7 +237,7 @@ export function SettingsSection() {
     setNotice(null)
     try {
       const updated = await api.updateSettings({ [def.key]: String(numValue) })
-      setSettings(updated)
+      setSettings((prev) => ({ ...prev, ...updated }))
       cancelEdit()
       setNotice({ tone: 'success', message: `${def.label} updated.` })
     } catch (err) {

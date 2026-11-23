@@ -3,10 +3,13 @@ import { useNavigate } from '@tanstack/react-router'
 import { CheckCircle, Download, Loader2, Package, PackageCheck } from 'lucide-react'
 import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
+import { Input } from '@staff-web/components/ui/input'
+import { NativeSelect } from '@staff-web/components/ui/native-select'
 import { Dialog, DialogContent, DialogTitle } from '@staff-web/components/ui/dialog'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@staff-web/components/ui/tooltip'
 import { Route } from '@staff-web/routes/_authenticated/cargo/flights'
+import { fmtAwb } from './awb'
 import { useCargoApi, type FlightListResult, type FlightManifest, type FlightSummary, type ManifestRow } from './cargo-api'
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
@@ -188,10 +191,9 @@ export function FlightCargoPage() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-semibold">Flights with cargo</h2>
           <div className="flex items-center gap-2">
-            <select
+            <NativeSelect
               value={search.route ?? ''}
               onChange={(e) => navigate({ search: (prev) => ({ ...prev, route: e.target.value || undefined }), replace: true })}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="">Route: all</option>
               {routes.map((r) => (
@@ -199,7 +201,7 @@ export function FlightCargoPage() {
                   {r.origin} → {r.destination}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
 
             <DateRangeSelector
               from={defaultFrom}
@@ -299,19 +301,9 @@ export function FlightCargoPage() {
 function DateRangeSelector({ from, to, onChange }: { from: string; to: string; onChange: (from: string, to: string) => void }) {
   return (
     <div className="flex items-center gap-1.5">
-      <input
-        type="date"
-        value={from}
-        onChange={(e) => onChange(e.target.value || todayStr(), to)}
-        className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-      />
+      <Input type="date" value={from} onChange={(e) => onChange(e.target.value || todayStr(), to)} className="w-auto" />
       <span className="text-xs text-slate-400">–</span>
-      <input
-        type="date"
-        value={to}
-        onChange={(e) => onChange(from, e.target.value || from)}
-        className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-      />
+      <Input type="date" value={to} onChange={(e) => onChange(from, e.target.value || from)} className="w-auto" />
     </div>
   )
 }
@@ -502,7 +494,7 @@ function ManifestCard({ manifest, flightId, onReload }: { manifest: FlightManife
                     className="cursor-pointer hover:bg-slate-50 dark:hover:bg-muted/30"
                     onClick={() => openBooking(r.id)}
                   >
-                    <TableCell className="py-2.5 text-sm font-semibold">{r.awbNumber ?? '—'}</TableCell>
+                    <TableCell className="py-2.5 text-sm font-semibold">{r.awbNumber ? fmtAwb(r.awbNumber) : '—'}</TableCell>
                     <TableCell className="max-w-[200px] py-2.5">
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -607,8 +599,11 @@ function ManifestCard({ manifest, flightId, onReload }: { manifest: FlightManife
         <DialogContent className="sm:max-w-sm">
           <DialogTitle>{pending?.event === 'loaded' ? 'Mark loaded' : 'Mark delivered'}</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Mark <span className="font-medium text-foreground">{pending?.row.awbNumber ?? pending?.row.id.slice(0, 8)}</span> as{' '}
-            {pending?.event}?
+            Mark{' '}
+            <span className="font-medium text-foreground">
+              {pending?.row.awbNumber ? fmtAwb(pending.row.awbNumber) : pending?.row.id.slice(0, 8)}
+            </span>{' '}
+            as {pending?.event}?
           </p>
           {dialogError && <p className="text-sm text-destructive">{dialogError}</p>}
           <div className="flex justify-end gap-2">

@@ -9,6 +9,7 @@ import { Input } from '@staff-web/components/ui/input'
 import { Label } from '@staff-web/components/ui/label'
 import { Textarea } from '@staff-web/components/ui/textarea'
 import { Route } from '@staff-web/routes/_authenticated/cargo/claims.$id'
+import { fmtAwb } from './awb'
 import { useCargoApi, type ClaimDetail } from './cargo-api'
 
 const CLAIM_STATUS_COLORS: Record<string, string> = {
@@ -154,7 +155,7 @@ export function ClaimDetailPage() {
                 {booking.bookingRef}
               </Link>
             </Field>
-            <Field label="AWB">{booking.awbNumber ?? '—'}</Field>
+            <Field label="AWB">{booking.awbNumber ? fmtAwb(booking.awbNumber) : '—'}</Field>
             <Field label="Shipper">{booking.shipperName}</Field>
             <Field label="Consignee">{booking.consigneeName}</Field>
             <Field label="Flight">

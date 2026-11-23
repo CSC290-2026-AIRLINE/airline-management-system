@@ -7,6 +7,7 @@ import { Input } from '@staff-web/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { Route } from '@staff-web/routes/_authenticated/cargo/claims.index'
 import type { ClaimFilterStatus } from '@staff-web/routes/_authenticated/cargo/claims.index'
+import { fmtAwb } from './awb'
 import { useCargoApi, type ClaimListItem, type ClaimListResult } from './cargo-api'
 
 const STATUS_TABS: { value: ClaimFilterStatus; label: string }[] = [
@@ -212,7 +213,7 @@ function ClaimRow({ claim: c }: { claim: ClaimListItem }) {
     <TableRow className="cursor-pointer" onClick={() => navigate({ to: '/cargo/claims/$id', params: { id: c.id } })}>
       <TableCell className="font-mono text-xs font-medium">{c.claimRef}</TableCell>
       <TableCell className="font-mono text-xs">{c.bookingRef}</TableCell>
-      <TableCell className="font-mono text-xs">{c.awbNumber ?? '—'}</TableCell>
+      <TableCell className="font-mono text-xs">{c.awbNumber ? fmtAwb(c.awbNumber) : '—'}</TableCell>
       <TableCell className="capitalize">{c.claimType}</TableCell>
       <TableCell className="text-right tabular-nums">{c.piecesAffected}</TableCell>
       <TableCell className="text-right tabular-nums">{formatCurrency(c.claimedAmount, c.currency)}</TableCell>

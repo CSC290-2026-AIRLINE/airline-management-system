@@ -119,6 +119,20 @@ export interface BookingDetail {
   claim: { id: string; claimRef: string } | null
 }
 
+export interface MoveTargets {
+  bookingId: string
+  weightKg: number
+  flights: {
+    id: string
+    flightNumber: string
+    depAt: string
+    arrAt: string
+    availableKg: number
+    fits: boolean
+    conflictWith: string | null
+  }[]
+}
+
 export interface TimelineEvent {
   id: string
   occurredAt: string
@@ -422,6 +436,34 @@ export function useCargoApi() {
       const query = qs.toString()
       return send<DeskListResult>(`/api/staff/cargo/bookings${query ? `?${query}` : ''}`)
     },
+
+    downloadBookingsCsv: async (params: {
+      status?: string
+      q?: string
+      flightId?: string
+      shipDate?: string
+      commodityTypeId?: string
+    }) => {
+      const qs = new URLSearchParams({ format: 'csv' })
+      if (params.status) qs.set('status', params.status)
+      if (params.q) qs.set('q', params.q)
+      if (params.flightId) qs.set('flight_id', params.flightId)
+      if (params.shipDate) qs.set('ship_date', params.shipDate)
+      if (params.commodityTypeId) qs.set('commodity_type_id', params.commodityTypeId)
+      const res = await fetchWithAuth(`/api/staff/cargo/bookings?${qs.toString()}`)
+      if (!res.ok) throw await readError(res)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'cargo-bookings.csv'
+      a.click()
+      URL.revokeObjectURL(url)
+    },
+
+    listMoveTargets: (id: string) => send<MoveTargets>(`/api/staff/cargo/bookings/${id}/flights`),
+    moveToFlight: (id: string, body: { flight_id: string; note?: string }) =>
+      send<{ status: string; flightId: string }>(`/api/staff/cargo/bookings/${id}/flight`, { method: 'PUT', body: JSON.stringify(body) }),
 
     getBookingDetail: (id: string) => send<BookingDetail>(`/api/staff/cargo/bookings/${id}`),
 

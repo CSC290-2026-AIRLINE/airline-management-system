@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { ArrowLeft, Ban, Bell, CheckCircle, Clock, Loader2, PackageCheck, Plane, Scale, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, Ban, Bell, CheckCircle, Clock, FileText, Loader2, PackageCheck, Plane, Scale, ShieldAlert } from 'lucide-react'
 import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 import { Dialog, DialogContent, DialogTitle } from '@staff-web/components/ui/dialog'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Input } from '@staff-web/components/ui/input'
+import { RadioGroup, RadioGroupItem } from '@staff-web/components/ui/radio-group'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { Label } from '@staff-web/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
 import { Textarea } from '@staff-web/components/ui/textarea'
 import { Route } from '@staff-web/routes/_authenticated/cargo/bookings.$id'
-import { useCargoApi, type BookingDetail } from './cargo-api'
+import { fmtAwb } from './awb'
+import { useCargoApi, type BookingDetail, type MoveTargets } from './cargo-api'
 
 const STATUS_COLORS: Record<string, string> = {
   held: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
@@ -114,6 +118,7 @@ export function BookingDetailPage() {
   if (!detail) return null
 
   const { header, goods, quote, flight, shipper, consignee, timeline, notices } = detail
+  const refundEvent = timeline.find((e) => e.refundId)
 
   return (
     <>
@@ -123,9 +128,20 @@ export function BookingDetailPage() {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="m-0 font-sans text-2xl font-bold tracking-tight text-foreground">{header.bookingRef}</h1>
         <StatusBadge status={header.currentStatus} />
-        {header.awbNumber && <span className="font-mono text-sm text-muted-foreground">AWB {header.awbNumber}</span>}
+        {header.awbNumber && <span className="font-mono text-sm text-muted-foreground">AWB {fmtAwb(header.awbNumber)}</span>}
         <span className="ml-auto text-sm font-semibold">{money(header.quotedCharge, header.currency)}</span>
       </div>
+
+      {header.awbNumber && (
+        <div>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/cargo/bookings/$id/waybill" params={{ id: header.id }}>
+              <FileText className="mr-1.5 size-4" />
+              View Air Waybill
+            </Link>
+          </Button>
+        </div>
+      )}
 
       <BookingActions
         bookingId={header.id}
@@ -247,6 +263,12 @@ export function BookingDetailPage() {
           <CardContent className="grid grid-cols-2 gap-3">
             <Field label="Amount">{money(header.quotedCharge, header.currency)}</Field>
             <Field label="Payment ID">{header.paymentId ?? '—'}</Field>
+            {refundEvent && (
+              <>
+                <Field label="Refunded">{money(header.quotedCharge, header.currency)} (full amount)</Field>
+                <Field label="Refund ID">{refundEvent.refundId}</Field>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -472,6 +494,7 @@ function BookingActions({
   const showLoaded = status === 'accepted'
   const showDelivered = status === 'arrived'
   const showCancel = ['booked', 'accepted', 'rebook_required'].includes(status)
+  const showMove = status === 'rebook_required'
 
   if (!showWeigh && !showLoaded && !showDelivered && !showCancel) return null
 
@@ -482,8 +505,111 @@ function BookingActions({
       {showDelivered && (
         <ConfirmEventButton bookingId={bookingId} event="delivered" label="Mark delivered" icon={CheckCircle} onDone={onDone} />
       )}
+      {showMove && <MoveFlightButton bookingId={bookingId} onDone={onDone} />}
       {showCancel && <CancelButton bookingId={bookingId} amount={quotedCharge} currency={currency} onDone={onDone} />}
     </div>
+  )
+}
+
+function MoveFlightButton({ bookingId, onDone }: { bookingId: string; onDone: () => void }) {
+  const api = useCargoApi()
+  const [open, setOpen] = useState(false)
+  const [targets, setTargets] = useState<MoveTargets | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [flightId, setFlightId] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const openDialog = async () => {
+    setOpen(true)
+    setLoading(true)
+    setError(null)
+    setFlightId('')
+    try {
+      setTargets(await api.listMoveTargets(bookingId))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load flights')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const move = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.moveToFlight(bookingId, { flight_id: flightId, note: note.trim() || undefined })
+      setOpen(false)
+      onDone()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not move the booking')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Button variant="outline" onClick={() => void openDialog()}>
+        <Plane className="mr-1.5 size-4" />
+        Move to another flight
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogTitle>Move to another flight</DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            Pick a later flight on the same route. The paid charge and the Air Waybill number stay the same.
+          </p>
+          {loading && <Skeleton className="h-24 w-full" />}
+          {targets && targets.flights.length === 0 && (
+            <Alert>
+              <AlertDescription>No open flight on this route can take the booking right now. Refund it instead.</AlertDescription>
+            </Alert>
+          )}
+          {targets && targets.flights.length > 0 && (
+            <RadioGroup value={flightId} onValueChange={setFlightId} className="gap-2">
+              {targets.flights.map((f) => (
+                <Label
+                  key={f.id}
+                  htmlFor={`move-${f.id}`}
+                  className={`flex items-start gap-3 rounded-md border p-3 ${f.fits ? 'cursor-pointer' : 'opacity-60'}`}
+                >
+                  <RadioGroupItem id={`move-${f.id}`} value={f.id} disabled={!f.fits} className="mt-0.5" />
+                  <span className="flex flex-col gap-0.5 text-sm">
+                    <span className="font-semibold">
+                      {f.flightNumber} · {fmt(f.depAt)}
+                    </span>
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {f.availableKg.toLocaleString()} kg free
+                      {f.conflictWith ? ` · cannot share with ${f.conflictWith}` : !f.fits ? ' · not enough room' : ''}
+                    </span>
+                  </span>
+                </Label>
+              ))}
+            </RadioGroup>
+          )}
+          <div className="grid gap-1.5">
+            <Label htmlFor="move-note">Note (optional)</Label>
+            <Textarea id="move-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
+          </div>
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={busy || !flightId} onClick={() => void move()}>
+              {busy ? <Loader2 className="mr-1 size-3 animate-spin" /> : null}
+              Move booking
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
