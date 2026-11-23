@@ -3,9 +3,12 @@
 // Unit cost is filled in by the flight-report submit using the
 // earliest-expiring valid aircraft batch.
 
+import { randomUUID } from 'node:crypto'
 import { Injectable } from '@nestjs/common'
 import { DbService } from '../../../db/db.service'
 import { ApiErrorException } from '../common/api-error'
+import { CateringSettingsService } from '../common/catering-settings.service'
+import { StubPaymentsService } from '../common/cross-module-ports'
 import { toNumber } from '../common/mapping'
 
 export interface ProductSaleDto {
@@ -24,7 +27,11 @@ export interface ProductSaleDto {
 
 @Injectable()
 export class SalesService {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly payments: StubPaymentsService,
+    private readonly cateringSettings: CateringSettingsService,
+  ) {}
 
   async listByFlight(flightId: string): Promise<ProductSaleDto[]> {
     const rows = await this.db.product_sale.findMany({
@@ -39,8 +46,8 @@ export class SalesService {
     if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
       throw new ApiErrorException('REPORT_INVALID', 'quantity must be a positive integer.', 400)
     }
-    if (!Number.isFinite(input.unitPriceAmount) || input.unitPriceAmount < 0) {
-      throw new ApiErrorException('REPORT_INVALID', 'unitPriceAmount must be 0 or more.', 400)
+    if (!Number.isFinite(input.unitPriceAmount) || input.unitPriceAmount <= 0) {
+      throw new ApiErrorException('REPORT_INVALID', 'unitPriceAmount must be more than 0.', 400)
     }
     const flight = await this.db.flight.findUnique({ where: { id: flightId } })
     if (!flight) throw new ApiErrorException('NOT_FOUND', 'Flight not found.', 404)
@@ -52,7 +59,18 @@ export class SalesService {
     if (onAircraft === 0) {
       throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Product is not loaded on the aircraft for this flight.', 409)
     }
-    const paymentId = 'f5-confirmed' // F5 owns payments; F12 only stores the id.
+    const currency = await this.cateringSettings.baseCurrency()
+    const total = input.quantity * input.unitPriceAmount
+    const payment = await this.payments.collect({
+      reference: `sale:${flightId}:${input.productId}:${randomUUID()}`,
+      amount: total,
+      currency,
+      customerId: null,
+    })
+    // Nothing is stored unless F5 confirms the payment.
+    if (payment.status !== 'paid') {
+      throw new ApiErrorException('PAYMENT_FAILED', 'The payment was not accepted.', 402)
+    }
     const now = new Date()
     const row = await this.db.product_sale.create({
       data: {
@@ -60,9 +78,9 @@ export class SalesService {
         product_id: input.productId,
         quantity: input.quantity,
         unit_price_amount: input.unitPriceAmount,
-        total_amount: input.quantity * input.unitPriceAmount,
-        currency: 'USD',
-        payment_id: paymentId,
+        total_amount: total,
+        currency,
+        payment_id: payment.paymentId,
         sold_at: now,
       },
       include: { product: true },

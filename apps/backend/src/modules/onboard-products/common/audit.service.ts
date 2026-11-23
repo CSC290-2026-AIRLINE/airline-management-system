@@ -1,18 +1,20 @@
-// AuditPort: writes audit_log rows. F15 (Audit) owns the schema; until
-// the audit module ships its own write API, F12 writes through Prisma
-// directly so every state change is captured. The record call accepts
-// the same transaction client Prisma returns from $transaction so the
-// audit row is committed atomically with the data change.
+// AuditPort: F12's entry into Feature 15's audit writer. Every row is written with source_feature '12' and carries a
+// reason (the caller's, or the summary when the caller gave none). The record call takes the transaction client so the
+// audit row commits atomically with the data change.
 
 import { Injectable } from '@nestjs/common'
-import { DbService } from '../../../db/db.service'
 import type { Prisma } from '../../../db/generated/prisma/client'
+import { AuditService as F15AuditService } from '../../admin-console/audit/audit.service'
+import type { AuditAction } from '../../admin-console/dto/audit-query.dto'
+
+export const F12_SOURCE_FEATURE = '12'
 
 export interface AuditInput {
   actorType: 'staff' | 'customer' | 'system'
   actorId: string | null
   actorRole: string | null
-  sourceFeature: 'onboard-products'
+  // Ignored: every F12 row is written as source_feature '12'. Kept so existing callers still compile.
+  sourceFeature?: string
   action: string
   entityType: string
   entityId: string | null
@@ -27,30 +29,22 @@ export interface AuditPort {
 
 @Injectable()
 export class AuditService implements AuditPort {
-  constructor(private readonly db: DbService) {}
+  constructor(private readonly f15: F15AuditService) {}
 
   async record(input: AuditInput, tx?: Prisma.TransactionClient): Promise<void> {
-    const client = tx ?? this.db
-    await client.audit_log.create({
-      data: {
-        occurred_at: new Date(),
-        actor_type: input.actorType,
-        actor_id: input.actorId,
-        actor_role: input.actorRole,
-        source_feature: input.sourceFeature,
-        // The audit_log action column is constrained to a small enum
-        // owned by the Auth/Audit team. F12 writes its own
-        // entity-qualified action ("purchase_receipt.create",
-        // "stock_movement.adjust", ...) which we map onto the closest
-        // allowed verb here.
-        action: mapAction(input.action),
-        entity_type: input.entityType,
-        entity_id: input.entityId,
+    await this.f15.write(
+      {
+        actor: { type: input.actorType, id: input.actorId, role: input.actorRole },
+        sourceFeature: F12_SOURCE_FEATURE,
+        action: mapAction(input.action) as AuditAction,
+        entityType: input.entityType,
+        entityId: input.entityId,
         summary: input.summary,
-        reason: input.reason ?? null,
-        is_sensitive: input.isSensitive ?? false,
+        reason: input.reason?.trim() || input.summary,
+        sensitive: input.isSensitive,
       },
-    })
+      tx,
+    )
   }
 }
 

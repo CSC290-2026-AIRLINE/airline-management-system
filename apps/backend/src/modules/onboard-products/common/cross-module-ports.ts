@@ -1,12 +1,10 @@
-// Booking/Payment/Tier ports are stubs that satisfy the F12 spec without
-// any cross-team dependency. Each port returns a deterministic stub for
-// the well-known F12 test fixtures; when the owning modules ship their
-// own HTTP APIs, swap the implementation and the rest of F12 stays
-// unchanged. F12 never reaches for booking_passenger_id or payment_id
-// foreign keys — they are opaque strings persisted on product_order_line
-// and product_sale.
+// Cross-module ports. Bookings (F3b) and tier (F11) are read from their tables,
+// read-only. Payments (F5) has no module yet, so that port is still a stub: swap
+// the implementation when F5 ships and the rest of F12 stays unchanged.
+// booking_passenger_id and payment_id are opaque ids with no foreign key.
 
 import { Injectable } from '@nestjs/common'
+import { DbService } from '../../../db/db.service'
 import { isUuid } from './mapping'
 import type { F12Cabin } from './mapping'
 
@@ -18,42 +16,40 @@ export interface BookingPassenger {
 export interface BookingSnapshot {
   id: string
   // null while F3b has no schema to read. The order service treats a
-  // null owner as "ownership cannot be checked yet" and relies on the
-  // authenticated customer for the rest; the port swap makes it real.
+  // null owner as "ownership cannot be checked".
   customerId: string | null
-  flightId: string | null
-  cabin: F12Cabin | null
+  // The flights this booking flies, with the cabin of each.
+  segments: { flightId: string; cabin: F12Cabin }[]
   status: 'confirmed' | 'cancelled' | 'pending'
   passengers: BookingPassenger[]
 }
 
 export interface BookingsPort {
-  isFlightBookable(flightId: string): Promise<boolean>
   getBooking(bookingId: string): Promise<BookingSnapshot | null>
 }
 
 @Injectable()
-export class StubBookingsService implements BookingsPort {
-  async isFlightBookable(flightId: string): Promise<boolean> {
-    // Until F3b ships, we say every flight is bookable; F12 only reads
-    // this when deciding whether to show a "Catering order" on a flight.
-    await Promise.resolve(flightId)
-    return true
-  }
+export class DbBookingsService implements BookingsPort {
+  constructor(private readonly db: DbService) {}
 
   async getBooking(bookingId: string): Promise<BookingSnapshot | null> {
-    // A booking id that is not a UUID cannot be a real booking, so the
-    // order is refused with BOOKING_NOT_CONFIRMED. Anything else is
-    // treated as a confirmed booking that F3b has not modelled yet.
-    await Promise.resolve(bookingId)
     if (!isUuid(bookingId)) return null
+    const row = await this.db.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        booking_segment: { orderBy: { segment_order: 'asc' } },
+        booking_passenger: { include: { passenger: true } },
+      },
+    })
+    if (!row) return null
     return {
-      id: bookingId,
-      customerId: null,
-      flightId: null,
-      cabin: null,
-      status: 'confirmed',
-      passengers: [],
+      id: row.id,
+      customerId: row.customer_id,
+      segments: row.booking_segment.map((s) => ({ flightId: s.flight_id, cabin: s.cabin as F12Cabin })),
+      status: row.status === 'confirmed' ? 'confirmed' : row.status === 'held' ? 'pending' : 'cancelled',
+      passengers: row.booking_passenger
+        .filter((p) => p.passenger_type !== 'infant')
+        .map((p) => ({ id: p.id, name: `${p.passenger.first_name} ${p.passenger.last_name}` })),
     }
   }
 }
@@ -66,7 +62,8 @@ export interface PaymentRequest {
   reference: string
   amount: number
   currency: string
-  customerId: string
+  // null for an on-board sale, which has no customer.
+  customerId: string | null
 }
 
 export interface PaymentStartResult {
@@ -79,59 +76,115 @@ export interface PaymentsPort {
   // Start collecting a total. Returns the payment id F12 stores on the
   // order and the status F5 reports first.
   startPayment(request: PaymentRequest): Promise<PaymentStartResult>
+  // Collect an on-board sale after the flight. F5 answers at once: paid or failed.
+  collect(request: PaymentRequest): Promise<PaymentStartResult>
+  // Record the result F5 reported for a payment.
+  settle(paymentId: string, result: 'paid' | 'failed'): Promise<void>
   // Ask F5 to refund a paid order (customer cancel, or a payment that
   // arrived after the order expired).
   refund(paymentId: string, amount: number, reason: string): Promise<boolean>
 }
 
+// F5 has its tables (`payment`) but no service yet, so F12 writes the payment row itself with provider 'fake'. Swap this
+// class for F5's service when it ships; nothing else in F12 changes.
 @Injectable()
 export class StubPaymentsService implements PaymentsPort {
+  constructor(private readonly db: DbService) {}
+
   async isPaymentConfirmed(paymentId: string): Promise<boolean> {
-    // Treat the spec's well-known sentinel as confirmed; everything
-    // else is unknown (treated as not paid yet).
-    await Promise.resolve(paymentId)
-    return paymentId === 'f5-confirmed'
+    if (!isUuid(paymentId)) return false
+    const row = await this.db.payment.findUnique({ where: { id: paymentId }, select: { status: true } })
+    return row?.status === 'captured'
   }
 
   async startPayment(request: PaymentRequest): Promise<PaymentStartResult> {
-    // F5 does not exist yet. Mint a deterministic payment id from the
-    // order reference so a retry of the checkout reuses the same id,
-    // and report the payment as pending: F5 confirms it later through
-    // POST /payment-events.
-    await Promise.resolve(request)
-    return { paymentId: deterministicPaymentId(request.reference), status: 'pending' }
+    // A retry of the same checkout reuses the same payment (the idempotency key is the order reference).
+    const key = `f12:${request.reference}`
+    const existing = await this.db.payment.findFirst({ where: { payer_customer_id: request.customerId, idempotency_key: key } })
+    if (existing) return { paymentId: existing.id, status: 'pending' }
+    const now = new Date()
+    const row = await this.db.payment.create({
+      data: {
+        source_feature: 12,
+        purchase_ref: request.reference,
+        payer_customer_id: request.customerId,
+        idempotency_key: key,
+        status: 'created',
+        provider: 'fake',
+        currency: request.currency,
+        amount_total: request.amount,
+        card_amount: request.amount,
+        started_at: now,
+        expires_at: new Date(now.getTime() + 60 * 60_000),
+      },
+    })
+    // F5 confirms later through POST /payment-events.
+    return { paymentId: row.id, status: 'pending' }
+  }
+
+  async collect(request: PaymentRequest): Promise<PaymentStartResult> {
+    const now = new Date()
+    const row = await this.db.payment.create({
+      data: {
+        source_feature: 12,
+        purchase_ref: request.reference,
+        payer_customer_id: request.customerId,
+        idempotency_key: `f12:${request.reference}`,
+        status: 'captured',
+        provider: 'fake',
+        currency: request.currency,
+        amount_total: request.amount,
+        card_amount: request.amount,
+        started_at: now,
+        expires_at: new Date(now.getTime() + 60 * 60_000),
+        authorised_at: now,
+        captured_at: now,
+      },
+    })
+    return { paymentId: row.id, status: 'paid' }
+  }
+
+  async settle(paymentId: string, result: 'paid' | 'failed'): Promise<void> {
+    if (!isUuid(paymentId)) return
+    const now = new Date()
+    await this.db.payment.updateMany({
+      where: { id: paymentId, status: 'created' },
+      data: result === 'paid' ? { status: 'captured', authorised_at: now, captured_at: now } : { status: 'failed' },
+    })
   }
 
   async refund(paymentId: string, amount: number, reason: string): Promise<boolean> {
-    await Promise.resolve({ paymentId, amount, reason })
+    void amount
+    void reason
+    if (!isUuid(paymentId)) return false
+    await this.db.payment.updateMany({ where: { id: paymentId, status: 'captured' }, data: { status: 'reversed' } })
     return true
   }
 }
 
-// A stable UUID-shaped payment id derived from the order id, so the
-// same order always maps to the same payment.
-export function deterministicPaymentId(reference: string): string {
-  let hash = 0
-  for (let i = 0; i < reference.length; i++) {
-    hash = (hash * 31 + reference.charCodeAt(i)) >>> 0
-  }
-  const hex = hash.toString(16).padStart(8, '0')
-  return `f5000000-0000-4000-8000-${hex.repeat(4).slice(0, 12)}`
-}
-
-export type TierStatus = 'none' | 'silver' | 'gold' | 'platinum'
+// 'none' or the F11 tier code. A missing or lapsed tier is 'none' and never blocks an order.
+export type TierStatus = string
 
 export interface TierPort {
   getTierForCustomer(customerId: string): Promise<TierStatus>
 }
 
 @Injectable()
-export class StubTierService implements TierPort {
+export class DbTierService implements TierPort {
+  constructor(private readonly db: DbService) {}
+
   async getTierForCustomer(customerId: string): Promise<TierStatus> {
-    // F11 (Loyalty) is not implemented yet. F12 falls back to no tier
-    // benefit, so all meal lines are charged at the catalog price.
-    await Promise.resolve(customerId)
-    return 'none'
+    try {
+      const member = await this.db.loyalty_member.findUnique({
+        where: { customer_id: customerId },
+        select: { tier_code: true, tier_expires_at: true },
+      })
+      if (!member?.tier_code) return 'none'
+      if (member.tier_expires_at && member.tier_expires_at.getTime() < Date.now()) return 'none'
+      return member.tier_code
+    } catch {
+      return 'none'
+    }
   }
 }
 

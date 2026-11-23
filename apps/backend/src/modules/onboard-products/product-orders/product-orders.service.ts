@@ -26,7 +26,7 @@ import { resolveOfferings, type OfferingRow } from '../common/menu'
 import { toNumber, type F12Cabin } from '../common/mapping'
 import { cutoffAt, isOrderWindowOpen, orderExpiresAt, priceOrder, type OrderLineInput } from '../common/order-pricing'
 import { ReservationsService } from '../common/reservations.service'
-import { StubBookingsService, StubPaymentsService, StubTierService } from '../common/cross-module-ports'
+import { DbBookingsService, StubPaymentsService, DbTierService } from '../common/cross-module-ports'
 import { CabinSettingsService } from '../cabin-settings/cabin-settings.service'
 import {
   parseCheckoutInput,
@@ -67,9 +67,9 @@ export class ProductOrdersService {
     private readonly db: DbService,
     private readonly clock: SystemClock,
     private readonly audit: AuditService,
-    private readonly bookings: StubBookingsService,
+    private readonly bookings: DbBookingsService,
     private readonly payments: StubPaymentsService,
-    private readonly tiers: StubTierService,
+    private readonly tiers: DbTierService,
     private readonly settings: CabinSettingsService,
     private readonly cateringSettings: CateringSettingsService,
     private readonly flightContext: FlightContextService,
@@ -152,6 +152,14 @@ export class ProductOrdersService {
     }
     if (booking.customerId && booking.customerId !== customerId) {
       throw new ApiErrorException('BOOKING_NOT_CONFIRMED', 'The booking belongs to another customer.', 403)
+    }
+
+    if (!booking.segments.some((s) => s.flightId === input.flightId && s.cabin === input.cabin)) {
+      throw new ApiErrorException('BOOKING_NOT_CONFIRMED', 'The booking has no seat on that flight and cabin.', 409)
+    }
+    const passengerIds = new Set(booking.passengers.map((p) => p.id))
+    if (input.lines.some((l) => l.bookingPassengerId && !passengerIds.has(l.bookingPassengerId))) {
+      throw new ApiErrorException('BOOKING_NOT_CONFIRMED', 'A passenger on the order is not on the booking.', 409)
     }
 
     const flight = await this.flightContext.getFlight(input.flightId)
@@ -255,6 +263,10 @@ export class ProductOrdersService {
           currency,
           customerId,
         })
+        // F5 refused the payment at once: nothing is stored (the transaction rolls back, so the reservation goes too).
+        if (payment.status === 'failed') {
+          throw new ApiErrorException('PAYMENT_FAILED', 'The payment was not accepted.', 402)
+        }
         await tx.product_order.update({ where: { id: order.id }, data: { payment_id: payment.paymentId } })
       }
       await this.audit.record(
@@ -287,7 +299,7 @@ export class ProductOrdersService {
       include: { product_order_line: { include: { product: true } }, flight: true },
       orderBy: { created_at: 'desc' },
     })
-    return rows.map((row) => this.toDto(row))
+    return Promise.all(rows.map((row) => this.toDtoWithCutoff(row)))
   }
 
   async get(customerId: string, orderId: string): Promise<ProductOrderDto> {
@@ -296,7 +308,7 @@ export class ProductOrdersService {
       include: { product_order_line: { include: { product: true } }, flight: true },
     })
     if (!row) throw new ApiErrorException('NOT_FOUND', 'Order not found.', 404)
-    return this.toDto(row)
+    return this.toDtoWithCutoff(row)
   }
 
   // -- cancel ---------------------------------------------------------------
@@ -568,6 +580,14 @@ export class ProductOrdersService {
     return 'economy'
   }
 
+  private async toDtoWithCutoff(row: Parameters<ProductOrdersService['toDto']>[0]): Promise<ProductOrderDto> {
+    const dto = this.toDto(row)
+    const flight = await this.flightContext.getFlight(row.flight_id)
+    const settings = await this.settings.resolveForFlight(row.flight_id, row.cabin as F12Cabin)
+    dto.cutoffAt = cutoffAt(flight.scheduledDeparture, settings.orderWindowHours).toISOString()
+    return dto
+  }
+
   private toDto(row: {
     id: string
     booking_id: string
@@ -618,6 +638,7 @@ export class ProductOrdersService {
       paymentStatus: this.paymentStatus(status, row.payment_id),
       paidAt: row.paid_at ? row.paid_at.toISOString() : null,
       expiresAt: row.expires_at.toISOString(),
+      cutoffAt: row.expires_at.toISOString(), // replaced by toDtoWithCutoff
       cancelledAt: row.cancelled_at ? row.cancelled_at.toISOString() : null,
       createdAt: row.created_at.toISOString(),
       lines,

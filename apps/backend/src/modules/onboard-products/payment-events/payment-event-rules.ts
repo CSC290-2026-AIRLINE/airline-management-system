@@ -7,7 +7,7 @@
 //
 // The four actions:
 //   confirm  - the order becomes confirmed and its payment is paid;
-//   fail     - the payment failed, so the order is cancelled and the
+//   fail     - the payment failed, so the order is expired and the
 //              reserved stock is released;
 //   refund   - the money arrived too late (the order had expired, or
 //              it was already cancelled), so F5 is asked to refund it

@@ -89,6 +89,7 @@ export class PaymentEventsService {
         return true
       })
       if (!changed) return this.unchanged(order.id, order.status, order.payment_id)
+      if (order.payment_id) await this.payments.settle(order.payment_id, 'paid')
       return {
         orderId: order.id,
         status: 'confirmed',
@@ -102,7 +103,7 @@ export class PaymentEventsService {
       const changed = await this.db.$transaction(async (tx) => {
         const updated = await tx.product_order.updateMany({
           where: { id: order.id, status: 'pending_payment' },
-          data: { status: 'cancelled', cancelled_at: now },
+          data: { status: 'expired' },
         })
         if (updated.count !== 1) return false
         await tx.product_order_line.updateMany({
@@ -116,7 +117,7 @@ export class PaymentEventsService {
             actorId: null,
             actorRole: 'f5',
             sourceFeature: 'onboard-products',
-            action: 'product_order.cancel',
+            action: 'product_order.expire',
             entityType: 'product_order',
             entityId: order.id,
             summary: `Payment for order ${order.id} failed; the stock was released.`,
@@ -126,9 +127,10 @@ export class PaymentEventsService {
         return true
       })
       if (!changed) return this.unchanged(order.id, order.status, order.payment_id)
+      if (order.payment_id) await this.payments.settle(order.payment_id, 'failed')
       return {
         orderId: order.id,
-        status: 'cancelled',
+        status: 'expired',
         paymentStatus: 'failed',
         applied: true,
         refunded: false,

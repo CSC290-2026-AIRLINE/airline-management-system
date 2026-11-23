@@ -45,6 +45,8 @@ export interface ProductOrderDto {
   paymentStatus: ProductOrderPaymentStatus
   paidAt: string | null
   expiresAt: string
+  // The last moment the customer can change or cancel the order: the flight's scheduled departure minus the order window.
+  cutoffAt: string
   cancelledAt: string | null
   createdAt: string
   lines: ProductOrderLineDto[]

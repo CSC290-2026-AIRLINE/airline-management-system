@@ -658,7 +658,8 @@ export function mapCateringOrder(wire: WireCateringOrder): CateringOrder {
     cutoffAt: toIsoString(wire.cutoffAt),
     generatedAt: toIsoString(wire.generatedAt),
     loadedAt: toNullableIsoString(wire.loadedAt),
-    warehouseId: required('GET /api/staff/flights/:flightId/catering-order', 'warehouseId', wire.warehouseId),
+    // A flight whose order is not generated yet (status 'open') has no warehouse picked yet.
+    warehouseId: wire.warehouseId ?? '',
     aircraftId: required('GET /api/staff/flights/:flightId/catering-order', 'aircraftId', wire.aircraftId),
     lines: wire.lines.map(mapCateringOrderLine),
   }
