@@ -560,7 +560,7 @@ async function seedCustomerService() {
     }
   }
 
-  // Demo guest bookings
+  // Demo customer bookings
   const guestBookings = [
     { booking_ref: 'P4LM8T', first_name: 'Somchai', last_name: 'Prasert', email: 's.prasert@example.com' },
     { booking_ref: 'H7L3N6', first_name: 'Kanda', last_name: 'Srisuk', email: 'kanda.s@example.com' },

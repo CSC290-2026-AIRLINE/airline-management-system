@@ -4,15 +4,7 @@ import { STATUS_STEPS, type CaseStatus } from './types'
 import { errorStyle } from './styles'
 
 /** Layout wrapper with Figma-style Customer Navbar and background */
-export function ComplaintPage({
-  children,
-  isGuest = false,
-  onSignInClick,
-}: {
-  children: ReactNode
-  isGuest?: boolean
-  onSignInClick?: () => void
-}) {
+export function ComplaintPage({ children }: { children: ReactNode }) {
   return (
     <div
       className="customer-shell"
@@ -25,7 +17,7 @@ export function ComplaintPage({
         textAlign: 'left',
       }}
     >
-      <CustomerNavbar isGuest={isGuest} onSignInClick={onSignInClick} />
+      <CustomerNavbar />
       <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '32px 24px 80px' }}>{children}</main>
     </div>
   )

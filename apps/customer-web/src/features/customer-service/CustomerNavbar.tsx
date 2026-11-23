@@ -4,12 +4,7 @@ import { useUser } from '@clerk/clerk-react'
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import flythonLogo from '../../assets/flython-logo.png'
 
-interface CustomerNavbarProps {
-  isGuest?: boolean
-  onSignInClick?: () => void
-}
-
-export function CustomerNavbar({ isGuest = false, onSignInClick }: CustomerNavbarProps = {}) {
+export function CustomerNavbar() {
   const navigate = useNavigate()
   const { user, logout } = useAppAuth()
   const { user: clerkUser } = useUser()
@@ -65,15 +60,10 @@ export function CustomerNavbar({ isGuest = false, onSignInClick }: CustomerNavba
           ))}
 
           {/* User Profile / Sign in Pill button */}
-          {isGuest || !user ? (
+          {!user ? (
             <div
               onClick={() => {
-                sessionStorage.removeItem('f13_guest_mode')
-                if (user && onSignInClick) {
-                  onSignInClick()
-                } else {
-                  void navigate({ to: '/login', search: { redirect: '/complaints' } })
-                }
+                void navigate({ to: '/login', search: { redirect: '/complaints' } })
               }}
               style={{
                 display: 'flex',
@@ -130,7 +120,7 @@ export function CustomerNavbar({ isGuest = false, onSignInClick }: CustomerNavba
         </div>
 
         {/* Account Menu Dropdown (Figma Frame 01 - Account Menu Open) */}
-        {!isGuest && menuOpen && (
+        {menuOpen && (
           <>
             <div
               onClick={() => setMenuOpen(false)}
@@ -189,7 +179,6 @@ export function CustomerNavbar({ isGuest = false, onSignInClick }: CustomerNavba
                 </div>
                 <div
                   onClick={() => {
-                    sessionStorage.removeItem('f13_guest_mode')
                     setMenuOpen(false)
                     void navigate({
                       to: '/complaints/check',

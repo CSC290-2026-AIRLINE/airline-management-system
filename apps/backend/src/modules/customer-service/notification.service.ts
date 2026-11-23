@@ -546,6 +546,8 @@ export class NotificationService implements OnModuleInit {
         })
       }
 
+      // The name comes from the event's own recipient map, or from the recipient's account. Without either it stays empty:
+      // looking it up by contact address would pick up any passenger on any booking made with that address.
       const payload = (notif.inbound_event.payload as Record<string, any>) ?? {}
       const recipientNames = (payload.recipient_names as Record<string, string>) ?? {}
       let passengerName = recipientNames[notif.recipient] ?? payload.passenger_name
@@ -557,20 +559,6 @@ export class NotificationService implements OnModuleInit {
         })
         if (cust?.passenger) {
           passengerName = `${cust.passenger.first_name} ${cust.passenger.last_name}`.trim()
-        }
-      }
-
-      if (!passengerName && db.booking_passenger) {
-        const bp = await db.booking_passenger.findFirst({
-          where: {
-            booking: {
-              OR: [{ contact_email: notif.recipient }, { contact_phone: notif.recipient }],
-            },
-          },
-          include: { passenger: true },
-        })
-        if (bp?.passenger) {
-          passengerName = `${bp.passenger.first_name} ${bp.passenger.last_name}`.trim()
         }
       }
 

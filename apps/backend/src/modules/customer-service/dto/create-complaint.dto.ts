@@ -43,28 +43,10 @@ export class CreateComplaintDto {
   @MaxLength(4000)
   description!: string
 
-  // Optional fields when submitted from the unified form
+  // Optional: narrows the check that the flight is on one of the customer's own bookings.
   @IsOptional()
   @Transform(upperTrim)
   @IsString()
   @MaxLength(12)
   booking_reference?: string
-
-  @IsOptional()
-  @Transform(trim)
-  @IsString()
-  @MaxLength(100)
-  surname?: string
-
-  @IsOptional()
-  @Transform(trim)
-  @IsString()
-  @MaxLength(200)
-  contact_email?: string
-
-  @IsOptional()
-  @Transform(trim)
-  @IsString()
-  @MaxLength(50)
-  contact_phone?: string
 }

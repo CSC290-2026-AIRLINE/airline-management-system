@@ -50,9 +50,6 @@ export interface NewComplaint {
   issue?: string
   description: string
   booking_reference?: string
-  surname?: string
-  contact_email?: string
-  contact_phone?: string
 }
 
 export const TYPES: { value: ComplaintType; icon: string; label: string; desc: string }[] = [

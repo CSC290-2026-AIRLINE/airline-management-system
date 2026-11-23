@@ -697,6 +697,37 @@ describe('NotificationService', () => {
       })
     })
 
+    it('leaves the name empty on retry when the event has no recipient_names, instead of a co-traveller’s name', async () => {
+      // An event processed before recipient_names existed, for a booker who travels with a family member.
+      db.notification.findUnique.mockResolvedValue({
+        id: 'notif-fail-legacy',
+        status: 'failed',
+        attempts: 1,
+        recipient: 'booker@example.com',
+        customer_id: null,
+        subject: null,
+        body: null,
+        type_code: 'flight_delayed',
+        channel: 'email',
+        inbound_event: { payload: { flight_number: 'FY308', service_date: '2026-11-12' } },
+      })
+      db.booking_passenger.findFirst.mockResolvedValue({ passenger: { first_name: 'Co', last_name: 'Traveller' } })
+      db.notification_template.findUnique.mockResolvedValue({
+        is_active: true,
+        subject_template: 'Flight {{flight_number}} delayed',
+        body_template: 'Dear {{passenger_name}}, your flight {{flight_number}} is delayed.',
+      })
+      clock.now.mockReturnValue(LATER)
+
+      await service.retryFailedNotification('notif-fail-legacy')
+
+      expect(db.booking_passenger.findFirst).not.toHaveBeenCalled()
+      expect(db.notification.update).toHaveBeenCalledWith({
+        where: { id: 'notif-fail-legacy' },
+        data: expect.objectContaining({ body: 'Dear , your flight FY308 is delayed.', status: 'sent' }),
+      })
+    })
+
     it('gives a co-traveller without an account no customer id, instead of the booker’s', async () => {
       db.booking_segment.findMany.mockResolvedValue([
         {
