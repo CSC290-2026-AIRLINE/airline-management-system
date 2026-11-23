@@ -26,7 +26,8 @@
 		"node": ">=24.0.0"
 	},
 	"scripts": {
-		"dev": "npm run db:up && concurrently -n \"BACKEND,CUSTOMER,STAFF\" -c \"blue,green,magenta\" \"npm run start:dev -w apps/backend\" \"npm run dev -w apps/customer-web\" \"npm run dev -w apps/staff-web\"",
+		"dev": "npm run db:up && concurrently -n \"BACKEND,CUSTOMER,STAFF,STRIPE\" -c \"blue,green,magenta,yellow\" \"npm run start:dev -w apps/backend\" \"npm run dev -w apps/customer-web\" \"npm run dev -w apps/staff-web\" \"npm run stripe:listen\"",
+		"stripe:listen": "node scripts/stripe-listen.mjs",
 		"db:generate": "npm exec -w apps/backend -- prisma generate",
 		"db:up": "docker compose -f docker-compose.yml up -d",
 		"db:down": "docker compose -f docker-compose.yml down",
@@ -40,6 +41,7 @@
 		"db:seed:security": "npm run db:seed:security -w apps/backend --"
 	},
 	"devDependencies": {
+		"@stripe/cli": "^1.55.14",
 		"concurrently": "^8.2.2"
 	},
 	"dependencies": {

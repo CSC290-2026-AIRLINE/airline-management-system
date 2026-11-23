@@ -268,7 +268,11 @@ STRIPE_SECRET_KEY="sk_test_…"        # Developers → API keys
 STRIPE_WEBHOOK_SECRET="whsec_…"      # printed by `stripe listen`, below
 ```
 
-Forward Stripe's webhooks to your machine with the Stripe CLI, then pay with the test card `4242 4242 4242 4242`:
+Stripe cannot reach `localhost`, so the Stripe CLI forwards its webhooks to your machine. **`npm run dev` starts it for you**
+(`scripts/stripe-listen.mjs`) when `PAYMENT_PROVIDER="stripe"` and `STRIPE_SECRET_KEY` is a test key. It is skipped with a
+message when the provider is `fake` or the CLI is missing (it is the `@stripe/cli` dev dependency, so `npm install` gets it), and it warns
+when `STRIPE_WEBHOOK_SECRET` is not the CLI's signing secret (`stripe listen --print-secret` prints it; it is stable per
+account and machine). Then pay with the test card `4242 4242 4242 4242`. To run it by hand instead:
 
 ```
 stripe listen --events payment_intent.amount_capturable_updated,payment_intent.payment_failed,checkout.session.expired,refund.updated,refund.failed --forward-to localhost:8080/api/webhooks/stripe
@@ -280,8 +284,9 @@ accepts our requests.
 
 ## When the rest lands
 
-- **Seller confirmation** — Features 3b, 6, 12 and 17 register their confirmation with `registerSellerConfirmation`.
-  Until one does, an authorised card payment counts as confirmed.
+- **Seller confirmation** — Features 3 (flight bookings), 12 (onboard orders) and 17 (cargo) register their confirmation with
+  `registerSellerConfirmation` (see `payments-booking`). Feature 6 (excess baggage) does not yet; until it does, an authorised card
+  payment of its source counts as confirmed.
 - **A refund to the card that must be sent again** — a refund whose payout failed is not retried from the staff screen: a lost
   first answer could pay the customer twice. The schema's own answer is a new refund (`source_key` `reissue:<refund id>`),
   which is not built yet. Staff can return it as a voucher or reject it.
@@ -294,7 +299,7 @@ For the Database Team:
 
 - there is no `payment_exception` table — the repository keeps who resolved a problem and the note in memory
 - miles live on Feature 11's redeem rows, so a payment only records the miles it redeemed, not their cash value
-- `payment_setting.capture_retry_limit` (5) and `min_hold_minutes` (3) are not read yet — the mock hard-codes them
+- `payment_setting.capture_retry_limit` (5) and `min_hold_minutes` (3) are read from the table, with those values as the default when a row is missing
 - is `source_feature = 6` excess baggage? The frames also show check-in.
 
 For the Dev Leads:
