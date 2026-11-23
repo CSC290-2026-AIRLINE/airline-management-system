@@ -24,6 +24,7 @@ import { AircraftManagementModule } from '@backend/modules/aircraft-management/a
 import { FlightSchedulingModule } from './modules/flight-scheduling/flight-scheduling.module'
 import { PaymentsCheckoutModule } from './modules/payments-checkout/payments-checkout.module'
 import { PaymentsRefundsModule } from './modules/payments-refunds/payments-refunds.module'
+import { PaymentsBookingModule } from './modules/payments-booking/payments-booking.module'
 import { PaymentsCrewPayModule } from './modules/payments-crew-pay/payments-crew-pay.module'
 // TODO(F5-dev): delete this import and `PaymentsDevToolsModule` below before the PR merges.
 import { PaymentsDevToolsModule } from './modules/payments-dev-tools/payments-dev-tools.module'
@@ -48,6 +49,7 @@ import { PaymentsDevToolsModule } from './modules/payments-dev-tools/payments-de
     FlightSchedulingModule,
     PaymentsCheckoutModule,
     PaymentsRefundsModule,
+    PaymentsBookingModule,
     PaymentsCrewPayModule,
     PaymentsDevToolsModule, // TODO(F5-dev): delete with the dev tools before the PR merges
     LoyaltyModule,

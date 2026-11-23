@@ -40,12 +40,14 @@ import {
   SEAT_PORT,
   SERVICE_REQUEST_PORT,
 } from './contracts'
-import { CheckoutStub } from './stubs/checkout.stub'
+import { PaymentsCheckoutModule } from '@backend/modules/payments-checkout/payments-checkout.module'
+import { BookingChargeAdapter } from '@backend/modules/payments-checkout/booking-charge.adapter'
 import { SchedulingFlightEventSource } from './providers/scheduling-flight-events.adapter'
 import { FlightSchedulingModule } from '@backend/modules/flight-scheduling/flight-scheduling.module'
 import { InventoryService } from './inventory/inventory.service'
 import { LoyaltyStub } from './stubs/loyalty.stub'
-import { RefundStub } from './stubs/refund.stub'
+import { PaymentsRefundsModule } from '@backend/modules/payments-refunds/payments-refunds.module'
+import { BookingRefundAdapter } from '@backend/modules/payments-refunds/booking-refund.adapter'
 import { ScreeningStub } from './stubs/screening.stub'
 import { AircraftSeatMapAdapter } from './providers/aircraft-seat-map.adapter'
 import { SeatService } from './seats/seat.service'
@@ -82,7 +84,7 @@ import { BookingInsuranceService } from './insurance/insurance.service'
   // Feature 15's audit writer, for the staff cancellation entry (B7).
   // Feature 4's pricing module, so the pricing port is the real adapter.
   // Feature 11's loyalty module, for the travel insurance policy.
-  imports: [AuditModule, PricingModule, LoyaltyModule, FlightSchedulingModule],
+  imports: [AuditModule, PricingModule, LoyaltyModule, FlightSchedulingModule, PaymentsRefundsModule, PaymentsCheckoutModule],
   controllers: [
     DevSeatPaymentController,
     DevConfirmController,
@@ -135,8 +137,10 @@ import { BookingInsuranceService } from './insurance/insurance.service'
     { provide: SERVICE_REQUEST_PORT, useExisting: AssistanceService },
     { provide: PRICING_PORT, useClass: PricingAdapter },
     { provide: LOYALTY_PORT, useClass: LoyaltyStub },
-    { provide: CHECKOUT_PORT, useClass: CheckoutStub },
-    { provide: REFUND_PORT, useClass: RefundStub },
+    // Feature 5 records the add-on payment with its line, receipt and journal rows; the stub only wrote the payment row.
+    { provide: CHECKOUT_PORT, useExisting: BookingChargeAdapter },
+    // Feature 5 pays refunds (and voids a payment that was only authorised); the stub only recorded the request.
+    { provide: REFUND_PORT, useExisting: BookingRefundAdapter },
     { provide: SCREENING_PORT, useClass: ScreeningStub },
     { provide: SEAT_MAP_PORT, useClass: AircraftSeatMapAdapter },
     { provide: INSURANCE_PORT, useClass: LoyaltyInsuranceAdapter },
@@ -147,6 +151,8 @@ import { BookingInsuranceService } from './insurance/insurance.service'
     { provide: BOOKING_PROVIDER, useClass: BookingProviderAdapter },
   ],
   exports: [
+    // Feature 5 reads the insurance offer and issues the policy once a booking is paid.
+    BookingInsuranceService,
     SeatPaymentService,
     CheckinSeatProvider,
     BookingStatusService,

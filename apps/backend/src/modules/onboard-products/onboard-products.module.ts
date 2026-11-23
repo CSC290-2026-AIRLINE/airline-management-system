@@ -33,11 +33,14 @@ import { WarehouseStockModule } from './warehouse-stock/warehouse-stock.module'
 import { ProductOrdersModule } from './product-orders/product-orders.module'
 import { CatalogModule } from './catalog/catalog.module'
 import { PaymentEventsModule } from './payment-events/payment-events.module'
+import { PaymentsRefundsModule } from '@backend/modules/payments-refunds/payments-refunds.module'
+import { OnboardPaymentsAdapter } from '@backend/modules/payments-refunds/onboard-payments.adapter'
 import { SchedulerModule } from './scheduler/scheduler.module'
 
 @Global()
 @Module({
   imports: [
+    PaymentsRefundsModule,
     AuditModule,
     SharedModule,
     ProductsModule,
@@ -61,7 +64,17 @@ import { SchedulerModule } from './scheduler/scheduler.module'
     PaymentEventsModule,
     SchedulerModule,
   ],
-  providers: [SystemClock, AuditService, FlightsService, NoopStorageService, DbBookingsService, StubPaymentsService, DbTierService],
+  providers: [
+    SystemClock,
+    AuditService,
+    FlightsService,
+    NoopStorageService,
+    DbBookingsService,
+    // Feature 5 takes the payments F12 asked for. The class token stays, so every service that injects it gets Feature 5's
+    // adapter; the stub only wrote fake payment rows.
+    { provide: StubPaymentsService, useExisting: OnboardPaymentsAdapter },
+    DbTierService,
+  ],
   exports: [SystemClock, AuditService, FlightsService, NoopStorageService, DbBookingsService, StubPaymentsService, DbTierService],
 })
 export class OnboardProductsModule {}
