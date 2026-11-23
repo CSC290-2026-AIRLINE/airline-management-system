@@ -5,6 +5,7 @@ import { BAGGAGE_ERROR_CODES, BaggageError } from './common/baggage.errors'
 import { isValidBaggageTag } from './common/baggage-tag.util'
 import { formatCaseNumber } from './common/case-number.util'
 import type { LostBagReport } from './common/report.types'
+import type { BaggageCaseNotices } from './baggage-case-notices'
 import type { LostReportPhotoObject, ReportPhotoStorage, UploadedLostReportPhoto } from './lost-report-photo.storage'
 import type {
   BookingVerification,
@@ -82,6 +83,7 @@ export class ReportService {
     private readonly sequence: CaseNumberSequence,
     private readonly clock: SimulationClock,
     private readonly photos: ReportPhotoStorage,
+    private readonly notices: Pick<BaggageCaseNotices, 'notify'>,
   ) {}
 
   async create(input: CreateReportInput, photo?: UploadedLostReportPhoto): Promise<LostBagReport> {
@@ -295,14 +297,18 @@ export class ReportService {
     return travellers
   }
 
-  async cancel(caseNumber: string, access: ReportAccessInput): Promise<LostBagReport> {
+  /** `userId` is the signed-in user (user.id), the actor of the audit row. */
+  async cancel(caseNumber: string, access: ReportAccessInput, userId: string): Promise<LostBagReport> {
     const report = await this.findManageableReport(caseNumber, access)
 
-    const cancelled = await this.repository.cancelIfNotDispatched(report.id, report.bookingPassengerId, this.clock.now())
+    const cancelled = await this.repository.cancelIfNotDispatched(report.id, report.bookingPassengerId, this.clock.now(), userId)
 
     if (!cancelled) {
       throw new BaggageError(BAGGAGE_ERROR_CODES.CANCELLATION_NOT_ALLOWED, 'This report can no longer be cancelled')
     }
+
+    // After the commit, as staff cancellation does: a failed notice never undoes the cancellation.
+    this.notices.notify([{ event: 'cancelled', reportId: cancelled.id }])
 
     return cancelled
   }

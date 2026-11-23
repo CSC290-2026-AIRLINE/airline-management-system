@@ -94,7 +94,12 @@ function makeClient(connectionString: string, applicationName: string): PrismaCl
 }
 
 function reportRepository(client: PrismaClient, gate?: LockGate): PrismaReportRepository {
-  return new PrismaReportRepository(serviceDb(client, gate))
+  // Audit rows are not what this suite checks; the stub keeps the cancellation's audit write out of the lock timing.
+  const audit = {
+    resolveActor: () => Promise.resolve({ type: 'customer', id: null, role: null }),
+    write: () => Promise.resolve({ id: '', seq: '0' }),
+  }
+  return new PrismaReportRepository(serviceDb(client, gate), audit as unknown as AuditService)
 }
 
 function deliveryService(client: PrismaClient, gate?: LockGate): BagDeliveryService {
@@ -657,7 +662,12 @@ async function refusedCancellationThenDispatch(
   const dispatchGate = lockGate(false)
   const repository = reportRepository(clients.cancel, cancellationGate)
   const delivery = deliveryService(clients.dispatch, dispatchGate)
-  const cancellation = repository.cancelIfNotDispatched(fixture.reportId, fixture.bookingPassengerId, SIMULATION_NOW)
+  const cancellation = repository.cancelIfNotDispatched(
+    fixture.reportId,
+    fixture.bookingPassengerId,
+    SIMULATION_NOW,
+    '00000000-0000-4000-8000-0000000000c1',
+  )
   const cancellationReady = Promise.race([
     cancellationGate.acquired.promise,
     cancellation.then(() => Promise.reject(new Error('Cancellation completed before acquiring its report lock'))),
@@ -701,7 +711,12 @@ async function dispatchWins(
   ])
   await withTimeout(dispatchReady, 'dispatch to acquire the report lock')
 
-  const cancellation = repository.cancelIfNotDispatched(fixture.reportId, fixture.bookingPassengerId, SIMULATION_NOW)
+  const cancellation = repository.cancelIfNotDispatched(
+    fixture.reportId,
+    fixture.bookingPassengerId,
+    SIMULATION_NOW,
+    '00000000-0000-4000-8000-0000000000c1',
+  )
   try {
     await withTimeout(cancellationGate.attempted.promise, 'cancellation to attempt the report lock')
     await waitForDatabaseLockWait(clients.observer, cancellationGate.backendPid)
@@ -729,7 +744,15 @@ async function dispatchWins(
  */
 async function historicalMovementDoesNotBlock(fixture: FixtureCase, client: PrismaClient, staffId: string): Promise<void> {
   const repository = reportRepository(client)
-  assert.equal(await repository.cancelIfNotDispatched(fixture.reportId, fixture.bookingPassengerId, SIMULATION_NOW), null)
+  assert.equal(
+    await repository.cancelIfNotDispatched(
+      fixture.reportId,
+      fixture.bookingPassengerId,
+      SIMULATION_NOW,
+      '00000000-0000-4000-8000-0000000000c1',
+    ),
+    null,
+  )
   assert.deepEqual(await readState(client, fixture), {
     report: 'matched',
     foundBag: 'matched',

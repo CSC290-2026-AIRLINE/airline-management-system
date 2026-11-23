@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common'
 import { AuditModule } from '@backend/modules/admin-console/audit/audit.module'
 import { BaggageModule } from './baggage.module'
+import { BaggageLifecycleModule } from './baggage-lifecycle.module'
+import { BaggageCaseNotices } from './baggage-case-notices'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { ReportService } from './report.service'
 import { PrismaReportRepository } from './prisma-report.repository'
@@ -17,7 +19,7 @@ import { LostReportPhotoStorage } from './lost-report-photo.storage'
 
 /** The photo storage comes from BaggageModule, which the staff desk shares. */
 @Module({
-  imports: [AuditModule, BaggageModule],
+  imports: [AuditModule, BaggageModule, BaggageLifecycleModule],
   controllers: [PassengerLostReportController, PassengerLostReportFlightsController, PassengerLostReportTravellersController],
   providers: [
     BaggageCustomerGuard,
@@ -36,7 +38,8 @@ import { LostReportPhotoStorage } from './lost-report-photo.storage'
         sequence: PrismaCaseNumberSequence,
         clock: SimulationClock,
         photos: LostReportPhotoStorage,
-      ) => new ReportService(repository, bookings, checkedBags, sequence, clock, photos),
+        notices: BaggageCaseNotices,
+      ) => new ReportService(repository, bookings, checkedBags, sequence, clock, photos, notices),
       inject: [
         PrismaReportRepository,
         PrismaBookingVerification,
@@ -44,6 +47,7 @@ import { LostReportPhotoStorage } from './lost-report-photo.storage'
         PrismaCaseNumberSequence,
         SimulationClock,
         LostReportPhotoStorage,
+        BaggageCaseNotices,
       ],
     },
   ],

@@ -255,6 +255,20 @@ export class FoundBagLifecycleService {
         throw invalidStatus(`A ${locked.status} bag cannot continue with its flight`)
       }
 
+      // Staff may have moved the bag since it was found, so the sent event starts where its latest event puts it, and a
+      // bag still in transit is refused rather than given a second, overlapping sent event.
+      const last = await tx.bag_location_event.findFirst({
+        where: { found_bag_id: foundBagId },
+        orderBy: [{ occurred_at: 'desc' }, { created_at: 'desc' }],
+        select: { action: true, airport_code: true, to_airport: true },
+      })
+
+      if (last?.action === 'sent') {
+        throw invalidStatus(`This bag is in transit to ${last.to_airport}; record arrived first`)
+      }
+
+      const origin = last?.airport_code ?? bag.foundAirport
+
       const { count } = await tx.found_bag.updateMany({
         where: { id: foundBagId, status: 'held' },
         data: { status: 'continued_with_flight', updated_at: new Date() },
@@ -278,11 +292,11 @@ export class FoundBagLifecycleService {
         tx,
       )
 
-      if (destination && destination !== bag.foundAirport) {
+      if (destination && destination !== origin) {
         await tx.bag_location_event.create({
           data: {
             found_bag_id: foundBagId,
-            airport_code: bag.foundAirport,
+            airport_code: origin,
             action: 'sent',
             to_airport: destination,
             sent_on_flight_id: bag.flightId,
@@ -314,7 +328,17 @@ export class FoundBagLifecycleService {
       const due = { status: 'held', found_at: { lte: cutoff }, bag_match: { none: { status: 'confirmed' } } }
 
       const rows = await tx.found_bag.findMany({ where: due, select: { id: true } })
-      const ids = rows.map((r) => r.id)
+
+      // A bag in transit between stations is left held until its arrival is recorded: an unclaimed bag can no longer be
+      // moved, so closing it mid-trip would leave it in transit for good.
+      const latestEvents = await tx.bag_location_event.findMany({
+        where: { found_bag_id: { in: rows.map((r) => r.id) } },
+        orderBy: [{ found_bag_id: 'asc' }, { occurred_at: 'desc' }, { created_at: 'desc' }],
+        distinct: ['found_bag_id'],
+        select: { found_bag_id: true, action: true },
+      })
+      const inTransit = new Set(latestEvents.filter((e) => e.action === 'sent').map((e) => e.found_bag_id))
+      const ids = rows.map((r) => r.id).filter((id) => !inTransit.has(id))
 
       if (ids.length === 0) {
         return { unclaimedAfterDays, cutoff, marked: 0 }

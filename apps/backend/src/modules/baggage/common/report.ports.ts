@@ -27,7 +27,13 @@ export interface ReportRepository {
    */
   listForRequester(bookingPassengerId: string, customerId: string | null): Promise<LostBagReport[]>
 
-  cancelIfNotDispatched(reportId: string, bookingPassengerId: string, closedAt: Date): Promise<LostBagReport | null>
+  /** Cancels the case and writes its audit row in one transaction; `cancelledByUserId` is the signed-in user (user.id). */
+  cancelIfNotDispatched(
+    reportId: string,
+    bookingPassengerId: string,
+    closedAt: Date,
+    cancelledByUserId: string,
+  ): Promise<LostBagReport | null>
 }
 
 export interface CaseNumberSequence {

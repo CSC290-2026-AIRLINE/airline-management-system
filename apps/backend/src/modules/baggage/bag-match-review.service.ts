@@ -275,6 +275,20 @@ export class BagMatchReviewService {
 
     try {
       const row = await this.db.$transaction(async (tx) => {
+        // Check again under the case lock, then the bag lock (see case-locks): a cancellation, confirmation or unclaimed
+        // sweep that committed since the read above is seen here, so the link is never made on a case or bag that closed.
+        const lockedReport = await lockLostReport(tx, reportId)
+
+        if (!lockedReport || !MATCHABLE_REPORT_STATUSES.some((s) => s === lockedReport.status)) {
+          throw closed('Only an open or lost case can be linked to a found bag')
+        }
+
+        const lockedBag = await lockFoundBag(tx, foundBagId)
+
+        if (lockedBag?.status !== 'held') {
+          throw closed('Only a held bag can be linked to a case')
+        }
+
         const created = await tx.bag_match.create({
           data: {
             report_id: reportId,

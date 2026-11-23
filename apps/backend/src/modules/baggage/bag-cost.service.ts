@@ -99,11 +99,18 @@ export class BagCostService {
       throw invalid('Invalid cost kind')
     }
 
-    // Whole cents only, so the amount is stored exactly as entered.
-    const cents = Math.round(input.amount * 100)
-    if (!Number.isFinite(input.amount) || cents <= 0 || Math.abs(input.amount * 100 - cents) > 1e-6 || input.amount > MAX_COST_AMOUNT) {
+    // Whole cents only, so the amount is stored exactly as entered. Comparing with the 2-decimal rounding stays exact up to
+    // MAX_COST_AMOUNT, where a fixed tolerance on amount * 100 does not.
+    if (
+      !Number.isFinite(input.amount) ||
+      input.amount < 0.01 ||
+      Number(input.amount.toFixed(2)) !== input.amount ||
+      input.amount > MAX_COST_AMOUNT
+    ) {
       throw invalid('Amount must be more than 0 with at most 2 decimal places')
     }
+
+    const cents = Math.round(input.amount * 100)
 
     const report = await this.findReport(input.reportId)
 

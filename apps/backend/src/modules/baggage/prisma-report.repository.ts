@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common'
 import type { Prisma, lost_bag_report } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import { AUDIT_SOURCE_FEATURE } from './common/baggage.constants'
 import { BAGGAGE_ERROR_CODES, BaggageError } from './common/baggage.errors'
 import type { DeliveryChoiceSnapshot, ReportRepository } from './common/report.ports'
 import type { LostBagReport } from './common/report.types'
@@ -104,7 +106,10 @@ function reportExists(existing: LostBagReport, attempted: LostBagReport): Baggag
 
 @Injectable()
 export class PrismaReportRepository implements ReportRepository {
-  constructor(private readonly db: DbService) {}
+  constructor(
+    private readonly db: DbService,
+    private readonly audit: AuditService,
+  ) {}
 
   async create(report: LostBagReport): Promise<LostBagReport> {
     const existing = report.tagNumber ? await this.findLiveByTag(report.tagNumber) : null
@@ -454,7 +459,14 @@ export class PrismaReportRepository implements ReportRepository {
    * is confirmed (and so also once the bag is on its way) the case can no longer be cancelled online, and its confirmed
    * match, bag reservation and delivery are left exactly as they are. Returns null when the case is not cancellable.
    */
-  async cancelIfNotDispatched(reportId: string, bookingPassengerId: string, closedAt: Date): Promise<LostBagReport | null> {
+  async cancelIfNotDispatched(
+    reportId: string,
+    bookingPassengerId: string,
+    closedAt: Date,
+    cancelledByUserId: string,
+  ): Promise<LostBagReport | null> {
+    const actor = await this.audit.resolveActor(cancelledByUserId)
+
     return this.db.$transaction(async (tx) => {
       // The case row lock comes first (see case-locks): a staff confirmation of this case either finished before this,
       // and is seen below, or waits and then finds the case cancelled. Every eligibility read happens under the lock.
@@ -490,9 +502,24 @@ export class PrismaReportRepository implements ReportRepository {
         data: {
           status: 'cancelled',
           closed_at: closedAt,
-          updated_at: closedAt,
+          updated_at: new Date(),
         },
       })
+
+      await this.audit.write(
+        {
+          actor,
+          sourceFeature: AUDIT_SOURCE_FEATURE,
+          action: 'status_change',
+          entityType: 'lost_bag_report',
+          entityId: report.id,
+          summary: `Lost bag case ${report.case_number} cancelled by the passenger`,
+          before: { status: report.status },
+          after: { status: 'cancelled' },
+          occurredAt: closedAt,
+        },
+        tx,
+      )
 
       return toReport(updated)
     })

@@ -178,10 +178,14 @@ export class PassengerLostReportController {
     @Param('caseNumber') caseNumber: string,
     @Query() query: PassengerReportAccessQuery,
   ): Promise<LostBagReport> {
-    return this.reports.cancel(caseNumber, {
-      ...query,
-      passengerId: customer.passengerId,
-      customerId: customer.customerId,
-    })
+    return this.reports.cancel(
+      caseNumber,
+      {
+        ...query,
+        passengerId: customer.passengerId,
+        customerId: customer.customerId,
+      },
+      customer.id,
+    )
   }
 }

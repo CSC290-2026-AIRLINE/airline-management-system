@@ -122,6 +122,7 @@ function makeWorld(reportStatus = 'open') {
   /** One database connection: the label names its transactions in the lock log. */
   function connection(label: string, faults: { auditWrite?: Error; reportUpdate?: Error } = {}) {
     const audit = {
+      resolveActor: (userId: string) => Promise.resolve({ type: 'customer', id: userId, role: null }),
       write: (input: Row, tx: { record: (undo: () => void) => void }) => {
         if (faults.auditWrite) return Promise.reject(faults.auditWrite)
         audits.push(input)
@@ -228,7 +229,8 @@ function makeWorld(reportStatus = 'open') {
   }
 
   function repository(label: string, faults?: { reportUpdate?: Error }) {
-    return new PrismaReportRepository(connection(label, faults).db)
+    const { db, audit } = connection(label, faults)
+    return new PrismaReportRepository(db, audit)
   }
 
   function review(label: string, faults?: { auditWrite?: Error }) {
@@ -252,7 +254,7 @@ function makeWorld(reportStatus = 'open') {
 }
 
 const cancel = (world: ReturnType<typeof makeWorld>, label = 'cancel', faults?: { reportUpdate?: Error }) =>
-  world.repository(label, faults).cancelIfNotDispatched(REPORT_ID, BOOKING_PASSENGER_ID, NOW)
+  world.repository(label, faults).cancelIfNotDispatched(REPORT_ID, BOOKING_PASSENGER_ID, NOW, '00000000-0000-4000-8000-0000000000c1')
 
 const confirmInput = { staffId: STAFF_ID, actor: ACTOR, matchId: MATCH_ID, note: 'Tag and strap match' }
 
@@ -274,7 +276,8 @@ describe('Passenger cancellation vs staff match review, under PostgreSQL row-loc
       matches: [{ id: MATCH_ID, status: 'suggested', review_note: null }],
       bags: [{ id: BAG_ID, status: 'held' }],
       deliveries: [],
-      audits: [],
+      // Only the passenger's cancellation is audited; the confirmation wrote nothing.
+      audits: [{ entityType: 'lost_bag_report', entityId: REPORT_ID }],
       events: 0,
     })
     // The confirmation never took the bag lock: it stopped at the case.
@@ -321,7 +324,10 @@ describe('Passenger cancellation vs staff match review, under PostgreSQL row-loc
 
     await expect(cancelling).resolves.toMatchObject({ status: 'cancelled' })
     await expect(rejecting).rejects.toMatchObject({ code: 'MATCH_CLOSED' })
-    expect(world.snapshot()).toMatchObject({ matches: [{ status: 'suggested' }], audits: [] })
+    expect(world.snapshot()).toMatchObject({
+      matches: [{ status: 'suggested' }],
+      audits: [{ entityType: 'lost_bag_report', entityId: REPORT_ID }],
+    })
   })
 
   it('rejection locks first: it is recorded, and the still-unconfirmed case can then be cancelled', async () => {
@@ -340,7 +346,10 @@ describe('Passenger cancellation vs staff match review, under PostgreSQL row-loc
       reports: [{ status: 'cancelled' }],
       matches: [{ status: 'rejected', review_note: 'Different strap' }],
       bags: [{ status: 'held' }],
-      audits: [{ entityType: 'bag_match', entityId: MATCH_ID }],
+      audits: [
+        { entityType: 'bag_match', entityId: MATCH_ID },
+        { entityType: 'lost_bag_report', entityId: REPORT_ID },
+      ],
     })
   })
 
@@ -353,7 +362,7 @@ describe('Passenger cancellation vs staff match review, under PostgreSQL row-loc
       matches: [{ status: 'suggested' }],
       bags: [{ status: 'held' }],
       deliveries: [],
-      audits: [],
+      audits: [{ entityType: 'lost_bag_report', entityId: REPORT_ID }],
       events: 0,
     })
   })

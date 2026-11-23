@@ -102,7 +102,12 @@ function makeSvc() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     bag_delivery: { upsert: jest.fn().mockResolvedValue({}) },
-    $queryRaw: jest.fn().mockImplementation((_sql: TemplateStringsArray, id: string) => Promise.resolve([{ id, status: 'open' }])),
+    // Row locks: the case is open and the bag held unless a test says otherwise.
+    $queryRaw: jest
+      .fn()
+      .mockImplementation((sql: TemplateStringsArray, id: string) =>
+        Promise.resolve([{ id, status: sql.join('?').includes('FROM found_bag') ? 'held' : 'open' }]),
+      ),
     $transaction: jest.fn(),
   }
   db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => cb(db))
@@ -252,6 +257,36 @@ describe('BagMatchReviewService.link', () => {
       }),
     )
     expect(match.level).toBe('manual')
+  })
+
+  it('checks the case and the bag again under their locks, case first, and links nothing that closed since the read', async () => {
+    const { svc, db, audit } = makeSvc()
+
+    await svc.link({ staffId: STAFF_ID, actor: ACTOR, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })
+    expect(db.$queryRaw.mock.calls.map(([sql]: [TemplateStringsArray]) => sql.join('?').match(/FROM (\w+)/)?.[1])).toEqual([
+      'lost_bag_report',
+      'found_bag',
+    ])
+    expect(db.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(db.bag_match.create.mock.invocationCallOrder[0])
+
+    db.bag_match.create.mockClear()
+    audit.write.mockClear()
+    // The passenger cancelled between the status read and the insert.
+    db.$queryRaw.mockImplementationOnce((_sql: TemplateStringsArray, id: string) => Promise.resolve([{ id, status: 'cancelled' }]))
+    await expect(svc.link({ staffId: STAFF_ID, actor: ACTOR, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })).rejects.toMatchObject({
+      code: 'MATCH_CLOSED',
+    })
+
+    // The unclaimed sweep closed the bag between the status read and the insert.
+    db.$queryRaw
+      .mockImplementationOnce((_sql: TemplateStringsArray, id: string) => Promise.resolve([{ id, status: 'open' }]))
+      .mockImplementationOnce((_sql: TemplateStringsArray, id: string) => Promise.resolve([{ id, status: 'unclaimed' }]))
+    await expect(svc.link({ staffId: STAFF_ID, actor: ACTOR, reportId: REPORT_ID, foundBagId: FOUND_BAG_ID })).rejects.toMatchObject({
+      code: 'MATCH_CLOSED',
+    })
+
+    expect(db.bag_match.create).not.toHaveBeenCalled()
+    expect(audit.write).not.toHaveBeenCalled()
   })
 
   it('refuses a case that already has its bag, and a bag that is not held', async () => {

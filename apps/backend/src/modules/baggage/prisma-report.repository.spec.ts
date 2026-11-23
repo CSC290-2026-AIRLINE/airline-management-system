@@ -1,6 +1,7 @@
 jest.mock('@backend/db/db.service', () => ({ DbService: class DbService {} }))
 
 import type { DbService } from '@backend/db/db.service'
+import type { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import { PrismaReportRepository } from './prisma-report.repository'
 
 const reportRow = (overrides: Record<string, unknown> = {}) => ({
@@ -36,6 +37,13 @@ const reportRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 })
 
+function stubAudit() {
+  return {
+    resolveActor: jest.fn().mockResolvedValue({ type: 'customer', id: '00000000-0000-4000-8000-000000000042', role: null }),
+    write: jest.fn().mockResolvedValue({ written: true }),
+  }
+}
+
 function makeRepository(
   options: {
     lockedRows?: { id: string }[]
@@ -66,18 +74,34 @@ function makeRepository(
     bag_location_event: { findFirst: findDispatchEvent },
   }
   const transaction = jest.fn((callback: (transactionClient: typeof tx) => Promise<unknown>) => callback(tx))
-  const repository = new PrismaReportRepository({
-    $transaction: transaction,
-    lost_bag_report: { create },
-    bag_delivery: {
-      findUnique: findDeliveryUnique.mockImplementation(({ select }: { select?: Record<string, boolean> }) => {
-        if (select?.delivery_type) return findDeliveryChoiceUnique()
-        return Promise.resolve({ id: '00000000-0000-4000-8000-000000000006' })
-      }),
-    },
-  } as unknown as DbService)
+  const audit = stubAudit()
+  const repository = new PrismaReportRepository(
+    {
+      $transaction: transaction,
+      lost_bag_report: { create },
+      bag_delivery: {
+        findUnique: findDeliveryUnique.mockImplementation(({ select }: { select?: Record<string, boolean> }) => {
+          if (select?.delivery_type) return findDeliveryChoiceUnique()
+          return Promise.resolve({ id: '00000000-0000-4000-8000-000000000006' })
+        }),
+      },
+    } as unknown as DbService,
+    audit as unknown as AuditService,
+  )
 
-  return { repository, transaction, queryRaw, findFirst, findDispatchEvent, findDeliveryUnique, findDeliveryChoiceUnique, update, create }
+  return {
+    repository,
+    audit,
+    tx,
+    transaction,
+    queryRaw,
+    findFirst,
+    findDispatchEvent,
+    findDeliveryUnique,
+    findDeliveryChoiceUnique,
+    update,
+    create,
+  }
 }
 
 describe('PrismaReportRepository photo reference persistence', () => {
@@ -144,9 +168,12 @@ describe('PrismaReportRepository duplicate tag', () => {
 
   function repositoryWithLive(live: ReturnType<typeof reportRow>) {
     const create = jest.fn()
-    const repository = new PrismaReportRepository({
-      lost_bag_report: { findFirst: jest.fn().mockResolvedValue(live), create },
-    } as unknown as DbService)
+    const repository = new PrismaReportRepository(
+      {
+        lost_bag_report: { findFirst: jest.fn().mockResolvedValue(live), create },
+      } as unknown as DbService,
+      stubAudit() as unknown as AuditService,
+    )
     return { repository, create }
   }
 
@@ -321,11 +348,14 @@ describe('PrismaReportRepository passenger case summary projection', () => {
       },
     ]
     const locationFindMany = jest.fn().mockResolvedValue(options.locations ?? locations)
-    const repository = new PrismaReportRepository({
-      lost_bag_report: { findUnique },
-      audit_log: { findMany: auditFindMany, findFirst: auditFindFirst },
-      bag_location_event: { findMany: locationFindMany },
-    } as unknown as DbService)
+    const repository = new PrismaReportRepository(
+      {
+        lost_bag_report: { findUnique },
+        audit_log: { findMany: auditFindMany, findFirst: auditFindFirst },
+        bag_location_event: { findMany: locationFindMany },
+      } as unknown as DbService,
+      stubAudit() as unknown as AuditService,
+    )
 
     return { repository, findUnique, auditFindMany, auditFindFirst, locationFindMany }
   }
@@ -521,6 +551,7 @@ describe('PrismaReportRepository cancellation', () => {
   const reportId = reportRow().id
   const bookingPassengerId = reportRow().booking_passenger_id
   const closedAt = new Date('2026-10-29T12:00:00Z')
+  const userId = '00000000-0000-4000-8000-000000000042'
   const confirmedMatch = { id: '00000000-0000-4000-8000-000000000007' }
 
   /** A case staff have not confirmed a bag for: no confirmed match and no delivery row. */
@@ -530,7 +561,7 @@ describe('PrismaReportRepository cancellation', () => {
   it.each(['open', 'lost'])('cancels an unconfirmed %s report under the case lock and records closure time', async (status) => {
     const harness = makeRepository({ report: unconfirmed({ status }) })
 
-    const cancelled = await harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)
+    const cancelled = await harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt, userId)
 
     expect(cancelled).toMatchObject({ status: 'cancelled', closedAt })
     expect(harness.queryRaw).toHaveBeenCalledTimes(1)
@@ -550,23 +581,40 @@ describe('PrismaReportRepository cancellation', () => {
     })
     expect(harness.update).toHaveBeenCalledWith({
       where: { id: reportId },
-      data: { status: 'cancelled', closed_at: closedAt, updated_at: closedAt },
+      data: { status: 'cancelled', closed_at: closedAt, updated_at: expect.any(Date) },
     })
+    // updated_at is real time; only closed_at follows the simulation clock.
+    expect(harness.update.mock.calls[0][0].data.updated_at).not.toBe(closedAt)
+    // Who cancelled is audited in the same transaction as the status change.
+    expect(harness.audit.resolveActor).toHaveBeenCalledWith(userId)
+    expect(harness.audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: { type: 'customer', id: userId, role: null },
+        action: 'status_change',
+        entityType: 'lost_bag_report',
+        entityId: reportId,
+        before: { status },
+        after: { status: 'cancelled' },
+        occurredAt: closedAt,
+      }),
+      harness.tx,
+    )
   })
 
   it.each(['matched', 'delivering', 'closed', 'cancelled'])('refuses a %s report and writes nothing', async (status) => {
     const harness = makeRepository({ report: reportRow({ status, bag_match: [confirmedMatch] }) })
 
-    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
+    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt, userId)).resolves.toBeNull()
 
     expect(harness.update).not.toHaveBeenCalled()
+    expect(harness.audit.write).not.toHaveBeenCalled()
     expect(harness.findDispatchEvent).not.toHaveBeenCalled()
   })
 
   it('fails closed when an open report already has a confirmed match (inconsistent status)', async () => {
     const harness = makeRepository({ report: unconfirmed({ bag_match: [confirmedMatch] }) })
 
-    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
+    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt, userId)).resolves.toBeNull()
 
     expect(harness.update).not.toHaveBeenCalled()
   })
@@ -577,7 +625,7 @@ describe('PrismaReportRepository cancellation', () => {
       for (const status of ['open', 'lost']) {
         const harness = makeRepository({ report: unconfirmed({ status, bag_delivery: { id: 'd-1', status: deliveryStatus } }) })
 
-        await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
+        await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt, userId)).resolves.toBeNull()
         expect(harness.update).not.toHaveBeenCalled()
       }
     },
@@ -586,7 +634,7 @@ describe('PrismaReportRepository cancellation', () => {
   it('rejects a repeated cancellation after the report is already cancelled', async () => {
     const harness = makeRepository({ report: unconfirmed({ status: 'cancelled' }) })
 
-    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
+    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt, userId)).resolves.toBeNull()
 
     expect(harness.update).not.toHaveBeenCalled()
     expect(harness.findDispatchEvent).not.toHaveBeenCalled()
@@ -595,7 +643,9 @@ describe('PrismaReportRepository cancellation', () => {
   it('does not lock or cancel a report for a different booking passenger', async () => {
     const harness = makeRepository({ lockedRows: [], report: unconfirmed() })
 
-    await expect(harness.repository.cancelIfNotDispatched(reportId, '00000000-0000-4000-8000-000000000099', closedAt)).resolves.toBeNull()
+    await expect(
+      harness.repository.cancelIfNotDispatched(reportId, '00000000-0000-4000-8000-000000000099', closedAt, userId),
+    ).resolves.toBeNull()
 
     expect(harness.findFirst).not.toHaveBeenCalled()
     expect(harness.update).not.toHaveBeenCalled()
@@ -607,7 +657,7 @@ describe('PrismaReportRepository cancellation', () => {
       eventHistory: { action: 'sent', occurred_at: new Date('2026-10-29T10:59:00Z') },
     })
 
-    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).resolves.toBeNull()
+    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt, userId)).resolves.toBeNull()
 
     expect(harness.findDispatchEvent).not.toHaveBeenCalled()
     expect(harness.update).not.toHaveBeenCalled()
@@ -617,7 +667,7 @@ describe('PrismaReportRepository cancellation', () => {
     const harness = makeRepository({ report: unconfirmed() })
     harness.update.mockRejectedValueOnce(new Error('write failed'))
 
-    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt)).rejects.toThrow('write failed')
+    await expect(harness.repository.cancelIfNotDispatched(reportId, bookingPassengerId, closedAt, userId)).rejects.toThrow('write failed')
     expect(harness.transaction).toHaveBeenCalledTimes(1)
   })
 })
@@ -628,7 +678,10 @@ describe('PrismaReportRepository.listForRequester', () => {
 
   function make() {
     const findMany = jest.fn().mockResolvedValue([reportRow({ reported_by_customer_id: CUSTOMER_ID })])
-    const repository = new PrismaReportRepository({ lost_bag_report: { findMany } } as unknown as DbService)
+    const repository = new PrismaReportRepository(
+      { lost_bag_report: { findMany } } as unknown as DbService,
+      stubAudit() as unknown as AuditService,
+    )
     return { repository, findMany }
   }
 

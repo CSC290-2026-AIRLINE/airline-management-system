@@ -59,7 +59,13 @@ function makeSvc() {
       updateManyAndReturn: jest.fn().mockResolvedValue(SWEPT_IDS.map((id) => ({ id }))),
       findUniqueOrThrow: jest.fn().mockResolvedValue(foundBagRow({ status: 'continued_with_flight' })),
     },
-    bag_location_event: { create: jest.fn().mockResolvedValue({}) },
+    bag_location_event: {
+      create: jest.fn().mockResolvedValue({}),
+      // The bag's latest event: still where the diversion left it, unless a test moves it.
+      findFirst: jest.fn().mockResolvedValue({ action: 'at_diverted_airport', airport_code: 'CNX', to_airport: null }),
+      // The latest event of each swept bag: none in transit unless a test says so.
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     // No baggage_setting delegate: the sweep must read its threshold inside the transaction, via the FOR SHARE query.
     $queryRaw: jest.fn((strings: TemplateStringsArray) =>
       Promise.resolve(
@@ -235,6 +241,36 @@ describe('FoundBagLifecycleService.continueWithFlight', () => {
     })
   })
 
+  it('sends the bag on from where it is now, after staff moved it from the diversion airport', async () => {
+    const { svc, db } = makeSvc()
+    db.found_bag.updateMany.mockResolvedValueOnce({ count: 1 })
+    db.bag_location_event.findFirst.mockResolvedValueOnce({ action: 'arrived', airport_code: 'HKT', to_airport: null })
+
+    await svc.continueWithFlight(STAFF_ID, BAG_ID, ACTOR)
+
+    expect(db.bag_location_event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ airport_code: 'HKT', action: 'sent', to_airport: 'BKK' }),
+    })
+  })
+
+  it('records no sent event when the bag is already at the route destination', async () => {
+    const { svc, db } = makeSvc()
+    db.found_bag.updateMany.mockResolvedValueOnce({ count: 1 })
+    db.bag_location_event.findFirst.mockResolvedValueOnce({ action: 'arrived', airport_code: 'BKK', to_airport: null })
+
+    await expect(svc.continueWithFlight(STAFF_ID, BAG_ID, ACTOR)).resolves.toMatchObject({ status: 'continued_with_flight' })
+    expect(db.bag_location_event.create).not.toHaveBeenCalled()
+  })
+
+  it('refuses a bag that is in transit, and changes nothing', async () => {
+    const { svc, db } = makeSvc()
+    db.bag_location_event.findFirst.mockResolvedValueOnce({ action: 'sent', airport_code: 'CNX', to_airport: 'HKT' })
+
+    await expect(svc.continueWithFlight(STAFF_ID, BAG_ID, ACTOR)).rejects.toMatchObject({ code: 'INVALID_STATUS', status: 409 })
+    expect(db.found_bag.updateMany).not.toHaveBeenCalled()
+    expect(db.bag_location_event.create).not.toHaveBeenCalled()
+  })
+
   it('checks held again under the lock, after a match was confirmed at the same time', async () => {
     const { svc, db } = makeSvc()
     db.$queryRaw.mockResolvedValue([{ id: BAG_ID, status: 'matched' }])
@@ -276,6 +312,27 @@ describe('FoundBagLifecycleService.markUnclaimed', () => {
     })
     expect(audit.write).toHaveBeenCalledWith(
       expect.objectContaining({ actor: ACTOR, action: 'status_change', after: expect.objectContaining({ foundBagIds: SWEPT_IDS }) }),
+      db,
+    )
+  })
+
+  it('leaves a bag in transit held, so its arrival can still be recorded', async () => {
+    const { svc, db, audit } = makeSvc()
+    db.bag_location_event.findMany.mockResolvedValueOnce([
+      { found_bag_id: 'fb-2', action: 'sent' },
+      { found_bag_id: 'fb-3', action: 'arrived' },
+    ])
+    db.found_bag.updateManyAndReturn.mockResolvedValueOnce([{ id: 'fb-1' }, { id: 'fb-3' }, { id: 'fb-4' }])
+
+    await expect(svc.markUnclaimed(ACTOR)).resolves.toMatchObject({ marked: 3 })
+    expect(db.bag_location_event.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { found_bag_id: { in: SWEPT_IDS } }, distinct: ['found_bag_id'] }),
+    )
+    expect(db.found_bag.updateManyAndReturn).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: { in: ['fb-1', 'fb-3', 'fb-4'] } }) }),
+    )
+    expect(audit.write).toHaveBeenCalledWith(
+      expect.objectContaining({ after: expect.objectContaining({ foundBagIds: ['fb-1', 'fb-3', 'fb-4'] }) }),
       db,
     )
   })

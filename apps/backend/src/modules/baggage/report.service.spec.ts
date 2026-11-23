@@ -6,10 +6,13 @@ import { MockBookingVerification } from './mocks/mock-booking.verification'
 import { MockCheckedBagLookup } from './mocks/mock-checked-bag.lookup'
 import type { ReportRepository } from './common/report.ports'
 
+const USER_ID = '00000000-0000-4000-8000-000000000042'
+
 describe('ReportService', () => {
   let service: ReportService
   let repository: InMemoryReportRepository
   let photos: { upload: jest.Mock; remove: jest.Mock; retrieve: jest.Mock }
+  let notices: { notify: jest.Mock }
 
   const access = {
     bookingReference: 'ABC123',
@@ -29,6 +32,7 @@ describe('ReportService', () => {
   beforeEach(() => {
     repository = new InMemoryReportRepository()
     photos = { upload: jest.fn(), remove: jest.fn(), retrieve: jest.fn() }
+    notices = { notify: jest.fn() }
     service = new ReportService(
       repository,
       new MockBookingVerification([
@@ -60,6 +64,7 @@ describe('ReportService', () => {
       new InMemoryCaseNumberSequence(),
       new MockSimulationClock(new Date('2026-10-29T10:00:00Z')),
       photos,
+      notices,
     )
   })
 
@@ -291,10 +296,12 @@ describe('ReportService', () => {
   it('allows the owner to cancel an open report', async () => {
     const created = await service.create(validInput)
 
-    const cancelled = await service.cancel(created.caseNumber, access)
+    const cancelled = await service.cancel(created.caseNumber, access, USER_ID)
 
     expect(cancelled.status).toBe('cancelled')
     expect(cancelled.closedAt).toBeInstanceOf(Date)
+    // Feature 13 hears about it after the cancellation, as with staff cancellation.
+    expect(notices.notify).toHaveBeenCalledWith([{ event: 'cancelled', reportId: cancelled.id }])
 
     const saved = await service.getByCaseNumber(created.caseNumber, access)
     expect(saved.status).toBe('cancelled')
@@ -304,11 +311,15 @@ describe('ReportService', () => {
     const created = await service.create(validInput)
 
     await expect(
-      service.cancel(created.caseNumber, {
-        bookingReference: 'XYZ789',
-        surname: 'Jones',
-        passengerId: 'P002',
-      }),
+      service.cancel(
+        created.caseNumber,
+        {
+          bookingReference: 'XYZ789',
+          surname: 'Jones',
+          passengerId: 'P002',
+        },
+        USER_ID,
+      ),
     ).rejects.toMatchObject({
       code: 'REPORT_NOT_FOUND',
     })
@@ -321,10 +332,14 @@ describe('ReportService', () => {
     const created = await service.create(validInput)
 
     await expect(
-      service.cancel(created.caseNumber, {
-        ...access,
-        bookingReference: 'INVALID',
-      }),
+      service.cancel(
+        created.caseNumber,
+        {
+          ...access,
+          bookingReference: 'INVALID',
+        },
+        USER_ID,
+      ),
     ).rejects.toMatchObject({
       code: 'INVALID_REPORT',
     })
@@ -333,9 +348,9 @@ describe('ReportService', () => {
   it('rejects cancelling an already cancelled report', async () => {
     const created = await service.create(validInput)
 
-    await service.cancel(created.caseNumber, access)
+    await service.cancel(created.caseNumber, access, USER_ID)
 
-    await expect(service.cancel(created.caseNumber, access)).rejects.toMatchObject({
+    await expect(service.cancel(created.caseNumber, access, USER_ID)).rejects.toMatchObject({
       code: 'CANCELLATION_NOT_ALLOWED',
     })
   })
@@ -344,7 +359,7 @@ describe('ReportService', () => {
     const created = await service.create(validInput)
     repository.setStatus(created.caseNumber, 'lost')
 
-    await expect(service.cancel(created.caseNumber, access)).resolves.toMatchObject({ status: 'cancelled' })
+    await expect(service.cancel(created.caseNumber, access, USER_ID)).resolves.toMatchObject({ status: 'cancelled' })
   })
 
   it.each(['matched', 'delivering', 'closed'] as const)(
@@ -354,8 +369,9 @@ describe('ReportService', () => {
       repository.setStatus(created.caseNumber, status)
 
       // The existing contract: CANCELLATION_NOT_ALLOWED, which the baggage error filter answers with 409.
-      await expect(service.cancel(created.caseNumber, access)).rejects.toMatchObject({ code: 'CANCELLATION_NOT_ALLOWED' })
+      await expect(service.cancel(created.caseNumber, access, USER_ID)).rejects.toMatchObject({ code: 'CANCELLATION_NOT_ALLOWED' })
       expect((await repository.findByCaseNumber(created.caseNumber))?.status).toBe(status)
+      expect(notices.notify).not.toHaveBeenCalled()
     },
   )
 })
@@ -373,6 +389,7 @@ describe('ReportService.listEligibleTravellers', () => {
       new InMemoryCaseNumberSequence(),
       new MockSimulationClock(),
       { upload: jest.fn(), remove: jest.fn(), retrieve: jest.fn() },
+      { notify: jest.fn() },
     )
   }
 
@@ -444,6 +461,7 @@ describe('ReportService.create for another traveller ("Whose bag is it?")', () =
       new InMemoryCaseNumberSequence(),
       new MockSimulationClock(new Date('2026-10-29T10:00:00Z')),
       { upload: jest.fn(), remove: jest.fn(), retrieve: jest.fn() },
+      { notify: jest.fn() },
     )
   })
 
@@ -556,6 +574,7 @@ describe('ReportService case access for co-travellers (Stage 3)', () => {
       new InMemoryCaseNumberSequence(),
       new MockSimulationClock(new Date('2026-10-29T10:00:00Z')),
       photos,
+      { notify: jest.fn() },
     )
   })
 
@@ -650,21 +669,23 @@ describe('ReportService case access for co-travellers (Stage 3)', () => {
     it('a non-owner on the same booking cannot cancel; the owner still can', async () => {
       const created = await reportForErik()
 
-      await expect(service.cancel(created.caseNumber, anna)).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
-      await expect(service.cancel(created.caseNumber, erik)).resolves.toMatchObject({ status: 'cancelled' })
+      await expect(service.cancel(created.caseNumber, anna, USER_ID)).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+      await expect(service.cancel(created.caseNumber, erik, USER_ID)).resolves.toMatchObject({ status: 'cancelled' })
     })
 
     it('the customer who filed the case for a co-traveller can choose the delivery and cancel', async () => {
       const created = await reportForErik()
 
       await expect(service.getDeliveryChoiceForCaseNumber(created.caseNumber, annaSignedIn)).resolves.toBeNull()
-      await expect(service.cancel(created.caseNumber, annaSignedIn)).resolves.toMatchObject({ status: 'cancelled' })
+      await expect(service.cancel(created.caseNumber, annaSignedIn, USER_ID)).resolves.toMatchObject({ status: 'cancelled' })
     })
 
     it('another signed-in traveller on the booking who did not file it cannot cancel', async () => {
       const created = await reportForErik()
 
-      await expect(service.cancel(created.caseNumber, { ...tom, customerId: 'C-TOM' })).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' })
+      await expect(service.cancel(created.caseNumber, { ...tom, customerId: 'C-TOM' }, USER_ID)).rejects.toMatchObject({
+        code: 'REPORT_NOT_FOUND',
+      })
     })
 
     it('the owner keeps delivery-choice access', async () => {

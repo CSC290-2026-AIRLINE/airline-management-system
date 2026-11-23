@@ -381,7 +381,7 @@ async function main(): Promise<void> {
     const matching = new BagMatchingService(db, clock)
     const checkedBags = new PrismaCheckedBagLookup(db)
     const foundBags = new FoundBagService(db, audit, clock, [matching])
-    const repository = new PrismaReportRepository(db)
+    const repository = new PrismaReportRepository(db, audit)
     const reportService = new ReportService(
       repository,
       new PrismaBookingVerification(db),
@@ -389,6 +389,7 @@ async function main(): Promise<void> {
       new PrismaCaseNumberSequence(db),
       clock,
       unusedPhotoStorage,
+      { notify: () => undefined },
     )
     const deliveries = new BagDeliveryService(db, audit, clock)
     const passengerChoices = new PassengerDeliveryChoiceService(reportService, deliveries)

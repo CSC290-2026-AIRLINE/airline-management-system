@@ -413,12 +413,13 @@ async function main(): Promise<void> {
     assert.equal(staffA.roleCode, staffB.roleCode)
 
     const report = await new ReportService(
-      new PrismaReportRepository(db),
+      new PrismaReportRepository(db, audit),
       new PrismaBookingVerification(db),
       new PrismaCheckedBagLookup(db),
       new PrismaCaseNumberSequence(db),
       clock,
       unusedPhotoStorage,
+      { notify: () => undefined },
     ).create({
       reportedByCustomerId: fixture.customerId,
       flightId: fixture.flightId,

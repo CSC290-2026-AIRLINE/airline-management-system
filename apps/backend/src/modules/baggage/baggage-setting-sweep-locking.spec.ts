@@ -127,6 +127,8 @@ function makeWorld() {
           return Promise.resolve({})
         },
       },
+      // No bag in this suite is in transit, so the sweep's latest-event read finds nothing to leave held.
+      bag_location_event: { findMany: () => Promise.resolve([]) },
       found_bag: {
         findMany: async ({ where }: { where: { found_at: { lte: Date } } }) => {
           reached.foundBagRead = true
