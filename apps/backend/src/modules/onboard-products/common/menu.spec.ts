@@ -7,6 +7,7 @@ import { defaultOffering, resolveOfferings, type OfferingRow } from './menu'
 function row(partial: Partial<OfferingRow> & { productId: string }): OfferingRow {
   return {
     id: partial.productId,
+    category: 'meal',
     scope: 'network',
     routeId: null,
     flightId: null,
@@ -20,6 +21,21 @@ function row(partial: Partial<OfferingRow> & { productId: string }): OfferingRow
 const SCOPE = { flightId: 'f1', routeId: 'r1', cabin: 'economy' as const }
 
 describe('resolveOfferings', () => {
+  it('lets route and flight overrides add or hide extras without replacing meals or other products', () => {
+    const rows = [
+      row({ productId: 'meal', isDefault: true }),
+      row({ productId: 'drink', category: 'beverage' }),
+      row({ productId: 'snack', category: 'snack' }),
+      row({ productId: 'soap', category: 'duty_free', scope: 'route', routeId: 'r1' }),
+      row({ productId: 'drink', category: 'beverage', scope: 'route', routeId: 'r1', isActive: false }),
+      row({ productId: 'snack', category: 'snack', scope: 'flight', flightId: 'f1', isActive: false }),
+      row({ productId: 'drink', category: 'beverage', scope: 'flight', flightId: 'f1' }),
+    ]
+    expect(resolveOfferings(rows, SCOPE).map((item) => item.productId)).toEqual(['meal', 'drink', 'soap'])
+    expect(resolveOfferings(rows, { ...SCOPE, flightId: 'f2' }).map((item) => item.productId)).toEqual(['meal', 'snack', 'soap'])
+    expect(defaultOffering(rows, SCOPE)?.productId).toBe('meal')
+  })
+
   it('falls back to the network menu', () => {
     const rows = [row({ productId: 'p1' }), row({ productId: 'p2' })]
     expect(resolveOfferings(rows, SCOPE).map((r) => r.productId)).toEqual(['p1', 'p2'])

@@ -14,6 +14,7 @@
 //   close    - end of flight (called from the flight report);
 //   void     - cancel an order that has not been loaded yet.
 
+import { DEMO_FLIGHT_ID } from '../common/demo-booking'
 import { Injectable } from '@nestjs/common'
 import { DbService } from '../../../db/db.service'
 import { ApiErrorException } from '../common/api-error'
@@ -164,7 +165,34 @@ export class CateringOrdersService {
       })
       if (!flight) throw new ApiErrorException('NOT_FOUND', 'Flight not found.', 404)
       const summary = await this.passengerSummary([flightId])
-      return this.openOrder(flight, summary.get(flightId)?.passengers ?? 0, await this.cutoffFor(flightId), flight.flight_report != null)
+      const open = this.openOrder(
+        flight,
+        summary.get(flightId)?.passengers ?? 0,
+        await this.cutoffFor(flightId),
+        flight.flight_report != null,
+      )
+      const lines = await this.db.product_order_line.groupBy({
+        by: ['product_id'],
+        where: { flight_id: flightId, deleted_at: null, product_order: { status: 'confirmed' } },
+        _sum: { quantity: true },
+      })
+      const products = await this.db.product.findMany({
+        where: { id: { in: lines.map((line) => line.product_id) } },
+        select: { id: true, name: true },
+      })
+      const names = new Map(products.map((product) => [product.id, product.name]))
+      return {
+        ...open,
+        lines: lines.map((line) => ({
+          id: line.product_id,
+          cabin: 'all',
+          productId: line.product_id,
+          productName: names.get(line.product_id) ?? line.product_id,
+          quantityRequired: line._sum.quantity ?? 0,
+          quantityShort: 0,
+          source: 'order',
+        })),
+      }
     }
     const passengers = await this.passengerSummary([flightId])
     const summary = passengers.get(flightId)
@@ -460,10 +488,10 @@ export class CateringOrdersService {
   // that has rows for that cabin.
   private async defaultOfferings(flightId: string, routeId: string): Promise<Map<F12Cabin, string>> {
     const rows = await this.db.product_offering.findMany({
-      where: { deleted_at: null, is_active: true },
-      include: { product: true },
+      where: { deleted_at: null, is_active: true, product: { category: 'meal', deleted_at: null, is_active: true } },
     })
     const mapped: OfferingRow[] = rows.map((r) => ({
+      category: 'meal',
       id: r.id,
       productId: r.product_id,
       scope: r.scope as OfferingRow['scope'],
@@ -477,9 +505,6 @@ export class CateringOrdersService {
     for (const cabin of CABINS) {
       const row = defaultOffering(mapped, { flightId, routeId, cabin })
       if (!row) continue
-      const product = rows.find((r) => r.id === row.id)
-      // Only a meal can be the default meal.
-      if (product && product.product.category !== 'meal') continue
       out.set(cabin, row.productId)
     }
     return out
@@ -493,7 +518,7 @@ export class CateringOrdersService {
     if (flightIds.length === 0) return out
     const orders = await this.db.product_order.findMany({
       where: { flight_id: { in: flightIds }, status: 'confirmed' },
-      include: { product_order_line: { where: { deleted_at: null } } },
+      include: { product_order_line: { where: { deleted_at: null } }, customer: { select: { passenger_id: true } } },
     })
     if (orders.length === 0) return out
 
@@ -518,7 +543,9 @@ export class CateringOrdersService {
       const ordered = flightOrdered.get(order.flight_id) ?? new Set<string>()
       const cabinPeople = cabinPassengers.get(order.cabin) ?? new Set<string>()
       const cabinMeals = cabinOrdered.get(order.cabin) ?? new Set<string>()
-      for (const passengerId of perCustomer.get(order.customer_id) ?? []) {
+      const bookingPassengers =
+        order.flight_id === DEMO_FLIGHT_ID ? [order.customer.passenger_id] : (perCustomer.get(order.customer_id) ?? [])
+      for (const passengerId of bookingPassengers) {
         passengers.add(passengerId)
         cabinPeople.add(passengerId)
       }

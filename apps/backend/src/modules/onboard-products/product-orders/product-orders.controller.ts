@@ -19,6 +19,17 @@ export class ProductOrdersController {
     return this.orders.list(customer.id, bookingId)
   }
 
+  @Get('booking/:id')
+  async booking(@CurrentCustomer() customer: { id: string }, @Param('id') id: string) {
+    return this.orders.demoBooking(customer.id, id)
+  }
+
+  @Post(':id/demo-payment')
+  @HttpCode(200)
+  async demoPayment(@CurrentCustomer() customer: { id: string }, @Param('id') id: string, @Body() body: { status?: unknown }) {
+    return this.orders.demoPayment(customer.id, id, body?.status)
+  }
+
   @Get(':id')
   async get(@CurrentCustomer() customer: { id: string }, @Param('id') id: string) {
     return this.orders.get(customer.id, id)

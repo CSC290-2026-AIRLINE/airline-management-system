@@ -426,6 +426,7 @@ interface WireCabinSetting {
   orderWindowHours: number | null
   premiumMealsAllowed: boolean | null
   snacksEnabled: boolean | null
+  snackService?: CabinSetting['snackService']
   dutyFreeEnabled: boolean | null
   onboardBufferPercent: number | null
 }
@@ -444,6 +445,7 @@ export function mapCabinSetting(wire: WireCabinSetting): CabinSetting {
     orderWindowHours: wire.orderWindowHours == null ? null : Number(wire.orderWindowHours),
     premiumMealsAllowed: wire.premiumMealsAllowed,
     snacksEnabled: wire.snacksEnabled,
+    snackService: wire.snackService,
     dutyFreeEnabled: wire.dutyFreeEnabled,
     onboardBufferPercent: wire.onboardBufferPercent == null ? null : Number(wire.onboardBufferPercent),
   } as CabinSetting
@@ -658,7 +660,10 @@ export function mapCateringOrder(wire: WireCateringOrder): CateringOrder {
     cutoffAt: toIsoString(wire.cutoffAt),
     generatedAt: toIsoString(wire.generatedAt),
     loadedAt: toNullableIsoString(wire.loadedAt),
-    warehouseId: required('GET /api/staff/flights/:flightId/catering-order', 'warehouseId', wire.warehouseId),
+    warehouseId:
+      wire.status === 'open'
+        ? wire.warehouseId
+        : required('GET /api/staff/flights/:flightId/catering-order', 'warehouseId', wire.warehouseId),
     aircraftId: required('GET /api/staff/flights/:flightId/catering-order', 'aircraftId', wire.aircraftId),
     lines: wire.lines.map(mapCateringOrderLine),
   }

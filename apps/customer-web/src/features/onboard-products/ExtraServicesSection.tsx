@@ -10,7 +10,7 @@
 // - On successful cancel, the affected order is updated in place rather
 //   than refetching the whole list.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useAppAuth } from '../../auth/AuthProvider'
 import { cancelProductOrder, fetchProductOrdersForBooking } from './api'
@@ -21,36 +21,25 @@ import type { Booking, ProductOrder } from './types'
 
 interface Props {
   booking: Booking
-  preset?: 'ready' | 'duty-free' | 'waiting' | 'failed' | 'confirmed' | 'cancel-po-2041' | 'refund-requested' | undefined
-  initialCancelTarget?: string | null
-  refundIdHint?: string | null
 }
 
 type OrdersState = { kind: 'loading' } | { kind: 'error'; error: string } | { kind: 'ready'; orders: ProductOrder[] }
 
-export function ExtraServicesSection({ booking, preset, initialCancelTarget, refundIdHint }: Props) {
+export function ExtraServicesSection({ booking }: Props) {
   const { fetchWithAuth, isLoading: isAuthLoading } = useAppAuth()
   const [now] = useState(() => Date.now())
   const [ordersState, setOrdersState] = useState<OrdersState>({ kind: 'loading' })
   const [cancelTarget, setCancelTarget] = useState<ProductOrder | null>(null)
   const [cancelPending, setCancelPending] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
-  const cancelTargetSeededRef = useRef(false)
 
   useEffect(() => {
     if (isAuthLoading) return
     let cancelled = false
-    fetchProductOrdersForBooking(booking.id, fetchWithAuth, preset)
+    fetchProductOrdersForBooking(booking.id, fetchWithAuth)
       .then((data) => {
         if (cancelled) return
         setOrdersState({ kind: 'ready', orders: data })
-        if (initialCancelTarget && !cancelTargetSeededRef.current) {
-          const target = data.find((o) => o.id === initialCancelTarget)
-          if (target) {
-            setCancelTarget(target)
-            cancelTargetSeededRef.current = true
-          }
-        }
       })
       .catch((e: unknown) => {
         if (cancelled) return
@@ -62,7 +51,7 @@ export function ExtraServicesSection({ booking, preset, initialCancelTarget, ref
     return () => {
       cancelled = true
     }
-  }, [booking.id, fetchWithAuth, isAuthLoading, preset, initialCancelTarget])
+  }, [booking.id, fetchWithAuth, isAuthLoading])
 
   const orders = ordersState.kind === 'ready' ? ordersState.orders : []
   const activeOrders = orders.filter((o) => o.status === 'pending_payment' || o.status === 'confirmed')
@@ -150,7 +139,7 @@ export function ExtraServicesSection({ booking, preset, initialCancelTarget, ref
             role="status"
           >
             <span className="w-2 h-2 rounded-full flex-none" style={{ background: 'oklch(0.48 0.15 148)' }} aria-hidden="true" />
-            <span>Ordering open · Closes {formatDateTime(cutoffState.cutoffAt)}, 48 hours before departure.</span>
+            <span>Ordering open · Closes {formatDateTime(cutoffState.cutoffAt)}.</span>
           </div>
         ) : (
           <div
@@ -186,7 +175,6 @@ export function ExtraServicesSection({ booking, preset, initialCancelTarget, ref
                 order={order}
                 passengers={booking.passengers}
                 now={now}
-                refundIdHint={refundIdHint}
                 onCancel={(id) => {
                   const target = ordersState.orders.find((o) => o.id === id) ?? null
                   setCancelTarget(target)

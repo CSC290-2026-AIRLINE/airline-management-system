@@ -1,6 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useUser } from '@clerk/clerk-react'
 import { useAppAuth } from '../../auth/AuthProvider'
+import { demoEnabled } from '../../features/onboard-products/api'
 import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 
@@ -23,6 +24,12 @@ function Dashboard() {
           <h1 className="font-heading text-2xl font-semibold text-foreground m-0 mb-1">Welcome, {displayName}</h1>
           <p className="text-sm text-muted-foreground m-0">View your bookings and manage upcoming trips.</p>
         </div>
+
+        {demoEnabled && (
+          <Link className="text-primary underline" to="/bookings/$bookingId" params={{ bookingId: 'demo' }}>
+            Open onboard products demo booking
+          </Link>
+        )}
 
         <Card>
           <CardHeader>

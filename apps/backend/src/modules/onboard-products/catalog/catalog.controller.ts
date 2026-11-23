@@ -3,6 +3,7 @@
 // and the order window.
 
 import { Controller, Get, Query } from '@nestjs/common'
+import { CurrentCustomer } from '../common/customer.decorator'
 import { CustomerAuth } from '../common/customer-auth.decorator'
 import { ProductOrdersService } from '../product-orders/product-orders.service'
 
@@ -12,7 +13,12 @@ export class CatalogController {
   constructor(private readonly orders: ProductOrdersService) {}
 
   @Get()
-  async catalog(@Query('bookingId') bookingId?: string, @Query('flightId') flightId?: string, @Query('cabin') cabin?: string) {
-    return this.orders.catalog({ bookingId, flightId, cabin })
+  async catalog(
+    @CurrentCustomer() customer: { id: string },
+    @Query('bookingId') bookingId?: string,
+    @Query('flightId') flightId?: string,
+    @Query('cabin') cabin?: string,
+  ) {
+    return this.orders.catalog({ bookingId, flightId, cabin }, customer.id)
   }
 }

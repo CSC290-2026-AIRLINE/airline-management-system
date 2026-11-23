@@ -1,27 +1,7 @@
-// Feature 12 — Onboard Products. The Add Extra Services page (page 2
-// of the Figma). The customer picks a flight, picks a passenger, picks
-// a product, and the right-column "Your order" card shows the running
-// total. On Place order: $0 short-circuits to confirmed + back to the
-// booking; >$0 creates a pending_payment order and shows a dev alert
-// (F5 hand-off comes in a later page).
-//
-// Data flow:
-// - The booking is fetched once to get passengers + flights.
-// - Catalog + cabin setting are re-fetched whenever the active flight
-//   changes. The in-memory cart is also reset on flight switch —
-//   per-passenger choices belong to the flight they were made for.
-// - The cart is a flat list of lines keyed by passengerId. A passenger
-//   without entries is on the cabin's default meal (no order line).
-// - On Place order: flatten the cart into payload lines, then either
-//   confirm+return ($0) or stay put with a dev alert (>$0).
-//
-// UI: meals use the radio-row UI (single choice per passenger);
-// snacks / drinks / duty-free use a table with a quantity stepper.
-
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useAppAuth } from '../../auth/AuthProvider'
-import { cancelProductOrder, confirmOrderDev, fetchBooking, fetchCabinSetting, fetchCatalog, placeOrder } from './api'
+import { fetchBooking, fetchCatalog, placeOrder, resolveDemoPayment } from './api'
 import { CabinInfoStrip } from './CabinInfoStrip'
 import { CategoryTabs } from './CategoryTabs'
 import { CountdownBanner } from './CountdownBanner'
@@ -35,15 +15,21 @@ import type { Booking, CabinSetting, Cart, CartLine, PlaceOrderPayload, Product 
 
 export interface Props {
   bookingId: string
-  cart?: 'snacks' | 'duty-free' | 'empty' | 'none' | undefined
-  f5?: 'pending' | 'failed' | 'confirmed' | 'none' | undefined
 }
 
 type BookingState = { kind: 'loading' } | { kind: 'error'; error: string } | { kind: 'ready'; booking: Booking }
 
 type CatalogState =
   | { kind: 'idle' }
-  | { kind: 'ready'; flightId: string; products: Product[]; setting: CabinSetting }
+  | {
+      kind: 'ready'
+      flightId: string
+      products: Product[]
+      setting: CabinSetting
+      cutoffAt: string
+      currency: string
+      complimentarySnackAvailable: boolean
+    }
   | { kind: 'error'; flightId: string; error: string }
 
 type Tab = 'meals' | 'snacks' | 'duty-free'
@@ -66,7 +52,7 @@ function tabSubtitle(tab: Tab): string {
   if (tab === 'meals') {
     return 'Tap a meal for the selected passenger. Meals are free on complimentary flights and for tier members. Premium meals are always charged. Passengers who choose nothing get the default meal at no charge.'
   }
-  if (tab === 'snacks') return 'Served in your cabin. Charged at full price, tier or not.'
+  if (tab === 'snacks') return 'Served in your cabin.'
   return 'Order ahead and collect on board. Alcohol is for adults only and ID is checked at collection.'
 }
 
@@ -79,67 +65,7 @@ function useNow(intervalMs: number = 60_000): number {
   return now
 }
 
-function cartFor(cart: NonNullable<Props['cart']>, somchaiId: string): Cart {
-  if (cart === 'empty') return {}
-  if (cart === 'snacks') {
-    return {
-      [somchaiId]: [
-        {
-          productId: 'prod-beef',
-          productName: 'Braised beef, mash and greens',
-          category: 'meal',
-          quantity: 1,
-          unitPrice: 0,
-          priceBasis: 'included',
-        },
-        {
-          productId: 'prod-nuts',
-          productName: 'Mixed roasted nuts',
-          category: 'snack',
-          quantity: 2,
-          unitPrice: 4,
-          priceBasis: 'standard',
-        },
-        {
-          productId: 'prod-coffee',
-          productName: 'Cold brew coffee',
-          category: 'beverage',
-          quantity: 1,
-          unitPrice: 5,
-          priceBasis: 'standard',
-        },
-      ],
-    }
-  }
-  return {
-    [somchaiId]: [
-      {
-        productId: 'prod-beef',
-        productName: 'Braised beef, mash and greens',
-        category: 'meal',
-        quantity: 1,
-        unitPrice: 0,
-        priceBasis: 'included',
-      },
-      {
-        productId: 'prod-perfume',
-        productName: 'Jasmine eau de parfum, 50 ml',
-        category: 'duty_free',
-        quantity: 1,
-        unitPrice: 62,
-        priceBasis: 'standard',
-      },
-    ],
-  }
-}
-
-function tabFor(cart: NonNullable<Props['cart']>): Tab {
-  if (cart === 'snacks') return 'snacks'
-  if (cart === 'duty-free') return 'duty-free'
-  return 'meals'
-}
-
-export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset }: Props) {
+export function AddExtraServicesPage({ bookingId }: Props) {
   const { fetchWithAuth, isLoading: isAuthLoading } = useAppAuth()
   const navigate = useNavigate()
 
@@ -157,7 +83,6 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null)
   const [alert, setAlert] = useState<string | null>(null)
   const now = useNow()
-  const cartSeededRef = useRef(false)
 
   useEffect(() => {
     if (isAuthLoading) return
@@ -181,66 +106,55 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
     }
   }, [bookingId, fetchWithAuth, isAuthLoading])
 
+  const booking = bookingState.kind === 'ready' ? bookingState.booking : null
+  const selectedFlight = booking?.flights.find((flight) => flight.id === selectedFlightId) ?? null
+
   useEffect(() => {
-    if (!selectedFlightId) return
+    if (!selectedFlight) return
+    const { id: flightId } = selectedFlight
     let cancelled = false
-    Promise.all([fetchCatalog(selectedFlightId, fetchWithAuth), fetchCabinSetting(selectedFlightId, fetchWithAuth)])
-      .then(([products, setting]) => {
-        if (cancelled) return
-        setCatalogState({ kind: 'ready', flightId: selectedFlightId, products, setting })
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return
-        setCatalogState({
-          kind: 'error',
-          flightId: selectedFlightId,
-          error: e instanceof Error ? e.message : 'Failed to load catalog',
+    let request = 0
+    const refresh = () => {
+      const current = ++request
+      fetchCatalog(selectedFlight, fetchWithAuth)
+        .then((catalog) => {
+          if (!cancelled && current === request) setCatalogState({ kind: 'ready', flightId, ...catalog })
         })
-      })
+        .catch((error: unknown) => {
+          if (cancelled || current !== request) return
+          setCatalogState({ kind: 'error', flightId, error: error instanceof Error ? error.message : 'Failed to load catalog' })
+        })
+    }
+    refresh()
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refresh()
+    }
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    window.addEventListener('focus', refresh)
     return () => {
       cancelled = true
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      window.removeEventListener('focus', refresh)
     }
-  }, [selectedFlightId, fetchWithAuth])
+  }, [selectedFlight, fetchWithAuth])
 
-  useEffect(() => {
-    if (!import.meta.env.DEV) return
-    if (!cartPreset || cartPreset === 'none') return
-    if (!f5Preset || f5Preset === 'none') return
-    if (cartSeededRef.current) return
-    if (bookingState.kind !== 'ready') return
-    if (catalogState.kind !== 'ready' || catalogState.flightId !== selectedFlightId) return
-    if (!selectedPassengerId) return
-    const somchai = bookingState.booking.passengers[0]
-    if (!somchai) return
-    const seeded: Cart = cartFor(cartPreset, somchai.id)
-    const targetTab: Tab = tabFor(cartPreset)
-    const targetPendingOrderId: string | null = f5Preset === 'pending' ? 'PO-DEV-WAITING' : null
-    const targetPaymentFailed: boolean = f5Preset === 'failed'
-    const targetOrderConfirmed: boolean = f5Preset === 'confirmed'
-    const targetConfirmedOrderId: string | null = f5Preset === 'confirmed' ? 'PO-2052' : null
-    const targetCart: Cart = f5Preset === 'confirmed' ? {} : seeded
-    const targetPassengerId = somchai.id
-    Promise.resolve().then(() => {
-      if (cartSeededRef.current) return
-      if (targetPassengerId !== selectedPassengerId) setSelectedPassengerId(targetPassengerId)
-      setActiveTab(targetTab)
-      setCart(targetCart)
-      if (targetPendingOrderId !== null) setPendingOrderId(targetPendingOrderId)
-      if (targetPaymentFailed) {
-        setPaymentFailed(true)
-      }
-      if (targetOrderConfirmed) {
-        setOrderConfirmed(true)
-        setConfirmedOrderId(targetConfirmedOrderId)
-      }
-      cartSeededRef.current = true
-    })
-  }, [cartPreset, f5Preset, bookingState, catalogState, selectedFlightId, selectedPassengerId])
-
-  const booking = bookingState.kind === 'ready' ? bookingState.booking : null
-  const selectedFlight = booking?.flights.find((f) => f.id === selectedFlightId) ?? null
-  const cutoffAt = selectedFlight ? (selectedFlight.cutoffAt ?? defaultCutoffFor(selectedFlight.scheduledDeparture)) : null
-  const isOpen = cutoffAt ? new Date(cutoffAt).getTime() > now : false
+  const liveCatalog = catalogState.kind === 'ready' && catalogState.flightId === selectedFlightId ? catalogState : null
+  let includeSnack = liveCatalog?.complimentarySnackAvailable ?? false
+  const displayedCart: Cart = Object.fromEntries(
+    Object.entries(cart).map(([passengerId, lines]) => [
+      passengerId,
+      lines.flatMap((line): CartLine[] => {
+        if (!includeSnack || (line.category !== 'snack' && line.category !== 'beverage')) return [line]
+        includeSnack = false
+        const included: CartLine = { ...line, quantity: 1, unitPrice: 0, priceBasis: 'included' }
+        return line.quantity === 1 ? [included] : [included, { ...line, quantity: line.quantity - 1 }]
+      }),
+    ]),
+  )
+  const currency = liveCatalog?.currency ?? 'USD'
+  const cutoffAt =
+    liveCatalog?.cutoffAt ?? (selectedFlight ? (selectedFlight.cutoffAt ?? defaultCutoffFor(selectedFlight.scheduledDeparture)) : null)
+  const isOpen = cutoffAt ? new Date(cutoffAt).getTime() > now && liveCatalog?.setting.preorderEnabled !== false : false
 
   const catalog: { kind: 'loading' | 'error' | 'ready'; products: Product[]; setting: CabinSetting | null; error: string | null } =
     catalogState.kind === 'ready' && catalogState.flightId === selectedFlightId
@@ -354,11 +268,8 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
       for (const line of cart[passengerId] ?? []) {
         lines.push({
           productId: line.productId,
-          category: line.category,
-          passengerId,
+          bookingPassengerId: line.category === 'meal' ? passengerId : null,
           quantity: line.quantity,
-          unitPrice: line.unitPrice,
-          priceBasis: line.priceBasis,
         })
       }
     }
@@ -370,10 +281,14 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
     setIsPlacingOrder(true)
     setAlert(null)
     try {
-      const placed = await placeOrder({ bookingId: booking.id, flightId: selectedFlight.id, lines }, fetchWithAuth)
-      if (placed.totalAmount === 0) {
-        await confirmOrderDev(placed.id, fetchWithAuth)
-        await navigate({ to: '/bookings/$bookingId', params: { bookingId } })
+      const placed = await placeOrder(
+        { bookingId: booking.id, flightId: selectedFlight.id, cabin: selectedFlight.cabinClass, lines },
+        fetchWithAuth,
+      )
+      if (placed.status === 'confirmed') {
+        setConfirmedOrderId(placed.id)
+        setOrderConfirmed(true)
+        setCart({})
         return
       }
       setPendingOrderId(placed.id)
@@ -389,7 +304,12 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
     setIsResolvingF5(true)
     setAlert(null)
     try {
-      await confirmOrderDev(pendingOrderId, fetchWithAuth)
+      const order = await resolveDemoPayment(pendingOrderId, 'paid', fetchWithAuth)
+      if (order.status !== 'confirmed') {
+        setPendingOrderId(null)
+        setPaymentFailed(true)
+        return
+      }
       setPendingOrderId(null)
       setOrderConfirmed(true)
       setConfirmedOrderId(pendingOrderId)
@@ -406,7 +326,7 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
     setIsResolvingF5(true)
     setAlert(null)
     try {
-      await cancelProductOrder(pendingOrderId, fetchWithAuth)
+      await resolveDemoPayment(pendingOrderId, 'failed', fetchWithAuth)
       setPendingOrderId(null)
       setPaymentFailed(true)
     } catch (e: unknown) {
@@ -423,7 +343,8 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
 
   function handleViewInBooking() {
     if (typeof window !== 'undefined') {
-      const id = confirmedOrderId ?? 'PO-2052'
+      const id = confirmedOrderId
+      if (!id) return
       try {
         window.sessionStorage.setItem('f12:order-confirmed', id)
       } catch {
@@ -499,7 +420,12 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
 
       <div className="grid gap-6 items-start mt-0" style={{ gridTemplateColumns: 'minmax(0, 776px) 400px' }}>
         <div className="min-w-0 flex flex-col gap-5">
-          <PassengerPicker passengers={booking.passengers} cart={cart} selectedId={selectedPassengerId} onSelect={handlePassengerSelect} />
+          <PassengerPicker
+            passengers={booking.passengers}
+            cart={displayedCart}
+            selectedId={selectedPassengerId}
+            onSelect={handlePassengerSelect}
+          />
 
           <CategoryTabs active={activeTab} onSelect={setActiveTab} />
 
@@ -509,6 +435,13 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
             </h3>
             <p className="m-0 mb-3 text-muted-foreground text-sm leading-relaxed">{tabSubtitle(activeTab)}</p>
 
+            {activeTab === 'snacks' && liveCatalog?.setting.snackService === 'complimentary' && (
+              <p className="text-sm text-muted-foreground">
+                {liveCatalog.complimentarySnackAvailable
+                  ? 'Your first snack or drink is included. Additional items are charged.'
+                  : 'Your included snack or drink is already on an order.'}
+              </p>
+            )}
             {catalog.kind === 'loading' ? (
               <p className="my-2 text-muted-foreground text-sm">Loading products…</p>
             ) : catalog.kind === 'error' ? (
@@ -523,7 +456,7 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
                 products={products}
                 selectedMealProductId={selectedMealProductId}
                 quantities={quantities}
-                currency="USD"
+                currency={currency}
                 passengerFirstName={selectedPassenger?.firstName ?? ''}
                 onSelectMeal={handleSelectMeal}
                 onAddOne={handleAddOne}
@@ -539,9 +472,9 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
             flightNumber={selectedFlight.flightNumber}
             flightOriginCode={selectedFlight.origin.code}
             flightDestinationCode={selectedFlight.destination.code}
-            cart={cart}
+            cart={displayedCart}
             passengers={booking.passengers}
-            currency="USD"
+            currency={currency}
             canPlaceOrder={canPlaceOrder && !paymentFailed && !orderConfirmed}
             isPlacingOrder={isPlacingOrder}
             isResolvingF5={isResolvingF5}

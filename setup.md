@@ -112,3 +112,41 @@ cp .claude/settings.example.json .claude/settings.json
 - The copied `.claude/settings.json` is gitignored, so personal `env` entries (custom API endpoint, keys, model overrides) stay local and out of git history.
 - Adjust the `permissions.allow` and `permissions.deny` lists to match your workflow.
 - Replace or remove the example `env` block if you don't use a custom model endpoint.
+
+## Feature 12 local demo
+
+Use Node.js 24, start Docker Desktop, and configure the three local environment files
+as described above. The browser apps use the project's separate development Clerk
+instances. Sign in as a customer on customer web and as staff on staff web.
+
+Set these values in the local environment files.
+
+- In `apps/backend/.env`, set `NODE_ENV="development"` and `F12_DEMO_ENABLED="true"`.
+- In `apps/customer-web/.env`, set `VITE_F12_DEMO_ENABLED="true"`.
+
+Run these commands from the repository root.
+
+```powershell
+npm.cmd install
+npm.cmd run db:up
+npm.cmd run db:generate
+npm.cmd run db:migrate:deploy
+npm.cmd run db:seed
+npm.cmd run dev
+```
+
+Open [Customer web](http://localhost:5151/dashboard), select **Open onboard products demo booking**,
+and add Sparkling water from **Snacks and drinks** on flight **FL412**. Place the order and
+select **Simulate successful payment**. In [Staff Catering Orders](http://localhost:6161/catering/orders),
+select **FL412** and use **Reload customer orders** to see the confirmed quantity. Cancel the
+order from the customer booking details and reload the staff view to see it removed.
+The staff stock page shows reservations while orders are active.
+
+The seed creates local staff and customer database fixtures for automated tests.
+Browser sign-in uses your development Clerk accounts. The demo booking belongs to the
+signed-in customer and uses the same seeded flight, menu and stock as the staff app.
+Run the shared smoke test from a second terminal while the backend is running.
+
+```powershell
+npm.cmd run test:f12:integration -w apps/backend
+```

@@ -26,19 +26,12 @@ function nextToastId(): number {
   return Date.now() + Math.floor(Math.random() * 1000)
 }
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('en-US', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'UTC',
-  })
-}
+const dateFormat = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+const timeFormat = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })
+function formatDateTime(iso: string): string {
+  const date = new Date(iso)
+  return `${dateFormat.format(date)}, ${timeFormat.format(date)}`
 }
 
 function formatQuantity(n: number): string {
@@ -181,7 +174,7 @@ export function CateringOrdersPage() {
           const o = await api.orders.getCateringOrder(initial.id)
           if (!cancelled) {
             setOrders((prev) => ({ ...prev, [initial.id]: o }))
-            if (o) {
+            if (o?.warehouseId) {
               const bs = await api.stock.listStockBatches({ warehouseId: o.warehouseId })
               if (!cancelled) setBatches(bs)
             }
@@ -210,7 +203,7 @@ export function CateringOrdersPage() {
       .then(async (o) => {
         if (cancelled) return
         setOrders((prev) => ({ ...prev, [selectedId]: o }))
-        if (o) {
+        if (o?.warehouseId) {
           const bs = await api.stock.listStockBatches({ warehouseId: o.warehouseId })
           if (!cancelled) setBatches(bs)
         }
@@ -231,12 +224,19 @@ export function CateringOrdersPage() {
     setFlights(data)
   }
 
-  async function refreshSelectedOrder(): Promise<void> {
-    if (selectedId == null) return
-    const o = await api.orders.getCateringOrder(selectedId)
-    setOrders((prev) => ({ ...prev, [selectedId]: o }))
+  async function refreshOpenOrders() {
+    if (!selectedId) return
+    setBusy(true)
+    try {
+      const [order] = await Promise.all([api.orders.getCateringOrder(selectedId), refreshFlights()])
+      setOrders((prev) => ({ ...prev, [selectedId]: order }))
+      if (order?.warehouseId) setBatches(await api.stock.listStockBatches({ warehouseId: order.warehouseId }))
+    } catch (error) {
+      showToast('error', error instanceof Error ? error.message : 'Could not reload orders.')
+    } finally {
+      setBusy(false)
+    }
   }
-  void refreshSelectedOrder
 
   // -- action handlers -----------------------------------------------------
   //
@@ -343,6 +343,7 @@ export function CateringOrdersPage() {
   const selectedOrder = selectedId ? (orders[selectedId] ?? null) : null
   const selectedStatus: UiStatus | null = selectedFlight ? uiStatus(selectedFlight, selectedOrder) : null
   const selectedWarehouse = selectedFlight ? (warehouses.find((w) => w.id === selectedFlight.warehouseId) ?? null) : null
+  const selectedCutoff = selectedOrder?.cutoffAt ?? selectedFlight?.cutoffAt ?? ''
   const shortLineCount = selectedOrder ? selectedOrder.lines.filter(lineIsShort).length : 0
   const totalUnits = selectedOrder ? selectedOrder.lines.reduce((acc, l) => acc + l.quantityRequired, 0) : 0
   const totalShort = selectedOrder ? selectedOrder.lines.reduce((acc, l) => acc + l.quantityShort, 0) : 0
@@ -529,6 +530,11 @@ export function CateringOrdersPage() {
                   <p className={styles.flightSubtitle}>Catering order for this flight</p>
                 </div>
                 <div className={styles.rightActions}>
+                  {selectedStatus === 'ordering_open' && (
+                    <button type="button" className={styles.actionButton} disabled={busy} onClick={() => void refreshOpenOrders()}>
+                      Reload customer orders
+                    </button>
+                  )}
                   <RefreshButton status={selectedStatus} busy={busy} onClick={handleRefresh} styles={styles} />
                   <TransferButton
                     status={selectedStatus}
@@ -558,15 +564,15 @@ export function CateringOrdersPage() {
                 </div>
                 <div className={styles.factCard}>
                   <p className={styles.factLabel}>Ordering closed</p>
-                  <p className={styles.factValueSmall}>{formatDateTime(selectedFlight.cutoffAt)}</p>
+                  <p className={styles.factValueSmall}>{formatDateTime(selectedCutoff)}</p>
                 </div>
               </div>
 
               {selectedStatus === 'ordering_open' && (
                 <div className={styles.banner + ' ' + styles.bannerNeutral}>
                   <span>
-                    Ordering is open until {formatTime(selectedFlight.cutoffAt)} on {formatDateTime(selectedFlight.cutoffAt)}. The catering
-                    order is generated automatically at the cutoff.
+                    Ordering is open until {formatDateTime(selectedCutoff)}. The catering order is generated
+                    automatically at the cutoff.
                   </span>
                 </div>
               )}
@@ -589,9 +595,18 @@ export function CateringOrdersPage() {
 
               {selectedStatus === 'ordering_open' && (
                 <div className={styles.orderingOpenPanel}>
-                  <strong>No lines yet</strong>
-                  The catering order is generated automatically when ordering closes at {formatDateTime(selectedFlight.cutoffAt)}. Refresh
-                  the page then.
+                  <strong>Confirmed customer orders</strong>
+                  {selectedOrder?.lines.length ? (
+                    <ul>
+                      {selectedOrder.lines.map((line) => (
+                        <li key={line.id}>
+                          {line.productName} ({formatQuantity(line.quantityRequired)})
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span>No confirmed items yet.</span>
+                  )}
                 </div>
               )}
 

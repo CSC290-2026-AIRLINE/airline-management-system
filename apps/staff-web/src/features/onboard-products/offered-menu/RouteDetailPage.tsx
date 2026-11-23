@@ -4,6 +4,7 @@
 // panel below, with the settings on the left and the menu on the right.
 /* eslint-disable react-hooks/set-state-in-effect -- sync setState mirrors an external source */
 
+import { ExtraProductOfferings } from './ExtraProductOfferings'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { useOnboardApi } from '@staff-web/features/onboard-products/api'
@@ -34,7 +35,7 @@ interface Draft {
   preorderEnabled: boolean
   orderWindowHours: number
   premiumMealsAllowed: boolean
-  snacksEnabled: boolean
+  snackService: NonNullable<CabinSetting['snackService']>
   dutyFreeEnabled: boolean
   onboardBufferPercent: number
 }
@@ -57,7 +58,7 @@ function settingToDraft(s: CabinSetting | null): Draft {
     preorderEnabled: s?.preorderEnabled ?? true,
     orderWindowHours: s?.orderWindowHours ?? 48,
     premiumMealsAllowed: s?.premiumMealsAllowed ?? true,
-    snacksEnabled: s?.snacksEnabled ?? true,
+    snackService: s?.snackService ?? (s?.snacksEnabled === false ? 'none' : 'paid'),
     dutyFreeEnabled: s?.dutyFreeEnabled ?? true,
     onboardBufferPercent: s?.onboardBufferPercent ?? 10,
   }
@@ -102,7 +103,9 @@ export function RouteDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [allExceptions, setAllExceptions] = useState<FlightException[]>([])
   const [allRoutes, setAllRoutes] = useState<RouteSummary[]>([])
-  const [mealProducts, setMealProducts] = useState<Product[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const mealProducts = useMemo(() => products.filter((p) => p.category === 'meal' && p.isActive), [products])
+  const mealIds = useMemo(() => new Set(mealProducts.map((product) => product.id)), [mealProducts])
   // Initial mode follows the URL: ?flight=... preselects Single flight mode.
   const [mode, setMode] = useState<Mode>(search.flight ? 'flight' : 'route')
   const [flightId, setFlightId] = useState<string | null>(null)
@@ -124,7 +127,7 @@ export function RouteDetailPage() {
       .then(([d, products]) => {
         if (cancelled) return
         setDetail(d)
-        setMealProducts(products.filter((p) => p.category === 'meal'))
+        setProducts(products)
         const wanted = search.flight && d.flights.some((f) => f.id === search.flight) ? search.flight : (d.flights[0]?.id ?? null)
         setFlightId(wanted)
       })
@@ -173,11 +176,18 @@ export function RouteDetailPage() {
     return detail.cabinSettings.find((s) => s.scope === 'route' && s.routeId === routeId && s.cabin === cabin) ?? null
   }, [detail, mode, flightId, routeId, cabin])
 
+  const isNetwork = mode === 'network'
+
   // The menu currently in effect, used for the chips and the default meal select.
   const effectiveMenu = useMemo(() => {
     if (!detail) return { menu: [] as ProductOffering[], defaultOfferingId: null as string | null, menuLevel: 'none' as const }
-    return resolveMenu(detail.offerings, cabin, mode === 'route' ? routeId : null, mode === 'flight' ? flightId : null)
-  }, [detail, cabin, mode, routeId, flightId])
+    return resolveMenu(
+      detail.offerings.filter((row) => mealIds.has(row.productId)),
+      cabin,
+      isNetwork ? null : routeId,
+      mode === 'flight' ? flightId : null,
+    )
+  }, [detail, cabin, mode, routeId, flightId, isNetwork, mealIds])
 
   // The route shown in the page header. In flight mode the selected flight
   // may belong to a different route than the URL's `routeId`, so look it up
@@ -196,12 +206,22 @@ export function RouteDetailPage() {
 
   // Initialize the draft when the active row or cabin changes. (Sync setState
   // is intentional here — the draft mirrors an external source.)
+  const inheritedSnackService = (['route', 'network'] as const)
+    .filter((scope) => mode === 'flight' || scope === 'network')
+    .map(
+      (scope) =>
+        detail?.cabinSettings.find((row) => row.cabin === cabin && row.scope === scope && (scope !== 'route' || row.routeId === routeId))
+          ?.snackService,
+    )
+    .find((service) => service != null)
+
   useEffect(() => {
     const d = settingToDraft(activeRow)
+    if (activeRow?.snacksEnabled == null && inheritedSnackService) d.snackService = inheritedSnackService
     setDraft(d)
     setOriginal(d)
     setErrors({})
-  }, [activeRow, cabin])
+  }, [activeRow, cabin, inheritedSnackService])
 
   // Surface the meal_service=none warning whenever the draft turns it on.
   // (Sync setState is intentional — mirrors a derivation of the draft state.)
@@ -231,7 +251,6 @@ export function RouteDetailPage() {
 
   const route = detail.route
   const flights = detail.flights
-  const isNetwork = mode === 'network'
   const isFlight = mode === 'flight'
 
   function setField<K extends keyof Draft>(key: K, value: Draft[K]) {
@@ -259,24 +278,19 @@ export function RouteDetailPage() {
     setErrors({})
     const patch = draftToPatch(draft, original)
     if (Object.keys(patch).length === 0) {
-      showToast('info', 'No changes to save.')
+      await navigate({ to: '/catering/offered-menu' })
       return
     }
     setSaving(true)
     try {
-      const result = await api.offerings.putCabinSettings(
+      await api.offerings.putCabinSettings(
         isNetwork ? 'network' : mode,
         isNetwork ? null : routeId,
         mode === 'flight' ? flightId : null,
         cabin,
         patch,
       )
-      showToast(
-        'success',
-        `Saved ${cabinLabel(cabin)} settings.${result.affectedOpenOrders > 0 ? ` ${result.affectedOpenOrders} open orders updated.` : ''}`,
-      )
-      const fresh = await api.offerings.getRouteDetail(routeId)
-      setDetail(fresh)
+      await navigate({ to: '/catering/offered-menu' })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not save.'
       const code = (err as { code?: string }).code
@@ -311,56 +325,29 @@ export function RouteDetailPage() {
 
   // Optimistic toggle: update the local offerings immediately so the chip
   // changes without waiting for the round trip; revert on failure.
-  function handleToggleOffering(productId: string, isActive: boolean) {
-    if (!detail) return
-    const currentOfferings = detail.offerings
-    setDetail((d) => {
-      if (!d) return d
-      const existing = d.offerings.find((o) => o.productId === productId && o.cabin === cabin && matchesScope(o, mode, routeId, flightId))
-      let nextOfferings: ProductOffering[]
-      if (existing) {
-        nextOfferings = d.offerings.map((o) => (o.id === existing.id ? { ...o, isActive } : o))
-      } else {
-        const input: Omit<ProductOffering, 'id'> = {
-          productId,
-          scope: isNetwork ? 'network' : mode,
-          routeId: isNetwork ? null : routeId,
-          flightId: mode === 'flight' ? flightId : null,
-          cabin,
-          isDefault: d.offerings.find((o) => o.cabin === cabin && o.isActive) == null,
-          isActive,
-        }
-        nextOfferings = [...d.offerings, { id: `optimistic-${Date.now()}`, ...input }]
-      }
-      return { ...d, offerings: nextOfferings }
-    })
-
-    const existing = currentOfferings.find(
-      (o) => o.productId === productId && o.cabin === cabin && matchesScope(o, mode, routeId, flightId),
-    )
-    const work = existing
-      ? api.offerings.updateProductOffering(existing.id, { isActive })
-      : api.offerings.createProductOffering({
-          productId,
-          scope: isNetwork ? 'network' : mode,
-          routeId: isNetwork ? null : routeId,
-          flightId: mode === 'flight' ? flightId : null,
-          cabin,
-          isDefault: defaultMealId(effectiveMenu.menu) == null,
-          isActive,
-        })
-
-    work
-      .then(() => api.offerings.getRouteDetail(routeId))
-      .then((fresh) => setDetail(fresh))
-      .catch((err: unknown) => {
-        setDetail((d) => {
-          if (!d) return d
-          const next = d.offerings.map((o) => (o.productId === productId && o.cabin === cabin ? { ...o, isActive: !isActive } : o))
-          return { ...d, offerings: next }
-        })
-        showToast('error', err instanceof Error ? err.message : 'Could not update menu.')
-      })
+  async function handleToggleOffering(productId: string, isActive: boolean) {
+    const scoped = (detail?.offerings ?? []).filter((row) => row.cabin === cabin && matchesScope(row, mode, routeId, flightId))
+    const existing = scoped.find((row) => row.productId === productId)
+    const isDefault =
+      isActive && mealIds.has(productId) && !scoped.some((row) => mealIds.has(row.productId) && (row.isDefault || row.isActive))
+    try {
+      const saved = existing
+        ? await api.offerings.updateProductOffering(existing.id, { isActive })
+        : await api.offerings.createProductOffering({
+            productId,
+            scope: mode,
+            routeId: mode === 'route' ? routeId : null,
+            flightId: mode === 'flight' ? flightId : null,
+            cabin,
+            isDefault,
+            isActive,
+          })
+      setDetail((current) =>
+        current ? { ...current, offerings: [...current.offerings.filter((row) => row.id !== saved.id), saved] } : current,
+      )
+    } catch (err) {
+      showToast('error', err instanceof Error ? err.message : 'Could not update menu.')
+    }
   }
 
   function handleSetDefault(productId: string) {
@@ -390,7 +377,12 @@ export function RouteDetailPage() {
   // The summary text below each cabin tile: "5 meals · default Green curry chicken".
   function cabinTileSubline(c: Cabin): string {
     if (!detail) return ''
-    const m = resolveMenu(detail.offerings, c, mode === 'route' ? routeId : null, mode === 'flight' ? flightId : null)
+    const m = resolveMenu(
+      detail.offerings.filter((row) => mealIds.has(row.productId)),
+      c,
+      isNetwork ? null : routeId,
+      mode === 'flight' ? flightId : null,
+    )
     if (m.menu.length === 0) return '0 meals · no menu set'
     const def = m.menu.find((o) => o.id === m.defaultOfferingId)
     const defName = def ? mealProducts.find((p) => p.id === def.productId)?.name : null
@@ -629,8 +621,17 @@ export function RouteDetailPage() {
 
               <p className={styles.sectionHeader}>Extras</p>
 
-              <Field label="Snacks and drinks" description="Light snacks and beverages between meals.">
-                <ToggleSwitch ariaLabel="Snacks" checked={draft.snacksEnabled} onChange={(v) => setField('snacksEnabled', v)} />
+              <Field label="Snacks and drinks" description="Complimentary service includes one item. Additional items are charged.">
+                <select
+                  aria-label="Snacks and drinks service"
+                  className={styles.defaultMealSelect}
+                  value={draft.snackService}
+                  onChange={(event) => setField('snackService', event.target.value as Draft['snackService'])}
+                >
+                  <option value="complimentary">Complimentary</option>
+                  <option value="paid">Paid</option>
+                  <option value="none">Unavailable</option>
+                </select>
               </Field>
 
               <Field label="Duty-free" description="Allow duty-free sales in this cabin.">
@@ -647,7 +648,10 @@ export function RouteDetailPage() {
             </div>
 
             <div className={styles.menuColumn}>
-              <p className={styles.menuTitle}>Menu</p>
+              <p className={styles.menuTitle}>Meal products</p>
+              {cabin === 'premium_economy' && (
+                <p className={styles.menuSubtitle}>Premium economy uses the Economy menu. Switch to Economy to edit its products.</p>
+              )}
               <p className={styles.menuSubtitle}>
                 {effectiveMenu.menu.length === 0
                   ? 'No menu for this cabin — turn meals on below to add them.'
@@ -661,7 +665,8 @@ export function RouteDetailPage() {
                       key={p.id}
                       type="button"
                       className={active ? styles.chipActive : styles.chip}
-                      onClick={() => handleToggleOffering(p.id, !active)}
+                      disabled={cabin === 'premium_economy'}
+                      onClick={() => void handleToggleOffering(p.id, !active)}
                     >
                       <span className={styles.chipIcon}>{active ? '✓' : '+'}</span>
                       <span className={styles.chipName}>{p.name}</span>
@@ -671,9 +676,19 @@ export function RouteDetailPage() {
                 })}
               </div>
 
+              <ExtraProductOfferings
+                products={products}
+                offerings={detail.offerings}
+                cabin={cabin}
+                routeId={isNetwork ? null : routeId}
+                flightId={mode === 'flight' ? flightId : null}
+                onToggle={handleToggleOffering}
+              />
+
               <p className={styles.defaultMealHeader}>Default meal (if a passenger orders nothing)</p>
               <select
                 className={styles.defaultMealSelect}
+                disabled={cabin === 'premium_economy'}
                 value={effectiveMenu.defaultOfferingId ?? ''}
                 onChange={(e) => {
                   const productId = mealProducts.find(
@@ -764,11 +779,6 @@ function matchesScope(o: ProductOffering, mode: Mode, routeId: string, flightId:
   if (mode === 'network') return o.scope === 'network'
   if (mode === 'flight') return o.scope === 'flight' && o.flightId === flightId
   return o.scope === 'route' && o.routeId === routeId
-}
-
-function defaultMealId(menu: ProductOffering[]): string | null {
-  const d = menu.find((o) => o.isDefault)
-  return d ? d.id : null
 }
 
 function guessField(message: string): string | null {

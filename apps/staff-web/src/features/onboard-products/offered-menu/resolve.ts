@@ -161,9 +161,9 @@ export function resolveMenu(
   // one row wins; the level's full set replaces everything else.
   for (const level of ['flight', 'route', 'network'] as const) {
     const filtered = offerings.filter((o) => {
-      if (o.cabin !== effectiveCabin) return false
-      if (level === 'flight') return o.flightId === flightId
-      if (level === 'route') return o.routeId === routeId
+      if (o.cabin !== effectiveCabin || o.scope !== level || !o.isActive) return false
+      if (level === 'flight') return flightId !== null && o.flightId === flightId
+      if (level === 'route') return routeId !== null && o.routeId === routeId
       return o.scope === 'network'
     })
     if (filtered.length > 0) {

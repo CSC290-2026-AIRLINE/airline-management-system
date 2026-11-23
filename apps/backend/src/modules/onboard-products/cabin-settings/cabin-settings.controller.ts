@@ -83,6 +83,12 @@ function parseInput(body: unknown): CabinSettingInput {
     }
     out.premiumMealsAllowed = b.premiumMealsAllowed
   }
+  if (b.snackService !== undefined) {
+    if (!['complimentary', 'paid', 'none'].includes(b.snackService as string)) {
+      throw new ApiErrorException('SETTING_INVALID', 'Choose a snacks and drinks service.', 400)
+    }
+    out.snackService = b.snackService as CabinSettingInput['snackService']
+  }
   if (b.snacksEnabled !== undefined) {
     if (b.snacksEnabled !== null && typeof b.snacksEnabled !== 'boolean') {
       throw new ApiErrorException('SETTING_INVALID', 'snacksEnabled must be a boolean or null.', 400)

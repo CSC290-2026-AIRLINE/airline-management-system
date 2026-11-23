@@ -37,6 +37,9 @@ export interface ProductOrderDto {
   bookingId: string
   flightId: string
   flightNumber: string
+  flightOriginCode: string
+  flightDestinationCode: string
+  cutoffAt: string
   cabin: string
   status: ProductOrderStatus
   totalAmount: number

@@ -269,6 +269,7 @@ model cabin_setting {
   order_window_hours     Int?
   premium_meals_allowed  Boolean?
   snacks_enabled         Boolean?
+  snacks_complimentary   Boolean  @default(false)
   duty_free_enabled      Boolean?
   onboard_buffer_percent Int?
   updated_by_staff_id    String?  @db.Uuid

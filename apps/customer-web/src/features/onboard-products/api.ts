@@ -1,161 +1,138 @@
-// API clients for the Booking Details page and the Add Extra Services
-// page. All functions take `fetchWithAuth` as a parameter so the module
-// is pure and easy to swap when TanStack Query is wired up later. The
-// hook lives in apps/customer-web/src/auth/AuthProvider.tsx and already
-// handles the 401 → refresh dance.
-//
-// In development (`import.meta.env.DEV === true`) the calls are routed
-// to the in-memory mocks in `./api.dev`. The mock branch is dropped by
-// the bundler in production builds, so no mock data ships.
-
-import {
-  cancelProductOrderMock,
-  confirmOrderMock,
-  fetchBookingMock,
-  fetchCabinSettingMock,
-  fetchCatalogMock,
-  fetchProductOrdersForBookingMock,
-  placeOrderMock,
-} from './api.dev'
 import {
   ApiError,
   type ApiErrorPayload,
   type Booking,
   type CabinSetting,
+  type FlightRef,
   type PlaceOrderPayload,
   type Product,
   type ProductOrder,
 } from './types'
 
+export const demoEnabled = import.meta.env.DEV && import.meta.env.VITE_F12_DEMO_ENABLED === 'true'
+
 type FetchWithAuth = (path: string, init?: RequestInit) => Promise<Response>
 
-const USE_MOCK = import.meta.env.DEV
-
-async function parseError(res: Response): Promise<ApiError> {
-  let payload: ApiErrorPayload | null = null
-  try {
-    payload = (await res.json()) as ApiErrorPayload
-  } catch {
-    // Non-JSON body; fall through to the generic message.
-  }
-  const code = payload?.error?.code ?? 'UNKNOWN'
-  const message = payload?.error?.message ?? `Request failed with status ${res.status}`
-  return new ApiError(res.status, code, message, payload?.error?.details ?? null)
+type WireOrder = Omit<ProductOrder, 'placedAt' | 'changesAllowedUntil' | 'refundRequestedAt' | 'refundId' | 'lines'> & {
+  createdAt: string
+  cutoffAt: string
+  lines: Array<
+    Omit<ProductOrder['lines'][number], 'unitPrice' | 'passengerId' | 'fulfillmentNote'> & {
+      unitPriceAmount: number
+      bookingPassengerId: string | null
+    }
+  >
 }
 
-export async function fetchBooking(bookingId: string, fetchWithAuth: FetchWithAuth): Promise<Booking> {
-  if (USE_MOCK) {
-    return fetchBookingMock()
+async function request<T>(fetchWithAuth: FetchWithAuth, path: string, init?: RequestInit): Promise<T> {
+  const response = await fetchWithAuth(path, init)
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null
+    throw new ApiError(
+      response.status,
+      payload?.error?.code ?? 'UNKNOWN',
+      payload?.error?.message ?? `Request failed with status ${response.status}`,
+      payload?.error?.details,
+    )
   }
-  void bookingId
-  void fetchWithAuth
-  const res = await fetchWithAuth(`/api/bookings/${encodeURIComponent(bookingId)}`)
-  if (!res.ok) {
-    throw await parseError(res)
-  }
-  return (await res.json()) as Booking
+  return (await response.json()) as T
 }
 
-export async function fetchProductOrdersForBooking(
-  bookingId: string,
-  fetchWithAuth: FetchWithAuth,
-  preset?: 'ready' | 'duty-free' | 'waiting' | 'failed' | 'confirmed' | 'cancel-po-2041' | 'refund-requested',
-): Promise<ProductOrder[]> {
-  if (USE_MOCK) {
-    return fetchProductOrdersForBookingMock(preset)
+function mapOrder(order: WireOrder): ProductOrder {
+  return {
+    ...order,
+    placedAt: order.createdAt,
+    changesAllowedUntil: order.cutoffAt,
+    refundRequestedAt: null,
+    refundId: null,
+    lines: order.lines.map((line) => ({
+      ...line,
+      unitPrice: line.unitPriceAmount,
+      passengerId: line.bookingPassengerId,
+      fulfillmentNote: line.category === 'duty_free' ? 'Collect on board' : null,
+    })),
   }
-  void bookingId
-  void fetchWithAuth
-  void preset
-  const res = await fetchWithAuth(`/api/product-orders?bookingId=${encodeURIComponent(bookingId)}`)
-  if (!res.ok) {
-    throw await parseError(res)
-  }
-  // The endpoint may return either a bare array or `{ orders: [...] }`.
-  // Accept both to stay resilient to the eventual backend contract.
-  const data: unknown = await res.json()
-  if (Array.isArray(data)) {
-    return data as ProductOrder[]
-  }
-  if (data && typeof data === 'object' && 'orders' in data && Array.isArray((data as { orders: unknown }).orders)) {
-    return (data as { orders: ProductOrder[] }).orders
-  }
-  return []
+}
+
+export function fetchBooking(bookingId: string, fetchWithAuth: FetchWithAuth): Promise<Booking> {
+  const endpoint = demoEnabled ? 'product-orders/booking' : 'bookings'
+  return request(fetchWithAuth, `/api/${endpoint}/${encodeURIComponent(bookingId)}`)
+}
+
+export async function fetchProductOrdersForBooking(bookingId: string, fetchWithAuth: FetchWithAuth): Promise<ProductOrder[]> {
+  const orders = await request<WireOrder[]>(fetchWithAuth, `/api/product-orders?bookingId=${encodeURIComponent(bookingId)}`)
+  return orders.map(mapOrder)
 }
 
 export async function cancelProductOrder(orderId: string, fetchWithAuth: FetchWithAuth): Promise<ProductOrder> {
-  if (USE_MOCK) {
-    return cancelProductOrderMock(orderId)
-  }
-  void fetchWithAuth
-  const res = await fetchWithAuth(`/api/product-orders/${encodeURIComponent(orderId)}/cancel`, {
-    method: 'POST',
-  })
-  if (!res.ok) {
-    throw await parseError(res)
-  }
-  return (await res.json()) as ProductOrder
+  return mapOrder(await request<WireOrder>(fetchWithAuth, `/api/product-orders/${encodeURIComponent(orderId)}`, { method: 'DELETE' }))
 }
 
-// --- Page 2 endpoints -------------------------------------------------
-
-export async function fetchCatalog(flightId: string, fetchWithAuth: FetchWithAuth): Promise<Product[]> {
-  if (USE_MOCK) {
-    return fetchCatalogMock(flightId)
-  }
-  void fetchWithAuth
-  const res = await fetchWithAuth(`/api/flights/${encodeURIComponent(flightId)}/catalog`)
-  if (!res.ok) {
-    throw await parseError(res)
-  }
-  const data: unknown = await res.json()
-  if (Array.isArray(data)) return data as Product[]
-  if (data && typeof data === 'object' && 'products' in data && Array.isArray((data as { products: unknown }).products)) {
-    return (data as { products: Product[] }).products
-  }
-  return []
+interface WireCatalog {
+  complimentarySnackAvailable: boolean
+  settings: CabinSetting
+  cutoffAt: string
+  currency: string
+  products: Array<
+    Pick<Product, 'id' | 'category' | 'typeCode' | 'name' | 'isPremium'> & {
+      description: string | null
+      priceAmount: number
+      availableQuantity: number
+    }
+  >
 }
 
-export async function fetchCabinSetting(flightId: string, fetchWithAuth: FetchWithAuth): Promise<CabinSetting> {
-  if (USE_MOCK) {
-    return fetchCabinSettingMock(flightId)
+export async function fetchCatalog(flight: FlightRef, fetchWithAuth: FetchWithAuth) {
+  const params = new URLSearchParams({ flightId: flight.id, cabin: flight.cabinClass })
+  const catalog = await request<WireCatalog>(fetchWithAuth, `/api/catalog?${params}`)
+  const products: Product[] = catalog.products
+    .filter((product) => {
+      if (product.availableQuantity <= 0) return false
+      const { settings } = catalog
+      if (product.category === 'meal') {
+        return (
+          settings.mealService !== 'none' &&
+          (settings.mealSelection !== 'fixed' || product.typeCode !== 'STD') &&
+          (settings.premiumMealsAllowed || !product.isPremium)
+        )
+      }
+      if (product.category === 'snack' || product.category === 'beverage') return settings.snacksEnabled
+      if (product.category === 'duty_free') return settings.dutyFreeEnabled
+      return true
+    })
+    .map((product) => ({
+      ...product,
+      description: product.description ?? '',
+      unitPrice: product.priceAmount,
+      thumbnailColor: '#f5f5f7',
+      imageUrl: null,
+      isDefaultChoice: false,
+    }))
+  return {
+    products,
+    setting: catalog.settings,
+    cutoffAt: catalog.cutoffAt,
+    currency: catalog.currency,
+    complimentarySnackAvailable: catalog.complimentarySnackAvailable,
   }
-  void fetchWithAuth
-  const res = await fetchWithAuth(`/api/flights/${encodeURIComponent(flightId)}/cabin-setting`)
-  if (!res.ok) {
-    throw await parseError(res)
-  }
-  return (await res.json()) as CabinSetting
 }
 
-// Creates a new product_order in `pending_payment` state. The server is
-// expected to reserve stock and return the order with the new id. The
-// caller is then responsible for either (a) hitting F5 to confirm, or
-// (b) calling `confirmOrder` for the $0 short-circuit.
 export async function placeOrder(payload: PlaceOrderPayload, fetchWithAuth: FetchWithAuth): Promise<ProductOrder> {
-  if (USE_MOCK) {
-    return placeOrderMock(payload)
-  }
-  void fetchWithAuth
-  const res = await fetchWithAuth('/api/product-orders', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (!res.ok) {
-    throw await parseError(res)
-  }
-  return (await res.json()) as ProductOrder
+  return mapOrder(
+    await request<WireOrder>(fetchWithAuth, '/api/product-orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  )
 }
 
-// Dev-only: confirms a pending_payment order without going through F5.
-// In production this would be triggered by the F5 callback, not the
-// client, so this function is intentionally not exported from the
-// real-API branch.
-export async function confirmOrderDev(orderId: string, fetchWithAuth: FetchWithAuth): Promise<ProductOrder> {
-  if (USE_MOCK) {
-    return confirmOrderMock(orderId)
-  }
-  void fetchWithAuth
-  throw new ApiError(501, 'NOT_IMPLEMENTED', 'confirmOrder is a dev-only mock helper')
+export async function resolveDemoPayment(orderId: string, status: 'paid' | 'failed', fetchWithAuth: FetchWithAuth): Promise<ProductOrder> {
+  return mapOrder(
+    await request<WireOrder>(fetchWithAuth, `/api/product-orders/${encodeURIComponent(orderId)}/demo-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    }),
+  )
 }

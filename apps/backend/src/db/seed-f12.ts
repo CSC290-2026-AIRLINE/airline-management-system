@@ -13,6 +13,7 @@
 // natural key.
 
 import { randomUUID } from 'node:crypto'
+import { DEMO_CABIN, DEMO_FLIGHT_ID } from '../modules/onboard-products/common/demo-booking'
 import type { PrismaClient } from './generated/prisma/client'
 
 // Stable IDs (deterministic) so re-runs and the F12 dev pages are
@@ -37,6 +38,7 @@ const IDS = {
   aircraft: {
     FYA: id('c00000000001'),
     FYB: id('c00000000002'),
+    FYD: id('c00000000012'),
   },
   route: {
     BKKNRT: id('d00000000001'),
@@ -294,6 +296,18 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     },
   })
 
+  await prisma.aircraft.upsert({
+    where: { id: IDS.aircraft.FYD },
+    update: {},
+    create: {
+      id: IDS.aircraft.FYD,
+      tail_number: 'HS-FYD',
+      aircraft_type_id: IDS.aircraftType.B777,
+      entry_into_service_date: new Date('2015-06-01'),
+      base_airport_code: 'BKK',
+    },
+  })
+
   // --- Route BKK → NRT ---------------------------------------------------
   await prisma.route.upsert({
     where: { origin_destination: { origin: 'BKK', destination: 'NRT' } } as never,
@@ -366,7 +380,20 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
   const f308Dep = hoursFromNow(25)
   const f220Dep = hoursFromNow(48) // SIN → BKK, void test case
   const addMinutes = (d: Date, m: number) => new Date(d.getTime() + m * 60_000)
+  const demoDeparture = hoursFromNow(32)
   const flightSeed = [
+    {
+      id: DEMO_FLIGHT_ID,
+      flight_number: 'FL412',
+      service_date: new Date(demoDeparture.toISOString().slice(0, 10)),
+      route_id: IDS.route.BKKNRT,
+      scheduled_dep_at: demoDeparture,
+      scheduled_arr_at: addMinutes(demoDeparture, 390),
+      dep_at: demoDeparture,
+      arr_at: addMinutes(demoDeparture, 390),
+      aircraft_id: IDS.aircraft.FYD,
+      status: 'scheduled' as const,
+    },
     {
       id: IDS.flight.F401,
       flight_number: 'FL401',
@@ -428,7 +455,18 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       status: 'scheduled' as const,
     },
   ]
+  // Move later flights first so their previous slots are free when earlier flights move forward.
+  flightSeed.sort((a, b) => b.scheduled_dep_at.getTime() - a.scheduled_dep_at.getTime())
   for (const f of flightSeed) {
+    if (f.id === DEMO_FLIGHT_ID) {
+      const existing = await prisma.flight.findUnique({ where: { id: f.id }, include: { catering_order: true } })
+      if (!existing) {
+        await prisma.flight.create({ data: f })
+      } else if (existing.status === 'scheduled' && !existing.catering_order && existing.scheduled_dep_at <= hoursFromNow(24)) {
+        await prisma.flight.update({ where: { id: f.id }, data: f })
+      }
+      continue
+    }
     await prisma.flight.upsert({
       where: { id: f.id },
       update: {
@@ -718,6 +756,21 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     })
   }
 
+  const demoSetting = await prisma.cabin_setting.findFirst({
+    where: { scope: 'flight', flight_id: DEMO_FLIGHT_ID, cabin: DEMO_CABIN },
+  })
+  if (!demoSetting) {
+    await prisma.cabin_setting.create({
+      data: {
+        scope: 'flight',
+        flight_id: DEMO_FLIGHT_ID,
+        cabin: DEMO_CABIN,
+        order_window_hours: 24,
+        updated_by_staff_id: staffId,
+      },
+    })
+  }
+
   // --- Product offerings: 12 network-level (default = P001) --------------
   for (const p of productSeed) {
     const cabin = p.category === 'meal' ? 'business' : 'business'
@@ -905,9 +958,6 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
   })
 
   // --- Warehouse stock (one row per warehouse×product we delivered) -----
-  // Drop any legacy rows first; the compound unique key would otherwise
-  // leave orphan rows with old product_ids sitting in the table.
-  await prisma.warehouse_stock.deleteMany({ where: { warehouse_id: IDS.warehouse.WHBKK } })
   const whStock = [
     { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P001, qty: 200 },
     { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P002, qty: 120 },
@@ -920,7 +970,7 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
   for (const ws of whStock) {
     await prisma.warehouse_stock.upsert({
       where: { warehouse_id_product_id: { warehouse_id: ws.warehouse_id, product_id: ws.product_id } },
-      update: { quantity_on_hand: ws.qty },
+      update: {},
       create: { warehouse_id: ws.warehouse_id, product_id: ws.product_id, quantity_on_hand: ws.qty, quantity_reserved: 0 },
     })
   }

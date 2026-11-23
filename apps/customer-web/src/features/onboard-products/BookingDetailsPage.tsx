@@ -13,13 +13,12 @@ import type { Booking } from './types'
 
 interface Props {
   bookingId: string
-  preset?: 'ready' | 'duty-free' | 'waiting' | 'failed' | 'confirmed' | 'cancel-po-2041' | 'refund-requested' | undefined
   noticeOrderId: string | null
 }
 
 type State = { kind: 'loading' } | { kind: 'error'; error: string } | { kind: 'success'; booking: Booking }
 
-export function BookingDetailsPage({ bookingId, preset, noticeOrderId }: Props) {
+export function BookingDetailsPage({ bookingId, noticeOrderId }: Props) {
   const { fetchWithAuth, isLoading: isAuthLoading } = useAppAuth()
   const [state, setState] = useState<State>({ kind: 'loading' })
 
@@ -68,12 +67,7 @@ export function BookingDetailsPage({ bookingId, preset, noticeOrderId }: Props) 
       <CustomerNav />
       <OrderConfirmedNotice orderId={noticeOrderId} />
       <BookingShell booking={state.booking} />
-      <ExtraServicesSection
-        booking={state.booking}
-        preset={preset}
-        initialCancelTarget={preset === 'cancel-po-2041' ? 'PO-2041' : null}
-        refundIdHint={preset === 'refund-requested' ? 'RF-3001' : null}
-      />
+      <ExtraServicesSection booking={state.booking} />
     </div>
   )
 }

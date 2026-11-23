@@ -3,6 +3,7 @@
 // subtitle and a running grand total. The CTA text embeds the total
 // so the customer knows the amount before they click.
 
+import { demoEnabled } from './api'
 import { Button } from '../../components/ui/button'
 import type { Cart, CartLine, PassengerRef, ProductCategory } from './types'
 import { formatMoney } from './format'
@@ -185,27 +186,31 @@ export function OrderSummary(props: Props) {
           >
             <strong className="font-semibold">Waiting for F5 payment.</strong> Your stock is reserved.
           </p>
-          <p className="m-0 text-muted-foreground text-xs leading-relaxed">Demo: choose what F5 reports back.</p>
-          <Button
-            type="button"
-            variant="primary"
-            size="block"
-            onClick={props.onF5ReportsPaid}
-            disabled={props.isResolvingF5}
-            className="h-10 w-full gap-1.5 px-[22px] text-sm font-semibold rounded-lg"
-          >
-            F5 reports: paid
-          </Button>
-          <Button
-            type="button"
-            variant="ghost-danger"
-            size="block"
-            onClick={props.onF5ReportsFailed}
-            disabled={props.isResolvingF5}
-            className="h-10 w-full gap-1.5 px-[22px] text-sm font-semibold rounded-lg"
-          >
-            F5 reports: failed
-          </Button>
+          {demoEnabled && (
+            <>
+              <p className="m-0 text-muted-foreground text-xs leading-relaxed">Demo: choose what F5 reports back.</p>
+              <Button
+                type="button"
+                variant="primary"
+                size="block"
+                onClick={props.onF5ReportsPaid}
+                disabled={props.isResolvingF5}
+                className="h-10 w-full gap-1.5 px-[22px] text-sm font-semibold rounded-lg"
+              >
+                Simulate successful payment
+              </Button>
+              <Button
+                type="button"
+                variant="ghost-danger"
+                size="block"
+                onClick={props.onF5ReportsFailed}
+                disabled={props.isResolvingF5}
+                className="h-10 w-full gap-1.5 px-[22px] text-sm font-semibold rounded-lg"
+              >
+                Simulate failed payment
+              </Button>
+            </>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-3 px-6 py-4">

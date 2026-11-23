@@ -14,6 +14,8 @@
 //   - every status change is guarded, so a repeated call cannot move
 //     an order twice.
 
+import { DEMO_CABIN, DEMO_FLIGHT_ID, demoEnabled } from '../common/demo-booking'
+import { PaymentEventsService } from '../payment-events/payment-events.service'
 import { Injectable } from '@nestjs/common'
 import type { Prisma } from '../../../db/generated/prisma/client'
 import { DbService } from '../../../db/db.service'
@@ -24,7 +26,7 @@ import { SystemClock } from '../common/clock'
 import { FlightContextService } from '../common/flight-context.service'
 import { resolveOfferings, type OfferingRow } from '../common/menu'
 import { toNumber, type F12Cabin } from '../common/mapping'
-import { cutoffAt, isOrderWindowOpen, orderExpiresAt, priceOrder, type OrderLineInput } from '../common/order-pricing'
+import { cutoffAt, isOrderWindowOpen, orderExpiresAt, priceOrder, type OrderLineInput, roundMoney } from '../common/order-pricing'
 import { ReservationsService } from '../common/reservations.service'
 import { StubBookingsService, StubPaymentsService, StubTierService } from '../common/cross-module-ports'
 import { CabinSettingsService } from '../cabin-settings/cabin-settings.service'
@@ -50,17 +52,6 @@ interface ProductRow {
   image_key: string | null
 }
 
-interface OfferingDbRow {
-  id: string
-  product_id: string
-  scope: string
-  route_id: string | null
-  flight_id: string | null
-  cabin: string
-  is_default: boolean
-  is_active: boolean
-}
-
 @Injectable()
 export class ProductOrdersService {
   constructor(
@@ -74,14 +65,58 @@ export class ProductOrdersService {
     private readonly cateringSettings: CateringSettingsService,
     private readonly flightContext: FlightContextService,
     private readonly reservations: ReservationsService,
+    private readonly paymentEvents: PaymentEventsService,
   ) {}
+
+  async demoBooking(customerId: string, id: string) {
+    if (!demoEnabled() || (id !== 'demo' && id !== customerId)) {
+      throw new ApiErrorException('NOT_FOUND', 'Onboard booking not found.', 404)
+    }
+    const customer = await this.db.customer.findUniqueOrThrow({ where: { id: customerId }, include: { passenger: true } })
+    const flight = await this.flightContext.getFlight(DEMO_FLIGHT_ID)
+    const settings = await this.settings.resolveForFlight(flight.id, DEMO_CABIN)
+    const passenger = customer.passenger
+    return {
+      id: customerId,
+      reference: 'F12-DEMO',
+      status: 'confirmed',
+      passengers: [
+        { id: passenger.id, firstName: passenger.first_name, lastName: passenger.last_name, type: 'adult', isAccountHolder: true },
+      ],
+      flights: [
+        {
+          id: flight.id,
+          flightNumber: flight.flightNumber,
+          origin: { code: flight.origin, city: flight.origin },
+          destination: { code: flight.destination, city: flight.destination },
+          scheduledDeparture: flight.scheduledDeparture.toISOString(),
+          cabinClass: DEMO_CABIN,
+          seatNumbers: [],
+          cutoffAt: cutoffAt(flight.scheduledDeparture, settings.orderWindowHours).toISOString(),
+        },
+      ],
+      totalPassengers: 1,
+      tripType: 'one_way',
+      routeSummary: `${flight.origin} to ${flight.destination}`,
+    }
+  }
+
+  async demoPayment(customerId: string, id: string, status: unknown) {
+    if (!demoEnabled()) throw new ApiErrorException('NOT_FOUND', 'Demo payments are unavailable.', 404)
+    const order = await this.get(customerId, id)
+    if (order.flightId !== DEMO_FLIGHT_ID || order.bookingId !== customerId || !order.paymentId) {
+      throw new ApiErrorException('NOT_FOUND', 'Demo payment not found.', 404)
+    }
+    await this.paymentEvents.handle({ reference: order.id, paymentId: order.paymentId, status })
+    return this.get(customerId, id)
+  }
 
   // -- catalogue ------------------------------------------------------------
 
   // GET /catalog: the menu for a flight and cabin, with the resolved
   // policy, the prices, the dietary badges, the stock status and the
   // order window.
-  async catalog(query: { bookingId?: string; flightId?: string; cabin?: string }): Promise<unknown> {
+  async catalog(query: { bookingId?: string; flightId?: string; cabin?: string }, customerId: string): Promise<unknown> {
     const flightId = query.flightId
     if (!flightId) throw new ApiErrorException('LINE_INVALID', 'flightId is required.', 400)
     const flight = await this.flightContext.getFlight(flightId)
@@ -94,7 +129,7 @@ export class ProductOrdersService {
     const productIds = menu.map((m) => m.productId)
     const products = productIds.length
       ? await this.db.product.findMany({
-          where: { id: { in: productIds }, deleted_at: null },
+          where: { id: { in: productIds }, deleted_at: null, is_active: true },
           include: { product_dietary: true },
         })
       : []
@@ -118,8 +153,11 @@ export class ProductOrdersService {
       arrivalAirport: flight.destination,
       scheduledDeparture: flight.scheduledDeparture.toISOString(),
       bookingId: query.bookingId ?? null,
+      currency: await this.cateringSettings.baseCurrency(),
       cabin,
       settings,
+      complimentarySnackAvailable:
+        settings.snackService === 'complimentary' && !(await this.hasComplimentarySnack(this.db, customerId, flightId)),
       cutoffAt: cutoff.toISOString(),
       orderWindowOpen: isOrderWindowOpen(now, cutoff),
       products: products.map((p) => {
@@ -128,6 +166,7 @@ export class ProductOrdersService {
           id: p.id,
           sku: p.sku,
           name: p.name,
+          description: p.description,
           category: p.category,
           typeCode: p.type_code,
           priceAmount: toNumber(p.price_amount),
@@ -141,11 +180,38 @@ export class ProductOrdersService {
     }
   }
 
+  private async hasComplimentarySnack(
+    db: Pick<Prisma.TransactionClient, 'product_order_line'>,
+    customerId: string,
+    flightId: string,
+  ): Promise<boolean> {
+    return !!(await db.product_order_line.findFirst({
+      where: {
+        flight_id: flightId,
+        category: { in: ['snack', 'beverage'] },
+        price_basis: 'included',
+        deleted_at: null,
+        product_order: { customer_id: customerId, status: { in: ['pending_payment', 'confirmed'] } },
+      },
+      select: { id: true },
+    }))
+  }
+
   // -- checkout -------------------------------------------------------------
 
   async checkout(customerId: string, rawInput: unknown): Promise<ProductOrderDto> {
     const input: CheckoutInput = parseCheckoutInput(rawInput)
 
+    if (input.flightId === DEMO_FLIGHT_ID) {
+      if (input.bookingId !== customerId || input.cabin !== DEMO_CABIN) {
+        throw new ApiErrorException('BOOKING_NOT_CONFIRMED', 'The demo booking does not match this flight and cabin.', 409)
+      }
+      const demo = await this.demoBooking(customerId, input.bookingId)
+      const passengerId = demo.passengers[0].id
+      if (input.lines.some((line) => line.bookingPassengerId && line.bookingPassengerId !== passengerId)) {
+        throw new ApiErrorException('LINE_INVALID', 'The passenger is not on this booking.', 400)
+      }
+    }
     const booking = await this.bookings.getBooking(input.bookingId)
     if (!booking || booking.status !== 'confirmed') {
       throw new ApiErrorException('BOOKING_NOT_CONFIRMED', 'The booking is not confirmed.', 409)
@@ -200,6 +266,14 @@ export class ProductOrdersService {
     }
 
     const orderId = await this.db.$transaction(async (tx) => {
+      const snackIndex = priced.lines.findIndex((line) => line.category === 'snack' || line.category === 'beverage')
+      let complimentary = false
+      if (settings.snackService === 'complimentary' && snackIndex !== -1) {
+        // Serialize redemptions for this customer without changing the order-line schema.
+        await tx.$queryRaw`SELECT id FROM customer WHERE id = ${customerId}::uuid FOR UPDATE`
+        complimentary = !(await this.hasComplimentarySnack(tx, customerId, input.flightId))
+      }
+      const totalAmount = roundMoney(priced.totalAmount - (complimentary ? priced.lines[snackIndex].unitPriceAmount : 0))
       const order = await tx.product_order.create({
         data: {
           customer_id: customerId,
@@ -207,7 +281,7 @@ export class ProductOrdersService {
           flight_id: input.flightId,
           cabin: input.cabin,
           status: 'pending_payment',
-          total_amount: priced.totalAmount,
+          total_amount: totalAmount,
           currency,
           payment_id: null,
           paid_at: null,
@@ -216,10 +290,10 @@ export class ProductOrdersService {
         },
       })
       await tx.product_order_line.createMany({
-        data: input.lines.map((line, i) => {
+        data: input.lines.flatMap((line, i) => {
           const pricedLine = priced.lines[i]
           const product = products.get(line.productId)!
-          return {
+          const data = {
             product_order_id: order.id,
             flight_id: input.flightId,
             product_id: line.productId,
@@ -229,6 +303,9 @@ export class ProductOrdersService {
             unit_price_amount: pricedLine.unitPriceAmount,
             price_basis: pricedLine.priceBasis,
           }
+          if (!complimentary || i !== snackIndex) return [data]
+          const included = { ...data, quantity: 1, unit_price_amount: 0, price_basis: 'included' }
+          return data.quantity === 1 ? [included] : [included, { ...data, quantity: data.quantity - 1 }]
         }),
       })
       for (const [productId, quantity] of quantitiesByProduct) {
@@ -242,7 +319,7 @@ export class ProductOrdersService {
           productName: products.get(productId)?.name,
         })
       }
-      if (priced.totalAmount === 0) {
+      if (totalAmount === 0) {
         // Nothing to collect: the order is confirmed at once.
         await tx.product_order.update({
           where: { id: order.id },
@@ -251,7 +328,7 @@ export class ProductOrdersService {
       } else {
         const payment = await this.payments.startPayment({
           reference: order.id,
-          amount: priced.totalAmount,
+          amount: totalAmount,
           currency,
           customerId,
         })
@@ -266,7 +343,7 @@ export class ProductOrdersService {
           action: 'product_order.create',
           entityType: 'product_order',
           entityId: order.id,
-          summary: `Checked out ${input.lines.length} line(s) for flight ${input.flightId} (${priced.totalAmount} ${currency}).`,
+          summary: `Checked out ${input.lines.length} line(s) for flight ${input.flightId} (${totalAmount} ${currency}).`,
         },
         tx,
       )
@@ -284,16 +361,16 @@ export class ProductOrdersService {
         customer_id: customerId,
         ...(bookingId ? { booking_id: bookingId } : {}),
       },
-      include: { product_order_line: { include: { product: true } }, flight: true },
+      include: { product_order_line: { include: { product: true } }, flight: { include: { route: true } } },
       orderBy: { created_at: 'desc' },
     })
-    return rows.map((row) => this.toDto(row))
+    return Promise.all(rows.map((row) => this.toDto(row)))
   }
 
   async get(customerId: string, orderId: string): Promise<ProductOrderDto> {
     const row = await this.db.product_order.findFirst({
       where: { id: orderId, customer_id: customerId },
-      include: { product_order_line: { include: { product: true } }, flight: true },
+      include: { product_order_line: { include: { product: true } }, flight: { include: { route: true } } },
     })
     if (!row) throw new ApiErrorException('NOT_FOUND', 'Order not found.', 404)
     return this.toDto(row)
@@ -446,9 +523,11 @@ export class ProductOrdersService {
   // The menu for a flight and cabin, resolved from the offering rows.
   async menuFor(flightId: string, routeId: string, cabin: F12Cabin): Promise<OfferingRow[]> {
     const rows = await this.db.product_offering.findMany({
-      where: { deleted_at: null, is_active: true },
+      where: { deleted_at: null, product: { deleted_at: null, is_active: true } },
+      include: { product: { select: { category: true } } },
     })
-    const mapped: OfferingRow[] = (rows as unknown as OfferingDbRow[]).map((r) => ({
+    const mapped: OfferingRow[] = rows.map((r) => ({
+      category: r.product.category as OfferingRow['category'],
       id: r.id,
       productId: r.product_id,
       scope: r.scope as OfferingRow['scope'],
@@ -495,8 +574,8 @@ export class ProductOrdersService {
           product: line.productId,
         })
       }
-      if (product.category === 'snack' && !settings.snacksEnabled) {
-        throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Snacks are not offered in this cabin.', 409)
+      if ((product.category === 'snack' || product.category === 'beverage') && !settings.snacksEnabled) {
+        throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Snacks and drinks are not offered in this cabin.', 409)
       }
       if (product.category === 'duty_free' && !settings.dutyFreeEnabled) {
         throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Duty-free is not offered in this cabin.', 409)
@@ -568,7 +647,7 @@ export class ProductOrdersService {
     return 'economy'
   }
 
-  private toDto(row: {
+  private async toDto(row: {
     id: string
     booking_id: string
     flight_id: string
@@ -581,7 +660,7 @@ export class ProductOrdersService {
     expires_at: Date
     cancelled_at: Date | null
     created_at: Date
-    flight?: { flight_number: string }
+    flight: { flight_number: string; scheduled_dep_at: Date; route: { origin: string; destination: string } }
     product_order_line: Array<{
       id: string
       product_id: string
@@ -592,7 +671,8 @@ export class ProductOrdersService {
       price_basis: string
       product: { name: string }
     }>
-  }): ProductOrderDto {
+  }): Promise<ProductOrderDto> {
+    const settings = await this.settings.resolveForFlight(row.flight_id, row.cabin as F12Cabin)
     const status = row.status as ProductOrderStatus
     const lines: ProductOrderLineDto[] = row.product_order_line.map((line) => ({
       id: line.id,
@@ -609,7 +689,10 @@ export class ProductOrdersService {
       id: row.id,
       bookingId: row.booking_id,
       flightId: row.flight_id,
-      flightNumber: row.flight?.flight_number ?? '',
+      flightNumber: row.flight.flight_number,
+      flightOriginCode: row.flight.route.origin,
+      flightDestinationCode: row.flight.route.destination,
+      cutoffAt: cutoffAt(row.flight.scheduled_dep_at, settings.orderWindowHours).toISOString(),
       cabin: row.cabin,
       status,
       totalAmount: toNumber(row.total_amount),

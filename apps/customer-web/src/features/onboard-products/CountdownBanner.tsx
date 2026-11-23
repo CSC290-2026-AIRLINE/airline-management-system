@@ -49,7 +49,7 @@ export function CountdownBanner({ cutoffAt, isOpen }: Props) {
     >
       <span className="w-2 h-2 rounded-full flex-none" style={{ background: 'oklch(0.48 0.15 148)' }} aria-hidden="true" />
       <span>
-        Ordering open · Orders close {cutoffAt ? formatDateTime(cutoffAt) : ''}, 48 hours before departure, in {countdown}.
+        Ordering open · Orders close {cutoffAt ? formatDateTime(cutoffAt) : ''} (in {countdown}).
       </span>
     </div>
   )

@@ -51,6 +51,9 @@ export class OfferingsService {
   async upsert(input: OfferingInput): Promise<OfferingDto> {
     const product = await this.db.product.findFirst({ where: { id: input.productId, deleted_at: null } })
     if (!product) throw new ApiErrorException('NOT_FOUND', 'Product not found.', 404)
+    if (input.isDefault && product.category !== 'meal') {
+      throw new ApiErrorException('LINE_INVALID', 'Only meals can be the default meal.', 400)
+    }
     if (input.scope === 'route' && !input.routeId) {
       throw new ApiErrorException('LINE_INVALID', 'routeId is required for route-scope offerings.', 400)
     }
@@ -98,8 +101,14 @@ export class OfferingsService {
   }
 
   async toggle(id: string, patch: { isActive?: boolean; isDefault?: boolean }): Promise<OfferingDto> {
-    const existing = await this.db.product_offering.findFirst({ where: { id, deleted_at: null } })
+    const existing = await this.db.product_offering.findFirst({
+      where: { id, deleted_at: null },
+      include: { product: { select: { category: true } } },
+    })
     if (!existing) throw new ApiErrorException('NOT_FOUND', 'Offering not found.', 404)
+    if (patch.isDefault && existing.product.category !== 'meal') {
+      throw new ApiErrorException('LINE_INVALID', 'Only meals can be the default meal.', 400)
+    }
     const updated = await this.db.product_offering.update({
       where: { id },
       data: {

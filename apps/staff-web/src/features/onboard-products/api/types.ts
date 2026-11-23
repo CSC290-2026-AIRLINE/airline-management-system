@@ -91,6 +91,7 @@ export interface CabinSetting {
   orderWindowHours: number | null
   premiumMealsAllowed: boolean | null
   snacksEnabled: boolean | null
+  snackService?: 'complimentary' | 'paid' | 'none' | null
   dutyFreeEnabled: boolean | null
   onboardBufferPercent: number | null
 }
@@ -424,6 +425,7 @@ export type SettingPatch = {
       | 'orderWindowHours'
       | 'premiumMealsAllowed'
       | 'snacksEnabled'
+      | 'snackService'
       | 'dutyFreeEnabled'
       | 'onboardBufferPercent'
   ]?: NonNullable<CabinSetting[K]>

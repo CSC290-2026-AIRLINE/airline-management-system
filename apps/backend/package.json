@@ -19,6 +19,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:f12:integration": "tsx -r tsconfig-paths/register src/db/smoke-f12-shared.ts",
     "db:seed": "tsx -r tsconfig-paths/register src/db/seed.ts"
   },
   "dependencies": {

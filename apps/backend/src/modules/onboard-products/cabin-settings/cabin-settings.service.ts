@@ -19,6 +19,8 @@ import {
   type ResolvedCabinSetting,
 } from '../common/mapping'
 
+export type SnackService = 'complimentary' | 'paid' | 'none'
+
 export interface CabinSettingDto {
   id: string
   scope: F12OfferingScope
@@ -32,6 +34,7 @@ export interface CabinSettingDto {
   orderWindowHours: number | null
   premiumMealsAllowed: boolean | null
   snacksEnabled: boolean | null
+  snackService?: SnackService | null
   dutyFreeEnabled: boolean | null
   onboardBufferPercent: number | null
 }
@@ -48,6 +51,7 @@ export interface CabinSettingInput {
   orderWindowHours?: number | null
   premiumMealsAllowed?: boolean | null
   snacksEnabled?: boolean | null
+  snackService?: SnackService
   dutyFreeEnabled?: boolean | null
   onboardBufferPercent?: number | null
 }
@@ -117,6 +121,7 @@ export class CabinSettingsService {
     })
     const mapped: CabinSettingRow[] = rows.map((r) => this.toRow(r))
 
+    const policyRows = rows.map(this.toDto)
     const cabins: F12Cabin[] = cabin ? [cabin] : ['economy', 'premium_economy', 'business']
     const out: CabinSettingScopeDto[] = []
     for (const c of cabins) {
@@ -148,7 +153,7 @@ export class CabinSettingsService {
         scopeId: scope === 'network' ? null : scopeId,
         cabin: c,
         values,
-        row: own ? this.toDto(own) : null,
+        row: policyRows.find((row) => row.id === own?.id) ?? null,
       })
     }
     return out
@@ -179,7 +184,12 @@ export class CabinSettingsService {
     // update of a network row must preserve the existing values
     // when the caller did not pass them. Route/flight scopes are
     // genuinely partial, so null is a legal "inherit" sentinel.
-    const data = existing ? this.buildPatch(input, staffId, existing) : this.buildCreate(input, staffId)
+    const snacksEnabled = input.snackService ? input.snackService !== 'none' : input.snacksEnabled
+    const settings = { ...input, snacksEnabled }
+    const data = existing ? this.buildPatch(settings, staffId, existing) : this.buildCreate(settings, staffId)
+    if (input.snackService !== undefined || input.snacksEnabled !== undefined) {
+      data.snacks_complimentary = input.snackService === 'complimentary'
+    }
     const row = existing
       ? await this.db.cabin_setting.update({ where: { id: existing.id }, data })
       : await this.db.cabin_setting.create({ data })
@@ -272,7 +282,7 @@ export class CabinSettingsService {
   // Resolves a single cabin for a single flight. Reads every
   // relevant row from the DB (network + this flight's route + this
   // flight) and applies the precedence rule in pure code.
-  async resolveForFlight(flightId: string, cabin: F12Cabin): Promise<ResolvedCabinSetting> {
+  async resolveForFlight(flightId: string, cabin: F12Cabin): Promise<ResolvedCabinSetting & { snackService: SnackService }> {
     const flight = await this.db.flight.findUnique({ where: { id: flightId } })
     if (!flight) throw new ApiErrorException('NOT_FOUND', 'Flight not found.', 404)
     const rows = await this.db.cabin_setting.findMany({
@@ -282,7 +292,13 @@ export class CabinSettingsService {
       },
     })
     const mapped: CabinSettingRow[] = rows.map((r) => this.toRow(r))
-    return resolveCabinSetting(mapped, { cabin, routeId: flight.route_id, flightId })
+    const resolved = resolveCabinSetting(mapped, { cabin, routeId: flight.route_id, flightId })
+    const policyRows = rows.map(this.toDto)
+    const snackService =
+      (['flight', 'route', 'network'] as const)
+        .map((scope) => policyRows.find((row) => row.scope === scope)?.snackService)
+        .find((service) => service != null) ?? 'paid'
+    return { ...resolved, snackService }
   }
 
   // Returns the resolved settings for every cabin on a flight, used
@@ -359,6 +375,7 @@ export class CabinSettingsService {
         OR: [{ scope: 'network' }, { scope: 'route', route_id: { in: routeIds } }, { scope: 'flight', flight_id: { in: flightIds } }],
       },
     })
+    const policyRows = rows.map(this.toDto)
     const mapped: CabinSettingRow[] = rows.map((r) => this.toRow(r))
     const cabins: F12Cabin[] = cabin ? [cabin] : ['economy', 'premium_economy', 'business']
     const out: CabinSettingScopeDto[] = []
@@ -384,7 +401,7 @@ export class CabinSettingsService {
           scopeId: flightId,
           cabin: c,
           values,
-          row: own ? this.toDto(own) : null,
+          row: policyRows.find((row) => row.id === own?.id) ?? null,
         })
       }
     }
@@ -434,6 +451,7 @@ export class CabinSettingsService {
     order_window_hours: number | null
     premium_meals_allowed: boolean | null
     snacks_enabled: boolean | null
+    snacks_complimentary: boolean
     duty_free_enabled: boolean | null
     onboard_buffer_percent: number | null
   }): CabinSettingDto => ({
@@ -449,6 +467,7 @@ export class CabinSettingsService {
     orderWindowHours: row.order_window_hours,
     premiumMealsAllowed: row.premium_meals_allowed,
     snacksEnabled: row.snacks_enabled,
+    snackService: row.snacks_enabled === null ? null : !row.snacks_enabled ? 'none' : row.snacks_complimentary ? 'complimentary' : 'paid',
     dutyFreeEnabled: row.duty_free_enabled,
     onboardBufferPercent: row.onboard_buffer_percent,
   })

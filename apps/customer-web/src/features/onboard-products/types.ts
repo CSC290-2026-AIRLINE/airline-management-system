@@ -174,6 +174,7 @@ export interface CabinSetting {
   orderWindowHours: number
   premiumMealsAllowed: boolean
   snacksEnabled: boolean
+  snackService?: 'complimentary' | 'paid' | 'none'
   dutyFreeEnabled: boolean
 }
 
@@ -201,14 +202,10 @@ export type CategoryTab = 'meals' | 'snacks' | 'duty-free'
 export interface PlaceOrderPayload {
   bookingId: string
   flightId: string
-  // Already-priced lines (priceBasis + unitPrice resolved server-side).
-  // The mock also accepts them from the client.
+  cabin: CabinClass
   lines: Array<{
     productId: string
-    category: ProductCategory
-    passengerId: string
+    bookingPassengerId: string | null
     quantity: number
-    unitPrice: number
-    priceBasis: PriceBasis
   }>
 }
