@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from '@tanstack/react-router'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { FormField } from '../components/FormField'
 import { ListState } from '../components/ListState'
@@ -8,6 +9,7 @@ import { TableWrap } from '../components/TableWrap'
 import { BASE, errorMessage, usePagedList } from '../hooks/usePagedList'
 import { useNotice } from '../hooks/useNotice'
 import type { AirportRow } from '../types'
+import type { AirportGateCount } from '@staff-web/features/checkin-boarding/api/types'
 import '../flight-scheduling.css'
 import { Button } from '@staff-web/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@staff-web/components/ui/dialog'
@@ -43,10 +45,23 @@ function zoneWarning(city: string, timezone: string) {
   return own ? `${city.trim()} has its own time zone, ${own}, but ${timezone} is selected. Check the time zone.` : null
 }
 
+// The Gates column: a dash when the counts did not load, otherwise the gates of the airport as a link to manage them.
+function gatesCell(a: AirportRow, counts: Record<string, number> | null) {
+  if (counts === null) return '—'
+  const gates = counts[a.iata_code] ?? 0
+  return (
+    <Link to="/check-in/gate" search={{ tab: 'manage', airport: a.iata_code }} className="fs-link">
+      {gates === 0 ? 'Add gates' : `${gates} ${gates === 1 ? 'gate' : 'gates'}`}
+    </Link>
+  )
+}
+
 export function AirportsPage() {
   const { fetchWithAuth } = useAppAuth()
   // ponytail: first 100 airports; page with loadMore when the network grows past that.
   const airports = usePagedList<AirportRow>('/airports?limit=100', fetchWithAuth)
+  // The gates of every airport, from the check-in feature. Null until they load, and when the request fails.
+  const [gateCounts, setGateCounts] = useState<Record<string, number> | null>(null)
 
   const [form, setForm] = useState(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
@@ -54,6 +69,28 @@ export function AirportsPage() {
   const [notice, say] = useNotice()
   const [busy, setBusy] = useState(false)
   const [adding, setAdding] = useState(false)
+
+  // Every staff member may read the gate counts today: the call only fails when it breaks, and then the column stays a dash.
+  useEffect(() => {
+    let stale = false
+    fetchWithAuth('/api/staff/gates/counts')
+      .then(async (res) => {
+        if (!res.ok) throw new Error('no access')
+        return (await res.json()) as AirportGateCount[]
+      })
+      .then((rows) => {
+        if (stale) return
+        setGateCounts(Object.fromEntries(rows.map((row) => [row.airportCode, row.gates] as const)))
+      })
+      .catch(() => {
+        // The request failed: the column shows a dash.
+      })
+    return () => {
+      stale = true
+    }
+    // fetchWithAuth changes with the token; the counts are read once, when the page opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // The API validates; a field named in its message gets the red outline.
   const invalid = (key: FormKey) => formError?.includes(key) ?? false
@@ -180,6 +217,7 @@ export function AirportsPage() {
                 <TableHead>Airport</TableHead>
                 <TableHead>Time zone</TableHead>
                 <TableHead>Min turnaround (min)</TableHead>
+                <TableHead>Gates</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead></TableHead>
               </TableRow>
@@ -207,6 +245,7 @@ export function AirportsPage() {
                       onBlur={(e) => saveTurnaround(a, e.currentTarget.value)}
                     />
                   </TableCell>
+                  <TableCell>{gatesCell(a, gateCounts)}</TableCell>
                   <TableCell>
                     <StatusPill status={a.is_active ? 'active' : 'disabled'} />
                   </TableCell>

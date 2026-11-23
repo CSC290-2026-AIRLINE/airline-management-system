@@ -1,0 +1,28 @@
+/* Feature 3's names for the app's shared theme (src/index.css), so booking pages use the same palette and type as
+   every other customer page. New code uses the Tailwind theme classes directly; these names cover the older styles. */
+:root {
+  --f3-navy: var(--color-navy);
+  --f3-primary: var(--primary);
+  --f3-primary-hover: color-mix(in oklab, var(--primary) 90%, transparent);
+  --f3-ink: var(--color-ink);
+  --f3-muted: var(--muted-foreground);
+  --f3-page: var(--color-canvas);
+  --f3-card: var(--card);
+  --f3-border: var(--border);
+  --f3-line: var(--color-line);
+  --f3-amber: var(--color-gold);
+  --f3-success: var(--color-ok);
+  --f3-success-soft: color-mix(in oklab, var(--color-ok) 12%, white);
+  --f3-warning: var(--color-warn);
+  --f3-warning-soft: color-mix(in oklab, var(--color-warn) 12%, white);
+  --f3-danger: var(--color-danger);
+  --f3-danger-soft: color-mix(in oklab, var(--color-danger) 10%, white);
+  --f3-link: var(--color-link);
+  --f3-info: var(--color-link);
+  --f3-info-soft: color-mix(in oklab, var(--color-link) 8%, white);
+  --f3-info-border: color-mix(in oklab, var(--color-link) 25%, white);
+  --f3-selected: color-mix(in oklab, var(--color-link) 8%, white);
+  --f3-neutral: var(--muted-foreground);
+  --f3-neutral-soft: var(--muted);
+  --f3-font: var(--font-sans);
+}

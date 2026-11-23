@@ -4,6 +4,8 @@ export class ProfileResponseDto {
   @Expose() needsIdentitySetup!: boolean
   @Expose() passportNumber!: string | null
   @Expose() id!: string | null
+  /** The customer's own passenger record, so the customer can book themselves. Null before the identity is set up. */
+  @Expose() passengerId!: string | null
   @Expose() firstName!: string
   @Expose() lastName!: string
   @Expose() localFirstName!: string | null
