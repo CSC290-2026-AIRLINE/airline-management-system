@@ -24,7 +24,6 @@
     "@tanstack/react-router-devtools": "^1.167.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "cn": "^0.5.2",
     "date-fns": "^4.4.0",
     "jsqr": "^1.4.0",
     "lucide-react": "^1.59.0",
