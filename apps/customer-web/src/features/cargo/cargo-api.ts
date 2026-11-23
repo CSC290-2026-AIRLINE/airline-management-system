@@ -152,6 +152,8 @@ export interface TimelineEvent {
   flightId: string
   airportCode: string | null
   note: string | null
+  measuredWeightKg?: number | null
+  measuredVolumeM3?: number | null
 }
 
 export interface ClaimDecision {

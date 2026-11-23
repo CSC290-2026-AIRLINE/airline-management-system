@@ -1,5 +1,9 @@
-import { type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useMatchRoute } from '@tanstack/react-router'
+import { Bell } from 'lucide-react'
+import { Badge } from '@customer-web/components/ui/badge'
+import { Button } from '@customer-web/components/ui/button'
+import { useCustomerCargoApi } from './cargo-api'
 
 interface CargoHeroProps {
   subtitle: string
@@ -11,6 +15,17 @@ interface CargoHeroProps {
 
 export default function CargoHero({ subtitle, title, titleRight, bottom, activeTab }: CargoHeroProps) {
   const matchRoute = useMatchRoute()
+  const api = useCustomerCargoApi()
+  const [unread, setUnread] = useState(0)
+
+  useEffect(() => {
+    api
+      .listMyNotices({ page: 1, pageSize: 1 })
+      .then((r) => setUnread(r.unreadCount))
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const isShip = activeTab === 'ship' ? true : activeTab === 'mycargo' ? false : matchRoute({ to: '/cargo/ship' })
 
   return (
@@ -19,6 +34,17 @@ export default function CargoHero({ subtitle, title, titleRight, bottom, activeT
         <div className="flex items-center gap-3">
           <h1 className="m-0 text-4xl font-bold text-white">{title ?? (isShip ? 'Ship cargo' : 'My cargo')}</h1>
           {titleRight}
+          {/* Plain anchor: MyCargoPage reads ?tab= from the URL on mount */}
+          <Button asChild variant="ghost" size="icon" className="relative ml-auto text-white/80 hover:bg-white/10 hover:text-white">
+            <a href="/cargo?tab=notices" aria-label={unread > 0 ? `Notices, ${unread} unread` : 'Notices'}>
+              <Bell />
+              {unread > 0 && (
+                <Badge variant="destructive" className="absolute -top-1 -right-1 h-4 min-w-4 justify-center rounded-full px-1 text-[10px]">
+                  {unread > 9 ? '9+' : unread}
+                </Badge>
+              )}
+            </a>
+          </Button>
         </div>
         <p className="mt-2 text-sm text-white/80">{subtitle}</p>
         {bottom !== undefined ? (
