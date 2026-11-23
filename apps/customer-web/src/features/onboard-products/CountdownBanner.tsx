@@ -11,9 +11,11 @@ interface Props {
   isOpen: boolean
   // The cabin's order window in hours, from its resolved cabin setting.
   windowHours: number | null
+  // The departure airport's time zone, so the close time matches the flight times.
+  timeZone?: string | null
 }
 
-export function CountdownBanner({ cutoffAt, isOpen, windowHours }: Props) {
+export function CountdownBanner({ cutoffAt, isOpen, windowHours, timeZone }: Props) {
   // Captured once on mount; refreshed by the interval below. Capturing
   // via useState initializer avoids the "synchronous setState in effect"
   // rule — the value is stable for the first render, then the interval
@@ -39,7 +41,7 @@ export function CountdownBanner({ cutoffAt, isOpen, windowHours }: Props) {
   return (
     <Alert role="status" className="border-green-200 bg-green-50 text-green-800">
       <AlertDescription className="col-start-2 text-green-800">
-        Ordering open · Orders close {cutoffAt ? formatDateTime(cutoffAt) : ''}
+        Ordering open · Orders close {cutoffAt ? formatDateTime(cutoffAt, timeZone) : ''}
         {windowHours ? `, ${windowHours} hours before departure` : ''}, in {countdown}.
       </AlertDescription>
     </Alert>

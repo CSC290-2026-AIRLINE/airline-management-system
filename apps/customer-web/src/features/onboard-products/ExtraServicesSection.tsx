@@ -120,7 +120,7 @@ export function ExtraServicesSection({ booking, preset, initialCancelTarget, ref
           {cutoffState.kind === 'open' ? (
             <Alert role="status" className="border-green-200 bg-green-50 text-green-800">
               <AlertDescription className="col-start-2 text-green-800">
-                Ordering open · Closes {formatDateTime(cutoffState.cutoffAt)}.
+                Ordering open · Closes {formatDateTime(cutoffState.cutoffAt, cutoffState.timeZone)}.
               </AlertDescription>
             </Alert>
           ) : (
@@ -190,17 +190,17 @@ export function ExtraServicesSection({ booking, preset, initialCancelTarget, ref
   )
 }
 
-type CutoffState = { kind: 'open'; cutoffAt: string } | { kind: 'closed' }
+type CutoffState = { kind: 'open'; cutoffAt: string; timeZone: string | null } | { kind: 'closed' }
 
 // Soonest still-open cutoff across the booking's flights. If the API
 // didn't return a per-flight `cutoffAt`, fall back to
 // `scheduledDeparture - 48h` (the spec default for `order_window_hours`).
 function computeCutoffState(booking: Booking, now: number): CutoffState {
   const candidates = booking.flights
-    .map((f) => f.cutoffAt ?? defaultCutoffFor(f.scheduledDeparture))
-    .map((iso) => ({ iso, t: new Date(iso).getTime() }))
+    .map((f) => ({ iso: f.cutoffAt ?? defaultCutoffFor(f.scheduledDeparture), timeZone: f.departureTimeZone ?? null }))
+    .map((c) => ({ ...c, t: new Date(c.iso).getTime() }))
     .filter((c) => c.t > now)
     .sort((a, b) => a.t - b.t)
   if (candidates.length === 0) return { kind: 'closed' }
-  return { kind: 'open', cutoffAt: candidates[0].iso }
+  return { kind: 'open', cutoffAt: candidates[0].iso, timeZone: candidates[0].timeZone }
 }

@@ -82,7 +82,14 @@ function CardShell({
             </Link>
           </Button>
         ) : null}
-        {model.action.kind !== 'none' && model.action.kind !== 'complete-payment' ? (
+        {model.action.kind === 'add-meals' ? (
+          <Button variant="link" size="sm" className="h-auto p-0" asChild>
+            <Link to="/bookings/$reference/shop" params={{ reference: item.reference }}>
+              {model.action.label}
+            </Link>
+          </Button>
+        ) : null}
+        {model.action.kind !== 'none' && model.action.kind !== 'complete-payment' && model.action.kind !== 'add-meals' ? (
           <Button variant="link" size="sm" className="h-auto p-0" disabled title={model.action.disabledReason ?? undefined}>
             {model.action.label}
           </Button>

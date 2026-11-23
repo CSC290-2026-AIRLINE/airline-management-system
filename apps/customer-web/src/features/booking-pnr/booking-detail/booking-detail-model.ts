@@ -12,7 +12,6 @@ export const CHANGE_BOOKING_DISABLED = 'Changing a booking is not available yet.
 export const COMPLAINT_DISABLED = 'Complaints (feature 13) are not connected yet.'
 export const ASSISTANCE_DISABLED = 'Assistance requests (feature 3) are not connected yet.'
 export const CHECK_IN_DISABLED = 'Check-in and boarding passes (feature 6) are not connected yet.'
-export const MEALS_DISABLED = 'Meals (feature 12) are not connected yet.'
 export const LOST_BAG_DISABLED = 'Lost baggage reports (feature 10) are not connected yet.'
 
 // Meals and the onboard shop close 48 hours before departure.

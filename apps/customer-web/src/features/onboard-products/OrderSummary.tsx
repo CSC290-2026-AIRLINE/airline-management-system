@@ -136,7 +136,7 @@ export function OrderSummary(props: Props) {
               <AlertDescription className="col-start-2 text-green-800">
                 <span>
                   <strong>{props.confirmedOrderId ? `Order ${props.confirmedOrderId} confirmed.` : 'Order confirmed.'}</strong> Your items
-                  are loaded for the flight.
+                  are reserved and will be served on board.
                 </span>
               </AlertDescription>
             </Alert>

@@ -22,7 +22,6 @@ export interface CardModel {
   mobileNote: string
 }
 
-const MEALS_DISABLED = 'Meals (feature 12) are not connected yet.'
 const COMPLAINT_DISABLED = 'Complaints (feature 13) are not connected yet.'
 const RECEIPT_DISABLED = 'Refunds (feature 5b) are not connected yet.'
 
@@ -74,7 +73,8 @@ function actionFor(item: BookingListItem, tab: TripTab, expired: boolean, server
     if (!mealsStillOpen(item, serverNow)) {
       return NO_ACTION
     }
-    return { kind: 'add-meals', label: 'Add meals', disabledReason: MEALS_DISABLED }
+    // Feature 12's shop for this booking (/bookings/$reference/shop).
+    return { kind: 'add-meals', label: 'Add meals', disabledReason: null }
   }
 
   if (item.status === 'cancelled') {

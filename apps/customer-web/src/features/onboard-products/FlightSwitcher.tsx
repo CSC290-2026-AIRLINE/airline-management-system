@@ -32,7 +32,8 @@ export function FlightSwitcher({ flights, selectedId, onSelect }: Props) {
               {flight.flightNumber} · {flight.origin.code} to {flight.destination.code}
             </span>
             <span className="text-xs text-muted-foreground">
-              Departs {formatDate(flight.scheduledDeparture)}, {formatTime(flight.scheduledDeparture)}
+              Departs {formatDate(flight.scheduledDeparture, flight.departureTimeZone)},{' '}
+              {formatTime(flight.scheduledDeparture, flight.departureTimeZone)}
             </span>
           </button>
         )

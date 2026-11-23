@@ -52,6 +52,8 @@ export interface FlightRef {
   // falls back to `scheduledDeparture - 48h` (the spec default for
   // `cabin_setting.order_window_hours`).
   cutoffAt: string | null
+  // IANA time zone of the departure airport; flight times are shown in it.
+  departureTimeZone?: string | null
 }
 
 export interface Booking {

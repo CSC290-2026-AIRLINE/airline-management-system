@@ -33,6 +33,7 @@ export function ProductList(props: Props) {
         products={props.products}
         selectedId={props.selectedMealProductId}
         onSelect={props.onSelectMeal}
+        currency={props.currency}
         disabled={!!props.disabled}
       />
     )
@@ -53,11 +54,13 @@ function MealRadioList({
   products,
   selectedId,
   onSelect,
+  currency,
   disabled,
 }: {
   products: Product[]
   selectedId: string | null
   onSelect: (id: string) => void
+  currency: string
   disabled: boolean
 }) {
   return (
@@ -85,7 +88,7 @@ function MealRadioList({
                 {p.description ? <span className="text-sm text-muted-foreground">{p.description}</span> : null}
               </span>
               <span className="shrink-0 text-sm font-medium tabular-nums">
-                {p.priceLabel ?? (p.unitPrice === 0 ? 'Free' : formatMoney(p.unitPrice, 'USD'))}
+                {p.priceLabel ?? (p.unitPrice === 0 ? 'Free' : formatMoney(p.unitPrice, currency))}
               </span>
             </label>
           )

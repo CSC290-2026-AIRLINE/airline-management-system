@@ -72,6 +72,7 @@ export function toShopBooking(detail: BookingDetail): Booking {
     cabinClass: s.cabin as CabinClass,
     seatNumbers: detail.coupons.filter((c) => c.bookingSegmentId === s.bookingSegmentId && c.seatCode).map((c) => c.seatCode as string),
     cutoffAt: null,
+    departureTimeZone: s.originTimeZone ?? null,
   }))
   return {
     id: detail.bookingId,
@@ -194,6 +195,7 @@ export async function cancelProductOrder(
 interface CatalogWire {
   cutoffAt: string
   orderWindowOpen: boolean
+  currency?: string
   settings: {
     mealService: CabinSetting['mealService']
     mealSelection: CabinSetting['mealSelection']
@@ -210,6 +212,9 @@ interface CatalogWire {
     category: ProductCategory
     typeCode: string
     priceAmount: number
+    // What this customer pays per unit (the complimentary allowance and the tier benefit applied), and why.
+    customerPriceAmount?: number
+    priceBasis?: 'standard' | 'tier_benefit' | 'included'
     isPremium: boolean
     imageKey: string | null
     dietaryAttributes: string[]
@@ -255,6 +260,8 @@ export interface ShopData {
   setting: CabinSetting
   cutoffAt: string
   orderWindowOpen: boolean
+  // F4's base currency, the one the backend prices and records orders in.
+  currency: string
 }
 
 export async function fetchShop(booking: Booking, flightId: string, cabin: CabinClass, fetchWithAuth: FetchWithAuth): Promise<ShopData> {
@@ -266,6 +273,7 @@ export async function fetchShop(booking: Booking, flightId: string, cabin: Cabin
       setting,
       cutoffAt: flight ? (flight.cutoffAt ?? defaultCutoffFor(flight.scheduledDeparture)) : '',
       orderWindowOpen: true,
+      currency: 'USD',
     }
   }
   const query = new URLSearchParams({ bookingId: booking.id, flightId, cabin })
@@ -282,7 +290,8 @@ export async function fetchShop(booking: Booking, flightId: string, cabin: Cabin
       typeCode: p.typeCode === 'STD' ? null : p.typeCode,
       name: p.name,
       description: p.dietaryAttributes.map((d) => d.replace('_', ' ')).join(', '),
-      unitPrice: p.priceAmount,
+      unitPrice: p.customerPriceAmount ?? p.priceAmount,
+      priceLabel: p.priceBasis === 'included' ? 'Included' : p.priceBasis === 'tier_benefit' ? 'Free with your tier' : undefined,
       isPremium: p.isPremium,
       thumbnailColor: THUMB_COLOR[p.category],
       imageUrl: p.imageKey && (p.imageKey.startsWith('/') || p.imageKey.startsWith('http')) ? p.imageKey : null,
@@ -305,6 +314,7 @@ export async function fetchShop(booking: Booking, flightId: string, cabin: Cabin
     },
     cutoffAt: wire.cutoffAt,
     orderWindowOpen: wire.orderWindowOpen,
+    currency: wire.currency ?? 'USD',
   }
 }
 
