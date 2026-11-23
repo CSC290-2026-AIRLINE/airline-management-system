@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 import { Input } from '@staff-web/components/ui/input'
@@ -12,15 +13,9 @@ import { crewDisplayName, formatAmount, longDate, runLabel } from './format'
 function CheckRow({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2 text-sm">
-      <span
-        className={
-          ok
-            ? 'shrink-0 rounded bg-success-soft px-1.5 py-0.5 text-[11px] font-semibold text-success-strong'
-            : 'shrink-0 rounded bg-warning-soft px-1.5 py-0.5 text-[11px] font-semibold text-warning'
-        }
-      >
+      <Badge variant={ok ? 'default' : 'destructive'} className="shrink-0">
         {ok ? 'OK' : 'Needs action'}
-      </span>
+      </Badge>
       <span>{children}</span>
     </div>
   )
@@ -66,7 +61,7 @@ export function ApproveDialog({
       <DialogContent>
         <form onSubmit={(e) => void submit(e)} className="space-y-4" noValidate>
           <DialogHeader>
-            <DialogTitle className="m-0 font-sans text-lg font-semibold text-foreground">
+            <DialogTitle className="text-lg font-semibold text-foreground">
               Approve {runLabel(run.period_start, run.period_end)} run?
             </DialogTitle>
             <DialogDescription>
@@ -75,7 +70,7 @@ export function ApproveDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 rounded-md bg-muted/60 p-3">
-            <p className="text-[11px] font-semibold tracking-wide text-muted-foreground">BEFORE YOU APPROVE</p>
+            <p className="text-xs font-medium text-muted-foreground">Before you approve</p>
             <CheckRow ok={!run.is_creator}>
               {run.is_creator
                 ? `You created this run, so another finance user must approve it.`
@@ -151,9 +146,7 @@ export function PayDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="m-0 font-sans text-lg font-semibold text-foreground">
-            Pay {runLabel(run.period_start, run.period_end)} run?
-          </DialogTitle>
+          <DialogTitle className="text-lg font-semibold text-foreground">Pay {runLabel(run.period_start, run.period_end)} run?</DialogTitle>
           <DialogDescription>
             This sends {formatAmount(run.total)} {run.currency} to {paying} crew. Paid lines cannot be changed afterwards.
           </DialogDescription>
@@ -219,7 +212,7 @@ export function AdjustmentDialog({
       <DialogContent>
         <form onSubmit={(e) => void submit(e)} className="space-y-4" noValidate>
           <DialogHeader>
-            <DialogTitle className="m-0 font-sans text-lg font-semibold text-foreground">Add adjustment</DialogTitle>
+            <DialogTitle className="text-lg font-semibold text-foreground">Add adjustment</DialogTitle>
           </DialogHeader>
           <div className="space-y-1.5">
             <Label htmlFor="adj-crew">Crew member</Label>
@@ -307,7 +300,7 @@ export function NewRunDialog({
       <DialogContent>
         <form onSubmit={(e) => void submit(e)} className="space-y-4" noValidate>
           <DialogHeader>
-            <DialogTitle className="m-0 font-sans text-lg font-semibold text-foreground">New pay run</DialogTitle>
+            <DialogTitle className="text-lg font-semibold text-foreground">New pay run</DialogTitle>
             {earliest && (
               <DialogDescription>
                 Unpaid pay was earned{' '}

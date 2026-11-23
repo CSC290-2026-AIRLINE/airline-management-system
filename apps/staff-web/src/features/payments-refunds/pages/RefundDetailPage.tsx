@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
+import { Textarea } from '@staff-web/components/ui/textarea'
 import { Label } from '@staff-web/components/ui/label'
 import { useRefundsApi } from '../api/refunds'
 import { RefundsFrame } from '../components/RefundsFrame'
@@ -161,7 +162,7 @@ function Detail({ refundId }: { refundId: string }) {
             )}
             <div className="space-y-1.5">
               <Label htmlFor="decision-reason">Reason (required, sent to the customer)</Label>
-              <textarea
+              <Textarea
                 id="decision-reason"
                 value={reason}
                 onChange={(event) => {
@@ -173,7 +174,6 @@ function Detail({ refundId }: { refundId: string }) {
                 placeholder="Approved as a goodwill override."
                 aria-invalid={reasonError}
                 aria-describedby={reasonError ? 'decision-reason-error' : undefined}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-invalid:border-destructive"
               />
               {reasonError && (
                 <p id="decision-reason-error" role="alert" className="text-sm text-destructive">

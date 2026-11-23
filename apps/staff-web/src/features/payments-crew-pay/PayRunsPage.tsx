@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Badge } from '@staff-web/components/ui/badge'
 import { Button } from '@staff-web/components/ui/button'
+import { Card } from '@staff-web/components/ui/card'
 import { Input } from '@staff-web/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
@@ -20,34 +22,28 @@ type StatusFilter = 'all' | 'needs_action' | 'paid'
 type SortKey = 'name' | 'payout_desc' | 'payout_asc'
 type Notice = { tone: 'good' | 'bad'; text: string } | null
 
-const card = 'rounded-xl border bg-card p-4 shadow-xs'
+/** A bordered block of the page: shadcn's `Card` with its padding in one place. */
+function Panel({ className, children }: { className?: string; children: React.ReactNode }) {
+  return <Card className={cn('gap-2 p-4', className)}>{children}</Card>
+}
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
-        active ? 'border-navy bg-[#EAF0FB] text-navy' : 'border-border bg-card text-foreground hover:border-navy/40',
-      )}
-    >
+    <Button type="button" size="sm" variant={active ? 'secondary' : 'outline'} onClick={onClick} aria-pressed={active}>
       {children}
-    </button>
+    </Button>
   )
 }
 
 function StatusPill({ status }: { status: PayRunStatus }) {
-  // The same colours as the refund status badge.
-  const styles: Record<PayRunStatus, [string, string]> = {
-    draft: ['Draft', 'bg-[#EAF0FB] text-[#1E3A8A]'],
-    approved: ['Approved', 'bg-amber-100 text-amber-900'],
-    paid: ['Paid', 'bg-emerald-100 text-emerald-900'],
-    cancelled: ['Cancelled', 'bg-muted text-muted-foreground'],
+  const styles: Record<PayRunStatus, ['default' | 'secondary' | 'outline', string]> = {
+    draft: ['secondary', 'Draft'],
+    approved: ['outline', 'Approved'],
+    paid: ['default', 'Paid'],
+    cancelled: ['outline', 'Cancelled'],
   }
-  const [label, cls] = styles[status]
-  return <Badge className={cn('border-0', cls)}>{label}</Badge>
+  const [variant, label] = styles[status]
+  return <Badge variant={variant}>{label}</Badge>
 }
 
 /**
@@ -82,13 +78,11 @@ export function PayRunsPage({ selectedRunId }: { selectedRunId?: string }) {
 
   const runCard = (r: PayRunSummary) => (
     <li key={r.id}>
-      <button
+      <Button
         type="button"
+        variant={r.id === selected ? 'secondary' : 'outline'}
         onClick={() => select(r.id)}
-        className={cn(
-          'w-full rounded-lg border bg-card px-3 py-2 text-left shadow-xs transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none',
-          r.id === selected && 'border-navy bg-[#EAF0FB]',
-        )}
+        className="h-auto w-full flex-col items-stretch gap-0 px-3 py-2 text-left font-normal"
       >
         <span className="flex items-center justify-between gap-2">
           <span className="text-sm font-semibold">{runLabel(r.period_start, r.period_end)}</span>
@@ -97,16 +91,18 @@ export function PayRunsPage({ selectedRunId }: { selectedRunId?: string }) {
         <span className="block text-xs text-muted-foreground">
           {r.crew_count} crew · {formatAmount(r.total)} {currency}
         </span>
-      </button>
+      </Button>
     </li>
   )
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 md:px-8">
       <CrewPayHeader viewer={overview.data?.viewer} title="Pay Runs" subtitle="Crew pay run drafts, approvals and payouts." />
-      <p className="m-0 rounded-md border border-line bg-card px-3 py-2 text-sm text-muted-foreground">
-        Stretch feature. Crew pay is not in the first iteration. Payouts use the fake provider; no real money moves.
-      </p>
+      <Alert>
+        <AlertDescription>
+          Stretch feature. Crew pay is not in the first iteration. Payouts use the fake provider; no real money moves.
+        </AlertDescription>
+      </Alert>
 
       {overview.loading && !overview.data && <LoadingCard />}
       {overview.error && <LoadErrorCard message={overview.error} onRetry={overview.reload} />}
@@ -115,7 +111,7 @@ export function PayRunsPage({ selectedRunId }: { selectedRunId?: string }) {
         <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
           <aside className="space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-[11px] font-semibold tracking-wide text-muted-foreground">RUNS</p>
+              <p className="text-xs font-medium text-muted-foreground">Runs</p>
               <Button size="xs" variant="outline" onClick={() => setNewRunOpen(true)} disabled={overview.data.accrued.lines.length === 0}>
                 <Plus /> New run
               </Button>
@@ -173,7 +169,7 @@ export function PayRunsPage({ selectedRunId }: { selectedRunId?: string }) {
             {selected ? (
               <RunDetail key={selected} runId={selected} crew={overview.data.crew} onChanged={overview.reload} />
             ) : (
-              <div className={cn(card, 'py-10 text-center text-sm text-muted-foreground')}>No pay runs yet.</div>
+              <Panel className="py-10 text-center text-sm text-muted-foreground">No pay runs yet.</Panel>
             )}
           </section>
         </div>
@@ -216,16 +212,16 @@ function Stepper({ status }: { status: PayRunStatus }) {
               className={cn(
                 'grid size-6 shrink-0 place-items-center rounded-full border text-xs font-semibold',
                 current
-                  ? 'border-navy bg-background text-foreground'
+                  ? 'border-primary bg-background text-foreground'
                   : done
-                    ? 'border-navy bg-navy text-white'
+                    ? 'border-primary bg-primary text-primary-foreground'
                     : 'border-border text-muted-foreground',
               )}
             >
               {n}
             </span>
             <span className={cn('text-xs', done ? 'font-semibold text-foreground' : 'text-muted-foreground')}>{label}</span>
-            {n < steps.length && <span className={cn('h-px flex-1', n < reached ? 'bg-navy' : 'bg-border')} aria-hidden="true" />}
+            {n < steps.length && <span className={cn('h-px flex-1', n < reached ? 'bg-primary' : 'bg-border')} aria-hidden="true" />}
           </li>
         )
       })}
@@ -323,7 +319,7 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
 
   return (
     <div className="space-y-3">
-      <div className={card}>
+      <Panel>
         <div className="flex items-start justify-between gap-2">
           <div>
             <h2 className="m-0 font-sans text-lg font-bold text-foreground">{runLabel(r.period_start, r.period_end)}</h2>
@@ -332,16 +328,12 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
               {r.paid_at ? `paid ${shortDate(r.paid_at)}` : periodText(r.period_start, r.period_end)}
             </p>
           </div>
-          {r.status === 'approved' ? (
-            <span className="rounded bg-warning-soft px-1.5 py-0.5 text-[11px] font-semibold text-warning">Approved · ready to pay</span>
-          ) : (
-            <StatusPill status={r.status} />
-          )}
+          {r.status === 'approved' ? <Badge variant="outline">Approved · ready to pay</Badge> : <StatusPill status={r.status} />}
         </div>
         {r.status !== 'cancelled' && <Stepper status={r.status} />}
-      </div>
+      </Panel>
 
-      <div className={card}>
+      <Panel>
         <p className="mb-2 text-sm font-semibold">Actions</p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -363,25 +355,19 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
           </Button>
         </div>
         {r.status === 'draft' && r.is_creator && !notice && (
-          <p className="mt-3 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger" role="alert">
-            Blocked: {creator} created this run, so another finance user must approve it.
-          </p>
+          <Alert variant="destructive" className="mt-3">
+            <AlertDescription>Blocked: {creator} created this run, so another finance user must approve it.</AlertDescription>
+          </Alert>
         )}
         {notice && (
-          <p
-            className={cn(
-              'mt-3 rounded-md px-3 py-2 text-sm',
-              notice.tone === 'good' ? 'bg-success-soft text-success-strong' : 'bg-danger-soft text-danger',
-            )}
-            role={notice.tone === 'bad' ? 'alert' : 'status'}
-          >
-            {notice.text}
-          </p>
+          <Alert variant={notice.tone === 'bad' ? 'destructive' : 'default'} className="mt-3">
+            <AlertDescription>{notice.text}</AlertDescription>
+          </Alert>
         )}
         <p className="mt-3 mb-0 text-xs text-muted-foreground">
           Paid lines never change. A correction on a paid run becomes an adjustment line in the next run.
         </p>
-      </div>
+      </Panel>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {(
@@ -392,15 +378,15 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
             ['ADJUSTMENTS', formatAmount(adjustmentTotal), `${adjustmentLines.length} ${adjustmentLines.length === 1 ? 'line' : 'lines'}`],
           ] as const
         ).map(([label, value, sub]) => (
-          <div key={label} className={card}>
-            <p className="text-[10px] font-semibold tracking-wide text-muted-foreground">{label}</p>
-            <p className="text-xl font-bold tabular-nums">{value}</p>
+          <Panel key={label}>
+            <p className="text-xs font-medium text-muted-foreground">{label}</p>
+            <p className="text-xl font-semibold tabular-nums">{value}</p>
             <p className="text-xs text-muted-foreground">{sub}</p>
-          </div>
+          </Panel>
         ))}
       </div>
 
-      <div className={card}>
+      <Panel>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold">Crew payouts</p>
           <div className="flex items-center gap-3">
@@ -434,7 +420,7 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
           </Select>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-semibold tracking-wide text-muted-foreground">RANK</span>
+          <span className="text-xs font-medium text-muted-foreground">Rank</span>
           <Chip active={rank === 'all'} onClick={() => chooseRank('all')}>
             All ranks · {rows.length}
           </Chip>
@@ -462,7 +448,7 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
               const flagged = x.hasAdjustment && r.status === 'draft'
               const failed = x.payout?.status === 'failed' ? x.payout : null
               return (
-                <TableRow key={x.crew.id} className={cn(flagged && 'bg-amber-50 hover:bg-amber-100')}>
+                <TableRow key={x.crew.id} className={cn(flagged && 'bg-muted/50')}>
                   <TableCell className="font-semibold">{x.name}</TableCell>
                   <TableCell className="text-muted-foreground">{rankLabel(x.crew.role)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatAmount(x.base)}</TableCell>
@@ -470,25 +456,26 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
                   <TableCell className="text-right tabular-nums">{formatAmount(x.perDiem)}</TableCell>
                   <TableCell className="text-right tabular-nums">
                     {formatAmount(x.adjustment)}
-                    {flagged && <span className="block text-[11px] font-medium text-warning">Needs override</span>}
+                    {flagged && (
+                      <Badge variant="outline" className="mt-1">
+                        Needs override
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-right font-bold tabular-nums">
                     {formatAmount(x.net)}
                     {failed && (
                       <span className="mt-1 flex items-center justify-end gap-1.5">
-                        <span
-                          className="rounded bg-danger-soft px-1.5 py-0.5 text-[11px] font-semibold text-danger"
-                          title={failed.failure_reason ?? undefined}
-                        >
+                        <Badge variant="destructive" title={failed.failure_reason ?? undefined}>
                           Payout failed
-                        </span>
+                        </Badge>
                         <Button size="xs" variant="outline" disabled={retrying !== null} onClick={() => void retry(failed.id)}>
                           {retrying === failed.id ? 'Retrying…' : 'Retry'}
                         </Button>
                       </span>
                     )}
                     {x.net <= 0 && r.status === 'paid' && (
-                      <span className="block text-[11px] font-medium text-warning">Carried to next run</span>
+                      <span className="block text-xs font-normal text-muted-foreground">Carried to next run</span>
                     )}
                   </TableCell>
                 </TableRow>
@@ -521,7 +508,7 @@ function RunDetail({ runId, crew, onChanged }: { runId: string; crew: CrewRef[];
             </Button>
           </span>
         </div>
-      </div>
+      </Panel>
 
       <p className="px-1 text-xs text-muted-foreground">
         Overtime = duty hours over {r.rules.overtime_threshold_hours} × rate × {r.rules.overtime_multiplier}, rounded half up per line. A

@@ -3,6 +3,8 @@ import { ArrowLeft } from 'lucide-react'
 import { NoAccessScreen } from '@staff-web/features/admin-console/components/NoAccessScreen'
 import { useScreenAccess } from '@staff-web/features/admin-console/hooks/useScreenAccess'
 import { PaymentDetailPanel } from '../components/PaymentDetailPanel'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardContent } from '@staff-web/components/ui/card'
 import { PageMessage, StaffPageShell } from '../components/StaffPageShell'
 import { useStaffPayment } from '../hooks/useStaffPayment'
 
@@ -42,13 +44,12 @@ export function PaymentDetailPage({ paymentId }: PaymentDetailPageProps) {
     <StaffPageShell title="Payment details" subtitle="Everything this payment was for and every state it went through.">
       <div className="flex flex-col gap-4">
         {/* Back to the list, where the payment was found. */}
-        <Link
-          to="/payments/lookup"
-          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline"
-        >
-          <ArrowLeft className="size-4" aria-hidden="true" />
-          Payment lookup
-        </Link>
+        <Button asChild variant="link" className="w-fit px-0">
+          <Link to="/payments/lookup">
+            <ArrowLeft aria-hidden="true" />
+            Payment lookup
+          </Link>
+        </Button>
 
         {detail.error && (
           <PageMessage
@@ -59,17 +60,19 @@ export function PaymentDetailPage({ paymentId }: PaymentDetailPageProps) {
         )}
 
         {!detail.error && detail.loading && (
-          <div className="rounded-2xl border border-line bg-card px-6 py-8">
-            <p className="m-0 text-center text-sm text-muted-foreground" role="status">
+          <Card>
+            <CardContent className="text-center text-sm text-muted-foreground" role="status">
               Loading the payment…
-            </p>
-          </div>
+            </CardContent>
+          </Card>
         )}
 
         {!detail.error && !detail.loading && detail.payment && (
-          <div className="rounded-2xl border border-line bg-card p-8 max-phone:p-4">
-            <PaymentDetailPanel payment={detail.payment} />
-          </div>
+          <Card>
+            <CardContent>
+              <PaymentDetailPanel payment={detail.payment} />
+            </CardContent>
+          </Card>
         )}
       </div>
     </StaffPageShell>

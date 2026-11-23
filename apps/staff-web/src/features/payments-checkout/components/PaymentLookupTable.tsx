@@ -20,13 +20,13 @@ export function PaymentLookupTable({ payments, onOpen }: PaymentLookupTableProps
   return (
     <Table className="min-w-160">
       <TableHeader>
-        <TableRow className="border-b border-line hover:bg-transparent">
-          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">Payment</TableHead>
-          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">Booking</TableHead>
-          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">Customer</TableHead>
-          <TableHead className="h-12 px-5 text-right text-xs font-medium text-muted-foreground">Amount (USD)</TableHead>
-          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">Paid with</TableHead>
-          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">Status</TableHead>
+        <TableRow className="border-b border-border hover:bg-transparent">
+          <TableHead>Payment</TableHead>
+          <TableHead>Booking</TableHead>
+          <TableHead>Customer</TableHead>
+          <TableHead className="text-right">Amount (USD)</TableHead>
+          <TableHead>Paid with</TableHead>
+          <TableHead>Status</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -42,23 +42,23 @@ export function PaymentLookupTable({ payments, onOpen }: PaymentLookupTableProps
                 onOpen(payment)
               }
             }}
-            className="cursor-pointer border-b border-line last:border-b-0 hover:bg-accent focus-visible:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            className="cursor-pointer border-b border-border last:border-b-0 hover:bg-accent focus-visible:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
-            <TableCell className="px-5 py-4">
+            <TableCell>
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-semibold text-foreground">{payment.reference}</span>
                 <span className="text-xs text-muted-foreground tabular-nums">{formatShortDateTime(payment.updated_at)}</span>
               </div>
             </TableCell>
-            <TableCell className="px-5 py-4 text-sm font-medium text-foreground">{payment.booking_reference ?? '—'}</TableCell>
-            <TableCell className="px-5 py-4 text-sm text-foreground" title={payment.customer_name ?? undefined}>
+            <TableCell className="text-sm font-medium text-foreground">{payment.booking_reference ?? '—'}</TableCell>
+            <TableCell className="text-sm text-foreground" title={payment.customer_name ?? undefined}>
               {payment.customer_email ?? '—'}
             </TableCell>
-            <TableCell className="px-5 py-4 text-right text-sm font-semibold text-foreground tabular-nums">
+            <TableCell className="text-right text-sm font-semibold text-foreground tabular-nums">
               {formatAmount(payment.amount_total)}
             </TableCell>
-            <TableCell className="px-5 py-4 text-sm text-muted-foreground">{payment.paid_with}</TableCell>
-            <TableCell className="px-5 py-4">
+            <TableCell className="text-sm text-muted-foreground">{payment.paid_with}</TableCell>
+            <TableCell>
               <PaymentStatusBadge status={payment.status} label={payment.status_label} />
             </TableCell>
           </TableRow>

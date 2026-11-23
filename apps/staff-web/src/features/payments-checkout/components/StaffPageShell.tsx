@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { AppShell } from '@staff-web/features/admin-console/AppShell'
-import { cn } from '@staff-web/lib/utils'
+import { Alert, AlertDescription, AlertTitle } from '@staff-web/components/ui/alert'
+import { Card, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 
 interface StaffPageShellProps {
   title: string
@@ -18,10 +19,10 @@ interface StaffPageShellProps {
 export function StaffPageShell({ title, subtitle, children }: StaffPageShellProps) {
   return (
     <AppShell>
-      <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
-        <header className="mb-6">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 md:p-8">
+        <header className="flex flex-col gap-1">
           <h1 className="m-0 font-sans text-2xl font-bold tracking-tight text-foreground">{title}</h1>
-          {subtitle && <p className="mt-1 mb-0 max-w-3xl text-sm text-muted-foreground">{subtitle}</p>}
+          {subtitle && <p className="max-w-3xl text-sm text-muted-foreground">{subtitle}</p>}
         </header>
         {children}
       </main>
@@ -41,17 +42,20 @@ export function PageMessage({
   tone?: 'muted' | 'danger'
   className?: string
 }) {
+  if (tone === 'danger') {
+    return (
+      <Alert variant="destructive" className={className}>
+        <AlertTitle>{title}</AlertTitle>
+        {body && <AlertDescription className="break-words">{body}</AlertDescription>}
+      </Alert>
+    )
+  }
   return (
-    <div
-      className={cn(
-        'rounded-2xl border border-border bg-card px-6 py-8 text-center',
-        tone === 'danger' && 'border-danger-line/40 bg-danger-soft',
-        className,
-      )}
-      role={tone === 'danger' ? 'alert' : 'status'}
-    >
-      <h2 className={cn('m-0 font-sans text-base font-semibold text-foreground', tone === 'danger' && 'text-danger')}>{title}</h2>
-      {body && <p className="mt-1 text-sm text-muted-foreground break-words">{body}</p>}
-    </div>
+    <Card className={className} role="status">
+      <CardHeader className="text-center">
+        <CardTitle className="text-base">{title}</CardTitle>
+        {body && <CardDescription className="break-words">{body}</CardDescription>}
+      </CardHeader>
+    </Card>
   )
 }

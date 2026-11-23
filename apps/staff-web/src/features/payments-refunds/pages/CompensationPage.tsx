@@ -5,8 +5,9 @@ import { Button } from '@staff-web/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 import { Input } from '@staff-web/components/ui/input'
 import { Label } from '@staff-web/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Tabs, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
-import { cn } from '@staff-web/lib/utils'
 import { useRefundsApi } from '../api/refunds'
 import { RefundsFrame } from '../components/RefundsFrame'
 import { formatDateTime, formatMoney } from '../format'
@@ -22,19 +23,19 @@ import {
 const FILTER_LABELS: Record<CompensationFilter, string> = { all: 'All', vouchers: 'Vouchers', card_refunds: 'Card refunds' }
 const KIND_LABELS: Record<CompensationKind, string> = { voucher: 'Voucher', card_refund: 'Card refund' }
 
-/** The colour of a status word. The words come from the API; only the colour is decided here. */
-function statusTone(label: string): string {
+/** The badge variant of a status word. The words come from the API; only the variant is decided here. */
+function statusVariant(label: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (label) {
     case 'Active':
     case 'Refunded':
-      return 'bg-emerald-100 text-emerald-900'
+      return 'default'
     case 'Expiring':
     case 'Paying to card':
-      return 'bg-amber-100 text-amber-900'
+      return 'outline'
     case 'Redeemed':
-      return 'bg-[#EAF0FB] text-[#1E3A8A]'
+      return 'secondary'
     default:
-      return 'bg-muted text-muted-foreground'
+      return 'outline'
   }
 }
 
@@ -89,24 +90,16 @@ function Compensation({ filter, onFilterChange }: CompensationPageProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="tablist" aria-label="Compensation type" className="flex gap-1 rounded-lg bg-muted p-1">
-          {COMPENSATION_FILTERS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={filter === value}
-              onClick={() => onFilterChange(value)}
-              className={cn(
-                'cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-                filter === value ? 'bg-[#EAF0FB] text-[#1E3A8A]' : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {FILTER_LABELS[value]}
-              {data && <span className="ml-1.5 text-xs">· {data.counts[value]}</span>}
-            </button>
-          ))}
-        </div>
+        <Tabs value={filter} onValueChange={(value) => onFilterChange(value as CompensationFilter)}>
+          <TabsList aria-label="Compensation type">
+            {COMPENSATION_FILTERS.map((value) => (
+              <TabsTrigger key={value} value={value}>
+                {FILTER_LABELS[value]}
+                {data && <span className="text-muted-foreground">{data.counts[value]}</span>}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
         <div className="flex flex-wrap items-center gap-3">
           <Input
             type="search"
@@ -178,7 +171,7 @@ function Compensation({ filter, onFilterChange }: CompensationPageProps) {
                 <TableCell className="text-right tabular-nums">{formatMoney(entry.value, entry.currency)}</TableCell>
                 <TableCell>{entry.reason}</TableCell>
                 <TableCell>
-                  <Badge className={cn('border-0', statusTone(entry.status_label))}>{entry.status_label}</Badge>
+                  <Badge variant={statusVariant(entry.status_label)}>{entry.status_label}</Badge>
                 </TableCell>
                 <TableCell className="text-right">
                   {entry.can_void && (
@@ -193,7 +186,7 @@ function Compensation({ filter, onFilterChange }: CompensationPageProps) {
         </Table>
       </div>
 
-      <p className="m-0 text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         Vouchers can be voided until they are used. A card refund cannot be taken back once it is sent to the card. Refunds the customer
         asked for are in the Refund queue.
       </p>
@@ -282,18 +275,18 @@ function IssueDialog({ open, onClose, onIssued }: { open: boolean; onClose: () =
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="comp-kind">Kind</Label>
-            <select
+            <NativeSelect
               id="comp-kind"
               value={kind}
               onChange={(event) => setKind(event.target.value as CompensationKind)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              className="w-full"
             >
               {COMPENSATION_KINDS.map((value) => (
-                <option key={value} value={value}>
+                <NativeSelectOption key={value} value={value}>
                   {KIND_LABELS[value]}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="comp-amount">Amount (USD)</Label>

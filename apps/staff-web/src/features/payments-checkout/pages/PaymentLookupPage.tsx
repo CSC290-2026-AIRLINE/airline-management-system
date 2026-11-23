@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NoAccessScreen } from '@staff-web/features/admin-console/components/NoAccessScreen'
 import { useScreenAccess } from '@staff-web/features/admin-console/hooks/useScreenAccess'
 import { Button } from '@staff-web/components/ui/button'
+import { Card } from '@staff-web/components/ui/card'
 import { Input } from '@staff-web/components/ui/input'
 import { FilterChips } from '../components/FilterChips'
 import { PaymentDetailModal } from '../components/PaymentDetailModal'
@@ -67,7 +68,6 @@ export function PaymentLookupPage() {
           }}
           placeholder="Filter by PNR, payment id or customer email (leave empty to see all)"
           aria-label="Filter payments by PNR, payment id or customer email"
-          className="h-12 rounded-xl border-line bg-card px-4 text-sm"
         />
 
         {/* The filter chips --------------------------------------------- */}
@@ -98,12 +98,12 @@ export function PaymentLookupPage() {
         )}
 
         {!list.error && !list.loading && list.payments.length > 0 && (
-          <div className="overflow-hidden rounded-2xl border border-line bg-card">
+          <Card className="overflow-hidden py-0">
             <PaymentLookupTable payments={list.payments} onOpen={(payment) => setOpenPaymentId(payment.id)} />
 
             {/* The foot of the card ----------------------------------- */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-4">
-              <p className="m-0 text-sm text-muted-foreground" aria-live="polite">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
+              <p className="text-sm text-muted-foreground" aria-live="polite">
                 Showing {total} payments · last 30 days · older payments need a search
               </p>
               <div className="flex items-center gap-3">
@@ -120,11 +120,11 @@ export function PaymentLookupPage() {
                 </Button>
               </div>
             </div>
-          </div>
+          </Card>
         )}
 
         {/* The note the frames put under the list ------------------------ */}
-        <p className="m-0 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Read-only. State changes come only from verified Stripe events and booking confirmation. Staff cannot edit a state by hand.
           Opening a payment is recorded in the audit trail.
         </p>

@@ -1,3 +1,5 @@
+import { Card } from '@staff-web/components/ui/card'
+import { cn } from '@staff-web/lib/utils'
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { ApiError } from './errors'
 import { useLoad } from './useLoad'
@@ -8,7 +10,14 @@ import { formatAmount, lineTypeLabel, longDate, shortDate } from './format'
 
 type Line = MyPay['lines'][number]
 
-const card = 'rounded-xl border bg-card p-4 shadow-xs'
+/** A bordered block of the page: shadcn's `Card` with its padding in one place. */
+function Panel({ className, children, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <Card className={cn('gap-2 p-4', className)} {...props}>
+      {children}
+    </Card>
+  )
+}
 const MONTH = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
 /** "P-1 BKK-CNX-BKK-HKT-BKK · 8 Nov": the pairing's legs as one route, and the day it started. */
@@ -59,24 +68,24 @@ export function MyPayPage() {
         title="My Pay"
         subtitle={`Only your own pay is shown. Amounts are in ${pay?.currency ?? 'USD'}. Hours come from your roster in feature 8.`}
       />
-      <p className="m-0 rounded-md border border-line bg-card px-3 py-2 text-sm text-muted-foreground">
+      <p className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
         Stretch feature. Crew pay is not in the first iteration.
       </p>
 
       {data.loading && data.data === undefined && <LoadingCard />}
       {data.error && <LoadErrorCard message={data.error} onRetry={data.reload} />}
       {data.data === null && (
-        <div className={`${card} py-8 text-center text-sm text-muted-foreground`}>Your account is not linked to a crew member.</div>
+        <Panel className="py-8 text-center text-sm text-muted-foreground">Your account is not linked to a crew member.</Panel>
       )}
 
       {pay && (
         <>
-          {months.size === 0 && <div className={`${card} text-sm text-muted-foreground`}>Nothing unpaid right now.</div>}
+          {months.size === 0 && <Panel className="text-sm text-muted-foreground">Nothing unpaid right now.</Panel>}
           {[...months]
             .sort(([a], [b]) => b.localeCompare(a))
             .map(([month, lines]) => (
-              <section key={month} className={card}>
-                <h2 className="m-0 mb-2 font-sans text-sm font-semibold text-foreground">
+              <Panel key={month}>
+                <h2 className="m-0 font-sans mb-2 text-sm font-semibold text-foreground">
                   {MONTH.format(new Date(`${month}-01T00:00:00Z`))} · accrued, not yet paid
                 </h2>
                 <Table>
@@ -111,11 +120,11 @@ export function MyPayPage() {
                     </TableRow>
                   </TableFooter>
                 </Table>
-              </section>
+              </Panel>
             ))}
 
-          <section className={card}>
-            <h2 className="m-0 mb-2 font-sans text-sm font-semibold text-foreground">Paid</h2>
+          <Panel>
+            <h2 className="m-0 font-sans mb-2 text-sm font-semibold text-foreground">Paid</h2>
             {pay.payouts.length === 0 ? (
               <p className="text-sm text-muted-foreground">No payouts yet.</p>
             ) : (
@@ -136,7 +145,7 @@ export function MyPayPage() {
                     <TableRow key={p.id}>
                       <TableCell>{p.pay_run.period_start.slice(0, 7)}</TableCell>
                       <TableCell>
-                        {p.status === 'paid' ? longDate(p.paid_at) : <span className="text-danger">Failed, finance will retry</span>}
+                        {p.status === 'paid' ? longDate(p.paid_at) : <span className="text-destructive">Failed, finance will retry</span>}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{formatAmount(sumOf(p.pay_run.id, 'base'))}</TableCell>
                       <TableCell className="text-right tabular-nums">{formatAmount(sumOf(p.pay_run.id, 'overtime'))}</TableCell>
@@ -148,7 +157,7 @@ export function MyPayPage() {
                 </TableBody>
               </Table>
             )}
-          </section>
+          </Panel>
 
           <p className="px-1 text-xs text-muted-foreground">
             If your hours are corrected after a run is paid, the difference appears as an adjustment in the next run. Paid lines never

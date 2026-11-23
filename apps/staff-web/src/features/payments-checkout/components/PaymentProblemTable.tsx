@@ -27,27 +27,27 @@ export function PaymentProblemTable({ problems, onAction, workingId }: PaymentPr
   return (
     <Table className="min-w-200">
       <TableHeader>
-        <TableRow className="border-b border-line hover:bg-transparent">
-          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">Problem</TableHead>
-          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">Reference</TableHead>
-          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">What happened</TableHead>
-          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">What to do</TableHead>
-          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">Since</TableHead>
-          <TableHead className="h-12 px-5 text-xs font-medium text-muted-foreground">
+        <TableRow className="hover:bg-transparent">
+          <TableHead>Problem</TableHead>
+          <TableHead>Reference</TableHead>
+          <TableHead>What happened</TableHead>
+          <TableHead>What to do</TableHead>
+          <TableHead>Since</TableHead>
+          <TableHead>
             <span className="sr-only">Action</span>
           </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {problems.map((problem) => (
-          <TableRow key={problem.id} className="border-b border-line last:border-b-0 hover:bg-transparent">
-            <TableCell className="px-5 py-4 align-top">
+          <TableRow key={problem.id} className="hover:bg-transparent">
+            <TableCell className="align-top">
               <div className="flex flex-col items-start gap-1.5">
                 <span className="text-sm font-semibold text-foreground">{problem.title}</span>
                 <PaymentProblemBadge state={problem.state} />
               </div>
             </TableCell>
-            <TableCell className="px-5 py-4 align-top">
+            <TableCell className="align-top">
               <div className="flex flex-col gap-0.5">
                 {/* The reference is the link, because that is the number staff read out loud. */}
                 <Link
@@ -65,14 +65,12 @@ export function PaymentProblemTable({ problems, onAction, workingId }: PaymentPr
                 )}
               </div>
             </TableCell>
-            <TableCell className="max-w-80 px-5 py-4 align-top text-sm text-foreground whitespace-normal">
-              {problem.what_happened}
-            </TableCell>
-            <TableCell className="max-w-80 px-5 py-4 align-top text-sm text-foreground whitespace-normal">{problem.what_to_do}</TableCell>
-            <TableCell className="px-5 py-4 align-top text-sm whitespace-nowrap text-muted-foreground" title={problem.since}>
+            <TableCell className="max-w-80 align-top text-sm text-foreground whitespace-normal">{problem.what_happened}</TableCell>
+            <TableCell className="max-w-80 align-top text-sm text-foreground whitespace-normal">{problem.what_to_do}</TableCell>
+            <TableCell className="align-top text-sm whitespace-nowrap text-muted-foreground" title={problem.since}>
               {formatRelativeTime(problem.since)}
             </TableCell>
-            <TableCell className="px-5 py-4 text-right align-top">
+            <TableCell className="text-right align-top">
               {problem.action !== 'none' && problem.action_label && onAction && (
                 /* The frames draw the retry in navy and "Send now", which is optional, as an outline. */
                 <Button

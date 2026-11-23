@@ -1,5 +1,5 @@
 import { Badge } from '@staff-web/components/ui/badge'
-import { formatShortDateTime, STATE_STEP_BADGE_CLASSES } from '../payment-copy'
+import { formatShortDateTime, STATE_STEP_BADGE_VARIANTS } from '../payment-copy'
 import type { PaymentStateStepDto } from '../types'
 
 interface PaymentStateHistoryProps {
@@ -15,16 +15,18 @@ interface PaymentStateHistoryProps {
  */
 export function PaymentStateHistory({ steps }: PaymentStateHistoryProps) {
   if (steps.length === 0) {
-    return <p className="m-0 text-sm text-muted-foreground">This payment has not moved yet.</p>
+    return <p className="text-sm text-muted-foreground">This payment has not moved yet.</p>
   }
 
   return (
-    <ol className="m-0 list-none p-0">
+    <ol>
       {steps.map((step) => (
-        <li key={step.key} className="flex items-center justify-between gap-4 border-b border-line py-3 last:border-b-0 last:pb-0">
+        <li key={step.key} className="flex items-center justify-between gap-4 border-b py-3 last:border-b-0 last:pb-0">
           <span className="text-sm text-muted-foreground tabular-nums">{formatShortDateTime(step.at)}</span>
           {/* The frames write the step in lower case, whatever the API calls it. */}
-          <Badge className={`lowercase ${STATE_STEP_BADGE_CLASSES[step.key] ?? 'bg-secondary text-muted-foreground'}`}>{step.label}</Badge>
+          <Badge variant={STATE_STEP_BADGE_VARIANTS[step.key] ?? 'secondary'} className="lowercase">
+            {step.label}
+          </Badge>
         </li>
       ))}
     </ol>

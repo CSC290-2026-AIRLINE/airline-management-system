@@ -57,15 +57,18 @@ export function formatRelativeTime(iso: string | null | undefined, now: Date = n
   return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
-/** The badge colours per status, from the staff payment frames. */
-export const STATUS_BADGE_CLASSES: Record<PaymentStatus, string> = {
-  created: 'bg-secondary text-muted-foreground',
-  authorised: 'bg-warning-soft text-warning',
-  captured: 'bg-success-soft text-success-strong',
-  failed: 'bg-danger-soft text-danger',
-  voided: 'bg-danger-soft text-danger',
-  expired: 'bg-secondary text-muted-foreground',
-  reversed: 'bg-[#EAF0FB] text-navy',
+/** The shadcn badge variants (`Badge` has no colours of its own beyond these). */
+export type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline'
+
+/** The shadcn badge variant for each payment status. */
+export const STATUS_BADGE_VARIANTS: Record<PaymentStatus, BadgeVariant> = {
+  created: 'secondary',
+  authorised: 'outline',
+  captured: 'default',
+  failed: 'destructive',
+  voided: 'destructive',
+  expired: 'secondary',
+  reversed: 'secondary',
 }
 
 /**
@@ -74,16 +77,16 @@ export const STATUS_BADGE_CLASSES: Record<PaymentStatus, string> = {
  * The frames put the step's name in a pill on the right of the row: the steps before the money moved are quiet, the
  * capture is the one that stands out.
  */
-export const STATE_STEP_BADGE_CLASSES: Record<string, string> = {
-  created: 'bg-[#EAF0FB] text-navy',
-  authorised: 'bg-[#EAF0FB] text-navy',
-  confirmed: 'bg-[#EAF0FB] text-navy',
-  captured: 'bg-success-soft text-success-strong',
-  failed: 'bg-danger-soft text-danger',
-  voided: 'bg-secondary text-muted-foreground',
-  expired: 'bg-secondary text-muted-foreground',
-  reversed: 'bg-[#EAF0FB] text-navy',
-  stalled: 'bg-warning-soft text-warning',
+export const STATE_STEP_BADGE_VARIANTS: Record<string, BadgeVariant> = {
+  created: 'secondary',
+  authorised: 'outline',
+  confirmed: 'outline',
+  captured: 'default',
+  failed: 'destructive',
+  voided: 'secondary',
+  expired: 'secondary',
+  reversed: 'secondary',
+  stalled: 'destructive',
 }
 
 /**
@@ -114,11 +117,11 @@ export const EXCEPTION_TAB_LABELS: Record<PaymentExceptionTab, string> = {
   all: 'All',
 }
 
-/** The badge colours for the problem states, so the same state always looks the same. */
-export const PROBLEM_STATE_BADGE_CLASSES: Record<PaymentExceptionState, string> = {
-  needs_action: 'bg-danger-soft text-danger',
-  queued: 'bg-warning-soft text-warning',
-  resolved: 'bg-success-soft text-success-strong',
+/** The badge variant for each problem state, so the same state always looks the same. */
+export const PROBLEM_STATE_BADGE_VARIANTS: Record<PaymentExceptionState, BadgeVariant> = {
+  needs_action: 'destructive',
+  queued: 'outline',
+  resolved: 'default',
 }
 
 /** The name of a problem's state, in the words the frames use. */

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NoAccessScreen } from '@staff-web/features/admin-console/components/NoAccessScreen'
 import { useScreenAccess } from '@staff-web/features/admin-console/hooks/useScreenAccess'
 import { usePaymentsApi } from '../api/payments'
+import { Card } from '@staff-web/components/ui/card'
 import { FilterChips } from '../components/FilterChips'
 import { PaymentProblemTable } from '../components/PaymentProblemTable'
 import { PageMessage, StaffPageShell } from '../components/StaffPageShell'
@@ -97,13 +98,13 @@ export function PaymentExceptionsPage() {
         )}
 
         {!list.error && !list.loading && list.problems.length > 0 && (
-          <div className="overflow-hidden rounded-2xl border border-line bg-card">
+          <Card className="overflow-hidden py-0">
             <PaymentProblemTable problems={list.problems} onAction={(problem) => void runAction(problem)} workingId={workingId} />
-          </div>
+          </Card>
         )}
 
         {/* The note the frames put under the list ------------------------ */}
-        <p className="m-0 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Cancelling a confirmed ticket after a permanent capture failure is not automated yet. Staff decide here.
         </p>
       </div>

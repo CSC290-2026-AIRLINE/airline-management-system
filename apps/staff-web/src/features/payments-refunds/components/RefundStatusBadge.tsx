@@ -1,21 +1,20 @@
 import { Badge } from '@staff-web/components/ui/badge'
-import { cn } from '@staff-web/lib/utils'
 import type { RefundStatus } from '../types'
 
-/** The colour of each state. The words come from the API (`status_label`); only the colour is decided here. */
-function tone(status: RefundStatus): string {
+/** The badge variant of each state. The words come from the API (`status_label`); only the variant is decided here. */
+function variant(status: RefundStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (status) {
     case 'requested':
     case 'pending_approval':
-      return 'bg-[#EAF0FB] text-[#1E3A8A]'
+      return 'secondary'
     case 'approved':
     case 'processing':
-      return 'bg-amber-100 text-amber-900'
+      return 'outline'
     case 'succeeded':
-      return 'bg-emerald-100 text-emerald-900'
+      return 'default'
     case 'failed':
     case 'rejected':
-      return 'bg-red-100 text-red-900'
+      return 'destructive'
     default: {
       const unreachable: never = status
       return unreachable
@@ -24,5 +23,5 @@ function tone(status: RefundStatus): string {
 }
 
 export function RefundStatusBadge({ status, label }: { status: RefundStatus; label: string }) {
-  return <Badge className={cn('border-0', tone(status))}>{label}</Badge>
+  return <Badge variant={variant(status)}>{label}</Badge>
 }

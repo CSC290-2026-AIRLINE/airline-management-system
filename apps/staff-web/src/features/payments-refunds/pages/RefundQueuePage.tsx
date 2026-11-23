@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Card } from '@staff-web/components/ui/card'
 import { Input } from '@staff-web/components/ui/input'
+import { Tabs, TabsList, TabsTrigger } from '@staff-web/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
-import { cn } from '@staff-web/lib/utils'
 import { useRefundsApi } from '../api/refunds'
 import { RefundsFrame } from '../components/RefundsFrame'
 import { RefundStatusBadge } from '../components/RefundStatusBadge'
@@ -60,24 +61,16 @@ function Queue({ tab, onTabChange }: RefundQueuePageProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="tablist" aria-label="Refund queue" className="flex gap-1 rounded-lg bg-muted p-1">
-          {REFUND_QUEUE_TABS.map((value) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={tab === value}
-              onClick={() => onTabChange(value)}
-              className={cn(
-                'cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-                tab === value ? 'bg-[#EAF0FB] text-[#1E3A8A]' : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {TAB_LABELS[value]}
-              {data && <span className="ml-1.5 text-xs">· {data.counts[value]}</span>}
-            </button>
-          ))}
-        </div>
+        <Tabs value={tab} onValueChange={(value) => onTabChange(value as RefundQueueTab)}>
+          <TabsList aria-label="Refund queue">
+            {REFUND_QUEUE_TABS.map((value) => (
+              <TabsTrigger key={value} value={value}>
+                {TAB_LABELS[value]}
+                {data && <span className="text-muted-foreground">{data.counts[value]}</span>}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
         <Input
           type="search"
           value={search}
@@ -94,7 +87,7 @@ function Queue({ tab, onTabChange }: RefundQueuePageProps) {
         </Alert>
       )}
 
-      <div className="rounded-lg border bg-card">
+      <Card className="py-0">
         <Table>
           <TableHeader>
             <TableRow>
@@ -141,9 +134,9 @@ function Queue({ tab, onTabChange }: RefundQueuePageProps) {
             ))}
           </TableBody>
         </Table>
-      </div>
+      </Card>
 
-      <p className="m-0 text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         Select a row to open that refund. Automatic refunds (flight cancelled, inside fare rules) skip this queue and show under Done.
       </p>
     </div>
