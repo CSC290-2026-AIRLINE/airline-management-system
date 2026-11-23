@@ -16,9 +16,10 @@ import {
 import type { Response } from 'express'
 import { IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
-import { StaffProfilesGuard } from '@backend/modules/passenger-profiles/staff-profiles.guard'
+import { CargoStaffGuard } from './guards/cargo-staff.guard'
 import { CargoDeskService } from './cargo-desk.service'
 import { CargoOperationsService } from './cargo-operations.service'
+import { isIsoDate, ParseIsoDatePipe } from './cargo-input'
 
 class AcceptanceDto {
   @IsNumber()
@@ -65,10 +66,9 @@ class PostEventDto {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 @Controller('staff/cargo')
-@UseGuards(StaffProfilesGuard)
+@UseGuards(CargoStaffGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class CargoDeskController {
   constructor(
@@ -97,7 +97,7 @@ export class CargoDeskController {
       page,
       pageSize,
       flightId: flightId && UUID_RE.test(flightId) ? flightId : undefined,
-      shipDate: shipDate && DATE_RE.test(shipDate) ? shipDate : undefined,
+      shipDate: shipDate && isIsoDate(shipDate) ? shipDate : undefined,
       commodityTypeId: commodityTypeId && UUID_RE.test(commodityTypeId) ? commodityTypeId : undefined,
     })
     if (isCsv && res) {
@@ -149,7 +149,11 @@ export class CargoDeskController {
   }
 
   @Get('flights')
-  listFlightsWithCargo(@Query('from') from?: string, @Query('to') to?: string, @Query('route_id') routeId?: string) {
+  listFlightsWithCargo(
+    @Query('from', new ParseIsoDatePipe({ optional: true })) from?: string,
+    @Query('to', new ParseIsoDatePipe({ optional: true })) to?: string,
+    @Query('route_id') routeId?: string,
+  ) {
     const today = new Date().toISOString().slice(0, 10)
     return this.desk.listFlightsWithCargo(from || today, to || today, routeId && UUID_RE.test(routeId) ? routeId : undefined)
   }

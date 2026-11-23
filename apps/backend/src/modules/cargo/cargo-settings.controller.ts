@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UsePipes, ValidationPipe } from '@nestjs/common'
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
+import { CargoStaffGuard } from './guards/cargo-staff.guard'
 import { IsNotEmpty, IsString } from 'class-validator'
 import { CargoOperationsService } from './cargo-operations.service'
 import { CargoSettingsService } from './cargo-settings.service'
@@ -6,7 +7,6 @@ import { CreateProhibitedItemDto } from './dto/create-prohibited-item.dto'
 import { UpdateProhibitedItemDto } from './dto/update-prohibited-item.dto'
 import { UpdateSettingsDto } from './dto/update-settings.dto'
 
-// TODO: replace with a proper StaffCargoGuard once staff role guards exist
 class CreateHandlingConflictDto {
   @IsString()
   @IsNotEmpty()
@@ -22,6 +22,7 @@ class CreateHandlingConflictDto {
 }
 
 @Controller('staff/cargo')
+@UseGuards(CargoStaffGuard)
 @UsePipes(
   new ValidationPipe({
     whitelist: true,

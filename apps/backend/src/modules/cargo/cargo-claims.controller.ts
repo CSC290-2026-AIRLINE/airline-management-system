@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
 import { IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
-import { StaffProfilesGuard } from '@backend/modules/passenger-profiles/staff-profiles.guard'
+import { CargoStaffGuard } from './guards/cargo-staff.guard'
 import { CargoClaimsService } from './cargo-claims.service'
 
 class DecisionDto {
@@ -20,7 +20,7 @@ class DecisionDto {
 }
 
 @Controller('staff/cargo/claims')
-@UseGuards(StaffProfilesGuard)
+@UseGuards(CargoStaffGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class CargoClaimsController {
   constructor(private readonly claims: CargoClaimsService) {}

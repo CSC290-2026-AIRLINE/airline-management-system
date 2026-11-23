@@ -10,12 +10,31 @@ import { DbService } from '@backend/db/db.service'
 import { availableKg, chargeableKg, exceedsTolerance } from './cargo-calc'
 import { getAircraftCapacity, loadedBaggageKg, refundFull, seatsTakenOnFlight } from './cargo-deps'
 import { CargoEventsService } from './cargo-events.service'
+import {
+  BOOKING_WEIGHT_SELECT,
+  COMMITTED_STATUSES,
+  LOADED_STATUSES,
+  bookingWeightKg,
+  committedKgOnFlight,
+  latestStatus,
+  sumWeightKg,
+} from './cargo-weight'
 
 /** 99900000103 -> 999-0000010-3, the way the Air Waybill is printed everywhere else. */
 function formatAwb(raw: string | null): string {
   if (!raw) return ''
   const digits = raw.replace(/\D/g, '')
   return digits.length === 11 ? `${digits.slice(0, 3)}-${digits.slice(3, 10)}-${digits.slice(10)}` : raw
+}
+
+/** The payment to refund. A booking the transition table lets staff cancel or reject is always paid; refuse cleanly if not. */
+function requirePayment(paymentId: string | null, status: string | null): string {
+  if (!paymentId) {
+    throw new ConflictException({
+      error: { code: 'INVALID_TRANSITION', message: `Booking in '${status}' status has no payment to refund` },
+    })
+  }
+  return paymentId
 }
 
 const CLOSED_STATUSES = ['expired', 'cancelled', 'rejected']
@@ -239,7 +258,7 @@ export class CargoDeskService {
 
     const capacity = await getAircraftCapacity(this.db, booking.flight.aircraft_id)
     const seats = await seatsTakenOnFlight(this.db, booking.flight.id)
-    const committedKg = await this.committedKgForFlight(booking.flight.id)
+    const committedKg = await committedKgOnFlight(this.db, booking.flight.id)
     const settings = await this.loadSettings()
     const freeKg = availableKg({
       holdLimitKg: capacity.holdLimitKg,
@@ -362,6 +381,7 @@ export class CargoDeskService {
       const settings = await this.loadSettingsFull(tx)
       const measuredChargeable = chargeableKg(measuredWeightKg, measuredVolumeM3, settings.volumetricKgPerM3)
 
+      const status = await this.events.lockedStatus(tx, id)
       const booking = await tx.cargo_booking.findUnique({
         where: { id },
         select: { booking_ref: true, payment_id: true, quoted_chargeable_kg: true, quoted_charge: true },
@@ -369,6 +389,9 @@ export class CargoDeskService {
       if (!booking) {
         throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Booking not found' } })
       }
+      // Check the move before the refund: a refund on a booking that cannot be rejected (or was never paid) must not start.
+      await this.events.assertTransition(tx, status, 'rejected', 'staff')
+      const paymentId = requirePayment(booking.payment_id, status)
 
       const quotedChargeable = Number(booking.quoted_chargeable_kg)
       if (!exceedsTolerance(measuredChargeable, quotedChargeable, settings.tolerancePercent)) {
@@ -383,7 +406,7 @@ export class CargoDeskService {
 
       let refundResult: { refundId: string }
       try {
-        refundResult = await refundFull(tx, booking.booking_ref, booking.payment_id ?? '', Number(booking.quoted_charge), 'rejected')
+        refundResult = await refundFull(tx, booking.booking_ref, paymentId, Number(booking.quoted_charge), 'rejected')
       } catch (e) {
         throw new InternalServerErrorException({
           error: {
@@ -419,6 +442,8 @@ export class CargoDeskService {
 
     return this.db.$transaction(async (tx) => {
       const staffId = await this.resolveStaffId(tx, userId)
+      // Lock the row first: whether a cancel refunds, and with which reason, depends on a status nobody else may change meanwhile.
+      const status = await this.events.lockedStatus(tx, id)
       const booking = await tx.cargo_booking.findUnique({
         where: { id },
         select: {
@@ -430,8 +455,7 @@ export class CargoDeskService {
           declared_weight_kg: true,
           cargo_shipment_event: {
             orderBy: { seq: 'desc' as const },
-            take: 1,
-            select: { measured_weight_kg: true },
+            select: { status_after: true, event_type: true, measured_weight_kg: true },
           },
         },
       })
@@ -445,9 +469,15 @@ export class CargoDeskService {
             error: { code: 'INVALID_TRANSITION', message: 'A note is required when cancelling' },
           })
         }
+        await this.events.assertTransition(tx, status, 'cancelled', 'staff')
+        const paymentId = requirePayment(booking.payment_id, status)
+        // A booking left needing a new flight because its flight was cancelled or diverted is refunded as a flight refund (5b's
+        // `:flight` key); any other staff cancel, an offloaded booking included, is an ordinary cancel.
+        const cause = booking.cargo_shipment_event[0]?.event_type
+        const refundReason = status === 'rebook_required' && (cause === 'flight_cancelled' || cause === 'diverted') ? 'flight' : 'cancel'
         let refundResult: { refundId: string }
         try {
-          refundResult = await refundFull(tx, booking.booking_ref, booking.payment_id ?? '', Number(booking.quoted_charge), 'cancel')
+          refundResult = await refundFull(tx, booking.booking_ref, paymentId, Number(booking.quoted_charge), refundReason)
         } catch (e) {
           throw new InternalServerErrorException({
             error: {
@@ -468,13 +498,13 @@ export class CargoDeskService {
       }
 
       if (eventType === 'loaded') {
-        const measuredWeight = booking.cargo_shipment_event[0]?.measured_weight_kg
-          ? Number(booking.cargo_shipment_event[0].measured_weight_kg)
-          : Number(booking.declared_weight_kg)
+        const measuredWeight = bookingWeightKg(booking)
+        const flight = await tx.flight.findUnique({ where: { id: booking.flight_id }, select: { aircraft_id: true } })
+        if (!flight) throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Flight not found' } })
+        const capacity = await getAircraftCapacity(tx, flight.aircraft_id)
 
         const baggage = loadedBaggageKg(booking.flight_id)
         if (baggage !== null) {
-          const capacity = await getAircraftCapacity(tx, booking.flight_id)
           const loadedCargoOnFlight = await this.loadedCargoKg(tx, booking.flight_id)
           if (baggage + loadedCargoOnFlight + measuredWeight > capacity.holdLimitKg) {
             throw new ConflictException({
@@ -487,12 +517,8 @@ export class CargoDeskService {
           }
         } else {
           const settings = await this.loadSettingsFull(tx)
-          const flight = await tx.flight.findUnique({ where: { id: booking.flight_id }, select: { aircraft_id: true } })
-          if (!flight) throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Flight not found' } })
-
-          const capacity = await getAircraftCapacity(tx, flight.aircraft_id)
           const seats = await seatsTakenOnFlight(tx, booking.flight_id)
-          const committed = await this.committedKgExcluding(tx, booking.flight_id, id)
+          const committed = await committedKgOnFlight(tx, booking.flight_id, id)
           const available = availableKg({
             holdLimitKg: capacity.holdLimitKg,
             sellableSeats: capacity.sellableSeats,
@@ -525,7 +551,6 @@ export class CargoDeskService {
   }
 
   async listFlightsWithCargo(from: string, to: string, routeId?: string) {
-    const COMMITTED = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
     const where: Record<string, unknown> = {
       service_date: { gte: new Date(from + 'T00:00:00Z'), lte: new Date(to + 'T00:00:00Z') },
     }
@@ -545,12 +570,7 @@ export class CargoDeskService {
         aircraft_id: true,
         aircraft: { select: { tail_number: true } },
         route: { select: { origin: true, destination: true } },
-        cargo_booking: {
-          select: {
-            declared_weight_kg: true,
-            cargo_shipment_event: { orderBy: { seq: 'desc' }, take: 1, select: { status_after: true } },
-          },
-        },
+        cargo_booking: { select: BOOKING_WEIGHT_SELECT },
       },
     })
 
@@ -577,17 +597,8 @@ export class CargoDeskService {
     for (const f of flights) {
       routeSet.set(f.route_id, { id: f.route_id, origin: f.route.origin, destination: f.route.destination })
 
-      const committed = f.cargo_booking
-        .filter((b) => {
-          const s = b.cargo_shipment_event[0]?.status_after
-          return s != null && COMMITTED.has(s)
-        })
-        .reduce((sum, b) => sum + Number(b.declared_weight_kg), 0)
-
-      const bookingCount = f.cargo_booking.filter((b) => {
-        const s = b.cargo_shipment_event[0]?.status_after
-        return s != null && COMMITTED.has(s)
-      }).length
+      const committed = sumWeightKg(f.cargo_booking)
+      const bookingCount = f.cargo_booking.filter((b) => COMMITTED_STATUSES.has(latestStatus(b) ?? '')).length
 
       const capacity = await getAircraftCapacity(this.db, f.aircraft_id)
       const seats = await seatsTakenOnFlight(this.db, f.id)
@@ -621,7 +632,6 @@ export class CargoDeskService {
   }
 
   async getFlightSummary(flightId: string) {
-    const COMMITTED = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
     const flight = await this.db.flight.findUnique({
       where: { id: flightId },
       select: {
@@ -635,15 +645,7 @@ export class CargoDeskService {
         route_id: true,
         aircraft: { select: { tail_number: true } },
         route: { select: { origin: true, destination: true, block_time_min: true } },
-        cargo_booking: {
-          select: {
-            declared_weight_kg: true,
-            cargo_shipment_event: {
-              orderBy: { seq: 'desc' as const },
-              select: { status_after: true, measured_weight_kg: true },
-            },
-          },
-        },
+        cargo_booking: { select: BOOKING_WEIGHT_SELECT },
       },
     })
     if (!flight) {
@@ -658,25 +660,8 @@ export class CargoDeskService {
     const reservedPassengers = Math.max(seatsTaken, floorPax)
     const baggageReserveKg = reservedPassengers * settings.reserveKgPerPax
 
-    const committedKg = flight.cargo_booking
-      .filter((b) => {
-        const s = b.cargo_shipment_event[0]?.status_after
-        return s != null && COMMITTED.has(s)
-      })
-      .reduce((sum, b) => {
-        const mw = b.cargo_shipment_event.find((e) => e.measured_weight_kg != null)?.measured_weight_kg
-        return sum + (mw ? Number(mw) : Number(b.declared_weight_kg))
-      }, 0)
-
-    const loadedKg = flight.cargo_booking
-      .filter((b) => {
-        const s = b.cargo_shipment_event[0]?.status_after
-        return s === 'loaded' || s === 'in_transit'
-      })
-      .reduce((sum, b) => {
-        const mw = b.cargo_shipment_event.find((e) => e.measured_weight_kg != null)?.measured_weight_kg
-        return sum + (mw ? Number(mw) : Number(b.declared_weight_kg))
-      }, 0)
+    const committedKg = sumWeightKg(flight.cargo_booking)
+    const loadedKg = sumWeightKg(flight.cargo_booking, LOADED_STATUSES)
 
     const free = capacity.holdLimitKg - baggageReserveKg - committedKg
     const bookingCutoffAt = new Date(flight.dep_at.getTime() - cutoffHours * 3_600_000)
@@ -721,7 +706,6 @@ export class CargoDeskService {
       throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Flight not found' } })
     }
 
-    const COMMITTED = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
     const bookings = await this.db.cargo_booking.findMany({
       where: { flight_id: flightId },
       include: {
@@ -762,11 +746,7 @@ export class CargoDeskService {
     const seats = await seatsTakenOnFlight(this.db, flight.id)
     const settings = await this.loadSettings()
 
-    const allBookings = bookings.map((b) => ({
-      status: b.cargo_shipment_event[0]?.status_after ?? 'unknown',
-      weight: Number(b.declared_weight_kg),
-    }))
-    const committed = allBookings.filter((b) => COMMITTED.has(b.status)).reduce((s, b) => s + b.weight, 0)
+    const committed = sumWeightKg(bookings)
 
     const free = availableKg({
       holdLimitKg: capacity.holdLimitKg,
@@ -867,60 +847,8 @@ export class CargoDeskService {
   }
 
   private async loadedCargoKg(tx: Parameters<Parameters<DbService['$transaction']>[0]>[0], flightId: string): Promise<number> {
-    const bookings = await (tx as DbService).cargo_booking.findMany({
-      where: { flight_id: flightId },
-      select: {
-        declared_weight_kg: true,
-        cargo_shipment_event: { orderBy: { seq: 'desc' as const }, take: 1, select: { status_after: true, measured_weight_kg: true } },
-      },
-    })
-    return bookings
-      .filter((b) => {
-        const s = b.cargo_shipment_event[0]?.status_after
-        return s === 'loaded' || s === 'in_transit'
-      })
-      .reduce((sum, b) => {
-        const mw = b.cargo_shipment_event.find((e) => e.measured_weight_kg != null)?.measured_weight_kg
-        return sum + (mw ? Number(mw) : Number(b.declared_weight_kg))
-      }, 0)
-  }
-
-  private async committedKgExcluding(
-    tx: Parameters<Parameters<DbService['$transaction']>[0]>[0],
-    flightId: string,
-    excludeBookingId: string,
-  ): Promise<number> {
-    const COMMITTED = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
-    const bookings = await (tx as DbService).cargo_booking.findMany({
-      where: { flight_id: flightId, id: { not: excludeBookingId } },
-      select: {
-        declared_weight_kg: true,
-        cargo_shipment_event: { orderBy: { seq: 'desc' as const }, take: 1, select: { status_after: true } },
-      },
-    })
-    return bookings
-      .filter((b) => {
-        const s = b.cargo_shipment_event[0]?.status_after
-        return s != null && COMMITTED.has(s)
-      })
-      .reduce((sum, b) => sum + Number(b.declared_weight_kg), 0)
-  }
-
-  private async committedKgForFlight(flightId: string): Promise<number> {
-    const COMMITTED = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
-    const bookings = await this.db.cargo_booking.findMany({
-      where: { flight_id: flightId },
-      select: {
-        declared_weight_kg: true,
-        cargo_shipment_event: { orderBy: { seq: 'desc' }, take: 1, select: { status_after: true } },
-      },
-    })
-    return bookings
-      .filter((b) => {
-        const s = b.cargo_shipment_event[0]?.status_after
-        return s != null && COMMITTED.has(s)
-      })
-      .reduce((sum, b) => sum + Number(b.declared_weight_kg), 0)
+    const bookings = await (tx as DbService).cargo_booking.findMany({ where: { flight_id: flightId }, select: BOOKING_WEIGHT_SELECT })
+    return sumWeightKg(bookings, LOADED_STATUSES)
   }
 
   private async loadSettings() {

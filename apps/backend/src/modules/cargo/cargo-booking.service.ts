@@ -6,11 +6,11 @@ import { CargoEventsService } from './cargo-events.service'
 import { CargoOperationsService } from './cargo-operations.service'
 import { chargeableKg, freightCharge, availableKg, awbNumber } from './cargo-calc'
 import { getAircraftCapacity, seatsTakenOnFlight, awbPrefix } from './cargo-deps'
+import { committedKgOnFlight } from './cargo-weight'
 
 const CARGO_CURRENCY = 'USD'
 /** How many times a hold re-assigns a flight when the room it was quoted is taken before it gets the flight lock. */
 const MAX_ASSIGN_ATTEMPTS = 3
-const COMMITTED_STATUSES = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
 
 export interface QuoteInput {
   routeId: string
@@ -62,8 +62,9 @@ export class CargoBookingService {
 
   async createHeldBooking(customerId: string, input: BookingInput) {
     return this.db.$transaction(async (tx) => {
-      // Quote, lock the flight, then check again. If someone took the room between the quote and the lock, quote once more: the
-      // new answer sees their booking, so it names the next flight of the day that fits, or refuses with NO_FLIGHT_AVAILABLE.
+      // Quote, lock the flight, then check again. If someone took the room, or placed goods that clash with these, between the quote
+      // and the lock, quote once more: the new answer sees their booking, so it names the next flight of the day that fits, or
+      // refuses with NO_FLIGHT_AVAILABLE / HANDLING_CONFLICT.
       const settings = await this.loadSettings(tx)
       let q: QuoteResult | null = null
       for (let attempt = 0; attempt < MAX_ASSIGN_ATTEMPTS && q == null; attempt++) {
@@ -73,6 +74,7 @@ export class CargoBookingService {
 
         const clash = await this.ops.conflictingBookingRef(tx, candidate.flightId, candidate.handlingClass)
         if (clash) {
+          if (attempt < MAX_ASSIGN_ATTEMPTS - 1) continue
           throw new ConflictException({
             error: {
               code: 'HANDLING_CONFLICT',
@@ -82,7 +84,7 @@ export class CargoBookingService {
           })
         }
 
-        const committed = await this.committedKg(tx, candidate.flightId)
+        const committed = await committedKgOnFlight(tx, candidate.flightId)
         const aircraftId = await this.flightAircraftId(tx, candidate.flightId)
         const capacity = await getAircraftCapacity(tx, aircraftId)
         const seats = await seatsTakenOnFlight(tx, candidate.flightId)
@@ -282,7 +284,7 @@ export class CargoBookingService {
       }
       const capacity = await getAircraftCapacity(tx, flight.aircraft_id)
       const seats = await seatsTakenOnFlight(tx, flight.id)
-      const committed = await this.committedKg(tx, flight.id)
+      const committed = await committedKgOnFlight(tx, flight.id)
       const available = availableKg({
         holdLimitKg: capacity.holdLimitKg,
         sellableSeats: capacity.sellableSeats,
@@ -368,30 +370,19 @@ export class CargoBookingService {
     }
   }
 
-  private async committedKg(tx: Prisma.TransactionClient | DbService, flightId: string): Promise<number> {
-    const bookings = await tx.cargo_booking.findMany({
-      where: { flight_id: flightId },
-      select: {
-        declared_weight_kg: true,
-        cargo_shipment_event: { orderBy: { seq: 'desc' }, take: 1, select: { status_after: true } },
-      },
-    })
-    return bookings
-      .filter((b) => {
-        const status = b.cargo_shipment_event[0]?.status_after
-        return status != null && COMMITTED_STATUSES.has(status)
-      })
-      .reduce((sum, b) => sum + Number(b.declared_weight_kg), 0)
-  }
-
   private async flightAircraftId(tx: Prisma.TransactionClient | DbService, flightId: string): Promise<string> {
     const flight = await tx.flight.findUnique({ where: { id: flightId }, select: { aircraft_id: true } })
     if (!flight) throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Flight not found' } })
     return flight.aircraft_id
   }
 
-  private async nextAwbSerial(tx: Prisma.TransactionClient | DbService): Promise<number> {
-    const result = await (tx as DbService).$queryRaw<{ next_serial: number }[]>`
+  /**
+   * Must run inside the transaction that writes the AWB. The advisory lock serialises every confirm up to its commit, so two
+   * payments confirming at once cannot both read the same MAX and build the same (UNIQUE) AWB number.
+   */
+  private async nextAwbSerial(tx: Prisma.TransactionClient): Promise<number> {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('cargo-awb-serial', 0))`
+    const result = await tx.$queryRaw<{ next_serial: number }[]>`
       SELECT COALESCE(MAX(CAST(SUBSTRING(REPLACE(awb_number, '-', '') FROM 4 FOR 7) AS INTEGER)), 0) + 1 AS next_serial
       FROM cargo_booking
       WHERE awb_number IS NOT NULL

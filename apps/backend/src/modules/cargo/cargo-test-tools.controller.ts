@@ -1,7 +1,7 @@
 import { Body, Controller, Logger, Param, ParseUUIDPipe, Post, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
 import { IsInt, IsOptional, Max, Min } from 'class-validator'
 import { DbService } from '@backend/db/db.service'
-import { StaffProfilesGuard } from '@backend/modules/passenger-profiles/staff-profiles.guard'
+import { CargoStaffGuard } from './guards/cargo-staff.guard'
 import { simNow } from '@backend/modules/pricing/fare-quote/sim-clock'
 import { CargoBookingService } from './cargo-booking.service'
 import { CargoClaimsService } from './cargo-claims.service'
@@ -49,7 +49,7 @@ class CreateTestBookingsDto {
 }
 
 @Controller('staff/cargo/test')
-@UseGuards(StaffProfilesGuard)
+@UseGuards(CargoStaffGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class CargoTestToolsController {
   private readonly logger = new Logger('CargoTestTools')

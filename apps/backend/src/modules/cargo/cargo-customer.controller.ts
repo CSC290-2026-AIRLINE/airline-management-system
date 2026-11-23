@@ -1,21 +1,20 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, Query, UsePipes, ValidationPipe } from '@nestjs/common'
-import { IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator'
+import { IsIn, IsInt, IsISO8601, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches, Min } from 'class-validator'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import { Public } from '@backend/auth/decorators/public.decorator'
 import { CargoClaimsService } from './cargo-claims.service'
 import { CargoCustomerService } from './cargo-customer.service'
+import { ParseIsoDatePipe } from './cargo-input'
 
 class QuoteDto {
-  @IsString()
-  @IsNotEmpty()
+  @IsUUID()
   route_id!: string
 
-  @IsString()
-  @IsNotEmpty()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'ship_date must be YYYY-MM-DD' })
+  @IsISO8601({ strict: true })
   ship_date!: string
 
-  @IsString()
-  @IsNotEmpty()
+  @IsUUID()
   commodity_type_id!: string
 
   @IsInt()
@@ -106,7 +105,7 @@ export class CargoCustomerController {
   }
 
   @Get('routes/:routeId/flights')
-  async getRouteFlights(@Param('routeId', new ParseUUIDPipe()) routeId: string, @Query('date') date: string) {
+  async getRouteFlights(@Param('routeId', new ParseUUIDPipe()) routeId: string, @Query('date', new ParseIsoDatePipe()) date: string) {
     return this.svc.getRouteFlights(routeId, date)
   }
 

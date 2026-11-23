@@ -5,8 +5,7 @@ import { CargoBookingService, type QuoteInput, type BookingInput } from './cargo
 import { CargoEventsService } from './cargo-events.service'
 import { refundFull, getAircraftCapacity, seatsTakenOnFlight } from './cargo-deps'
 import { availableKg } from './cargo-calc'
-
-const COMMITTED_STATUSES = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
+import { committedKgOnFlight } from './cargo-weight'
 
 @Injectable()
 export class CargoCustomerService {
@@ -84,7 +83,7 @@ export class CargoCustomerService {
     if (flight) {
       const capacity = await getAircraftCapacity(this.db, flight.aircraft_id)
       const seats = await seatsTakenOnFlight(this.db, flight.id)
-      const committed = await this.committedKg(flight.id)
+      const committed = await committedKgOnFlight(this.db, flight.id)
       flightAvailableKg = Math.round(
         availableKg({
           holdLimitKg: capacity.holdLimitKg,
@@ -164,7 +163,7 @@ export class CargoCustomerService {
       for (const f of flights) {
         const capacity = await getAircraftCapacity(this.db, f.aircraft_id)
         const seats = await seatsTakenOnFlight(this.db, f.id)
-        const committed = await this.committedKg(f.id)
+        const committed = await committedKgOnFlight(this.db, f.id)
         const avail = availableKg({
           holdLimitKg: capacity.holdLimitKg,
           sellableSeats: capacity.sellableSeats,
@@ -230,7 +229,7 @@ export class CargoCustomerService {
     for (const f of flights) {
       const capacity = await getAircraftCapacity(this.db, f.aircraft_id)
       const seats = await seatsTakenOnFlight(this.db, f.id)
-      const committed = await this.committedKg(f.id)
+      const committed = await committedKgOnFlight(this.db, f.id)
       const avail = availableKg({
         holdLimitKg: capacity.holdLimitKg,
         sellableSeats: capacity.sellableSeats,
@@ -530,32 +529,27 @@ export class CargoCustomerService {
   }
 
   async cancelMyBooking(customerId: string, bookingId: string) {
-    const booking = await this.db.cargo_booking.findUnique({
-      where: { id: bookingId },
-      select: { id: true, customer_id: true, booking_ref: true, payment_id: true, quoted_charge: true },
-    })
-    if (!booking || booking.customer_id !== customerId) {
-      throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Booking not found' } })
-    }
-
-    const status = await this.events.currentStatus(bookingId)
-
-    if (status === 'held') {
-      return this.db.$transaction(async (tx) => {
-        const event = await this.events.appendEvent(tx, {
-          bookingId,
-          eventType: 'cancelled',
-          actorType: 'customer',
-        })
-        return { status: event.status_after }
+    return this.db.$transaction(async (tx) => {
+      // Lock the row before reading the status, so a payment confirming at the same moment either lands first (and this
+      // cancel refunds it) or waits until this cancel commits. Reading outside the lock could cancel a paid booking unrefunded.
+      const status = await this.events.lockedStatus(tx, bookingId)
+      const booking = await tx.cargo_booking.findUnique({
+        where: { id: bookingId },
+        select: { customer_id: true, booking_ref: true, payment_id: true, quoted_charge: true },
       })
-    }
+      if (!booking || booking.customer_id !== customerId) {
+        throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Booking not found' } })
+      }
 
-    if (status === 'booked') {
-      return this.db.$transaction(async (tx) => {
+      if (status === 'held') {
+        const event = await this.events.appendEvent(tx, { bookingId, eventType: 'cancelled', actorType: 'customer' })
+        return { status: event.status_after }
+      }
+
+      if (status === 'booked' && booking.payment_id) {
         let refundResult: { refundId: string }
         try {
-          refundResult = await refundFull(tx, booking.booking_ref, booking.payment_id ?? '', Number(booking.quoted_charge), 'cancel')
+          refundResult = await refundFull(tx, booking.booking_ref, booking.payment_id, Number(booking.quoted_charge), 'cancel')
         } catch (e) {
           throw new InternalServerErrorException({
             error: {
@@ -571,11 +565,11 @@ export class CargoCustomerService {
           refundId: refundResult.refundId,
         })
         return { status: event.status_after, refundId: refundResult.refundId }
-      })
-    }
+      }
 
-    throw new ConflictException({
-      error: { code: 'INVALID_TRANSITION', message: `Cannot cancel a booking in '${status}' status` },
+      throw new ConflictException({
+        error: { code: 'INVALID_TRANSITION', message: `Cannot cancel a booking in '${status}' status` },
+      })
     })
   }
 
@@ -758,22 +752,6 @@ export class CargoCustomerService {
         note: e.note,
       })),
     }
-  }
-
-  private async committedKg(flightId: string): Promise<number> {
-    const bookings = await this.db.cargo_booking.findMany({
-      where: { flight_id: flightId },
-      select: {
-        declared_weight_kg: true,
-        cargo_shipment_event: { orderBy: { seq: 'desc' }, take: 1, select: { status_after: true } },
-      },
-    })
-    return bookings
-      .filter((b) => {
-        const status = b.cargo_shipment_event[0]?.status_after
-        return status != null && COMMITTED_STATUSES.has(status)
-      })
-      .reduce((sum, b) => sum + Number(b.declared_weight_kg), 0)
   }
 
   private async loadSettings() {

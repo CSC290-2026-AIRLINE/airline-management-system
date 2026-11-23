@@ -1,12 +1,13 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UsePipes, ValidationPipe } from '@nestjs/common'
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
+import { CargoStaffGuard } from './guards/cargo-staff.guard'
 import { CargoService } from './cargo.service'
 import { CreateCommodityTypeDto } from './dto/create-commodity-type.dto'
 import { UpdateCommodityTypeDto } from './dto/update-commodity-type.dto'
 import { CreateRateDto } from './dto/create-rate.dto'
 import { UpdateRateDto } from './dto/update-rate.dto'
 
-// TODO: replace with a proper StaffCargoGuard once staff role guards exist
 @Controller('staff/cargo')
+@UseGuards(CargoStaffGuard)
 @UsePipes(
   new ValidationPipe({
     whitelist: true,

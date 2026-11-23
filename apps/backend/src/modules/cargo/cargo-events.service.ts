@@ -72,6 +72,44 @@ export class CargoEventsService {
     return latest?.status_after ?? null
   }
 
+  /**
+   * Locks the booking row (FOR UPDATE) for the rest of `tx`, then reads its current status. Use it when the status decides what
+   * happens next (refund or not), so a concurrent change such as a payment confirming cannot slip in between the read and the write.
+   * Returns null when the booking does not exist.
+   */
+  async lockedStatus(tx: Prisma.TransactionClient, bookingId: string): Promise<string | null> {
+    const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM cargo_booking WHERE id = ${bookingId}::uuid FOR UPDATE`
+    if (rows.length === 0) return null
+    const latest = await tx.cargo_shipment_event.findFirst({
+      where: { cargo_booking_id: bookingId },
+      orderBy: { seq: 'desc' },
+      select: { status_after: true },
+    })
+    return latest?.status_after ?? null
+  }
+
+  /**
+   * Throws INVALID_TRANSITION unless cargo_status_transition allows `eventType` by `actorType` from `statusBefore`. appendEvent checks
+   * the same thing; call this first when work with side effects (a refund) must not start for a move that would be refused.
+   */
+  async assertTransition(tx: Prisma.TransactionClient, statusBefore: string | null, eventType: string, actorType: string): Promise<void> {
+    const transition =
+      statusBefore == null
+        ? null
+        : await tx.cargo_status_transition.findFirst({
+            where: { status_before: statusBefore, event_type: eventType, actor_type: actorType },
+            select: { status_after: true },
+          })
+    if (!transition) {
+      throw new ConflictException({
+        error: {
+          code: 'INVALID_TRANSITION',
+          message: `Cannot apply '${eventType}' (${actorType}) to a booking in '${statusBefore}' status`,
+        },
+      })
+    }
+  }
+
   async appendEvent(tx: Prisma.TransactionClient, input: AppendEventInput) {
     const now = simNow()
 

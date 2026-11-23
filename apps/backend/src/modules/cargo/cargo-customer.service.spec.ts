@@ -30,7 +30,7 @@ function makeDb() {
 function makeEventsService() {
   return {
     appendEvent: jest.fn().mockResolvedValue({ status_after: 'cancelled', id: 'evt-c' }),
-    currentStatus: jest.fn(),
+    lockedStatus: jest.fn(),
   }
 }
 
@@ -38,11 +38,12 @@ describe('CargoCustomerService.cancelMyBooking', () => {
   let service: CargoCustomerService
   let db: ReturnType<typeof makeDb>
   let events: ReturnType<typeof makeEventsService>
+  let tx: Record<string, unknown>
 
   beforeEach(() => {
     db = makeDb()
     events = makeEventsService()
-    const tx = {
+    tx = {
       cargo_booking: db.cargo_booking,
       cargo_shipment_event: db.cargo_shipment_event,
       cargo_notice: db.cargo_notice,
@@ -60,7 +61,7 @@ describe('CargoCustomerService.cancelMyBooking', () => {
       payment_id: 'pay-1',
       quoted_charge: '100.00',
     })
-    events.currentStatus.mockResolvedValue('held')
+    events.lockedStatus.mockResolvedValue('held')
 
     const result = await service.cancelMyBooking('cust-1', 'b1')
     expect(result.status).toBe('cancelled')
@@ -82,7 +83,7 @@ describe('CargoCustomerService.cancelMyBooking', () => {
       payment_id: 'pay-1',
       quoted_charge: '100.00',
     })
-    events.currentStatus.mockResolvedValue('booked')
+    events.lockedStatus.mockResolvedValue('booked')
 
     const result = await service.cancelMyBooking('cust-1', 'b1')
     expect(result).toEqual({ status: 'cancelled', refundId: 'refund-1' })
@@ -104,7 +105,7 @@ describe('CargoCustomerService.cancelMyBooking', () => {
       payment_id: 'pay-1',
       quoted_charge: '100.00',
     })
-    events.currentStatus.mockResolvedValue('booked')
+    events.lockedStatus.mockResolvedValue('booked')
 
     const { refundFull } = jest.requireMock('./cargo-deps')
     refundFull.mockRejectedValueOnce(new Error('check constraint violation'))
@@ -112,6 +113,37 @@ describe('CargoCustomerService.cancelMyBooking', () => {
     const err = await service.cancelMyBooking('cust-1', 'b1').catch((e) => e)
     expect(err).toBeInstanceOf(InternalServerErrorException)
     expect(err.response.error.message).toContain('check constraint violation')
+  })
+
+  it('reads the status under the row lock in the same transaction as the cancel', async () => {
+    db.cargo_booking.findUnique.mockResolvedValue({
+      customer_id: 'cust-1',
+      booking_ref: 'CB-000001',
+      payment_id: null,
+      quoted_charge: '100.00',
+    })
+    events.lockedStatus.mockResolvedValue('held')
+
+    await service.cancelMyBooking('cust-1', 'b1')
+    expect(events.lockedStatus).toHaveBeenCalledWith(tx, 'b1')
+    expect(events.appendEvent).toHaveBeenCalledWith(tx, expect.objectContaining({ eventType: 'cancelled' }))
+    expect(events.lockedStatus.mock.invocationCallOrder[0]).toBeLessThan(db.cargo_booking.findUnique.mock.invocationCallOrder[0])
+  })
+
+  it('refunds when a payment confirmed just before the lock was taken', async () => {
+    // The confirm committed first, so the locked read sees 'booked' and the paid booking is refunded, not cancelled for free.
+    db.cargo_booking.findUnique.mockResolvedValue({
+      customer_id: 'cust-1',
+      booking_ref: 'CB-000001',
+      payment_id: 'pay-1',
+      quoted_charge: '100.00',
+    })
+    events.lockedStatus.mockResolvedValue('booked')
+    const { refundFull } = jest.requireMock('./cargo-deps')
+    refundFull.mockClear()
+
+    await service.cancelMyBooking('cust-1', 'b1')
+    expect(refundFull).toHaveBeenCalledWith(tx, 'CB-000001', 'pay-1', 100, 'cancel')
   })
 
   it('returns 404 when booking not found', async () => {
@@ -127,7 +159,7 @@ describe('CargoCustomerService.cancelMyBooking', () => {
       payment_id: 'pay-1',
       quoted_charge: '100.00',
     })
-    events.currentStatus.mockResolvedValue('delivered')
+    events.lockedStatus.mockResolvedValue('delivered')
     await expect(service.cancelMyBooking('cust-1', 'b1')).rejects.toThrow(ConflictException)
   })
 })

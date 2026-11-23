@@ -59,6 +59,8 @@ function makeEventsService() {
   return {
     appendEvent: jest.fn().mockResolvedValue({ status_after: 'accepted', id: 'evt-1' }),
     currentStatus: jest.fn(),
+    lockedStatus: jest.fn().mockResolvedValue('booked'),
+    assertTransition: jest.fn().mockResolvedValue(undefined),
   }
 }
 
@@ -129,6 +131,31 @@ describe('CargoDeskService', () => {
     it('rejects when measured weight is within tolerance', async () => {
       await expect(service.rejectBooking('b1', 10, 0.06, 'Too heavy', 'user-1')).rejects.toThrow(ConflictException)
     })
+
+    it('refuses with 409, without starting a refund, when the transition is not allowed', async () => {
+      const { refundFull } = jest.requireMock('./cargo-deps')
+      refundFull.mockClear()
+      events.lockedStatus.mockResolvedValue('accepted')
+      events.assertTransition.mockRejectedValue(new ConflictException('INVALID_TRANSITION'))
+
+      await expect(service.rejectBooking('b1', 50, 0.3, 'Too heavy', 'user-1')).rejects.toThrow(ConflictException)
+      expect(refundFull).not.toHaveBeenCalled()
+    })
+
+    it('refuses with 409, without starting a refund, when the booking was never paid', async () => {
+      const { refundFull } = jest.requireMock('./cargo-deps')
+      refundFull.mockClear()
+      const tx = db as unknown as ReturnType<typeof makeTx>
+      tx.cargo_booking.findUnique.mockResolvedValue({
+        booking_ref: 'CB-000001',
+        payment_id: null,
+        quoted_chargeable_kg: '10.0',
+        quoted_charge: '100.00',
+      })
+
+      await expect(service.rejectBooking('b1', 50, 0.3, 'Too heavy', 'user-1')).rejects.toThrow(ConflictException)
+      expect(refundFull).not.toHaveBeenCalled()
+    })
   })
 
   describe('postEvent', () => {
@@ -142,7 +169,7 @@ describe('CargoDeskService', () => {
         payment_id: 'pay-1',
         quoted_charge: '100.00',
         declared_weight_kg: '10.0',
-        cargo_shipment_event: [{ measured_weight_kg: '10.0' }],
+        cargo_shipment_event: [{ status_after: 'accepted', event_type: 'accepted', measured_weight_kg: '10.0' }],
       })
       events.appendEvent.mockResolvedValue({ status_after: 'loaded', id: 'evt-3' })
     })
@@ -173,6 +200,92 @@ describe('CargoDeskService', () => {
       tx.staff.findFirst.mockResolvedValue(null)
 
       await expect(service.postEvent('b1', 'loaded', undefined, 'user-no-staff')).rejects.toThrow(ForbiddenException)
+    })
+
+    it('checks the hold against the aircraft of the flight, not the flight id', async () => {
+      const tx = db as unknown as ReturnType<typeof makeTx>
+      tx.flight.findUnique.mockResolvedValue({ aircraft_id: 'ac-1' })
+      const { getAircraftCapacity } = jest.requireMock('./cargo-deps')
+      getAircraftCapacity.mockClear()
+
+      await service.postEvent('b1', 'loaded', undefined, 'user-1')
+      expect(getAircraftCapacity).toHaveBeenCalledWith(expect.anything(), 'ac-1')
+      expect(getAircraftCapacity).not.toHaveBeenCalledWith(expect.anything(), 'f1')
+    })
+
+    it('loads by the measured weight even when a later event (a flight move) carries none', async () => {
+      // Hold 4000 kg, reserve 90 pax x 15 kg = 1350 kg, nothing else committed: 2650 kg free. Declared 500 kg would fit; the
+      // 3000 kg measured at acceptance does not.
+      const tx = db as unknown as ReturnType<typeof makeTx>
+      tx.flight.findUnique.mockResolvedValue({ aircraft_id: 'ac-1' })
+      tx.cargo_booking.findUnique.mockResolvedValue({
+        id: 'b1',
+        booking_ref: 'CB-000001',
+        flight_id: 'f1',
+        payment_id: 'pay-1',
+        quoted_charge: '100.00',
+        declared_weight_kg: '500.0',
+        cargo_shipment_event: [
+          { status_after: 'accepted', event_type: 'flight_changed', measured_weight_kg: null },
+          { status_after: 'rebook_required', event_type: 'offloaded', measured_weight_kg: null },
+          { status_after: 'accepted', event_type: 'accepted', measured_weight_kg: '3000.0' },
+        ],
+      })
+
+      const err = await service.postEvent('b1', 'loaded', undefined, 'user-1').catch((e) => e)
+      expect(err).toBeInstanceOf(ConflictException)
+      expect(err.response.error.code).toBe('CAPACITY_EXCEEDED')
+    })
+
+    it('refunds a staff cancel after a flight cancellation with the flight reason', async () => {
+      const { refundFull } = jest.requireMock('./cargo-deps')
+      refundFull.mockClear()
+      events.lockedStatus.mockResolvedValue('rebook_required')
+      events.appendEvent.mockResolvedValue({ status_after: 'cancelled', id: 'evt-5' })
+      const tx = db as unknown as ReturnType<typeof makeTx>
+      tx.cargo_booking.findUnique.mockResolvedValue({
+        id: 'b1',
+        booking_ref: 'CB-000001',
+        flight_id: 'f1',
+        payment_id: 'pay-1',
+        quoted_charge: '100.00',
+        declared_weight_kg: '10.0',
+        cargo_shipment_event: [{ status_after: 'rebook_required', event_type: 'flight_cancelled', measured_weight_kg: null }],
+      })
+
+      await service.postEvent('b1', 'cancelled', 'Flight cancelled', 'user-1')
+      expect(refundFull).toHaveBeenCalledWith(expect.anything(), 'CB-000001', 'pay-1', 100, 'flight')
+    })
+
+    it('refunds a staff cancel of an offloaded booking as an ordinary cancel', async () => {
+      const { refundFull } = jest.requireMock('./cargo-deps')
+      refundFull.mockClear()
+      events.lockedStatus.mockResolvedValue('rebook_required')
+      events.appendEvent.mockResolvedValue({ status_after: 'cancelled', id: 'evt-6' })
+      const tx = db as unknown as ReturnType<typeof makeTx>
+      tx.cargo_booking.findUnique.mockResolvedValue({
+        id: 'b1',
+        booking_ref: 'CB-000001',
+        flight_id: 'f1',
+        payment_id: 'pay-1',
+        quoted_charge: '100.00',
+        declared_weight_kg: '10.0',
+        cargo_shipment_event: [{ status_after: 'rebook_required', event_type: 'offloaded', measured_weight_kg: null }],
+      })
+
+      await service.postEvent('b1', 'cancelled', 'Missed the flight', 'user-1')
+      expect(refundFull).toHaveBeenCalledWith(expect.anything(), 'CB-000001', 'pay-1', 100, 'cancel')
+    })
+
+    it('refuses to cancel an unpaid held booking with 409 and starts no refund', async () => {
+      const { refundFull } = jest.requireMock('./cargo-deps')
+      refundFull.mockClear()
+      events.lockedStatus.mockResolvedValue('held')
+      events.assertTransition.mockRejectedValue(new ConflictException('INVALID_TRANSITION'))
+
+      await expect(service.postEvent('b1', 'cancelled', 'Customer requested', 'user-1')).rejects.toThrow(ConflictException)
+      expect(events.assertTransition).toHaveBeenCalledWith(expect.anything(), 'held', 'cancelled', 'staff')
+      expect(refundFull).not.toHaveBeenCalled()
     })
 
     it('returns REFUND_FAILED with real error when refund throws on cancel', async () => {
