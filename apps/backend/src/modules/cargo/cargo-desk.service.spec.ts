@@ -214,3 +214,46 @@ describe('CargoEventsService check constraint handling', () => {
     ).rejects.toThrow(expect.objectContaining({ status: 400 }))
   })
 })
+
+describe('CargoDeskService CSV exports', () => {
+  const service = new CargoDeskService(makeDb() as never, makeEventsService() as unknown as CargoEventsService)
+
+  const row = (over: Record<string, unknown> = {}) => ({
+    id: 'b1',
+    bookingRef: 'CG-AAAAAA',
+    awbNumber: '99900000103',
+    shipperName: 'Thai Orchid, Ltd.',
+    consigneeName: 'Say "hi" Co',
+    flightNumber: 'FL501',
+    flightServiceDate: new Date('2026-11-27T00:00:00Z'),
+    flightDepAt: new Date('2026-11-27T06:22:00Z'),
+    flightOrigin: 'BKK',
+    flightDestination: 'NRT',
+    commodityTypeName: 'General cargo',
+    pieces: 3,
+    quotedChargeableKg: 263,
+    quotedCharge: 683.8,
+    currency: 'USD',
+    status: 'booked',
+    bookedAt: new Date('2026-11-23T12:18:00Z'),
+    hasRefund: false,
+    ...over,
+  })
+
+  it('writes the bookings list with a header, hyphenated AWBs and quoted commas and quotes', () => {
+    const csv = service.bookingsToCsv([row(), row({ bookingRef: 'CG-BBBBBB', awbNumber: null })])
+    const lines = csv.split('\n')
+    expect(lines[0]).toBe('Booking,AWB,Shipper,Consignee,Flight,Ship date,Commodity,Pieces,Chargeable kg,Charge,Currency,Status,Booked at')
+    expect(lines[1]).toBe(
+      'CG-AAAAAA,999-0000010-3,"Thai Orchid, Ltd.","Say ""hi"" Co",FL501,2026-11-27,General cargo,3,263.0,683.80,USD,booked,2026-11-23T12:18:00.000Z',
+    )
+    expect(lines[2].startsWith('CG-BBBBBB,,')).toBe(true)
+    expect(lines).toHaveLength(3)
+  })
+
+  it('writes only the header for an empty list', () => {
+    expect(service.bookingsToCsv([])).toBe(
+      'Booking,AWB,Shipper,Consignee,Flight,Ship date,Commodity,Pieces,Chargeable kg,Charge,Currency,Status,Booked at',
+    )
+  })
+})

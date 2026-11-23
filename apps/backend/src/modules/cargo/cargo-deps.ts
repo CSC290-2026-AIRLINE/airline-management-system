@@ -1,43 +1,47 @@
 import type { DbService } from '@backend/db/db.service'
+import { computeCapacity } from '@backend/modules/aircraft-management/seat-map'
+import type { SeatLayout } from '@backend/modules/aircraft-management/dto/layout.dto'
 import { simNow } from '@backend/modules/pricing/fare-quote/sim-clock'
 
-type PrismaLike = Pick<DbService, 'aircraft' | 'flight_setting' | 'refund'>
+type PrismaLike = Pick<DbService, 'aircraft' | 'flight_setting' | 'refund' | 'seat_inventory'>
 
 export interface AircraftCapacity {
   holdLimitKg: number
   sellableSeats: number
 }
 
+/** Used only for an aircraft type whose stored layout is not in Feature 9's cabin format, so it has no countable seats. */
+const FALLBACK_SELLABLE_SEATS = 180
+const FALLBACK_HOLD_LIMIT_KG = 4000
+
 /**
- * Read the aircraft's hold weight limit from the real aircraft_type row.
- * Sellable seats are mocked — the layout JSON format is owned by Feature 9 and has no parser here.
- * Falls back entirely to mock values when the aircraft row is missing.
+ * The aircraft's hold weight limit and sellable seats, from Feature 9's aircraft type: the limit is a column, and the sellable
+ * seats are counted from the cabin layout with Feature 9's own seat-map calculation (blocked seats are not sellable).
  */
 export async function getAircraftCapacity(db: PrismaLike, aircraftId: string): Promise<AircraftCapacity> {
-  // MOCK: replace sellableSeats with a real layout parser when Feature 9 provides one
-  const MOCK_SELLABLE_SEATS = 180
-  const MOCK_HOLD_LIMIT_KG = 4000
-
   const aircraft = await db.aircraft.findUnique({
     where: { id: aircraftId },
-    select: { aircraft_type: { select: { hold_weight_limit_kg: true } } },
+    select: { aircraft_type: { select: { hold_weight_limit_kg: true, layout: true } } },
   })
 
   if (!aircraft) {
-    return { holdLimitKg: MOCK_HOLD_LIMIT_KG, sellableSeats: MOCK_SELLABLE_SEATS }
+    return { holdLimitKg: FALLBACK_HOLD_LIMIT_KG, sellableSeats: FALLBACK_SELLABLE_SEATS }
   }
 
+  const sellable = computeCapacity(aircraft.aircraft_type.layout as SeatLayout).total_sellable
   return {
     holdLimitKg: aircraft.aircraft_type.hold_weight_limit_kg,
-    sellableSeats: MOCK_SELLABLE_SEATS,
+    sellableSeats: sellable > 0 ? sellable : FALLBACK_SELLABLE_SEATS,
   }
 }
 
-// MOCK: replace when Feature 3 seat inventory service is merged
-export function seatsTakenOnFlight(db: PrismaLike, flightId: string): number {
-  void db
-  void flightId
-  return 0
+/** Feature 3b's seats held or sold on the flight, over every cabin. A lap infant takes no seat, so it is not counted there. */
+export async function seatsTakenOnFlight(db: PrismaLike, flightId: string): Promise<number> {
+  const totals = await db.seat_inventory.aggregate({
+    where: { flight_id: flightId },
+    _sum: { held_count: true, sold_count: true },
+  })
+  return (totals._sum.held_count ?? 0) + (totals._sum.sold_count ?? 0)
 }
 
 // MOCK: replace when Feature 5a payment/refund service is merged

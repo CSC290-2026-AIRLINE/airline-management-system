@@ -182,6 +182,12 @@ export class CargoCustomerController {
     return this.svc.cancelMyBooking(customerId, id)
   }
 
+  @Get('waybills/:awb')
+  async getMyWaybill(@Param('awb') awb: string, @CurrentUser() user: { id: string }) {
+    const customerId = await this.svc.resolveCustomerId(user.id)
+    return this.svc.getMyWaybill(customerId, awb)
+  }
+
   // ── Track ─────────────────────────────────────────────────────────
 
   @Get('track')

@@ -83,7 +83,7 @@ export class CargoCustomerService {
     let flightAvailableKg = 0
     if (flight) {
       const capacity = await getAircraftCapacity(this.db, flight.aircraft_id)
-      const seats = seatsTakenOnFlight(this.db, flight.id)
+      const seats = await seatsTakenOnFlight(this.db, flight.id)
       const committed = await this.committedKg(flight.id)
       flightAvailableKg = Math.round(
         availableKg({
@@ -163,7 +163,7 @@ export class CargoCustomerService {
       let maxAvail = 0
       for (const f of flights) {
         const capacity = await getAircraftCapacity(this.db, f.aircraft_id)
-        const seats = seatsTakenOnFlight(this.db, f.id)
+        const seats = await seatsTakenOnFlight(this.db, f.id)
         const committed = await this.committedKg(f.id)
         const avail = availableKg({
           holdLimitKg: capacity.holdLimitKg,
@@ -229,7 +229,7 @@ export class CargoCustomerService {
     }[] = []
     for (const f of flights) {
       const capacity = await getAircraftCapacity(this.db, f.aircraft_id)
-      const seats = seatsTakenOnFlight(this.db, f.id)
+      const seats = await seatsTakenOnFlight(this.db, f.id)
       const committed = await this.committedKg(f.id)
       const avail = availableKg({
         holdLimitKg: capacity.holdLimitKg,
@@ -502,6 +502,8 @@ export class CargoCustomerService {
         flightId: e.flight_id,
         airportCode: e.airport_code,
         note: e.note,
+        measuredWeightKg: e.measured_weight_kg != null ? Number(e.measured_weight_kg) : null,
+        measuredVolumeM3: e.measured_volume_m3 != null ? Number(e.measured_volume_m3) : null,
       })),
       claim: claim
         ? {
@@ -707,6 +709,17 @@ export class CargoCustomerService {
       data: { read_at: now },
     })
     return { marked: result.count }
+  }
+
+  /** The Air Waybill view of one of the customer's own bookings, looked up by its number. */
+  async getMyWaybill(customerId: string, awb: string) {
+    const digits = awb.replace(/\D/g, '')
+    const booking = await this.db.cargo_booking.findFirst({
+      where: { customer_id: customerId, OR: [{ awb_number: awb }, { awb_number: digits }] },
+      select: { id: true },
+    })
+    if (!booking) throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Air Waybill not found' } })
+    return this.getMyBooking(customerId, booking.id)
   }
 
   async trackBooking(customerId: string, opts: { ref?: string; awb?: string }) {

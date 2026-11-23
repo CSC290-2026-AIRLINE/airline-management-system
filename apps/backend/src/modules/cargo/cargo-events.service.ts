@@ -14,18 +14,49 @@ export interface AppendEventInput {
   measuredChargeableKg?: number
   refundId?: string
   airportCode?: string
+  /** The Feature 2 flight_event this entry reacts to; a unique index makes a repeat of it a no-op. */
+  flightEventId?: string
+  /** Picks the row when the transition table has two for the same move (flight_changed: booked or accepted). */
+  statusAfter?: string
 }
 
-const NOTICE_TEMPLATES: Record<string, { title: string; message: (ref: string) => string }> = {
-  confirmed: { title: 'Booking confirmed', message: (ref) => `Your cargo booking ${ref} has been confirmed and an AWB issued.` },
-  expired: { title: 'Hold expired', message: (ref) => `The hold on cargo booking ${ref} has expired.` },
-  accepted: { title: 'Shipment accepted', message: (ref) => `Cargo shipment ${ref} has been accepted at the terminal.` },
-  rejected: { title: 'Shipment rejected', message: (ref) => `Cargo shipment ${ref} has been rejected at the terminal.` },
-  loaded: { title: 'Shipment loaded', message: (ref) => `Cargo shipment ${ref} has been loaded onto the aircraft.` },
-  departed: { title: 'Shipment departed', message: (ref) => `Cargo shipment ${ref} has departed.` },
-  arrived: { title: 'Shipment arrived', message: (ref) => `Cargo shipment ${ref} has arrived at the destination.` },
-  delivered: { title: 'Shipment delivered', message: (ref) => `Cargo shipment ${ref} has been delivered.` },
-  cancelled: { title: 'Booking cancelled', message: (ref) => `Cargo booking ${ref} has been cancelled.` },
+interface NoticeContext {
+  ref: string
+  /** Full refund text, e.g. "USD 348.40", set when the event carries a refund. */
+  refund?: string
+  airport?: string
+}
+
+const NOTICE_TEMPLATES: Record<string, { title: string; message: (ctx: NoticeContext) => string }> = {
+  confirmed: { title: 'Booking confirmed', message: (c) => `Your cargo booking ${c.ref} has been confirmed and an AWB issued.` },
+  expired: {
+    title: 'Hold expired',
+    message: (c) => `The hold on cargo booking ${c.ref} has expired. The weight was released and nothing was charged.`,
+  },
+  accepted: { title: 'Shipment accepted', message: (c) => `Cargo shipment ${c.ref} has been accepted at the terminal.` },
+  rejected: {
+    title: 'Shipment rejected',
+    message: (c) =>
+      `Cargo shipment ${c.ref} has been rejected at the terminal.${c.refund ? ` A full refund of ${c.refund} was issued.` : ''}`,
+  },
+  loaded: { title: 'Shipment loaded', message: (c) => `Cargo shipment ${c.ref} has been loaded onto the aircraft.` },
+  departed: { title: 'Shipment departed', message: (c) => `Cargo shipment ${c.ref} has been sent and is in transit to the destination.` },
+  arrived: { title: 'Shipment arrived', message: (c) => `Cargo shipment ${c.ref} has arrived at the destination.` },
+  delivered: { title: 'Shipment delivered', message: (c) => `Cargo shipment ${c.ref} has been delivered.` },
+  cancelled: {
+    title: 'Booking cancelled',
+    message: (c) => `Cargo booking ${c.ref} has been cancelled.${c.refund ? ` A full refund of ${c.refund} was issued.` : ''}`,
+  },
+  offloaded: { title: 'Shipment missed its flight', message: (c) => `Cargo shipment ${c.ref} missed its flight and will be rebooked.` },
+  flight_cancelled: {
+    title: 'Flight cancelled',
+    message: (c) => `The flight for cargo shipment ${c.ref} was cancelled. Staff will move the cargo or refund it.`,
+  },
+  diverted: {
+    title: 'Flight diverted',
+    message: (c) => `The flight for cargo shipment ${c.ref} was diverted${c.airport ? ` to ${c.airport}` : ''}.`,
+  },
+  flight_changed: { title: 'Shipment moved to another flight', message: (c) => `Cargo shipment ${c.ref} was moved to another flight.` },
 }
 
 @Injectable()
@@ -44,8 +75,8 @@ export class CargoEventsService {
   async appendEvent(tx: Prisma.TransactionClient, input: AppendEventInput) {
     const now = simNow()
 
-    const rows = await tx.$queryRaw<{ id: string; booking_ref: string; flight_id: string }[]>`
-      SELECT id, booking_ref, flight_id
+    const rows = await tx.$queryRaw<{ id: string; booking_ref: string; flight_id: string; quoted_charge: string; currency: string }[]>`
+      SELECT id, booking_ref, flight_id, quoted_charge::text AS quoted_charge, currency
       FROM cargo_booking
       WHERE id = ${input.bookingId}::uuid
       FOR UPDATE
@@ -71,6 +102,7 @@ export class CargoEventsService {
           status_before: statusBefore,
           event_type: input.eventType,
           actor_type: input.actorType,
+          ...(input.statusAfter ? { status_after: input.statusAfter } : {}),
         },
       })
       if (!transition) {
@@ -100,6 +132,7 @@ export class CargoEventsService {
           actor_type: input.actorType,
           recorded_by_staff_id: input.staffId ?? null,
           refund_id: input.refundId ?? null,
+          flight_event_id: input.flightEventId ?? null,
           measured_weight_kg: input.measuredWeightKg ?? null,
           measured_volume_m3: input.measuredVolumeM3 ?? null,
           measured_chargeable_kg: input.measuredChargeableKg ?? null,
@@ -114,7 +147,11 @@ export class CargoEventsService {
             cargo_booking_id: input.bookingId,
             cargo_shipment_event_id: event.id,
             title: template.title,
-            message: template.message(booking.booking_ref),
+            message: template.message({
+              ref: booking.booking_ref,
+              refund: input.refundId ? `${booking.currency} ${Number(booking.quoted_charge).toFixed(2)}` : undefined,
+              airport: input.airportCode,
+            }),
             notified_at: now,
           },
         })

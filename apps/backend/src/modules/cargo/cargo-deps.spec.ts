@@ -5,11 +5,12 @@ jest.mock('@backend/modules/pricing/fare-quote/sim-clock', () => ({
   simNow: () => NOW,
 }))
 
-import { refundFull } from './cargo-deps'
+import { getAircraftCapacity, refundFull, seatsTakenOnFlight } from './cargo-deps'
 
 function makeDb() {
   return {
     aircraft: { findUnique: jest.fn() },
+    seat_inventory: { aggregate: jest.fn() },
     flight_setting: { findFirst: jest.fn() },
     refund: {
       create: jest.fn(),
@@ -85,5 +86,46 @@ describe('refundFull', () => {
     const call = db.refund.create.mock.calls[0][0].data
     expect(call.source_key).toBe('cargo:CB-000001:cancel')
     expect(call.source_key).not.toMatch(/\d{13}/)
+  })
+})
+
+describe('seatsTakenOnFlight', () => {
+  it('adds the held and sold seats over every cabin', async () => {
+    const db = makeDb()
+    db.seat_inventory.aggregate.mockResolvedValue({ _sum: { held_count: 12, sold_count: 90 } })
+    await expect(seatsTakenOnFlight(db as never, 'f1')).resolves.toBe(102)
+    expect(db.seat_inventory.aggregate).toHaveBeenCalledWith(expect.objectContaining({ where: { flight_id: 'f1' } }))
+  })
+
+  it('is zero for a flight with no seat inventory', async () => {
+    const db = makeDb()
+    db.seat_inventory.aggregate.mockResolvedValue({ _sum: { held_count: null, sold_count: null } })
+    await expect(seatsTakenOnFlight(db as never, 'f1')).resolves.toBe(0)
+  })
+})
+
+describe('getAircraftCapacity', () => {
+  const type = (layout: unknown) => ({ aircraft_type: { hold_weight_limit_kg: 18000, layout } })
+
+  it('counts sellable seats from the cabin layout, leaving blocked seats out', async () => {
+    const db = makeDb()
+    db.aircraft.findUnique.mockResolvedValue(
+      type({
+        cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 10, columns: ['A', 'B', 'C', 'D'], aisles_after: ['B'] }],
+      }),
+    )
+    await expect(getAircraftCapacity(db as never, 'ac1')).resolves.toEqual({ holdLimitKg: 18000, sellableSeats: 40 })
+  })
+
+  it('falls back to 180 seats for a layout that is not in the cabin format', async () => {
+    const db = makeDb()
+    db.aircraft.findUnique.mockResolvedValue(type({ rows: 30, seats_per_row: 6 }))
+    await expect(getAircraftCapacity(db as never, 'ac1')).resolves.toEqual({ holdLimitKg: 18000, sellableSeats: 180 })
+  })
+
+  it('falls back when the aircraft is missing', async () => {
+    const db = makeDb()
+    db.aircraft.findUnique.mockResolvedValue(null)
+    await expect(getAircraftCapacity(db as never, 'ac1')).resolves.toEqual({ holdLimitKg: 4000, sellableSeats: 180 })
   })
 })

@@ -3,10 +3,13 @@ import type { Prisma } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { simNow } from '@backend/modules/pricing/fare-quote/sim-clock'
 import { CargoEventsService } from './cargo-events.service'
+import { CargoOperationsService } from './cargo-operations.service'
 import { chargeableKg, freightCharge, availableKg, awbNumber } from './cargo-calc'
 import { getAircraftCapacity, seatsTakenOnFlight, awbPrefix } from './cargo-deps'
 
 const CARGO_CURRENCY = 'USD'
+/** How many times a hold re-assigns a flight when the room it was quoted is taken before it gets the flight lock. */
+const MAX_ASSIGN_ATTEMPTS = 3
 const COMMITTED_STATUSES = new Set(['held', 'booked', 'accepted', 'loaded', 'in_transit'])
 
 export interface QuoteInput {
@@ -50,6 +53,7 @@ export class CargoBookingService {
   constructor(
     private readonly db: DbService,
     private readonly events: CargoEventsService,
+    private readonly ops: CargoOperationsService,
   ) {}
 
   async quote(input: QuoteInput): Promise<QuoteResult> {
@@ -58,27 +62,48 @@ export class CargoBookingService {
 
   async createHeldBooking(customerId: string, input: BookingInput) {
     return this.db.$transaction(async (tx) => {
-      const q = await this.runQuote(tx, input)
-
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`cargo-flight:${q.flightId}`}, 0))`
-
-      const recheck = await this.committedKg(tx, q.flightId)
+      // Quote, lock the flight, then check again. If someone took the room between the quote and the lock, quote once more: the
+      // new answer sees their booking, so it names the next flight of the day that fits, or refuses with NO_FLIGHT_AVAILABLE.
       const settings = await this.loadSettings(tx)
-      const aircraftId = await this.flightAircraftId(tx, q.flightId)
-      const capacity = await getAircraftCapacity(tx, aircraftId)
-      const seats = seatsTakenOnFlight(tx, q.flightId)
-      const available = availableKg({
-        holdLimitKg: capacity.holdLimitKg,
-        sellableSeats: capacity.sellableSeats,
-        seatsTaken: seats,
-        reserveKgPerPax: settings.reserveKgPerPax,
-        floorPercent: settings.floorPercent,
-        committedKg: recheck,
-      })
-      if (available < input.declaredWeightKg) {
-        throw new ConflictException({
-          error: { code: 'CAPACITY_EXCEEDED', message: 'Not enough cargo capacity on this flight', details: { available_kg: available } },
+      let q: QuoteResult | null = null
+      for (let attempt = 0; attempt < MAX_ASSIGN_ATTEMPTS && q == null; attempt++) {
+        const candidate = await this.runQuote(tx, input)
+
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`cargo-flight:${candidate.flightId}`}, 0))`
+
+        const clash = await this.ops.conflictingBookingRef(tx, candidate.flightId, candidate.handlingClass)
+        if (clash) {
+          throw new ConflictException({
+            error: {
+              code: 'HANDLING_CONFLICT',
+              message: `These goods cannot share a flight with ${clash}`,
+              details: { booking_ref: clash },
+            },
+          })
+        }
+
+        const committed = await this.committedKg(tx, candidate.flightId)
+        const aircraftId = await this.flightAircraftId(tx, candidate.flightId)
+        const capacity = await getAircraftCapacity(tx, aircraftId)
+        const seats = await seatsTakenOnFlight(tx, candidate.flightId)
+        const available = availableKg({
+          holdLimitKg: capacity.holdLimitKg,
+          sellableSeats: capacity.sellableSeats,
+          seatsTaken: seats,
+          reserveKgPerPax: settings.reserveKgPerPax,
+          floorPercent: settings.floorPercent,
+          committedKg: committed,
         })
+        if (available >= input.declaredWeightKg) {
+          q = candidate
+        } else if (attempt === MAX_ASSIGN_ATTEMPTS - 1) {
+          throw new ConflictException({
+            error: { code: 'CAPACITY_EXCEEDED', message: 'Not enough cargo capacity on this flight', details: { available_kg: available } },
+          })
+        }
+      }
+      if (q == null) {
+        throw new ConflictException({ error: { code: 'CAPACITY_EXCEEDED', message: 'Not enough cargo capacity on this flight' } })
       }
 
       const now = simNow()
@@ -247,10 +272,16 @@ export class CargoBookingService {
     })
 
     let selectedFlight: (typeof flights)[number] | null = null
+    let firstClash: string | null = null
 
     for (const flight of flights) {
+      const clash = await this.ops.conflictingBookingRef(tx, flight.id, commodityType.handling_class)
+      if (clash) {
+        firstClash ??= clash
+        continue
+      }
       const capacity = await getAircraftCapacity(tx, flight.aircraft_id)
-      const seats = seatsTakenOnFlight(tx, flight.id)
+      const seats = await seatsTakenOnFlight(tx, flight.id)
       const committed = await this.committedKg(tx, flight.id)
       const available = availableKg({
         holdLimitKg: capacity.holdLimitKg,
@@ -264,6 +295,16 @@ export class CargoBookingService {
         selectedFlight = flight
         break
       }
+    }
+
+    if (!selectedFlight && firstClash) {
+      throw new ConflictException({
+        error: {
+          code: 'HANDLING_CONFLICT',
+          message: `These goods cannot share a flight with ${firstClash}`,
+          details: { booking_ref: firstClash },
+        },
+      })
     }
 
     if (!selectedFlight) {

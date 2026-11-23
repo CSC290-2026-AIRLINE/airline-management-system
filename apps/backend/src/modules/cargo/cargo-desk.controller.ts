@@ -1,9 +1,24 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, Res, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+  Res,
+  UseGuards,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common'
 import type { Response } from 'express'
 import { IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import { StaffProfilesGuard } from '@backend/modules/passenger-profiles/staff-profiles.guard'
 import { CargoDeskService } from './cargo-desk.service'
+import { CargoOperationsService } from './cargo-operations.service'
 
 class AcceptanceDto {
   @IsNumber()
@@ -29,6 +44,16 @@ class RejectionDto {
   reason!: string
 }
 
+class MoveFlightDto {
+  @IsString()
+  @IsNotEmpty()
+  flight_id!: string
+
+  @IsOptional()
+  @IsString()
+  note?: string
+}
+
 class PostEventDto {
   @IsString()
   @IsIn(['loaded', 'delivered', 'cancelled'])
@@ -46,7 +71,10 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 @UseGuards(StaffProfilesGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class CargoDeskController {
-  constructor(private readonly desk: CargoDeskService) {}
+  constructor(
+    private readonly desk: CargoDeskService,
+    private readonly ops: CargoOperationsService,
+  ) {}
 
   @Get('bookings')
   listBookings(
@@ -57,10 +85,13 @@ export class CargoDeskController {
     @Query('flight_id') flightId?: string,
     @Query('ship_date') shipDate?: string,
     @Query('commodity_type_id') commodityTypeId?: string,
+    @Query('format') format?: string,
+    @Res({ passthrough: true }) res?: Response,
   ) {
-    const page = Math.max(1, Number(pageStr) || 1)
-    const pageSize = Math.min(100, Math.max(1, Number(pageSizeStr) || 20))
-    return this.desk.listBookings({
+    const isCsv = format === 'csv'
+    const page = isCsv ? 1 : Math.max(1, Number(pageStr) || 1)
+    const pageSize = isCsv ? 5000 : Math.min(100, Math.max(1, Number(pageSizeStr) || 20))
+    const result = this.desk.listBookings({
       status: status || undefined,
       q: q || undefined,
       page,
@@ -69,6 +100,14 @@ export class CargoDeskController {
       shipDate: shipDate && DATE_RE.test(shipDate) ? shipDate : undefined,
       commodityTypeId: commodityTypeId && UUID_RE.test(commodityTypeId) ? commodityTypeId : undefined,
     })
+    if (isCsv && res) {
+      return result.then((r) => {
+        res.set('Content-Type', 'text/csv')
+        res.set('Content-Disposition', 'attachment; filename="cargo-bookings.csv"')
+        return this.desk.bookingsToCsv(r.data)
+      })
+    }
+    return result
   }
 
   @Get('bookings/:id')
@@ -91,6 +130,24 @@ export class CargoDeskController {
     return this.desk.postEvent(id, dto.event, dto.note, user.id)
   }
 
+  @Get('bookings/:id/flights')
+  listMoveTargets(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.ops.listMoveTargets(id)
+  }
+
+  @Put('bookings/:id/flight')
+  moveToFlight(@Param('id', new ParseUUIDPipe()) id: string, @Body() dto: MoveFlightDto, @CurrentUser() user: { id: string }) {
+    if (!UUID_RE.test(dto.flight_id)) {
+      throw new BadRequestException({ error: { code: 'INVALID_FLIGHT', message: 'flight_id must be a UUID' } })
+    }
+    return this.ops.moveToFlight(id, dto.flight_id, dto.note, user.id)
+  }
+
+  @Get('waybills/:awb')
+  getWaybill(@Param('awb') awb: string) {
+    return this.desk.getWaybill(awb)
+  }
+
   @Get('flights')
   listFlightsWithCargo(@Query('from') from?: string, @Query('to') to?: string, @Query('route_id') routeId?: string) {
     const today = new Date().toISOString().slice(0, 10)
@@ -100,6 +157,21 @@ export class CargoDeskController {
   @Get('flights/:flightId')
   getFlightSummary(@Param('flightId', new ParseUUIDPipe()) flightId: string) {
     return this.desk.getFlightSummary(flightId)
+  }
+
+  @Get('flights/:flightId/capacity')
+  async getFlightCapacity(@Param('flightId', new ParseUUIDPipe()) flightId: string) {
+    const s = await this.desk.getFlightSummary(flightId)
+    return {
+      holdLimitKg: s.holdLimitKg,
+      reservedPassengers: s.reservedPassengers,
+      reserveKgPerPax: s.reserveKgPerPax,
+      baggageReserveKg: s.baggageReserveKg,
+      committedKg: s.committedKg,
+      loadedKg: s.loadedKg,
+      availableKg: s.availableKg,
+      overLimitKg: Math.max(0, -s.availableKg),
+    }
   }
 
   @Get('flights/:flightId/manifest')

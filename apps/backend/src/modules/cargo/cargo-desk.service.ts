@@ -11,6 +11,13 @@ import { availableKg, chargeableKg, exceedsTolerance } from './cargo-calc'
 import { getAircraftCapacity, loadedBaggageKg, refundFull, seatsTakenOnFlight } from './cargo-deps'
 import { CargoEventsService } from './cargo-events.service'
 
+/** 99900000103 -> 999-0000010-3, the way the Air Waybill is printed everywhere else. */
+function formatAwb(raw: string | null): string {
+  if (!raw) return ''
+  const digits = raw.replace(/\D/g, '')
+  return digits.length === 11 ? `${digits.slice(0, 3)}-${digits.slice(3, 10)}-${digits.slice(10)}` : raw
+}
+
 const CLOSED_STATUSES = ['expired', 'cancelled', 'rejected']
 
 interface BookingRow {
@@ -231,7 +238,7 @@ export class CargoDeskService {
       : null
 
     const capacity = await getAircraftCapacity(this.db, booking.flight.aircraft_id)
-    const seats = seatsTakenOnFlight(this.db, booking.flight.id)
+    const seats = await seatsTakenOnFlight(this.db, booking.flight.id)
     const committedKg = await this.committedKgForFlight(booking.flight.id)
     const settings = await this.loadSettings()
     const freeKg = availableKg({
@@ -317,6 +324,16 @@ export class CargoDeskService {
       })),
       claim: claim ? { id: claim.id, claimRef: claim.claim_ref } : null,
     }
+  }
+
+  async getWaybill(awb: string) {
+    const digits = awb.replace(/\D/g, '')
+    const booking = await this.db.cargo_booking.findFirst({
+      where: { OR: [{ awb_number: awb }, { awb_number: digits }] },
+      select: { id: true },
+    })
+    if (!booking) throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Air Waybill not found' } })
+    return this.getBookingDetail(booking.id)
   }
 
   async acceptBooking(id: string, measuredWeightKg: number, measuredVolumeM3: number, userId: string) {
@@ -474,7 +491,7 @@ export class CargoDeskService {
           if (!flight) throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Flight not found' } })
 
           const capacity = await getAircraftCapacity(tx, flight.aircraft_id)
-          const seats = seatsTakenOnFlight(tx, booking.flight_id)
+          const seats = await seatsTakenOnFlight(tx, booking.flight_id)
           const committed = await this.committedKgExcluding(tx, booking.flight_id, id)
           const available = availableKg({
             holdLimitKg: capacity.holdLimitKg,
@@ -573,7 +590,7 @@ export class CargoDeskService {
       }).length
 
       const capacity = await getAircraftCapacity(this.db, f.aircraft_id)
-      const seats = seatsTakenOnFlight(this.db, f.id)
+      const seats = await seatsTakenOnFlight(this.db, f.id)
       const free = availableKg({
         holdLimitKg: capacity.holdLimitKg,
         sellableSeats: capacity.sellableSeats,
@@ -623,7 +640,6 @@ export class CargoDeskService {
             declared_weight_kg: true,
             cargo_shipment_event: {
               orderBy: { seq: 'desc' as const },
-              take: 1,
               select: { status_after: true, measured_weight_kg: true },
             },
           },
@@ -637,7 +653,7 @@ export class CargoDeskService {
     const settings = await this.loadSettings()
     const cutoffHours = await this.loadCutoffHours()
     const capacity = await getAircraftCapacity(this.db, flight.aircraft_id)
-    const seatsTaken = seatsTakenOnFlight(this.db, flight.id)
+    const seatsTaken = await seatsTakenOnFlight(this.db, flight.id)
     const floorPax = Math.ceil((capacity.sellableSeats * settings.floorPercent) / 100)
     const reservedPassengers = Math.max(seatsTaken, floorPax)
     const baggageReserveKg = reservedPassengers * settings.reserveKgPerPax
@@ -647,7 +663,10 @@ export class CargoDeskService {
         const s = b.cargo_shipment_event[0]?.status_after
         return s != null && COMMITTED.has(s)
       })
-      .reduce((sum, b) => sum + Number(b.declared_weight_kg), 0)
+      .reduce((sum, b) => {
+        const mw = b.cargo_shipment_event.find((e) => e.measured_weight_kg != null)?.measured_weight_kg
+        return sum + (mw ? Number(mw) : Number(b.declared_weight_kg))
+      }, 0)
 
     const loadedKg = flight.cargo_booking
       .filter((b) => {
@@ -655,7 +674,7 @@ export class CargoDeskService {
         return s === 'loaded' || s === 'in_transit'
       })
       .reduce((sum, b) => {
-        const mw = b.cargo_shipment_event[0]?.measured_weight_kg
+        const mw = b.cargo_shipment_event.find((e) => e.measured_weight_kg != null)?.measured_weight_kg
         return sum + (mw ? Number(mw) : Number(b.declared_weight_kg))
       }, 0)
 
@@ -707,7 +726,7 @@ export class CargoDeskService {
       where: { flight_id: flightId },
       include: {
         cargo_commodity_type: { select: { name: true } },
-        cargo_shipment_event: { orderBy: { seq: 'desc' }, take: 1, select: { status_after: true, measured_weight_kg: true } },
+        cargo_shipment_event: { orderBy: { seq: 'desc' }, select: { status_after: true, measured_weight_kg: true } },
       },
       orderBy: { booked_at: 'asc' },
     })
@@ -716,6 +735,7 @@ export class CargoDeskService {
     const rows = bookings
       .map((b) => {
         const latestEvent = b.cargo_shipment_event[0]
+        const measuredEvent = b.cargo_shipment_event.find((e) => e.measured_weight_kg != null)
         const status = latestEvent?.status_after ?? 'unknown'
         return {
           id: b.id,
@@ -726,7 +746,7 @@ export class CargoDeskService {
           handlingClass: b.handling_class,
           pieces: b.pieces,
           declaredWeightKg: Number(b.declared_weight_kg),
-          measuredWeightKg: latestEvent?.measured_weight_kg ? Number(latestEvent.measured_weight_kg) : null,
+          measuredWeightKg: measuredEvent?.measured_weight_kg ? Number(measuredEvent.measured_weight_kg) : null,
           status,
         }
       })
@@ -739,7 +759,7 @@ export class CargoDeskService {
     const loadedCount = rows.filter((r) => r.status === 'loaded' || r.status === 'in_transit').length
 
     const capacity = await getAircraftCapacity(this.db, flight.aircraft_id)
-    const seats = seatsTakenOnFlight(this.db, flight.id)
+    const seats = await seatsTakenOnFlight(this.db, flight.id)
     const settings = await this.loadSettings()
 
     const allBookings = bookings.map((b) => ({
@@ -773,6 +793,46 @@ export class CargoDeskService {
     }
   }
 
+  bookingsToCsv(rows: Awaited<ReturnType<CargoDeskService['listBookings']>>['data']): string {
+    const header = [
+      'Booking',
+      'AWB',
+      'Shipper',
+      'Consignee',
+      'Flight',
+      'Ship date',
+      'Commodity',
+      'Pieces',
+      'Chargeable kg',
+      'Charge',
+      'Currency',
+      'Status',
+      'Booked at',
+    ]
+    const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
+    const lines = [header.join(',')]
+    for (const r of rows) {
+      lines.push(
+        [
+          r.bookingRef,
+          formatAwb(r.awbNumber),
+          esc(r.shipperName),
+          esc(r.consigneeName),
+          r.flightNumber,
+          r.flightServiceDate instanceof Date ? r.flightServiceDate.toISOString().slice(0, 10) : String(r.flightServiceDate),
+          esc(r.commodityTypeName),
+          String(r.pieces),
+          r.quotedChargeableKg.toFixed(1),
+          r.quotedCharge.toFixed(2),
+          r.currency,
+          r.status,
+          r.bookedAt instanceof Date ? r.bookedAt.toISOString() : String(r.bookedAt),
+        ].join(','),
+      )
+    }
+    return lines.join('\n')
+  }
+
   manifestToCsv(manifest: Awaited<ReturnType<CargoDeskService['getFlightManifest']>>): string {
     const header = ['AWB', 'Shipper', 'Consignee', 'Commodity', 'Class', 'Pieces', 'Declared kg', 'Measured kg', 'Status']
     const esc = (v: string) => (v.includes(',') || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v)
@@ -780,7 +840,7 @@ export class CargoDeskService {
     for (const r of manifest.rows) {
       lines.push(
         [
-          r.awbNumber ?? '',
+          formatAwb(r.awbNumber),
           esc(r.shipperName),
           esc(r.consigneeName),
           esc(r.commodityTypeName),
@@ -820,7 +880,7 @@ export class CargoDeskService {
         return s === 'loaded' || s === 'in_transit'
       })
       .reduce((sum, b) => {
-        const mw = b.cargo_shipment_event[0]?.measured_weight_kg
+        const mw = b.cargo_shipment_event.find((e) => e.measured_weight_kg != null)?.measured_weight_kg
         return sum + (mw ? Number(mw) : Number(b.declared_weight_kg))
       }, 0)
   }

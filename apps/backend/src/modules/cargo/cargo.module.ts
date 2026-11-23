@@ -5,6 +5,8 @@ import { CargoSettingsController } from './cargo-settings.controller'
 import { CargoSettingsService } from './cargo-settings.service'
 import { CargoEventsService } from './cargo-events.service'
 import { CargoBookingService } from './cargo-booking.service'
+import { CargoJobsRunner } from './cargo-jobs.runner'
+import { CargoOperationsService } from './cargo-operations.service'
 import { CargoDeskController } from './cargo-desk.controller'
 import { CargoDeskService } from './cargo-desk.service'
 import { CargoClaimsController } from './cargo-claims.controller'
@@ -29,6 +31,8 @@ const devControllers = process.env.NODE_ENV !== 'production' ? [CargoTestToolsCo
     CargoService,
     CargoSettingsService,
     CargoEventsService,
+    CargoOperationsService,
+    CargoJobsRunner,
     CargoBookingService,
     CargoDeskService,
     CargoClaimsService,
