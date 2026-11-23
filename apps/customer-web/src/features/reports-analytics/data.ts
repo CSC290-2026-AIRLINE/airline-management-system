@@ -97,11 +97,23 @@ export const PERIOD_SUMMARY: Record<ReportPeriod, string> = {
   '12months': 'Last 12 months',
 }
 
-/** The tabs under the page title. Only the overview is part of this screen. */
+/** The tabs under the page title, with the line each screen explains itself with. */
 export const TABS = [
-  { id: 'overview', label: 'Overview Dashboard' },
-  { id: 'history', label: 'Session History' },
-  { id: 'qa', label: 'All Q&A Logs' },
+  {
+    id: 'overview',
+    label: 'Overview Dashboard',
+    description: 'See how passengers use the airport robot: sessions per day, questions asked, and how the robot answered them.',
+  },
+  {
+    id: 'history',
+    label: 'Session History',
+    description: 'Every robot session, newest first. Check when passengers used the robot and how long each conversation lasted.',
+  },
+  {
+    id: 'qa',
+    label: 'All Q&A Logs',
+    description: 'Every question passengers asked and what the robot answered, so you can check the answers are correct.',
+  },
 ] as const
 
 export type TabId = (typeof TABS)[number]['id']

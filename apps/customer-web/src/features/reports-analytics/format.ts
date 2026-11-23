@@ -42,13 +42,10 @@ export function formatDecimal(value: number): string {
   return oneDecimalFormat.format(value)
 }
 
-/** `192` -> "3m 12s", `245` -> "4m 05s". `null` -> the em dash the design uses for missing values. */
+/** `192` -> "3m 12s", `245` -> "4m 05s", `52` -> "0m 52s". `null` -> the em dash the design uses for missing values. */
 export function formatDuration(seconds: number | null): string {
   if (seconds === null) {
     return '—'
-  }
-  if (seconds < 60) {
-    return `${countFormat.format(seconds)}s`
   }
   const minutes = Math.floor(seconds / 60)
   const rest = seconds % 60

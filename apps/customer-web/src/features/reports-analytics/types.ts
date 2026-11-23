@@ -68,6 +68,58 @@ export interface ReportSessionPage {
   /** Total sessions matching the query, not just the returned page. */
   total: number
   items: ReportSession[]
+  /** Cursor for the next page, or `null` when this is the last one. */
+  next_cursor: string | null
+}
+
+/** Filters for the Session History screen. */
+export interface ReportSessionQuery {
+  /** Free text matched against the session id. */
+  search?: string
+  /** Reporting window. */
+  period?: ReportPeriod
+  /** `completed`, `in_progress`, or nothing for both. */
+  status?: ReportSessionStatus
+  /** Cursor of the page to read. `null` for the first page. */
+  cursor?: string | null
+  /** How many rows a page holds. */
+  limit?: number
+}
+
+/** One question and the robot's answer to it. */
+export interface QaLogEntry {
+  /** Display number of the session the question was asked in. */
+  session_no: number
+  /** Position of the question inside its session, e.g. `"Q2"`. */
+  order: string
+  question: string
+  /** The robot's answer. Empty when the question went unanswered. */
+  answer: string | null
+  answered: boolean
+}
+
+export interface QaLogPage {
+  /** Total questions matching the query, not just the returned page. */
+  total: number
+  /** How many of the matching questions have no recorded answer. */
+  unanswered: number
+  items: QaLogEntry[]
+  /** Cursor for the next page, or `null` when this is the last one. */
+  next_cursor: string | null
+}
+
+/** Filters for the All Q&A Logs screen. */
+export interface QaLogQuery {
+  /** Free text matched against the question and the answer. */
+  search?: string
+  /** Restrict to one session, by its display number. */
+  session_no?: number | null
+  /** `all`, `answered` or `unanswered`. */
+  answer?: 'all' | 'answered' | 'unanswered'
+  /** Cursor of the page to read. `null` for the first page. */
+  cursor?: string | null
+  /** How many rows a page holds. */
+  limit?: number
 }
 
 export type ChatRole = 'passenger' | 'robot'

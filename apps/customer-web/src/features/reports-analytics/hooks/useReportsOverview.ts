@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useGetReportOverview, useListReportSessions } from '../api/reports'
 import { fixtureOverview, fixtureSessions } from '../fixtures'
 import type { ReportOverview, ReportPeriod, ReportSession } from '../types'
+import type { DataSource } from './dataSource'
 
-/** Where the numbers on screen came from. `fixture` means the backend was unreachable and we fell back. */
-export type DataSource = 'api' | 'fixture'
+export type { DataSource }
 
 export interface ReportsOverviewState {
   loading: boolean
@@ -48,7 +48,7 @@ export function useReportsOverview(period: ReportPeriod): ReportsOverviewState {
     ;(async () => {
       setState((prev) => ({ ...prev, loading: true, error: null }))
       try {
-        const [overview, page] = await Promise.all([getReportOverview(period), listReportSessions(7)])
+        const [overview, page] = await Promise.all([getReportOverview(period), listReportSessions({ limit: 7 })])
         if (cancelled) return
         setState({
           loading: false,
