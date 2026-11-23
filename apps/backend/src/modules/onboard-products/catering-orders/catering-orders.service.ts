@@ -212,9 +212,10 @@ export class CateringOrdersService {
     return this.generate(flightId, staffId)
   }
 
-  // The generation core, shared by the scheduled job (staffId null)
-  // and the staff refresh (staffId set). It is idempotent: the lines
-  // are replaced, so calling it twice leaves the same order.
+  // The generation core, shared by the scheduled job (staffId null,
+  // first generation only) and the staff refresh (staffId set). The
+  // lines are replaced; stock already transferred for the flight counts
+  // as covered, so a refresh after the transfer does not turn it short.
   async generate(flightId: string, staffId: string | null): Promise<CateringOrderDto> {
     const flight = await this.db.flight.findUnique({ where: { id: flightId } })
     if (!flight) throw new ApiErrorException('NOT_FOUND', 'Flight not found.', 404)
@@ -447,13 +448,23 @@ export class CateringOrdersService {
       addLine(cabin, productId, required, 'default')
     }
 
-    // The shortfall against what the warehouse can actually give.
+    // The shortfall against what the warehouse can still give plus what
+    // is already on the aircraft for this flight. Counting the transfers
+    // keeps a refresh after the transfer from reporting a false
+    // shortage. The stock is pooled per product, so two lines of the
+    // same product cannot both claim the same units.
     const stockRows = await this.db.warehouse_stock.findMany({ where: { warehouse_id: warehouseId } })
-    const available = new Map(stockRows.map((s) => [s.product_id, s.quantity_on_hand - s.quantity_reserved]))
-    return [...byKey.values()].map((line) => ({
-      ...line,
-      quantityShort: Math.max(0, line.quantityRequired - (available.get(line.productId) ?? 0)),
-    }))
+    const transferred = await this.db.stock_transfer_line.findMany({
+      where: { stock_transfer: { flight_id: flightId } },
+      select: { product_id: true, quantity: true },
+    })
+    const pool = new Map(stockRows.map((s) => [s.product_id, Math.max(0, s.quantity_on_hand - s.quantity_reserved)]))
+    for (const t of transferred) pool.set(t.product_id, (pool.get(t.product_id) ?? 0) + t.quantity)
+    return [...byKey.values()].map((line) => {
+      const left = pool.get(line.productId) ?? 0
+      pool.set(line.productId, Math.max(0, left - line.quantityRequired))
+      return { ...line, quantityShort: Math.max(0, line.quantityRequired - left) }
+    })
   }
 
   // The default meal product per cabin, at the most specific level

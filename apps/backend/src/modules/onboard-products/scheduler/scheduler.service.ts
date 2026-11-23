@@ -3,9 +3,8 @@
 // Every tick it does three things:
 //   1. generates the catering order of every flight whose cutoff has
 //      passed (the cutoff is the scheduled departure minus the
-//      shortest cabin order window), and refreshes the orders it
-//      generated before, so the quantities stay in step with the
-//      stock;
+//      shortest cabin order window). Each order is generated once;
+//      staff re-count it with the refresh endpoint;
 //   2. expires the customer orders that were not paid in time and
 //      gives their reserved stock back;
 //   3. writes off the batches that expired.
@@ -77,7 +76,9 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   }
 
   // Generates the catering order of every flight that is past its
-  // cutoff, and refreshes the ones that were generated before.
+  // cutoff. An order is written once: re-counting an existing order is
+  // the staff refresh, so the job never rewrites lines that stock has
+  // already moved against.
   private async generateCateringOrders(): Promise<number> {
     const now = this.clock.now()
     const flights = await this.db.flight.findMany({
@@ -97,12 +98,9 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
         if (now.getTime() < cutoff.getTime()) continue
         const existing = await this.db.catering_order.findUnique({
           where: { flight_id: flight.id },
-          select: { status: true },
+          select: { id: true },
         })
-        // A loaded or closed order is never touched.
-        if (existing && (existing.status === 'loaded' || existing.status === 'closed' || existing.status === 'void')) {
-          continue
-        }
+        if (existing) continue
         await this.cateringOrders.generate(flight.id, null)
         generated += 1
       } catch (err) {
