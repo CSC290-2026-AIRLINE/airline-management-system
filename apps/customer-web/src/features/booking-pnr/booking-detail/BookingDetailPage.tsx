@@ -19,9 +19,6 @@ import {
   CHECK_IN_DISABLED,
   COMPLAINT_DISABLED,
   LOST_BAG_DISABLED,
-  MEALS_DISABLED,
-  orderingLabel,
-  orderingWindow,
   partyLabel,
 } from './booking-detail-model'
 import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
@@ -30,6 +27,7 @@ import { Button } from '@customer-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@customer-web/components/ui/card'
 import { MessageCard, PageShell } from '../components/PageShell'
 import { BookingSeatChangesPanel } from '../seats/BookingSeatChangesPanel'
+import { ExtraServicesPanel } from '@customer-web/features/onboard-products/ExtraServicesPanel'
 import { BookingAssistancePanel } from '../assistance/BookingAssistancePanel'
 
 // How long the page waits before it asks the server again whether the hold is over. The expiry sweep runs every
@@ -96,7 +94,6 @@ function BookingDetailView({ booking, onReload }: { booking: BookingDetail; onRe
 
   const status: BookingStatus = booking.status === 'held' && holdOver ? 'expired' : booking.status
   const chip = bookingChip(booking, status)
-  const ordering = orderingWindow(booking)
   const cancellable = status === 'confirmed' || status === 'held'
 
   function handleCancelled(result: CancelBookingResult) {
@@ -225,23 +222,7 @@ function BookingDetailView({ booking, onReload }: { booking: BookingDetail; onRe
           <PassengersCard booking={booking} />
 
           {/* Feature 12 sells meals for confirmed bookings only. */}
-          {status === 'confirmed' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Meals &amp; Onboard Shop</CardTitle>
-                <CardDescription>Add meals, snacks and duty-free to this booking.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <FeatureAction label="Browse onboard shop" reason={MEALS_DISABLED} />
-                <div className="flex flex-wrap gap-2">
-                  <FeatureAction label="Pre-order meals" reason={MEALS_DISABLED} variant="outline" size="sm" />
-                  <FeatureAction label="Snacks and drinks" reason={MEALS_DISABLED} variant="outline" size="sm" />
-                  <FeatureAction label="Duty-free" reason={MEALS_DISABLED} variant="outline" size="sm" />
-                </div>
-                <p className={`text-sm ${ordering.open ? 'text-ok' : 'text-muted-foreground'}`}>{orderingLabel(ordering)}</p>
-              </CardContent>
-            </Card>
-          )}
+          {status === 'confirmed' && <ExtraServicesPanel booking={booking} />}
         </div>
 
         <PaymentCard booking={booking} />

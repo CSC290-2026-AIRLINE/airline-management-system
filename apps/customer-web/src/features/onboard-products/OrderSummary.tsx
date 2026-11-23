@@ -3,7 +3,9 @@
 // subtitle and a running grand total. The CTA text embeds the total
 // so the customer knows the amount before they click.
 
-import { Button } from '../../components/ui/button'
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
+import { Button } from '@customer-web/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@customer-web/components/ui/card'
 import type { Cart, CartLine, PassengerRef, ProductCategory } from './types'
 import { formatMoney } from './format'
 
@@ -85,27 +87,22 @@ export function OrderSummary(props: Props) {
       : 'Place order'
 
   return (
-    <aside
-      className="bg-card border border-border rounded-2xl p-5 shadow-[0_12px_32px_rgba(15,26,51,0.08)] mt-4 overflow-hidden"
-      aria-labelledby="f12-order-summary-heading"
-    >
-      <h3 id="f12-order-summary-heading" className="font-semibold text-foreground text-base m-0 mb-1 tracking-[-0.1px]">
-        Your order
-      </h3>
-      <p className="m-0 mb-4 text-muted-foreground text-sm leading-relaxed">
-        {props.flightNumber} · {props.flightOriginCode} to {props.flightDestinationCode}
-      </p>
+    <Card className="gap-4" aria-labelledby="f12-order-summary-heading">
+      <CardHeader>
+        <CardTitle id="f12-order-summary-heading">Your order</CardTitle>
+        <CardDescription>
+          {props.flightNumber} · {props.flightOriginCode} to {props.flightDestinationCode}
+        </CardDescription>
+      </CardHeader>
 
       {isEmpty ? (
-        <p className="my-2 text-muted-foreground text-sm leading-relaxed">
-          Nothing selected yet. Choose meals, or add snacks, drinks and duty-free.
-        </p>
+        <p className="m-0 px-6 text-sm text-muted-foreground">Nothing selected yet. Choose meals, or add snacks, drinks and duty-free.</p>
       ) : (
         <ul className="list-none m-0 p-0 flex flex-col">
           {lines.map((line, idx) => (
             <li
               key={`${line.category}-${line.productName}-${idx}`}
-              className="flex items-start justify-between gap-3 px-6 py-2.5 border-t border-[#e8edf3] text-sm font-sans"
+              className="flex items-start justify-between gap-3 px-6 py-2.5 border-t text-sm"
             >
               <div className="flex flex-col min-w-0">
                 <span className="text-foreground font-medium">{line.productName}</span>
@@ -119,111 +116,91 @@ export function OrderSummary(props: Props) {
         </ul>
       )}
 
-      <div className="flex items-center justify-between gap-3 px-6 py-3.5 bg-[#eef2f7] text-foreground font-sans">
-        <span className="font-semibold text-base">Total</span>
-        <span className="font-medium text-xl text-foreground font-mono tabular-nums">{formatMoney(total, props.currency)}</span>
+      <div className="flex items-center justify-between gap-3 bg-muted px-6 py-3.5">
+        <span className="text-base font-semibold">Total</span>
+        <span className="text-xl font-medium tabular-nums">{formatMoney(total, props.currency)}</span>
       </div>
 
       {props.alert && (
-        <p
-          className="mt-3 px-3 py-2.5 bg-[#fffaeb] border border-[#fedf89] rounded-lg text-[#b54708] text-[13px] leading-[1.45]"
-          role="alert"
-        >
-          {props.alert}
-        </p>
+        <div className="px-6">
+          <Alert role="alert" className="border-amber-200 bg-amber-50 text-amber-800">
+            <AlertDescription className="col-start-2 text-amber-800">{props.alert}</AlertDescription>
+          </Alert>
+        </div>
       )}
 
-      {props.orderConfirmed ? (
-        <div className="flex flex-col gap-3 px-6 py-4">
-          <p
-            className="m-0 px-3 py-2.5 bg-[#e0faeb] border border-[#b7ebcb] rounded-lg text-[#087338] text-sm leading-[1.45]"
-            role="status"
-          >
-            <strong>{props.confirmedOrderId ? `Order ${props.confirmedOrderId} confirmed.` : 'Order confirmed.'}</strong> Your items are
-            loaded for the flight.
-          </p>
-          <Button
-            type="button"
-            variant="secondary"
-            size="block"
-            onClick={props.onViewInBooking}
-            className="bg-white text-primary border-primary hover:bg-[#f5f5f7] h-10 w-full gap-1.5 px-[22px] text-sm font-semibold rounded-lg"
-          >
-            View it in your booking details
-          </Button>
-          <Button
-            type="button"
-            variant="tertiary"
-            size="block"
-            onClick={props.onOrderMore}
-            className="bg-white text-foreground border-border hover:bg-[#f5f5f7] h-10 w-full gap-1.5 px-[22px] text-sm font-semibold rounded-lg"
-          >
-            Order more
-          </Button>
-        </div>
-      ) : props.paymentFailed ? (
-        <div className="flex flex-col gap-3 px-6 py-4">
-          <p className="m-0 px-3 py-2.5 bg-[#fff3f2] border border-[#fdb5b0] rounded-lg text-[#b42318] text-sm leading-[1.45]" role="alert">
-            <strong className="font-mono font-medium">PAYMENT_FAILED</strong> F5 could not take the payment. The stock reserved for you was
-            released.
-          </p>
-          <Button
-            type="button"
-            variant="secondary"
-            size="block"
-            onClick={props.onBackToOrder}
-            className="bg-white text-primary border-primary hover:bg-[#f5f5f7] h-10 w-full gap-1.5 px-[22px] text-sm font-semibold rounded-lg"
-          >
-            Back to your order
-          </Button>
-        </div>
-      ) : props.pendingOrderId ? (
-        <div className="flex flex-col gap-3 px-6 py-4">
-          <p
-            className="m-0 px-3 py-2.5 bg-[#fff4db] border border-[#f2d49b] rounded-lg text-[#8a5300] text-sm leading-[1.45]"
-            role="status"
-          >
-            <strong className="font-semibold">Waiting for F5 payment.</strong> Your stock is reserved.
-          </p>
-          <p className="m-0 text-muted-foreground text-xs leading-relaxed">Demo: choose what F5 reports back.</p>
-          <Button
-            type="button"
-            variant="primary"
-            size="block"
-            onClick={props.onF5ReportsPaid}
-            disabled={props.isResolvingF5}
-            className="h-10 w-full gap-1.5 px-[22px] text-sm font-semibold rounded-lg"
-          >
-            F5 reports: paid
-          </Button>
-          <Button
-            type="button"
-            variant="ghost-danger"
-            size="block"
-            onClick={props.onF5ReportsFailed}
-            disabled={props.isResolvingF5}
-            className="h-10 w-full gap-1.5 px-[22px] text-sm font-semibold rounded-lg"
-          >
-            F5 reports: failed
-          </Button>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3 px-6 py-4">
-          <Button
-            type="button"
-            variant="primary"
-            size="block"
-            disabled={!props.canPlaceOrder || props.isPlacingOrder || isEmpty}
-            onClick={props.onPlaceOrder}
-            className="h-10 w-full gap-1.5 px-[22px] text-sm font-semibold rounded-lg"
-          >
-            {ctaLabel}
-          </Button>
-          <p className="m-0 text-muted-foreground text-xs leading-relaxed">
-            Stock is reserved when you place the order and released if payment fails. A total of {formatMoney(0, props.currency)} skips F5.
-          </p>
-        </div>
-      )}
-    </aside>
+      <CardContent className="flex flex-col gap-3">
+        {props.orderConfirmed ? (
+          <>
+            <Alert role="status" className="border-green-200 bg-green-50 text-green-800">
+              <AlertDescription className="col-start-2 text-green-800">
+                <span>
+                  <strong>{props.confirmedOrderId ? `Order ${props.confirmedOrderId} confirmed.` : 'Order confirmed.'}</strong> Your items
+                  are loaded for the flight.
+                </span>
+              </AlertDescription>
+            </Alert>
+            <Button type="button" variant="outline" onClick={props.onViewInBooking} className="w-full">
+              View it in your booking details
+            </Button>
+            <Button type="button" variant="ghost" onClick={props.onOrderMore} className="w-full">
+              Order more
+            </Button>
+          </>
+        ) : props.paymentFailed ? (
+          <>
+            <Alert variant="destructive" role="alert">
+              <AlertDescription className="col-start-2">
+                <span>
+                  <strong className="font-semibold">Payment failed.</strong> F5 could not take the payment. The stock reserved for you was
+                  released.
+                </span>
+              </AlertDescription>
+            </Alert>
+            <Button type="button" variant="outline" onClick={props.onBackToOrder} className="w-full">
+              Back to your order
+            </Button>
+          </>
+        ) : props.pendingOrderId ? (
+          <>
+            <Alert role="status" className="border-amber-200 bg-amber-50 text-amber-800">
+              <AlertDescription className="col-start-2 text-amber-800">
+                <span>
+                  <strong className="font-semibold">Waiting for F5 payment.</strong> Your stock is reserved.
+                </span>
+              </AlertDescription>
+            </Alert>
+            <p className="m-0 text-xs text-muted-foreground">Demo: choose what F5 reports back.</p>
+            <Button type="button" onClick={props.onF5ReportsPaid} disabled={props.isResolvingF5} className="w-full">
+              F5 reports: paid
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={props.onF5ReportsFailed}
+              disabled={props.isResolvingF5}
+              className="w-full border-destructive text-destructive hover:bg-destructive/10"
+            >
+              F5 reports: failed
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              type="button"
+              disabled={!props.canPlaceOrder || props.isPlacingOrder || isEmpty}
+              onClick={props.onPlaceOrder}
+              className="w-full"
+            >
+              {ctaLabel}
+            </Button>
+            <p className="m-0 text-xs text-muted-foreground">
+              Stock is reserved when you place the order and released if payment fails. A total of {formatMoney(0, props.currency)} skips
+              F5.
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }

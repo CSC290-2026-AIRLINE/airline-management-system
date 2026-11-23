@@ -2,12 +2,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import { AddExtraServicesPage } from '../../features/onboard-products/AddExtraServicesPage'
 import type { Props as AddExtraServicesPageProps } from '../../features/onboard-products/AddExtraServicesPage'
 
-export const Route = createFileRoute('/_authenticated/bookings/$bookingId_/shop')({
-  component: BookingsBookingIdShopRoute,
+export const Route = createFileRoute('/_authenticated/bookings/$reference_/shop')({
+  component: BookingsReferenceShopRoute,
 })
 
-function BookingsBookingIdShopRoute() {
-  const { bookingId } = Route.useParams()
+function BookingsReferenceShopRoute() {
+  const { reference } = Route.useParams()
   // Dev-only "Order ready" presets. Visit
   //   `/bookings/:id/shop?cart=snacks`                 → Page 3 (snacks, $13)
   //   `/bookings/:id/shop?cart=duty-free`              → Page 4 (duty-free, $62)
@@ -23,7 +23,7 @@ function BookingsBookingIdShopRoute() {
   //   `/bookings/:id/shop?preset=confirmed`            → legacy: equivalent to ?cart=empty&f5=confirmed (Page 7)
   // The page itself reads these via `window.location.search` so the
   // type stays loose (TanStack Router's typed search params would
-  // force every `<Link to="/bookings/$bookingId/shop">` to pass a
+  // force every `<Link to="/bookings/$reference/shop">` to pass a
   // `search` prop).
   const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   // `?preset` is the legacy single-string alias; `?cart` is the new
@@ -51,5 +51,5 @@ function BookingsBookingIdShopRoute() {
   const f5: AddExtraServicesPageProps['f5'] =
     pair?.f5 ?? (f5Raw === 'pending' || f5Raw === 'failed' || f5Raw === 'confirmed' ? f5Raw : 'none')
 
-  return <AddExtraServicesPage bookingId={bookingId} cart={cart} f5={f5} />
+  return <AddExtraServicesPage reference={reference} cart={cart} f5={f5} />
 }

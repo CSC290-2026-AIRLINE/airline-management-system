@@ -19,13 +19,17 @@
 // snacks / drinks / duty-free use a table with a quantity stepper.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { ArrowLeft } from 'lucide-react'
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
+import { Button } from '@customer-web/components/ui/button'
+import { Card, CardDescription, CardHeader, CardTitle } from '@customer-web/components/ui/card'
+import { Skeleton } from '@customer-web/components/ui/skeleton'
 import { useAppAuth } from '../../auth/AuthProvider'
-import { cancelProductOrder, confirmOrderDev, fetchBooking, fetchCabinSetting, fetchCatalog, placeOrder } from './api'
+import { fetchBooking, fetchShop, placeOrder, reportPayment } from './api'
 import { CabinInfoStrip } from './CabinInfoStrip'
 import { CategoryTabs } from './CategoryTabs'
 import { CountdownBanner } from './CountdownBanner'
-import { CustomerNav } from './CustomerNav'
 import { FlightSwitcher } from './FlightSwitcher'
 import { OrderSummary } from './OrderSummary'
 import { PassengerPicker } from './PassengerPicker'
@@ -34,7 +38,8 @@ import { defaultCutoffFor } from './format'
 import type { Booking, CabinSetting, Cart, CartLine, PlaceOrderPayload, Product } from './types'
 
 export interface Props {
-  bookingId: string
+  // The booking reference (F3b's public id), e.g. FLY7K2.
+  reference: string
   cart?: 'snacks' | 'duty-free' | 'empty' | 'none' | undefined
   f5?: 'pending' | 'failed' | 'confirmed' | 'none' | undefined
 }
@@ -139,7 +144,7 @@ function tabFor(cart: NonNullable<Props['cart']>): Tab {
   return 'meals'
 }
 
-export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset }: Props) {
+export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset }: Props) {
   const { fetchWithAuth, isLoading: isAuthLoading } = useAppAuth()
   const navigate = useNavigate()
 
@@ -162,7 +167,7 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
   useEffect(() => {
     if (isAuthLoading) return
     let cancelled = false
-    fetchBooking(bookingId, fetchWithAuth)
+    fetchBooking(reference, fetchWithAuth)
       .then((b) => {
         if (cancelled) return
         setBookingState({ kind: 'ready', booking: b })
@@ -179,13 +184,16 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
     return () => {
       cancelled = true
     }
-  }, [bookingId, fetchWithAuth, isAuthLoading])
+  }, [reference, fetchWithAuth, isAuthLoading])
 
+  const readyBooking = bookingState.kind === 'ready' ? bookingState.booking : null
   useEffect(() => {
-    if (!selectedFlightId) return
+    if (!selectedFlightId || !readyBooking) return
+    const flight = readyBooking.flights.find((f) => f.id === selectedFlightId)
+    if (!flight) return
     let cancelled = false
-    Promise.all([fetchCatalog(selectedFlightId, fetchWithAuth), fetchCabinSetting(selectedFlightId, fetchWithAuth)])
-      .then(([products, setting]) => {
+    fetchShop(readyBooking, selectedFlightId, flight.cabinClass, fetchWithAuth)
+      .then(({ products, setting }) => {
         if (cancelled) return
         setCatalogState({ kind: 'ready', flightId: selectedFlightId, products, setting })
       })
@@ -200,7 +208,7 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
     return () => {
       cancelled = true
     }
-  }, [selectedFlightId, fetchWithAuth])
+  }, [selectedFlightId, readyBooking, fetchWithAuth])
 
   useEffect(() => {
     if (!import.meta.env.DEV) return
@@ -363,17 +371,21 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
       }
     }
     if (lines.length === 0) {
-      await navigate({ to: '/bookings/$bookingId', params: { bookingId } })
+      await navigate({ to: '/bookings/$reference', params: { reference } })
       return
     }
 
     setIsPlacingOrder(true)
     setAlert(null)
     try {
-      const placed = await placeOrder({ bookingId: booking.id, flightId: selectedFlight.id, lines }, fetchWithAuth)
-      if (placed.totalAmount === 0) {
-        await confirmOrderDev(placed.id, fetchWithAuth)
-        await navigate({ to: '/bookings/$bookingId', params: { bookingId } })
+      const placed = await placeOrder(
+        { bookingId: booking.id, flightId: selectedFlight.id, cabin: selectedFlight.cabinClass, lines },
+        fetchWithAuth,
+        booking,
+      )
+      if (placed.status === 'confirmed') {
+        // Nothing to pay (a free order is confirmed by the server).
+        await navigate({ to: '/bookings/$reference', params: { reference } })
         return
       }
       setPendingOrderId(placed.id)
@@ -389,7 +401,7 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
     setIsResolvingF5(true)
     setAlert(null)
     try {
-      await confirmOrderDev(pendingOrderId, fetchWithAuth)
+      await reportPayment(pendingOrderId, 'paid', fetchWithAuth)
       setPendingOrderId(null)
       setOrderConfirmed(true)
       setConfirmedOrderId(pendingOrderId)
@@ -406,7 +418,7 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
     setIsResolvingF5(true)
     setAlert(null)
     try {
-      await cancelProductOrder(pendingOrderId, fetchWithAuth)
+      await reportPayment(pendingOrderId, 'failed', fetchWithAuth)
       setPendingOrderId(null)
       setPaymentFailed(true)
     } catch (e: unknown) {
@@ -431,7 +443,7 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
         // Best-effort: navigate without the notice stash and let the
         // booking page fall through to its unpreseted (no-notice) state.
       }
-      void navigate({ to: '/bookings/$bookingId', params: { bookingId } })
+      void navigate({ to: '/bookings/$reference', params: { reference } })
     }
   }
 
@@ -443,8 +455,7 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
 
   if (bookingState.kind === 'loading' || isAuthLoading) {
     return (
-      <div className="block w-full max-w-[1440px] mx-auto px-[45px] pt-6 pb-24 box-border text-left text-foreground font-sans">
-        <CustomerNav />
+      <div className="mx-auto w-full max-w-5xl px-4 pt-6 pb-24 text-left text-foreground md:pt-10">
         <p className="py-12 text-center text-muted-foreground">Loading…</p>
       </div>
     )
@@ -452,19 +463,17 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
 
   if (bookingState.kind === 'error') {
     return (
-      <div className="block w-full max-w-[1440px] mx-auto px-[45px] pt-6 pb-24 box-border text-left text-foreground font-sans">
-        <CustomerNav />
-        <p className="text-[#b42318] bg-[#fff3f2] border border-[#fdb5b0] rounded-lg px-4 py-3 my-4 text-sm leading-[1.45]" role="alert">
-          {bookingState.error}
-        </p>
+      <div className="mx-auto w-full max-w-5xl px-4 pt-6 pb-24 text-left text-foreground md:pt-10">
+        <Alert variant="destructive" role="alert">
+          <AlertDescription className="col-start-2">{bookingState.error}</AlertDescription>
+        </Alert>
       </div>
     )
   }
 
   if (!booking || !selectedFlight || !selectedPassengerId) {
     return (
-      <div className="block w-full max-w-[1440px] mx-auto px-[45px] pt-6 pb-24 box-border text-left text-foreground font-sans">
-        <CustomerNav />
+      <div className="mx-auto w-full max-w-5xl px-4 pt-6 pb-24 text-left text-foreground md:pt-10">
         <p className="py-12 text-center text-muted-foreground">No booking to show.</p>
       </div>
     )
@@ -473,68 +482,61 @@ export function AddExtraServicesPage({ bookingId, cart: cartPreset, f5: f5Preset
   const selectedPassenger = booking.passengers.find((p) => p.id === selectedPassengerId) ?? null
 
   return (
-    <div className="block w-full max-w-[1440px] mx-auto px-[45px] pt-6 pb-24 box-border text-left text-foreground font-sans flex flex-col gap-6">
-      <CustomerNav />
-      <a
-        href={`/bookings/${booking.id}`}
-        className="inline-flex items-center gap-1 bg-white border border-border rounded-lg px-4 py-2.5 text-foreground text-sm font-semibold font-sans no-underline leading-tight self-start hover:bg-[#f8fafc] focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
-        onClick={(e) => {
-          e.preventDefault()
-          void navigate({ to: '/bookings/$bookingId', params: { bookingId: booking.id } })
-        }}
-      >
-        <span>← Back to booking </span>
-        <span className="font-mono">{booking.reference}</span>
-      </a>
+    <div className="mx-auto w-full max-w-5xl px-4 pt-6 pb-24 text-left text-foreground md:pt-10 flex flex-col gap-6">
+      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start text-muted-foreground">
+        <Link to="/bookings/$reference" params={{ reference: booking.reference }}>
+          <ArrowLeft aria-hidden="true" />
+          Back to booking {booking.reference}
+        </Link>
+      </Button>
 
       <FlightSwitcher flights={booking.flights} selectedId={selectedFlight.id} onSelect={handleFlightSwitch} />
 
       <CountdownBanner cutoffAt={cutoffAt} isOpen={isOpen} />
 
-      {catalog.kind === 'ready' && catalog.setting ? (
-        <CabinInfoStrip setting={catalog.setting} />
-      ) : (
-        <p className="text-muted-foreground text-sm leading-relaxed max-w-[720px] mt-3">Loading cabin policy…</p>
-      )}
+      {catalog.kind === 'ready' && catalog.setting ? <CabinInfoStrip setting={catalog.setting} /> : <Skeleton className="h-12 w-full" />}
 
-      <div className="grid gap-6 items-start mt-0" style={{ gridTemplateColumns: 'minmax(0, 776px) 400px' }}>
-        <div className="min-w-0 flex flex-col gap-5">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="flex min-w-0 flex-col gap-6">
           <PassengerPicker passengers={booking.passengers} cart={cart} selectedId={selectedPassengerId} onSelect={handlePassengerSelect} />
 
           <CategoryTabs active={activeTab} onSelect={setActiveTab} />
 
-          <div className="bg-card border border-border rounded-2xl p-5 shadow-[0_12px_32px_rgba(15,26,51,0.08)] mt-0 overflow-hidden">
-            <h3 className="font-sans font-semibold text-foreground text-base m-0 mb-1 tracking-[-0.1px]">
-              {tabLabel(activeTab)} for {selectedPassenger?.firstName ?? ''}
-            </h3>
-            <p className="m-0 mb-3 text-muted-foreground text-sm leading-relaxed">{tabSubtitle(activeTab)}</p>
+          <Card className="gap-4 overflow-hidden pb-0">
+            <CardHeader>
+              <CardTitle>
+                {tabLabel(activeTab)} for {selectedPassenger?.firstName ?? ''}
+              </CardTitle>
+              <CardDescription>{tabSubtitle(activeTab)}</CardDescription>
+            </CardHeader>
 
             {catalog.kind === 'loading' ? (
-              <p className="my-2 text-muted-foreground text-sm">Loading products…</p>
+              <div className="space-y-2 px-6">
+                <Skeleton className="h-14 w-full" />
+                <Skeleton className="h-14 w-full" />
+              </div>
             ) : catalog.kind === 'error' ? (
-              <p
-                className="text-[#b42318] bg-[#fff3f2] border border-[#fdb5b0] rounded-lg px-4 py-3 my-4 text-sm leading-[1.45]"
-                role="alert"
-              >
-                {catalog.error}
-              </p>
+              <div className="px-6">
+                <Alert variant="destructive" role="alert">
+                  <AlertDescription className="col-start-2">{catalog.error}</AlertDescription>
+                </Alert>
+              </div>
             ) : (
               <ProductList
                 products={products}
                 selectedMealProductId={selectedMealProductId}
                 quantities={quantities}
                 currency="USD"
-                passengerFirstName={selectedPassenger?.firstName ?? ''}
                 onSelectMeal={handleSelectMeal}
                 onAddOne={handleAddOne}
                 onRemoveOne={handleRemoveOne}
                 disabled={pendingOrderId !== null || paymentFailed || orderConfirmed}
               />
             )}
-          </div>
+          </Card>
         </div>
 
-        <div className="min-w-0 sticky top-4">
+        <div className="min-w-0 lg:sticky lg:top-16">
           <OrderSummary
             flightNumber={selectedFlight.flightNumber}
             flightOriginCode={selectedFlight.origin.code}

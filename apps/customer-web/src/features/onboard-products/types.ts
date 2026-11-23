@@ -19,7 +19,7 @@ export type ProductOrderStatus = 'pending_payment' | 'confirmed' | 'cancelled' |
 
 export type PriceBasis = 'standard' | 'tier_benefit' | 'included'
 
-export type CabinClass = 'economy' | 'business' | 'first'
+export type CabinClass = 'economy' | 'premium_economy' | 'business' | 'first'
 
 export type BookingStatus = 'confirmed' | 'cancelled' | 'completed'
 
@@ -201,6 +201,7 @@ export type CategoryTab = 'meals' | 'snacks' | 'duty-free'
 export interface PlaceOrderPayload {
   bookingId: string
   flightId: string
+  cabin: CabinClass
   // Already-priced lines (priceBasis + unitPrice resolved server-side).
   // The mock also accepts them from the client.
   lines: Array<{

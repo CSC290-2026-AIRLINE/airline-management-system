@@ -4,9 +4,9 @@
 // hook lives in apps/customer-web/src/auth/AuthProvider.tsx and already
 // handles the 401 → refresh dance.
 //
-// In development (`import.meta.env.DEV === true`) the calls are routed
-// to the in-memory mocks in `./api.dev`. The mock branch is dropped by
-// the bundler in production builds, so no mock data ships.
+// The calls go to the F12 backend. Set VITE_F12_MOCK=true in a dev build to
+// use the in-memory mocks in `./api.dev` instead (the mock branch is dropped
+// by the bundler in production builds, so no mock data ships).
 
 import {
   cancelProductOrderMock,
@@ -17,19 +17,25 @@ import {
   fetchProductOrdersForBookingMock,
   placeOrderMock,
 } from './api.dev'
+import type { BookingDetail } from '../booking-pnr/api/types'
+import { defaultCutoffFor } from './format'
 import {
   ApiError,
   type ApiErrorPayload,
   type Booking,
+  type CabinClass,
   type CabinSetting,
   type PlaceOrderPayload,
+  type PriceBasis,
   type Product,
+  type ProductCategory,
   type ProductOrder,
+  type ProductOrderStatus,
 } from './types'
 
 type FetchWithAuth = (path: string, init?: RequestInit) => Promise<Response>
 
-const USE_MOCK = import.meta.env.DEV
+const USE_MOCK = import.meta.env.DEV && import.meta.env.VITE_F12_MOCK === 'true'
 
 async function parseError(res: Response): Promise<ApiError> {
   let payload: ApiErrorPayload | null = null
@@ -43,119 +49,296 @@ async function parseError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, code, message, payload?.error?.details ?? null)
 }
 
-export async function fetchBooking(bookingId: string, fetchWithAuth: FetchWithAuth): Promise<Booking> {
+// --- Booking (Feature 3b) ---------------------------------------------
+
+// F12 reads the booking through F3b's own route and maps it to the shape the shop needs.
+export function toShopBooking(detail: BookingDetail): Booking {
+  const passengers = detail.passengers
+    .filter((p) => p.passengerType !== 'infant')
+    .map((p) => ({
+      id: p.bookingPassengerId,
+      firstName: p.firstName,
+      lastName: p.lastName,
+      type: p.passengerType,
+      isAccountHolder: p.passengerId === detail.accountHolderPassengerId,
+    }))
+  const segments = [...detail.segments].sort((a, b) => a.segmentOrder - b.segmentOrder)
+  const flights = segments.map((s) => ({
+    id: s.flightId,
+    flightNumber: s.flightNumber,
+    origin: { code: s.origin, city: s.origin },
+    destination: { code: s.destination, city: s.destination },
+    scheduledDeparture: s.depAt,
+    cabinClass: s.cabin as CabinClass,
+    seatNumbers: detail.coupons.filter((c) => c.bookingSegmentId === s.bookingSegmentId && c.seatCode).map((c) => c.seatCode as string),
+    cutoffAt: null,
+  }))
+  return {
+    id: detail.bookingId,
+    reference: detail.reference,
+    status: detail.status === 'confirmed' ? 'confirmed' : detail.status === 'cancelled' ? 'cancelled' : 'confirmed',
+    passengers,
+    flights,
+    totalPassengers: passengers.length,
+    tripType: detail.tripType === 'one_way' ? 'one_way' : 'round_trip',
+    routeSummary: segments.length > 0 ? `${segments[0].origin} to ${segments[segments.length - 1].destination}` : '',
+  }
+}
+
+export async function fetchBooking(reference: string, fetchWithAuth: FetchWithAuth): Promise<Booking> {
   if (USE_MOCK) {
     return fetchBookingMock()
   }
-  void bookingId
-  void fetchWithAuth
-  const res = await fetchWithAuth(`/api/bookings/${encodeURIComponent(bookingId)}`)
+  const res = await fetchWithAuth(`/api/bookings/${encodeURIComponent(reference)}`)
   if (!res.ok) {
     throw await parseError(res)
   }
-  return (await res.json()) as Booking
+  return toShopBooking((await res.json()) as BookingDetail)
+}
+
+// --- Orders -----------------------------------------------------------
+
+interface OrderLineWire {
+  id: string
+  productId: string
+  productName: string
+  category: ProductCategory
+  bookingPassengerId: string | null
+  quantity: number
+  unitPriceAmount: number
+  priceBasis: PriceBasis
+  lineTotal: number
+}
+
+interface OrderWire {
+  id: string
+  bookingId: string
+  flightId: string
+  flightNumber: string
+  status: ProductOrderStatus
+  totalAmount: number
+  currency: string
+  paidAt: string | null
+  cutoffAt: string
+  cancelledAt: string | null
+  createdAt: string
+  lines: OrderLineWire[]
+}
+
+function toOrder(wire: OrderWire, booking: Booking | null): ProductOrder {
+  const flight = booking?.flights.find((f) => f.id === wire.flightId)
+  return {
+    id: wire.id,
+    bookingId: wire.bookingId,
+    flightId: wire.flightId,
+    flightNumber: wire.flightNumber,
+    flightOriginCode: flight?.origin.code ?? '',
+    flightDestinationCode: flight?.destination.code ?? '',
+    placedAt: wire.createdAt,
+    changesAllowedUntil: wire.cutoffAt,
+    status: wire.status,
+    paidAt: wire.paidAt,
+    cancelledAt: wire.cancelledAt,
+    // F5 owns refunds; F12 does not track a refund request.
+    refundRequestedAt: null,
+    refundId: null,
+    totalAmount: wire.totalAmount,
+    currency: wire.currency,
+    lines: wire.lines.map((l) => ({
+      id: l.id,
+      productId: l.productId,
+      productName: l.productName,
+      category: l.category,
+      quantity: l.quantity,
+      unitPrice: l.unitPriceAmount,
+      priceBasis: l.priceBasis,
+      passengerId: l.bookingPassengerId,
+      fulfillmentNote: l.category === 'duty_free' ? 'Collect on board' : null,
+      lineTotal: l.lineTotal,
+    })),
+  }
 }
 
 export async function fetchProductOrdersForBooking(
-  bookingId: string,
+  booking: Booking,
   fetchWithAuth: FetchWithAuth,
   preset?: 'ready' | 'duty-free' | 'waiting' | 'failed' | 'confirmed' | 'cancel-po-2041' | 'refund-requested',
 ): Promise<ProductOrder[]> {
   if (USE_MOCK) {
     return fetchProductOrdersForBookingMock(preset)
   }
-  void bookingId
-  void fetchWithAuth
-  void preset
-  const res = await fetchWithAuth(`/api/product-orders?bookingId=${encodeURIComponent(bookingId)}`)
+  const res = await fetchWithAuth(`/api/product-orders?bookingId=${encodeURIComponent(booking.id)}`)
   if (!res.ok) {
     throw await parseError(res)
   }
-  // The endpoint may return either a bare array or `{ orders: [...] }`.
-  // Accept both to stay resilient to the eventual backend contract.
-  const data: unknown = await res.json()
-  if (Array.isArray(data)) {
-    return data as ProductOrder[]
-  }
-  if (data && typeof data === 'object' && 'orders' in data && Array.isArray((data as { orders: unknown }).orders)) {
-    return (data as { orders: ProductOrder[] }).orders
-  }
-  return []
+  return ((await res.json()) as OrderWire[]).map((o) => toOrder(o, booking))
 }
 
-export async function cancelProductOrder(orderId: string, fetchWithAuth: FetchWithAuth): Promise<ProductOrder> {
+export async function cancelProductOrder(
+  orderId: string,
+  fetchWithAuth: FetchWithAuth,
+  booking: Booking | null = null,
+): Promise<ProductOrder> {
   if (USE_MOCK) {
     return cancelProductOrderMock(orderId)
   }
-  void fetchWithAuth
-  const res = await fetchWithAuth(`/api/product-orders/${encodeURIComponent(orderId)}/cancel`, {
-    method: 'POST',
-  })
+  const res = await fetchWithAuth(`/api/product-orders/${encodeURIComponent(orderId)}`, { method: 'DELETE' })
   if (!res.ok) {
     throw await parseError(res)
   }
-  return (await res.json()) as ProductOrder
+  return toOrder((await res.json()) as OrderWire, booking)
 }
 
-// --- Page 2 endpoints -------------------------------------------------
+// --- Shop (catalog + cabin setting) ------------------------------------
 
-export async function fetchCatalog(flightId: string, fetchWithAuth: FetchWithAuth): Promise<Product[]> {
+interface CatalogWire {
+  cutoffAt: string
+  orderWindowOpen: boolean
+  settings: {
+    mealService: CabinSetting['mealService']
+    mealSelection: CabinSetting['mealSelection']
+    includedPerPassenger: number
+    preorderEnabled: boolean
+    orderWindowHours: number
+    premiumMealsAllowed: boolean
+    snacksEnabled: boolean
+    dutyFreeEnabled: boolean
+  }
+  products: Array<{
+    id: string
+    name: string
+    category: ProductCategory
+    typeCode: string
+    priceAmount: number
+    isPremium: boolean
+    imageKey: string | null
+    dietaryAttributes: string[]
+    availableQuantity: number
+    stockStatus: 'in_stock' | 'out_of_stock'
+  }>
+}
+
+const THUMB_COLOR: Record<ProductCategory, string> = {
+  meal: '#d3f9d8',
+  snack: '#ffe5d0',
+  beverage: '#dbeafe',
+  duty_free: '#ede9fe',
+}
+
+// The "no pre-order" choice: the passenger gets the cabin's default meal and no order line is created.
+const DEFAULT_MEAL: Product = {
+  id: 'default-meal',
+  category: 'meal',
+  typeCode: null,
+  name: 'Default meal',
+  description: 'No pre-order needed. You get the cabin default.',
+  unitPrice: 0,
+  isPremium: false,
+  thumbnailColor: THUMB_COLOR.meal,
+  imageUrl: '/products/default-meal.svg',
+  isDefaultChoice: true,
+}
+
+export interface ShopData {
+  products: Product[]
+  setting: CabinSetting
+  cutoffAt: string
+  orderWindowOpen: boolean
+}
+
+export async function fetchShop(booking: Booking, flightId: string, cabin: CabinClass, fetchWithAuth: FetchWithAuth): Promise<ShopData> {
   if (USE_MOCK) {
-    return fetchCatalogMock(flightId)
+    const [products, setting] = await Promise.all([fetchCatalogMock(flightId), fetchCabinSettingMock(flightId)])
+    const flight = booking.flights.find((f) => f.id === flightId)
+    return {
+      products,
+      setting,
+      cutoffAt: flight ? (flight.cutoffAt ?? defaultCutoffFor(flight.scheduledDeparture)) : '',
+      orderWindowOpen: true,
+    }
   }
-  void fetchWithAuth
-  const res = await fetchWithAuth(`/api/flights/${encodeURIComponent(flightId)}/catalog`)
+  const query = new URLSearchParams({ bookingId: booking.id, flightId, cabin })
+  const res = await fetchWithAuth(`/api/catalog?${query.toString()}`)
   if (!res.ok) {
     throw await parseError(res)
   }
-  const data: unknown = await res.json()
-  if (Array.isArray(data)) return data as Product[]
-  if (data && typeof data === 'object' && 'products' in data && Array.isArray((data as { products: unknown }).products)) {
-    return (data as { products: Product[] }).products
+  const wire = (await res.json()) as CatalogWire
+  const products: Product[] = wire.products
+    .filter((p) => p.stockStatus === 'in_stock' || p.category === 'meal')
+    .map((p) => ({
+      id: p.id,
+      category: p.category,
+      typeCode: p.typeCode === 'STD' ? null : p.typeCode,
+      name: p.name,
+      description: p.dietaryAttributes.map((d) => d.replace('_', ' ')).join(', '),
+      unitPrice: p.priceAmount,
+      isPremium: p.isPremium,
+      thumbnailColor: THUMB_COLOR[p.category],
+      imageUrl: p.imageKey && (p.imageKey.startsWith('/') || p.imageKey.startsWith('http')) ? p.imageKey : null,
+      isDefaultChoice: false,
+    }))
+  const hasMeals = products.some((p) => p.category === 'meal')
+  return {
+    products: hasMeals && wire.settings.mealService !== 'none' ? [DEFAULT_MEAL, ...products] : products,
+    setting: {
+      flightId,
+      cabin,
+      mealService: wire.settings.mealService,
+      mealSelection: wire.settings.mealSelection,
+      includedPerPassenger: wire.settings.includedPerPassenger === 1 ? 1 : 0,
+      preorderEnabled: wire.settings.preorderEnabled,
+      orderWindowHours: wire.settings.orderWindowHours,
+      premiumMealsAllowed: wire.settings.premiumMealsAllowed,
+      snacksEnabled: wire.settings.snacksEnabled,
+      dutyFreeEnabled: wire.settings.dutyFreeEnabled,
+    },
+    cutoffAt: wire.cutoffAt,
+    orderWindowOpen: wire.orderWindowOpen,
   }
-  return []
 }
 
-export async function fetchCabinSetting(flightId: string, fetchWithAuth: FetchWithAuth): Promise<CabinSetting> {
-  if (USE_MOCK) {
-    return fetchCabinSettingMock(flightId)
-  }
-  void fetchWithAuth
-  const res = await fetchWithAuth(`/api/flights/${encodeURIComponent(flightId)}/cabin-setting`)
-  if (!res.ok) {
-    throw await parseError(res)
-  }
-  return (await res.json()) as CabinSetting
-}
-
-// Creates a new product_order in `pending_payment` state. The server is
-// expected to reserve stock and return the order with the new id. The
-// caller is then responsible for either (a) hitting F5 to confirm, or
-// (b) calling `confirmOrder` for the $0 short-circuit.
-export async function placeOrder(payload: PlaceOrderPayload, fetchWithAuth: FetchWithAuth): Promise<ProductOrder> {
+// Creates the order as `pending_payment`, reserves the stock and starts the F5 payment. A total of 0 is confirmed at once.
+export async function placeOrder(
+  payload: PlaceOrderPayload,
+  fetchWithAuth: FetchWithAuth,
+  booking: Booking | null = null,
+): Promise<ProductOrder> {
   if (USE_MOCK) {
     return placeOrderMock(payload)
   }
-  void fetchWithAuth
   const res = await fetchWithAuth('/api/product-orders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      bookingId: payload.bookingId,
+      flightId: payload.flightId,
+      cabin: payload.cabin,
+      // The server prices the lines; the client sends only what was chosen.
+      lines: payload.lines.map((l) => ({
+        productId: l.productId,
+        quantity: l.quantity,
+        bookingPassengerId: l.category === 'meal' ? l.passengerId : null,
+      })),
+    }),
   })
   if (!res.ok) {
     throw await parseError(res)
   }
-  return (await res.json()) as ProductOrder
+  return toOrder((await res.json()) as OrderWire, booking)
 }
 
-// Dev-only: confirms a pending_payment order without going through F5.
-// In production this would be triggered by the F5 callback, not the
-// client, so this function is intentionally not exported from the
-// real-API branch.
-export async function confirmOrderDev(orderId: string, fetchWithAuth: FetchWithAuth): Promise<ProductOrder> {
+// Stands in for F5 until its payment screen exists: reports the payment of an order as paid or failed.
+export async function reportPayment(orderId: string, status: 'paid' | 'failed', fetchWithAuth: FetchWithAuth): Promise<void> {
   if (USE_MOCK) {
-    return confirmOrderMock(orderId)
+    if (status === 'paid') await confirmOrderMock(orderId)
+    return
   }
-  void fetchWithAuth
-  throw new ApiError(501, 'NOT_IMPLEMENTED', 'confirmOrder is a dev-only mock helper')
+  const res = await fetchWithAuth('/api/payment-events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderId, status }),
+  })
+  if (!res.ok) {
+    throw await parseError(res)
+  }
 }
