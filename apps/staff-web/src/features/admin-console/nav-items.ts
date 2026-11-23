@@ -9,6 +9,7 @@ import {
   CreditCard,
   DoorOpen,
   FileText,
+  GitCompareArrows,
   IdCard,
   KeyRound,
   ListChecks,
@@ -16,6 +17,7 @@ import {
   MessageSquare,
   Monitor,
   Package,
+  PackageSearch,
   Percent,
   Plane,
   PlaneLanding,
@@ -32,6 +34,7 @@ import {
   Star,
   Tag,
   Ticket,
+  Truck,
   User,
   UserCheck,
   UserPlus,
@@ -95,11 +98,7 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
   },
   {
     label: 'Airport & Onboard',
-    items: [
-      { label: 'Gate Counter & Devices', icon: Monitor },
-      { label: 'Baggage Tracking', icon: Luggage },
-      { label: 'Onboard Products', icon: Utensils },
-    ],
+    items: [{ label: 'Gate Counter & Devices', icon: Monitor }],
   },
 ]
 
@@ -155,6 +154,14 @@ export const FLIGHT_SCHEDULING_ITEMS: readonly {
   { to: '/congestion', label: 'Congestion', icon: Gauge },
 ]
 
+/** The Feature 10 (lost and found baggage) staff pages. */
+export const BAGGAGE_ITEMS = [
+  { to: '/baggage/lost-bag-cases', label: 'Lost bag cases', icon: Luggage },
+  { to: '/baggage/found-bags', label: 'Found bags', icon: PackageSearch },
+  { to: '/baggage/match-review', label: 'Match review', icon: GitCompareArrows },
+  { to: '/baggage/deliveries', label: 'Deliveries', icon: Truck },
+] as const
+
 /** The Feature 11 (loyalty programme) staff pages. */
 export const LOYALTY_ITEMS = [
   { to: '/loyalty/members', label: 'Member Lookup', icon: Search },
@@ -169,4 +176,13 @@ export const CARGO_ITEMS = [
   { to: '/cargo/flights', label: 'Flight cargo', icon: Plane },
   { to: '/cargo/claims', label: 'Claims', icon: ShieldAlert },
   { to: '/cargo/settings', label: 'Rates and settings', icon: Settings },
+] as const
+
+/** The Feature 12 (onboard products) staff pages: catalog, menus, catering orders, warehouse stock and the flight report. */
+export const CATERING_ITEMS = [
+  { to: '/catering/catalog', label: 'Product Catalog', icon: Utensils },
+  { to: '/catering/offered-menu', label: 'Offered Menu', icon: ListChecks },
+  { to: '/catering/orders', label: 'Catering Orders', icon: ClipboardCheck },
+  { to: '/catering/stock', label: 'Stock', icon: Package },
+  { to: '/catering/flight-report', label: 'Flight Report', icon: FileText },
 ] as const

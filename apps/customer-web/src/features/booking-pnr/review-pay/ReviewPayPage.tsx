@@ -292,6 +292,7 @@ function HeldReview({
 
             <aside className="space-y-4 lg:sticky lg:top-16">
               <PriceCard booking={booking} insuranceAddOn={insuranceAddOn} />
+              {isPayStep ? <ExtrasNote /> : null}
               {isPayStep ? (
                 <InsuranceCard offer={insuranceOffer} checked={addInsurance} onChange={setAddInsurance} disabled={isConfirming} />
               ) : null}
@@ -570,6 +571,21 @@ function PassengersCard({
           Change contact details
         </button>
       </div>
+    </section>
+  )
+}
+
+/** Onboard meals and shop products (feature 12) are optional. They are ordered once the booking is confirmed. */
+function ExtrasNote() {
+  return (
+    <section
+      className="flex flex-col gap-2 rounded-xl border bg-card p-6 text-card-foreground shadow-sm [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold"
+      aria-labelledby="rp-extras-title"
+    >
+      <h2 id="rp-extras-title">Meals &amp; extras (optional)</h2>
+      <p className="m-0 text-sm text-muted-foreground">
+        After you pay, you can add meals, snacks and duty-free to this booking. Ordering stays open until 48 hours before departure.
+      </p>
     </section>
   )
 }

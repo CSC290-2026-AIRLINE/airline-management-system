@@ -1,0 +1,30 @@
+/**
+ * TAG_NOT_ON_BOOKING and REPORT_EXISTS follow the F10 schema review.
+ * Other error codes are provisional service-level decisions.
+ */
+export const BAGGAGE_ERROR_CODES = {
+  INVALID_REPORT: 'INVALID_REPORT',
+  INVALID_TAG: 'INVALID_TAG',
+  TAG_NOT_ON_BOOKING: 'TAG_NOT_ON_BOOKING',
+  REPORT_EXISTS: 'REPORT_EXISTS',
+  REPORT_NOT_FOUND: 'REPORT_NOT_FOUND',
+  DELIVERY_NOT_FOUND: 'DELIVERY_NOT_FOUND',
+  CANCELLATION_NOT_ALLOWED: 'CANCELLATION_NOT_ALLOWED',
+  INVALID_PHOTO: 'INVALID_PHOTO',
+  PHOTO_NOT_FOUND: 'PHOTO_NOT_FOUND',
+  PHOTO_STORAGE_UNAVAILABLE: 'PHOTO_STORAGE_UNAVAILABLE',
+} as const
+
+export type BaggageErrorCode = (typeof BAGGAGE_ERROR_CODES)[keyof typeof BAGGAGE_ERROR_CODES]
+
+export class BaggageError extends Error {
+  constructor(
+    public readonly code: BaggageErrorCode,
+    message: string,
+    /** Sent as `error.details`, for example the case number of a duplicate report. */
+    public readonly details?: Record<string, unknown>,
+  ) {
+    super(message)
+    this.name = 'BaggageError'
+  }
+}

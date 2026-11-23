@@ -1,0 +1,589 @@
+// Receive delivery page. Pick airport and supplier, add rows for the items
+// received (product, quantity, unit cost, editable expiry) with computed
+// line total, and press Confirm receive. On save, each row becomes a batch
+// and the warehouse stock goes up. The product select also offers an
+// "Add new product…" entry that opens an inline dialog so the new item is
+// immediately available on this delivery.
+/* eslint-disable react-hooks/set-state-in-effect -- sync setState mirrors an external source or fires once on mount */
+
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { StockApiError, useOnboardApi } from '@staff-web/features/onboard-products/api'
+import { ArrowLeft, Plus } from 'lucide-react'
+import { toast } from 'sonner'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { PageHeader } from '@staff-web/features/onboard-products/ui'
+import type {
+  Product,
+  PurchaseReceipt,
+  PurchaseReceiptDraftLine,
+  Supplier,
+  Warehouse,
+} from '@staff-web/features/onboard-products/api/types'
+import { AddProductDialog } from './AddProductDialog'
+import { ManageListDialog, type ManageListItem } from './ManageListDialog'
+
+const NEW_PRODUCT_SENTINEL = '__new__'
+
+function formatMoney(amount: number): string {
+  return amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+}
+
+interface Row {
+  key: string
+  productId: string
+  quantity: string
+  unitCost: string
+  expiresAt: string
+}
+
+// A new row's expiry starts empty: the server then sets it to the received time (on F12's clock) plus the product's
+// own shelf life. Staff can still type a date. (The old browser-side default used the browser's clock and a fixed 2 or
+// 180 days, so new stock could arrive already expired on a shifted simulation clock.)
+function emptyRow(usedProductIds: Set<string>, products: Product[]): Row {
+  // Pick the first product not already on the page, so the user doesn't
+  // immediately trigger a duplicate-product error.
+  const next = products.find((p) => !usedProductIds.has(p.id))
+  return {
+    key: `row-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    productId: next?.id ?? '',
+    quantity: '',
+    unitCost: '',
+    expiresAt: '',
+  }
+}
+
+function parseNumber(s: string): number | null {
+  if (s.trim() === '') return null
+  const n = Number(s)
+  return Number.isFinite(n) ? n : Number.NaN
+}
+
+export function ReceiveDeliveryPage() {
+  const navigate = useNavigate()
+  const search = useSearch({ from: '/_authenticated/catering/stock/receive' })
+  const api = useOnboardApi()
+
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [warehouseId, setWarehouseId] = useState<string | null>(null)
+  const [supplierId, setSupplierId] = useState<string>('')
+  const [rows, setRows] = useState<Row[]>([])
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [lastReceipt, setLastReceipt] = useState<PurchaseReceipt | null>(null)
+  const [addingProductFor, setAddingProductFor] = useState<string | null>(null)
+  const [addingProductPrevious, setAddingProductPrevious] = useState<string>('')
+  const [managingSuppliers, setManagingSuppliers] = useState(false)
+  const [supplierManageBusy, setSupplierManageBusy] = useState(false)
+
+  function showToast(kind: 'success' | 'error', message: string) {
+    if (kind === 'success') toast.success(message)
+    else toast.error(message)
+  }
+
+  // Load warehouses + products once.
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([api.stock.listWarehouses(), api.products.list()])
+      .then(([warehousesData, productsData]) => {
+        if (cancelled) return
+        setWarehouses(warehousesData)
+        setProducts(productsData)
+        if (warehousesData.length > 0) {
+          const initial =
+            search.airport != null ? (warehousesData.find((w) => w.code === search.airport) ?? warehousesData[0]) : warehousesData[0]
+          setWarehouseId(initial.id)
+        }
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setLoadError(err instanceof Error ? err.message : 'Could not load warehouses.')
+      })
+      .finally(() => {
+        if (cancelled) return
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only set once from URL
+  }, [])
+
+  // Load suppliers for the chosen airport.
+  useEffect(() => {
+    if (warehouseId == null) return
+    const wh = warehouses.find((w) => w.id === warehouseId)
+    if (!wh) return
+    let cancelled = false
+    api.stock
+      .listSuppliers(wh.airportCode)
+      .then((data) => {
+        if (cancelled) return
+        setSuppliers(data)
+        const firstActive = data.find((s) => s.isActive) ?? data[0]
+        setSupplierId(firstActive?.id ?? '')
+      })
+      .catch(() => {
+        if (cancelled) return
+        setSuppliers([])
+        setSupplierId('')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [warehouseId, warehouses, api])
+
+  // Seed an empty row once the products list is available.
+  useEffect(() => {
+    if (rows.length === 0 && products.length > 0) {
+      setRows([emptyRow(new Set(), products)])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed only once per products load
+  }, [products])
+
+  const usedProductIds = useMemo(() => new Set(rows.map((r) => r.productId).filter(Boolean)), [rows])
+
+  const totals = useMemo(() => {
+    let units = 0
+    let total = 0
+    let lineCount = 0
+    for (const r of rows) {
+      const q = parseNumber(r.quantity)
+      const c = parseNumber(r.unitCost)
+      if (q != null && c != null && q > 0 && c >= 0) {
+        units += q
+        total += q * c
+        lineCount += 1
+      }
+    }
+    return { units, total, lineCount }
+  }, [rows])
+
+  const activeSuppliers = useMemo(() => suppliers.filter((s) => s.isActive), [suppliers])
+
+  const validation = useMemo(() => {
+    const issues: string[] = []
+    if (rows.length === 0) issues.push('Add at least one item.')
+    if (!supplierId) issues.push('Pick a supplier.')
+    const seen = new Set<string>()
+    for (const r of rows) {
+      if (!r.productId) {
+        issues.push('Each row needs a product.')
+        continue
+      }
+      if (seen.has(r.productId)) {
+        issues.push('Two rows use the same product. Combine them or remove one.')
+        continue
+      }
+      seen.add(r.productId)
+      const q = parseNumber(r.quantity)
+      const c = parseNumber(r.unitCost)
+      if (q == null || q <= 0) issues.push('Each row needs a quantity greater than zero.')
+      if (c == null || c < 0) issues.push('Unit cost must be 0 or more.')
+    }
+    return issues
+  }, [rows, supplierId])
+
+  function addRow() {
+    setRows((prev) => [...prev, emptyRow(new Set(prev.map((r) => r.productId).filter(Boolean)), products)])
+  }
+
+  function removeRow(key: string) {
+    setRows((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.key !== key)))
+  }
+
+  function patchRow(key: string, patch: Partial<Row>) {
+    setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)))
+  }
+
+  function onProductChange(rowKey: string, newProductId: string) {
+    if (newProductId === NEW_PRODUCT_SENTINEL) {
+      // Remember what was selected so we can revert if the user cancels the
+      // new-product dialog. Empty rows (newly added via "+ Add item") start
+      // with no product; in that case leave the sentinel and let the dialog
+      // populate it on save.
+      const current = rows.find((r) => r.key === rowKey)?.productId ?? ''
+      setAddingProductFor(rowKey)
+      setAddingProductPrevious(current)
+      return
+    }
+    // When the product changes, clear the expiry so a date typed for another product is not carried over; empty
+    // means the server uses the new product's shelf life.
+    patchRow(rowKey, { productId: newProductId, expiresAt: '' })
+  }
+
+  async function onSubmit() {
+    setError(null)
+    if (validation.length > 0) {
+      setError(validation[0])
+      return
+    }
+    if (warehouseId == null) {
+      setError('Pick an airport first.')
+      return
+    }
+    const lines: PurchaseReceiptDraftLine[] = rows.map((r) => {
+      const product = products.find((p) => p.id === r.productId)
+      const expiresAt = product?.category === 'duty_free' || r.expiresAt === '' ? null : r.expiresAt
+      return {
+        productId: r.productId,
+        quantity: Number(r.quantity),
+        unitCostAmount: Number(r.unitCost),
+        expiresAt,
+      }
+    })
+    setSubmitting(true)
+    try {
+      const receipt = await api.stock.createPurchaseReceipt({ supplierId, warehouseId, lines }, products)
+      const totalUnits = lines.reduce((acc, l) => acc + l.quantity, 0)
+      const totalCost = lines.reduce((acc, l) => acc + l.quantity * l.unitCostAmount, 0)
+      const supplierName = suppliers.find((s) => s.id === supplierId)?.name ?? 'supplier'
+      const warehouseCode = warehouses.find((w) => w.id === warehouseId)?.code ?? ''
+      showToast(
+        'success',
+        `Received ${lines.length} items (${totalUnits} units, ${formatMoney(totalCost)}) from ${supplierName} into the ${warehouseCode} warehouse as ${lines.length} new batch${lines.length === 1 ? '' : 'es'}.`,
+      )
+      setLastReceipt(receipt)
+      setRows([emptyRow(new Set(), products)])
+    } catch (err) {
+      if (err instanceof StockApiError) {
+        setError(err.message)
+      } else {
+        const message = err instanceof Error ? err.message : 'Could not save the delivery.'
+        setError(message)
+        showToast('error', message)
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function refreshSuppliers() {
+    const wh = warehouses.find((w) => w.id === warehouseId)
+    if (!wh) {
+      setSuppliers([])
+      setSupplierId('')
+      return
+    }
+    const data = await api.stock.listSuppliers(wh.airportCode)
+    setSuppliers(data)
+    const stillThere = data.find((s) => s.id === supplierId)
+    if (!stillThere) {
+      const firstActive = data.find((s) => s.isActive) ?? data[0]
+      setSupplierId(firstActive?.id ?? '')
+    }
+  }
+
+  async function handleCreateSupplier(input: { name: string; secondary: string }) {
+    const wh = warehouses.find((w) => w.id === warehouseId)
+    if (!wh) throw new StockApiError('SUPPLIER_INVALID', 'Pick an airport first.', 400)
+    setSupplierManageBusy(true)
+    try {
+      const created = await api.stock.createSupplier({
+        name: input.name,
+        airportCode: wh.airportCode,
+        contact: input.secondary === '' ? null : input.secondary,
+        isActive: true,
+      })
+      await refreshSuppliers()
+      setSupplierId(created.id)
+      showToast('success', `Added ${created.name}.`)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not add the supplier.'
+      showToast('error', message)
+      throw err
+    } finally {
+      setSupplierManageBusy(false)
+    }
+  }
+
+  async function handleUpdateSupplier(id: string, input: { name: string; secondary: string }) {
+    setSupplierManageBusy(true)
+    try {
+      const updated = await api.stock.updateSupplier(id, { name: input.name, contact: input.secondary === '' ? null : input.secondary })
+      await refreshSuppliers()
+      showToast('success', `Updated ${updated.name}.`)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not save the supplier.'
+      showToast('error', message)
+      throw err
+    } finally {
+      setSupplierManageBusy(false)
+    }
+  }
+
+  async function handleDeleteSupplier(id: string) {
+    setSupplierManageBusy(true)
+    try {
+      await api.stock.deleteSupplier(id)
+      await refreshSuppliers()
+      showToast('success', 'Removed the supplier.')
+    } catch (err) {
+      if (err instanceof StockApiError) throw err
+      const message = err instanceof Error ? err.message : 'Could not remove the supplier.'
+      showToast('error', message)
+      throw err
+    } finally {
+      setSupplierManageBusy(false)
+    }
+  }
+
+  if (loadError) {
+    return (
+      <Alert variant="destructive" role="alert">
+        <AlertDescription>{loadError}</AlertDescription>
+      </Alert>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Button asChild variant="ghost" size="sm" className="-ml-2 self-start text-muted-foreground">
+        <Link to="/catering/stock">
+          <ArrowLeft aria-hidden="true" />
+          Back to Stock
+        </Link>
+      </Button>
+
+      <PageHeader
+        title="Receive delivery"
+        description="Record a supplier delivery into an airport warehouse. Each item you add becomes a batch with its own cost and expiry date."
+      />
+
+      <Card className="gap-4" aria-label="Delivery details">
+        <CardHeader>
+          <CardTitle>Delivery details</CardTitle>
+          <CardDescription>Purchase cost is what the airline pays. It is stored apart from the selling price.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="rd-airport">Airport</Label>
+            <NativeSelect id="rd-airport" className="w-full" value={warehouseId ?? ''} onChange={(e) => setWarehouseId(e.target.value)}>
+              {warehouses.map((w) => (
+                <NativeSelectOption key={w.id} value={w.id}>
+                  {w.code}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="rd-supplier">Supplier</Label>
+            <div className="flex gap-2">
+              <NativeSelect
+                id="rd-supplier"
+                className="w-full"
+                value={supplierId}
+                onChange={(e) => setSupplierId(e.target.value)}
+                disabled={activeSuppliers.length === 0}
+              >
+                {activeSuppliers.length === 0 && <NativeSelectOption value="">No active suppliers for this airport</NativeSelectOption>}
+                {activeSuppliers.map((s) => (
+                  <NativeSelectOption key={s.id} value={s.id}>
+                    {s.name}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <Button type="button" variant="outline" onClick={() => setManagingSuppliers(true)}>
+                Manage
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="gap-4" aria-label="Items received">
+        <CardHeader>
+          <CardTitle>Items received</CardTitle>
+          <CardDescription>Food expires 2 days after it is received. Nothing is saved until you confirm.</CardDescription>
+          <CardAction>
+            <Button type="button" variant="outline" onClick={addRow}>
+              <Plus aria-hidden="true" />
+              Add item
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {lastReceipt && (
+            <Alert role="status" className="border-green-200 bg-green-50 text-green-800">
+              <AlertDescription className="text-green-800">
+                Received {lastReceipt.lines.length} items ({lastReceipt.lines.reduce((a, l) => a + l.quantity, 0)} units,{' '}
+                {formatMoney(lastReceipt.lines.reduce((a, l) => a + l.lineTotal, 0))}) from{' '}
+                {suppliers.find((s) => s.id === lastReceipt.supplierId)?.name ?? 'supplier'} as {lastReceipt.lines.length} new batch
+                {lastReceipt.lines.length === 1 ? '' : 'es'} starting at {lastReceipt.lines[0]?.batchCode}.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {error && (
+            <Alert variant="destructive" role="alert">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product</TableHead>
+                <TableHead className="w-28 text-right">Quantity</TableHead>
+                <TableHead className="w-36 text-right">Unit cost (USD)</TableHead>
+                <TableHead className="w-44">Expiry</TableHead>
+                <TableHead className="text-right">Line total</TableHead>
+                <TableHead className="w-24">
+                  <span className="sr-only">Remove</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => {
+                const q = parseNumber(r.quantity)
+                const c = parseNumber(r.unitCost)
+                const lineTotal = q != null && c != null && q > 0 && c >= 0 ? q * c : null
+                const product = products.find((p) => p.id === r.productId)
+                const expiresDisabled = product?.category === 'duty_free'
+                return (
+                  <TableRow key={r.key}>
+                    <TableCell className="min-w-56">
+                      <NativeSelect
+                        className="w-full"
+                        value={r.productId}
+                        onChange={(e) => onProductChange(r.key, e.target.value)}
+                        aria-label="Product"
+                      >
+                        {products.map((p) => (
+                          <NativeSelectOption key={p.id} value={p.id} disabled={p.id !== r.productId && usedProductIds.has(p.id)}>
+                            {p.name}
+                          </NativeSelectOption>
+                        ))}
+                        <NativeSelectOption value={NEW_PRODUCT_SENTINEL}>+ Add new product…</NativeSelectOption>
+                      </NativeSelect>
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        className="text-right"
+                        value={r.quantity}
+                        onChange={(e) => patchRow(r.key, { quantity: e.target.value })}
+                        aria-label="Quantity"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="text-right"
+                        value={r.unitCost}
+                        onChange={(e) => patchRow(r.key, { unitCost: e.target.value })}
+                        aria-label="Unit cost"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="date"
+                        value={r.expiresAt}
+                        onChange={(e) => patchRow(r.key, { expiresAt: e.target.value })}
+                        disabled={expiresDisabled}
+                        aria-label="Expiry"
+                        title="Leave empty to use the product's shelf life from today"
+                      />
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{lineTotal != null ? formatMoney(lineTotal) : '—'}</TableCell>
+                    <TableCell className="text-right">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeRow(r.key)} disabled={rows.length <= 1}>
+                        Remove
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+        <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+          <span className="text-sm text-muted-foreground">
+            {totals.lineCount} item{totals.lineCount === 1 ? '' : 's'} · {totals.units} units · total{' '}
+            <span className="font-semibold text-foreground">{formatMoney(totals.total)}</span>
+          </span>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => void navigate({ to: '/catering/stock' })} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void onSubmit()} disabled={submitting || validation.length > 0 || loading}>
+              {submitting ? 'Saving…' : 'Confirm receive'}
+            </Button>
+          </div>
+        </CardFooter>
+      </Card>
+
+      {addingProductFor !== null && (
+        <AddProductDialog
+          onClose={() => {
+            // Revert the row to the previous product so it never carries the
+            // sentinel value forward. If there was no previous product
+            // (a freshly-added empty row), fall back to the first available.
+            const prev = addingProductPrevious
+            const fallback = products[0]?.id ?? ''
+            const next = prev !== '' && prev !== NEW_PRODUCT_SENTINEL ? prev : fallback
+            if (next !== '') {
+              patchRow(addingProductFor, {
+                productId: next,
+                expiresAt: '',
+              })
+            }
+            setAddingProductFor(null)
+            setAddingProductPrevious('')
+          }}
+          onSaved={(created) => {
+            setProducts((prev) => [...prev.filter((p) => p.id !== created.id), created])
+            // The newly-created product doesn't have its name in the
+            // products list that was passed to createPurchaseReceipt
+            // yet, so refresh via the api to keep the two in sync.
+            void api.products.list().then(setProducts)
+            patchRow(addingProductFor, {
+              productId: created.id,
+              expiresAt: '',
+            })
+            setAddingProductFor(null)
+            setAddingProductPrevious('')
+            showToast('success', `Added ${created.name} and selected it on this row.`)
+          }}
+          onError={(message) => showToast('error', message)}
+        />
+      )}
+
+      {managingSuppliers && (
+        <ManageListDialog
+          title="Manage suppliers"
+          subtitle="Suppliers are scoped to one airport. Add new vendors or remove ones you no longer use."
+          nameLabel="Supplier name"
+          secondaryLabel="Contact"
+          emptyMessage="No suppliers for this airport yet."
+          addLabel="Add supplier"
+          busy={supplierManageBusy}
+          items={activeSuppliers.map<ManageListItem>((s) => ({
+            id: s.id,
+            name: s.name,
+            secondary: s.contact ?? '',
+            hint: !s.isActive ? 'Inactive' : undefined,
+          }))}
+          onClose={() => setManagingSuppliers(false)}
+          onCreate={handleCreateSupplier}
+          onUpdate={handleUpdateSupplier}
+          onDelete={handleDeleteSupplier}
+        />
+      )}
+    </div>
+  )
+}
