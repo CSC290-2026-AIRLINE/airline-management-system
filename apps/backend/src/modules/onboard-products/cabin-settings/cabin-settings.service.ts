@@ -295,6 +295,41 @@ export class CabinSettingsService {
         OR: [{ scope: 'network' }, { scope: 'route', route_id: flight.route_id }, { scope: 'flight', flight_id: flightId }],
       },
     })
+    return this.resolveFromRows(rows, { id: flightId, route_id: flight.route_id })
+  }
+
+  // The shortest order window of each flight, for many flights in one query (the catering list). Same rules as
+  // orderWindowHoursForFlight, which resolves one flight.
+  async orderWindowHoursForFlights(flights: Array<{ id: string; route_id: string }>): Promise<Map<string, number>> {
+    const out = new Map<string, number>()
+    if (flights.length === 0) return out
+    const rows = await this.db.cabin_setting.findMany({
+      where: {
+        OR: [
+          { scope: 'network' },
+          { scope: 'route', route_id: { in: [...new Set(flights.map((f) => f.route_id))] } },
+          { scope: 'flight', flight_id: { in: flights.map((f) => f.id) } },
+        ],
+      },
+    })
+    for (const flight of flights) {
+      const relevant = rows.filter(
+        (r) =>
+          r.scope === 'network' ||
+          (r.scope === 'route' && r.route_id === flight.route_id) ||
+          (r.scope === 'flight' && r.flight_id === flight.id),
+      )
+      const resolved = this.resolveFromRows(relevant, flight)
+      out.set(flight.id, shortestOrderWindowHours(Object.values(resolved).map(toWindowRow)))
+    }
+    return out
+  }
+
+  private resolveFromRows(
+    rows: Awaited<ReturnType<DbService['cabin_setting']['findMany']>>,
+    flight: { id: string; route_id: string },
+  ): Record<F12Cabin, ResolvedCabinSetting> {
+    const flightId = flight.id
     const cabins: F12Cabin[] = ['economy', 'premium_economy', 'business']
     const out = {} as Record<F12Cabin, ResolvedCabinSetting>
     for (const cabin of cabins) {
@@ -324,22 +359,7 @@ export class CabinSettingsService {
   // (in hours). Used to compute the catering-order cutoff.
   async orderWindowHoursForFlight(flightId: string): Promise<number> {
     const resolved = await this.resolveAllForFlight(flightId)
-    const all = Object.values(resolved).map((r): CabinSettingRow => ({
-      scope: 'flight',
-      routeId: null,
-      flightId: null,
-      cabin: 'economy',
-      mealService: r.mealService,
-      mealSelection: r.mealSelection,
-      includedPerPassenger: r.includedPerPassenger,
-      preorderEnabled: r.preorderEnabled,
-      orderWindowHours: r.orderWindowHours,
-      premiumMealsAllowed: r.premiumMealsAllowed,
-      snacksEnabled: r.snacksEnabled,
-      dutyFreeEnabled: r.dutyFreeEnabled,
-      onboardBufferPercent: r.onboardBufferPercent,
-    }))
-    return shortestOrderWindowHours(all)
+    return shortestOrderWindowHours(Object.values(resolved).map(toWindowRow))
   }
 
   // Every flight that overrides its route, with the effective value
@@ -452,4 +472,23 @@ export class CabinSettingsService {
     dutyFreeEnabled: row.duty_free_enabled,
     onboardBufferPercent: row.onboard_buffer_percent,
   })
+}
+
+// A resolved cabin setting in the row shape shortestOrderWindowHours reads.
+function toWindowRow(r: ResolvedCabinSetting): CabinSettingRow {
+  return {
+    scope: 'flight',
+    routeId: null,
+    flightId: null,
+    cabin: 'economy',
+    mealService: r.mealService,
+    mealSelection: r.mealSelection,
+    includedPerPassenger: r.includedPerPassenger,
+    preorderEnabled: r.preorderEnabled,
+    orderWindowHours: r.orderWindowHours,
+    premiumMealsAllowed: r.premiumMealsAllowed,
+    snacksEnabled: r.snacksEnabled,
+    dutyFreeEnabled: r.dutyFreeEnabled,
+    onboardBufferPercent: r.onboardBufferPercent,
+  }
 }

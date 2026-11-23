@@ -28,6 +28,18 @@ export interface ReservationArgs {
   flightId: string
   occurredAt: Date
   productName?: string
+  // Count only stock still usable at this time (the flight's departure): undamaged batches not expired by then.
+  // Unset means every unit on hand counts. See validAtDepartureApplies for when checkout sets it.
+  validAt?: Date
+}
+
+// Doc: "a reservation only counts batches that are still valid at the flight's departure". That only works for a
+// product that can sit in the warehouse from the cutoff to departure: food with a 2-day shelf life ordered up to 48 h
+// out would always be refused. So the rule applies when the shelf life is longer than the order window, or there is
+// no expiry (duty-free). Shorter-lived food is supplied fresh for the flight: it reserves against on-hand stock, and
+// the catering order flags any shortfall at the cutoff for staff to receive (doc, ordering step 7).
+export function validAtDepartureApplies(shelfLifeDays: number | null, orderWindowHours: number): boolean {
+  return shelfLifeDays == null || shelfLifeDays * 24 > orderWindowHours
 }
 
 @Injectable()
@@ -65,19 +77,37 @@ export class ReservationsService {
     }
 
     // One conditional update: the reservation only succeeds when the
-    // warehouse has enough unreserved stock.
-    const updated = await tx.$executeRaw`
-      UPDATE warehouse_stock
-      SET quantity_reserved = quantity_reserved + ${args.quantity}, updated_at = now()
-      WHERE warehouse_id = ${args.warehouseId}::uuid
-        AND product_id = ${args.productId}::uuid
-        AND quantity_on_hand - quantity_reserved >= ${args.quantity}
-    `
+    // warehouse has enough unreserved stock (still valid at validAt, when given).
+    const updated = args.validAt
+      ? await tx.$executeRaw`
+          UPDATE warehouse_stock ws
+          SET quantity_reserved = quantity_reserved + ${args.quantity}, updated_at = now()
+          WHERE ws.warehouse_id = ${args.warehouseId}::uuid
+            AND ws.product_id = ${args.productId}::uuid
+            AND LEAST(
+                  ws.quantity_on_hand,
+                  (SELECT COALESCE(SUM(b.quantity_remaining), 0) FROM stock_batch b
+                    WHERE b.warehouse_id = ws.warehouse_id AND b.product_id = ws.product_id
+                      AND NOT b.is_damaged AND (b.expires_at IS NULL OR b.expires_at > ${args.validAt}))
+                ) - ws.quantity_reserved >= ${args.quantity}
+        `
+      : await tx.$executeRaw`
+          UPDATE warehouse_stock
+          SET quantity_reserved = quantity_reserved + ${args.quantity}, updated_at = now()
+          WHERE warehouse_id = ${args.warehouseId}::uuid
+            AND product_id = ${args.productId}::uuid
+            AND quantity_on_hand - quantity_reserved >= ${args.quantity}
+        `
     if (Number(updated) === 0) {
       const stock = await tx.warehouse_stock.findUnique({
         where: { warehouse_id_product_id: { warehouse_id: args.warehouseId, product_id: args.productId } },
       })
-      const available = stock ? stock.quantity_on_hand - stock.quantity_reserved : 0
+      let usable = stock?.quantity_on_hand ?? 0
+      if (stock && args.validAt) {
+        const valid = await this.validQuantities(args.warehouseId, [args.productId], args.validAt, tx)
+        usable = Math.min(usable, valid.get(args.productId) ?? 0)
+      }
+      const available = stock ? Math.max(0, usable - stock.quantity_reserved) : 0
       throw new ApiErrorException('OUT_OF_STOCK', `Not enough stock for ${args.productName ?? args.productId}.`, 409, {
         product: args.productId,
         available,
@@ -117,6 +147,23 @@ export class ReservationsService {
         AND product_id = ${args.productId}::uuid
     `
     return true
+  }
+
+  // The quantity per product in undamaged batches still valid at `at` (not expired by then). No expiry = valid.
+  async validQuantities(warehouseId: string, productIds: string[], at: Date, tx?: ReservationTx): Promise<Map<string, number>> {
+    if (productIds.length === 0) return new Map()
+    const rows = await (tx ?? this.db).stock_batch.groupBy({
+      by: ['product_id'],
+      where: {
+        warehouse_id: warehouseId,
+        product_id: { in: productIds },
+        is_damaged: false,
+        quantity_remaining: { gt: 0 },
+        OR: [{ expires_at: null }, { expires_at: { gt: at } }],
+      },
+      _sum: { quantity_remaining: true },
+    })
+    return new Map(rows.map((r) => [r.product_id, r._sum.quantity_remaining ?? 0]))
   }
 
   // How much of a product the warehouse can still promise at a flight's

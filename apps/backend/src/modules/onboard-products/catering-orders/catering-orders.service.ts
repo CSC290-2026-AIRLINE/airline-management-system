@@ -147,11 +147,13 @@ export class CateringOrdersService {
       orderBy: { scheduled_dep_at: 'asc' },
     })
     const passengers = await this.passengerSummary(flights.map((f) => f.id))
-    // A flight with no order yet needs its real cutoff (departure minus the shortest cabin window), not the departure.
-    const cutoffs = new Map<string, Date>()
-    for (const flight of flights) {
-      if (!flight.catering_order) cutoffs.set(flight.id, await this.cutoffFor(flight.id))
-    }
+    // A flight with no order yet needs its real cutoff (departure minus the shortest cabin window), not the
+    // departure. The windows are resolved for every such flight in one query.
+    const open = flights.filter((f) => !f.catering_order)
+    const windows = await this.cabinSettings.orderWindowHoursForFlights(open)
+    const cutoffs = new Map<string, Date>(
+      open.map((f) => [f.id, new Date(f.scheduled_dep_at.getTime() - (windows.get(f.id) ?? 48) * 3600 * 1000)]),
+    )
     return flights.map((flight) => {
       const order = flight.catering_order
       const summary = passengers.get(flight.id)

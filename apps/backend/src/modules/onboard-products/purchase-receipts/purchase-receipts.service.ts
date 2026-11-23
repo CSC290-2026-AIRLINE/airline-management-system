@@ -8,6 +8,7 @@ import { Injectable } from '@nestjs/common'
 import { DbService } from '../../../db/db.service'
 import { ApiErrorException } from '../common/api-error'
 import { AuditService } from '../common/audit.service'
+import { SystemClock } from '../common/clock'
 import { toNumber } from '../common/mapping'
 
 export interface PurchaseReceiptLineDto {
@@ -49,6 +50,7 @@ export class PurchaseReceiptsService {
   constructor(
     private readonly db: DbService,
     private readonly audit: AuditService,
+    private readonly clock: SystemClock,
   ) {}
 
   // The delivery history. The date range filters on received_at.
@@ -114,7 +116,8 @@ export class PurchaseReceiptsService {
       if (!productMap.has(id)) throw new ApiErrorException('NOT_FOUND', `Product ${id} not found.`, 404)
     }
 
-    const receivedAt = input.receivedAt ? new Date(input.receivedAt) : new Date()
+    // F12's clock, not the system clock (the doc: every F12 time uses the simulation clock).
+    const receivedAt = input.receivedAt ? new Date(input.receivedAt) : this.clock.now()
     if (Number.isNaN(receivedAt.getTime())) {
       throw new ApiErrorException('LINE_INVALID', 'receivedAt must be ISO date.', 400)
     }
@@ -144,7 +147,9 @@ export class PurchaseReceiptsService {
             quantity_remaining: line.quantity,
             unit_cost_amount: line.unitCostAmount,
             received_at: receivedAt,
-            expires_at: line.expiresAt ? new Date(line.expiresAt) : null,
+            // No expiry given: received + the product's shelf life (doc: food expires 2 days after it is received,
+            // stored as shelf_life_days). Duty-free has none.
+            expires_at: line.expiresAt ? new Date(line.expiresAt) : defaultExpiry(productMap.get(line.productId), receivedAt),
           },
         })
         await tx.warehouse_stock.upsert({
@@ -227,4 +232,9 @@ export class PurchaseReceiptsService {
       })),
     }
   }
+}
+
+export function defaultExpiry(product: { category: string; shelf_life_days: number | null } | undefined, receivedAt: Date): Date | null {
+  if (!product || product.category === 'duty_free' || product.shelf_life_days == null) return null
+  return new Date(receivedAt.getTime() + product.shelf_life_days * 24 * 3600 * 1000)
 }

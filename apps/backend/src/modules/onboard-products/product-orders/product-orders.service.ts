@@ -25,7 +25,7 @@ import { FlightContextService } from '../common/flight-context.service'
 import { resolveOfferings, type OfferingRow } from '../common/menu'
 import { toNumber, type F12Cabin } from '../common/mapping'
 import { cutoffAt, isOrderWindowOpen, orderExpiresAt, priceBasisFor, priceOrder, type OrderLineInput } from '../common/order-pricing'
-import { ReservationsService } from '../common/reservations.service'
+import { ReservationsService, validAtDepartureApplies } from '../common/reservations.service'
 import { DbBookingsService, StubPaymentsService, DbTierService } from '../common/cross-module-ports'
 import { CabinSettingsService } from '../cabin-settings/cabin-settings.service'
 import {
@@ -48,6 +48,7 @@ interface ProductRow {
   is_premium: boolean
   is_active: boolean
   image_key: string | null
+  shelf_life_days: number | null
 }
 
 interface OfferingDbRow {
@@ -134,7 +135,19 @@ export class ProductOrdersService {
       )
       return { basis, amount: basis === 'standard' ? toNumber(p.price_amount) : 0 }
     }
-    const availableByProduct = new Map(stockRows.map((s) => [s.product_id, s.quantity_on_hand - s.quantity_reserved]))
+    // The same rule as the reservation at checkout: where it applies, only stock still valid at departure counts.
+    const valid = warehouseId
+      ? await this.reservations.validQuantities(warehouseId, productIds, flight.scheduledDeparture)
+      : new Map<string, number>()
+    const shelfLife = new Map(products.map((p) => [p.id, p.shelf_life_days]))
+    const availableByProduct = new Map(
+      stockRows.map((s) => {
+        const usable = validAtDepartureApplies(shelfLife.get(s.product_id) ?? null, settings.orderWindowHours)
+          ? Math.min(s.quantity_on_hand, valid.get(s.product_id) ?? 0)
+          : s.quantity_on_hand
+        return [s.product_id, usable - s.quantity_reserved]
+      }),
+    )
 
     return {
       flightId,
@@ -279,6 +292,10 @@ export class ProductOrdersService {
           flightId: input.flightId,
           occurredAt: now,
           productName: products.get(productId)?.name,
+          // Only stock still valid at departure counts, where that rule can apply (see validAtDepartureApplies).
+          ...(validAtDepartureApplies(products.get(productId)?.shelf_life_days ?? null, settings.orderWindowHours)
+            ? { validAt: flight.scheduledDeparture }
+            : {}),
         })
       }
       if (priced.totalAmount === 0) {
