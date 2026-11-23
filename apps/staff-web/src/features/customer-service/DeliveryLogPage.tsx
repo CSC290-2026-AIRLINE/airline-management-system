@@ -24,17 +24,40 @@ const EMPTY_DELIVERY_LOG: StaffDeliveryLogResponse = {
   rows: [],
 }
 
-const ALL_EVENTS = 'All 15 types'
+const ALL_EVENTS = 'All event types'
 const ALL_CHANNELS = 'All channels'
 const ALL_STATUSES = 'All statuses'
 const PAGE_SIZE = 15
 const COLUMNS = 7
 
 function statusTone(status: DeliveryLogRowView['status']): Tone {
-  if (status === 'Sent' || status === 'Sent on retry') return 'success'
-  if (status === 'Failed · retrying') return 'danger'
-  if (status === 'Queued') return 'warning'
-  return 'neutral'
+  switch (status) {
+    case 'Sent':
+    case 'Sent on retry':
+      return 'success'
+    case 'Failed · retrying':
+      return 'danger'
+    case 'Queued':
+      return 'warning'
+    default: {
+      const unknown: never = status
+      return unknown
+    }
+  }
+}
+
+/** The retry endpoint's error codes, as a sentence a staff member can act on. Anything else is shown as the backend sent it. */
+function retryErrorMessage(code: string): string {
+  switch (code) {
+    case 'NOT_FAILED':
+      return 'This message was not failed, so there is nothing to retry.'
+    case 'TEMPLATE_DISABLED':
+      return 'The template for this channel is switched off. Switch it on in Templates, then retry.'
+    case 'TEMPLATE_STILL_MISSING':
+      return 'There is still no template for this message type and channel. Add one in Templates, then retry.'
+    default:
+      return code
+  }
 }
 
 function FilterField({ label, id, children }: { label: string; id: string; children: ReactNode }) {
@@ -197,18 +220,12 @@ export function DeliveryLogPage() {
               onChange={(e) => filterBy(setStatusFilter)(e.target.value)}
               className="h-10 w-40"
             >
-              {[ALL_STATUSES, 'Sent', 'Failed', 'Skipped', 'Queued'].map((v) => (
+              {[ALL_STATUSES, 'Sent', 'Failed', 'Queued'].map((v) => (
                 <option key={v} value={v}>
                   {v}
                 </option>
               ))}
             </NativeSelect>
-          </FilterField>
-          <FilterField label="From" id="dl-from">
-            <Input id="dl-from" value="All dates" readOnly disabled className="h-10 w-32" />
-          </FilterField>
-          <FilterField label="To" id="dl-to">
-            <Input id="dl-to" value="Today" readOnly disabled className="h-10 w-32" />
           </FilterField>
           <Button variant="link" className="h-10 px-1" onClick={clearFilters}>
             Clear filters
@@ -315,10 +332,14 @@ export function DeliveryLogPage() {
                                   try {
                                     setRetryingId(r.id)
                                     setRetryError(null)
-                                    await api.retryNotification(r.id)
+                                    const result = await api.retryNotification(r.id)
                                     await reloadData()
+                                    // A retry that ran but still could not send comes back as a failed row, not an HTTP error.
+                                    if (result.status === 'failed' && result.error) {
+                                      setRetryError({ id: r.id, message: retryErrorMessage(result.error) })
+                                    }
                                   } catch (e) {
-                                    setRetryError({ id: r.id, message: errorMessage(e) })
+                                    setRetryError({ id: r.id, message: retryErrorMessage(errorMessage(e)) })
                                   } finally {
                                     setRetryingId(null)
                                   }
@@ -328,7 +349,7 @@ export function DeliveryLogPage() {
                               </Button>
                               {retryError?.id === r.id && (
                                 <div role="alert" className="mt-2 text-xs font-medium text-danger">
-                                  Retry failed: {retryError.message}
+                                  {retryError.message}
                                 </div>
                               )}
                             </div>
@@ -342,11 +363,6 @@ export function DeliveryLogPage() {
             })}
           </TableBody>
         </Table>
-
-        <p className="bg-blue-50 px-5 py-2.5 text-xs text-blue-900">
-          Duplicate ignored: FY405 delay event ev-2041 arrived twice from Feature 2 at 17:05. The second copy was skipped by event ID, so
-          nobody got the message twice.
-        </p>
 
         <nav className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-3" aria-label="Delivery log pages">
           <span className="text-[13px] text-muted-foreground">

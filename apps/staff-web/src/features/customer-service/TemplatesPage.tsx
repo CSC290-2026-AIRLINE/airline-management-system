@@ -50,6 +50,16 @@ function draftProblem(ch: Channel, subject: string, body: string, allowed: strin
   return null
 }
 
+/** True when the search text is in the type's name, code or any of its saved subjects and messages. */
+function matchesSearch(t: StaffTemplateItemView, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return [t.name, t.code, t.emailTitle, t.emailBody, t.smsBody, t.pushTitle, t.pushBody].some((text) => text?.toLowerCase().includes(q))
+}
+
+type SwitchKey = 'emailState' | 'smsState' | 'pushState'
+const SWITCH_CHANNEL: Record<SwitchKey, Channel> = { emailState: 'email', smsState: 'sms', pushState: 'push' }
+
 /** One channel in the message-type list: ✓ on, – off, ! missing template, grey = not used for that message. */
 function ChannelMark({ state, label }: { state: ChannelState; label: string }) {
   return (
@@ -154,6 +164,7 @@ export function TemplatesPage() {
   const api = useComplaintsApi()
   const [templates, setTemplates] = useState<StaffTemplateItemView[] | null>(null)
   const [isSupervisor, setIsSupervisor] = useState(false)
+  const [meError, setMeError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<unknown>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [selectedCode, setSelectedCode] = useState('flight_delayed')
@@ -173,7 +184,10 @@ export function TemplatesPage() {
       .then((me) => {
         if (active) setIsSupervisor(Boolean(me.isSupervisor))
       })
-      .catch(() => {})
+      .catch((e: unknown) => {
+        // Shown, not swallowed: otherwise a supervisor would silently lose the edit controls.
+        if (active) setMeError(errorMessage(e))
+      })
     fetchTemplates()
       .then((res) => {
         if (active) setTemplates(res)
@@ -202,14 +216,12 @@ export function TemplatesPage() {
 
   const filtered = loaded.filter((t) => {
     const matchSource = sourceFilter === ALL_FEATURES || t.feature === sourceFilter
-    const matchQ =
-      !search.trim() || t.name.toLowerCase().includes(search.trim().toLowerCase()) || t.code.includes(search.trim().toLowerCase())
-    return matchSource && matchQ
+    return matchSource && matchesSearch(t, search)
   })
 
   const selected = loaded.find((t) => t.code === selectedCode) ?? loaded[0]
 
-  async function toggleChannel(code: string, channelKey: 'smsState' | 'pushState') {
+  async function toggleChannel(code: string, channelKey: SwitchKey) {
     const target = loaded.find((t) => t.code === code)
     if (!target) return
     const nextActive = target[channelKey] !== '✓'
@@ -219,7 +231,7 @@ export function TemplatesPage() {
     setTemplates(before.map((item) => (item.code === code ? { ...item, [channelKey]: nextVal } : item)))
     try {
       const updated = await api.updateTemplate(code, {
-        channel: channelKey === 'smsState' ? 'sms' : 'push',
+        channel: SWITCH_CHANNEL[channelKey],
         isActive: nextActive,
       })
       setTemplates(updated)
@@ -287,7 +299,7 @@ export function TemplatesPage() {
     }
   }
 
-  function channelSwitch(key: 'smsState' | 'pushState', label: string) {
+  function channelSwitch(key: SwitchKey, label: string) {
     const on = selected[key] === '✓'
     // A missing template has nothing to switch on; write it with Edit first.
     const missing = selected[key] === '!'
@@ -312,6 +324,13 @@ export function TemplatesPage() {
         'One template per message type and channel; placeholders like {{flight_number}} are filled when a message is sent. Only the supervisor edits or switches templates.'
       }
     >
+      {meError && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            Could not load your staff role, so editing is turned off: {meError}. Reload the page to try again.
+          </AlertDescription>
+        </Alert>
+      )}
       {saveError && (
         <Alert variant="destructive">
           <AlertDescription>Could not save the template: {saveError}</AlertDescription>
@@ -410,7 +429,11 @@ export function TemplatesPage() {
               {selected.code} · from {selected.feature}
             </p>
           </div>
-          <ChannelSection title="Email" control={<ToneBadge tone="info">Always on</ToneBadge>} {...sectionProps('email')} />
+          <ChannelSection
+            title="Email"
+            control={selected.group === 'ALWAYS SENT' ? <ToneBadge tone="info">Always on</ToneBadge> : channelSwitch('emailState', 'Email')}
+            {...sectionProps('email')}
+          />
           <ChannelSection title="SMS" control={channelSwitch('smsState', 'SMS')} {...sectionProps('sms')} />
           <ChannelSection title="Push" control={channelSwitch('pushState', 'Push')} {...sectionProps('push')} />
         </Card>

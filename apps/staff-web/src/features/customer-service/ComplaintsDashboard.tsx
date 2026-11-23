@@ -12,11 +12,10 @@ import { errorMessage, useComplaintsApi } from './api'
 import { StatusBadge, TypeBadge } from './ComplaintBadges'
 import { PageFrame } from './components/PageFrame'
 import { StatCard } from './components/StatCard'
+import { formatDateTime } from './format'
 import { STATUS_LABEL, humanize, type CaseStatus, type Complaint, type ComplaintType } from './types'
 
 const REFRESH_MS = 10_000
-
-const STAFF_OWNERS = ['Ploy Wong', 'Mali Rattana', 'Somsak Jaidee', 'Kenji Sato', 'Tong Charoen']
 
 const TYPE_CHIPS = [
   { key: 'all', label: 'All' },
@@ -111,8 +110,10 @@ export function ComplaintsDashboard() {
   const api = useComplaintsApi()
   const [complaints, setComplaints] = useState<Complaint[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [staffMembers, setStaffMembers] = useState<{ id: string; name: string; roleCode: string }[]>([])
+  const [staffMembers, setStaffMembers] = useState<{ id: string; name: string; roleCode: string }[] | null>(null)
+  const [staffError, setStaffError] = useState<string | null>(null)
   const [currentStaff, setCurrentStaff] = useState<{ id: string; name: string; roleCode: string; isSupervisor: boolean } | null>(null)
+  const [meError, setMeError] = useState<string | null>(null)
 
   // Figma Filters: TYPE (All | Employee | Flight | Food), STATUS (Open | Resolved | Closed | All), OWNER
   const [filterType, setFilterType] = useState<ComplaintType | 'all'>('all')
@@ -134,14 +135,15 @@ export function ComplaintsDashboard() {
 
   const fetchList = useEffectEvent(() => api.list())
   const loadStaffContext = useEffectEvent(() => {
+    // A failure here is shown, not swallowed: without it the page would quietly treat the user as a non-supervisor.
     void api
       .getStaffMembers()
       .then(setStaffMembers)
-      .catch(() => {})
+      .catch((e: unknown) => setStaffError(errorMessage(e)))
     void api
       .getMe()
       .then(setCurrentStaff)
-      .catch(() => {})
+      .catch((e: unknown) => setMeError(errorMessage(e)))
   })
 
   useEffect(() => {
@@ -277,6 +279,22 @@ export function ComplaintsDashboard() {
         </Alert>
       )}
 
+      {meError && (
+        <Alert variant="destructive">
+          <AlertDescription className="block">
+            Could not load your staff role, so case actions are turned off: {meError}. Reload the page to try again.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {staffError && (
+        <Alert variant="destructive">
+          <AlertDescription className="block">
+            Could not load the staff list, so cases can’t be filtered by or assigned to an owner: {staffError}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {actionError && (
         <Alert variant="destructive">
           <AlertDescription className="block">Could not save the change: {actionError}</AlertDescription>
@@ -310,9 +328,9 @@ export function ComplaintsDashboard() {
               >
                 <option value="Anyone">Anyone</option>
                 <option value="Unassigned">Unassigned</option>
-                {(staffMembers.length > 0 ? staffMembers.map((s) => s.name) : STAFF_OWNERS).map((owner) => (
-                  <option key={owner} value={owner}>
-                    {owner}
+                {(staffMembers ?? []).map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.name}
                   </option>
                 ))}
               </NativeSelect>
@@ -371,7 +389,7 @@ export function ComplaintsDashboard() {
                         )}
                         {!selected && (
                           <TableCell className={cn('text-[13px]', isRecent ? 'font-semibold text-blue-600' : 'text-muted-foreground')}>
-                            {c.age ?? '1 d'}
+                            {c.age ?? '—'}
                           </TableCell>
                         )}
                       </TableRow>
@@ -399,7 +417,7 @@ export function ComplaintsDashboard() {
                 <X />
               </Button>
             </div>
-            <p className="-mt-2 text-xs text-muted-foreground">{selected.openedLabel ?? 'Opened 12 Oct 20:14 by the customer'}</p>
+            <p className="-mt-2 text-xs text-muted-foreground">{selected.openedLabel ?? `Opened ${formatDateTime(selected.openedAt)}`}</p>
 
             <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Fact label="From">
@@ -429,7 +447,7 @@ export function ComplaintsDashboard() {
                     className="h-9 flex-1"
                   >
                     <option value="">Pick who handles this case</option>
-                    {staffMembers.map((s) => (
+                    {(staffMembers ?? []).map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name} ({s.roleCode})
                       </option>
@@ -444,6 +462,8 @@ export function ComplaintsDashboard() {
                     Assign
                   </Button>
                 </div>
+                {staffMembers === null && !staffError && <span className="text-xs text-muted-foreground">Loading staff…</span>}
+                {staffMembers?.length === 0 && <span className="text-xs text-muted-foreground">No staff members to assign yet.</span>}
               </ActionRow>
 
               <ActionRow label="Resolution">
@@ -559,9 +579,7 @@ export function ComplaintsDashboard() {
             <ol className="m-0 flex list-none flex-col p-0">
               {(selected.events ?? []).map((ev, idx, arr) => {
                 const isLast = idx === arr.length - 1
-                const headerText = ev.timeLabel
-                  ? `${ev.timeLabel} · ${ev.actorLabel ?? 'System'}`
-                  : `12 Oct 20:14 · ${ev.actorName ?? 'System'}`
+                const headerText = `${ev.timeLabel ?? formatDateTime(ev.occurredAt)} · ${ev.actorLabel ?? ev.actorName ?? 'System'}`
                 const bodyText =
                   ev.title ??
                   ev.note ??

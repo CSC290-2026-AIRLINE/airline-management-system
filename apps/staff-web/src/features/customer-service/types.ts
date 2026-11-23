@@ -48,7 +48,7 @@ export interface Complaint {
   updatedAt: string
   /** Figma display fields */
   summary?: string
-  fromSource?: 'Customer' | 'No account' | 'Feature 10'
+  fromSource?: 'Customer' | 'Feature 10'
   age?: string
   unread?: boolean
   bookingRef?: string | null
@@ -59,9 +59,6 @@ export interface Complaint {
   /** Only on the single-case response. */
   events?: CaseEvent[]
 }
-
-export const ALL_STATUSES: CaseStatus[] = ['with_supervisor', 'assigned', 'resolved', 'closed']
-export const ALL_TYPES: ComplaintType[] = ['employee', 'flight', 'food']
 
 export const STATUS_LABEL: Record<CaseStatus, string> = {
   with_supervisor: 'With supervisor',
@@ -118,8 +115,8 @@ export interface DeliveryLogRowView {
   typeCode: string
   feature: string
   recipient: string
-  channel: 'Email' | 'SMS' | 'Push' | '—'
-  status: 'Sent' | 'Sent on retry' | 'Failed · retrying' | 'Queued' | 'Skipped · no phone' | 'Nothing sent'
+  channel: 'Email' | 'SMS' | 'Push'
+  status: 'Sent' | 'Sent on retry' | 'Failed · retrying' | 'Queued'
   linkedTo: string
   linkedIsCase: boolean
   tries: number

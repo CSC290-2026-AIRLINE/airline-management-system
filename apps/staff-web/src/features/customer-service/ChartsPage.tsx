@@ -1,5 +1,4 @@
 import { useEffect, useEffectEvent, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@staff-web/components/ui/button'
 import { Card } from '@staff-web/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
@@ -9,32 +8,14 @@ import { PageFrame } from './components/PageFrame'
 import { StatCard } from './components/StatCard'
 import type { StaffChartsResponse } from './types'
 
-/* 08 / Staff / Complaint charts (Figma 4032:16149). Empty until the database answers; a failed load shows PageError. */
-const EMPTY_CHARTS: StaffChartsResponse = {
-  totalComplaints: 0,
-  openNow: 0,
-  withSupervisorCount: 0,
-  assignedCount: 0,
-  resolvedCount: 0,
-  closedCount: 0,
-  avgDaysToClose: '–',
-  compensationTotalThb: 0,
-  compensationDecisions: 0,
-  compensationFailed: 0,
-  byType: { employee: 0, flight: 0, food: 0 },
-  topFlights: [],
-  weeklyData: [],
-}
-
-const CURRENT_MONTH = 'October 2026 · to date'
-const PREVIOUS_MONTH = 'September 2026'
+/* 08 / Staff / Complaint charts (Figma 4032:16149). The endpoint counts every case (it takes no date range); a failed load shows PageError. */
 const TOP_FLIGHTS = 5
+const TITLE = 'Complaint charts'
+const DESCRIPTION = 'All complaints so far, by type, top flights and per week.'
 
 export function ChartsPage() {
   const api = useComplaintsApi()
-  const [monthLabel, setMonthLabel] = useState<typeof CURRENT_MONTH | typeof PREVIOUS_MONTH>(CURRENT_MONTH)
-  const [charts, setCharts] = useState<StaffChartsResponse>(EMPTY_CHARTS)
-  const [loading, setLoading] = useState(true)
+  const [charts, setCharts] = useState<StaffChartsResponse | null>(null)
   const [showAllFlights, setShowAllFlights] = useState(false)
   const [loadError, setLoadError] = useState<unknown>(null)
 
@@ -44,15 +25,10 @@ export function ChartsPage() {
     let active = true
     fetchCharts()
       .then((data) => {
-        if (active && data) {
-          setCharts(data)
-        }
+        if (active) setCharts(data)
       })
       .catch((e: unknown) => {
         if (active) setLoadError(e)
-      })
-      .finally(() => {
-        if (active) setLoading(false)
       })
     return () => {
       active = false
@@ -61,6 +37,15 @@ export function ChartsPage() {
 
   // Rethrown during render so the route's PageError shows it; "Try again" remounts and refetches.
   if (loadError) throw loadError
+  if (charts === null) {
+    return (
+      <PageFrame title={TITLE} description={DESCRIPTION}>
+        <p role="status" className="text-sm text-muted-foreground">
+          Loading complaint charts…
+        </p>
+      </PageFrame>
+    )
+  }
 
   // Y-axis max for "Complaints by type" (multiple of 3, min 12)
   const maxTypeCount = Math.max(charts.byType.employee, charts.byType.flight, charts.byType.food, 1)
@@ -75,39 +60,9 @@ export function ChartsPage() {
   const displayedFlights = showAllFlights ? charts.topFlights : charts.topFlights.slice(0, TOP_FLIGHTS)
 
   return (
-    <PageFrame
-      title="Complaint charts"
-      description="Complaints by type, top flights and complaints per week. Duplicates are left out."
-      actions={
-        <div className="inline-flex items-center rounded-md border bg-card">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Previous month"
-            disabled={monthLabel === PREVIOUS_MONTH}
-            onClick={() => setMonthLabel(PREVIOUS_MONTH)}
-          >
-            <ChevronLeft />
-          </Button>
-          <span className="border-x px-3.5 py-1.5 text-sm font-semibold whitespace-nowrap text-foreground">{monthLabel}</span>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Next month"
-            disabled={monthLabel === CURRENT_MONTH}
-            onClick={() => setMonthLabel(CURRENT_MONTH)}
-          >
-            <ChevronRight />
-          </Button>
-        </div>
-      }
-    >
+    <PageFrame title={TITLE} description={DESCRIPTION}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Complaints this month"
-          value={charts.totalComplaints}
-          hint={loading ? 'Syncing with database…' : 'Live from DB · duplicates left out'}
-        />
+        <StatCard label="Total complaints" value={charts.totalComplaints} hint="All time" />
         <StatCard
           label="Open now"
           value={charts.openNow}
@@ -144,9 +99,7 @@ export function ChartsPage() {
         <Card className="gap-0 overflow-hidden py-0 shadow-none">
           <div className="flex flex-col gap-0.5 px-5 pt-4 pb-2.5">
             <h2 className="text-base font-bold text-foreground">Top flights by complaints</h2>
-            <p className="text-xs text-muted-foreground">
-              Top {Math.min(TOP_FLIGHTS, charts.topFlights.length)} of {charts.topFlights.length} flights with complaints
-            </p>
+            <p className="text-xs text-muted-foreground">Up to {TOP_FLIGHTS} flights with the most complaints, all time</p>
           </div>
           <Table>
             <TableHeader>
@@ -162,7 +115,7 @@ export function ChartsPage() {
               {displayedFlights.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={5} className="py-6 text-center text-muted-foreground">
-                    No flights have complaints this month.
+                    No flight or food complaints are linked to a flight yet.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -195,7 +148,7 @@ export function ChartsPage() {
       <Card className="gap-3 px-5 py-4 shadow-none">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-bold text-foreground">Complaints per week</h2>
-          <span className="text-xs text-muted-foreground">Last 8 weeks · weeks start on Monday</span>
+          <span className="text-xs text-muted-foreground">Last {charts.weeklyData.length} weeks · weeks start on Monday</span>
         </div>
         <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
@@ -205,7 +158,7 @@ export function ChartsPage() {
             <span className="size-2.5 rounded-xs bg-gold" aria-hidden="true" /> Latest week
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-0.5 w-3.5 bg-gold" aria-hidden="true" /> 8-week average ({weeklyAvg})
+            <span className="h-0.5 w-3.5 bg-gold" aria-hidden="true" /> {charts.weeklyData.length}-week average ({weeklyAvg})
           </span>
         </div>
         <BarChart

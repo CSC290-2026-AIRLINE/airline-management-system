@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 interface PageFrameProps {
   title: string
   description: ReactNode
-  /** Controls for the right of the header, such as the month stepper on the charts page. */
+  /** Controls for the right of the header. */
   actions?: ReactNode
   children: ReactNode
 }

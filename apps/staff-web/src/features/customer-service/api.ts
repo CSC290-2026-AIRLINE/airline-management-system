@@ -30,7 +30,6 @@ export function useComplaintsApi() {
 
   return {
     list: () => request<Complaint[]>(''),
-    get: (id: string) => request<Complaint>(`/${id}`),
     getMe: () => request<{ id: string; name: string; roleCode: string; roleName: string; isSupervisor: boolean }>('/me'),
     getStaffMembers: () => request<{ id: string; name: string; roleCode: string }[]>('/staff-members'),
     assignOwner: (id: string, staffId: string) =>
@@ -42,7 +41,8 @@ export function useComplaintsApi() {
       request<Complaint>(`/${id}/compensation`, { method: 'POST', body: JSON.stringify(comp) }),
     getCharts: () => request<StaffChartsResponse>('/charts'),
     getDeliveryLog: () => request<StaffDeliveryLogResponse>('/delivery-log'),
-    retryNotification: (id: string) => request<{ id: string; status: string }>(`/delivery-log/${id}/retry`, { method: 'POST' }),
+    retryNotification: (id: string) =>
+      request<{ id: string; status: string; error?: string | null }>(`/delivery-log/${id}/retry`, { method: 'POST' }),
     getTemplates: () => request<StaffTemplateItemView[]>('/templates'),
     updateTemplate: (code: string, payload: UpdateTemplatePayload) =>
       request<StaffTemplateItemView[]>(`/templates/${code}`, {
