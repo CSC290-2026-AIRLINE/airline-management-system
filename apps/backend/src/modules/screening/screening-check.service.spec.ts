@@ -164,4 +164,35 @@ describe('ScreeningCheckService', () => {
   it('does not grant clearance without a stored screening', async () => {
     expect((await service.status(userId, passengerId, flightId)).outcome).toBe('not_screened')
   })
+  describe('statusSystem', () => {
+    it('answers not_screened without a stored screening, with no staff lookup', async () => {
+      expect(await service.statusSystem('checkin_boarding', passengerId, flightId)).toEqual({ outcome: 'not_screened' })
+      expect(tx.staff.findFirst).not.toHaveBeenCalled()
+    })
+    it('answers held while a held check has no review', async () => {
+      tx.$queryRaw.mockResolvedValue([{ id: checkId }])
+      tx.screening_check.findMany.mockResolvedValue([{ ...checkFixture({ outcome: 'held' }), screening_review: [] }])
+      expect((await service.statusSystem('checkin_boarding', passengerId, flightId)).outcome).toBe('held')
+    })
+    it('answers clear once security released the held check', async () => {
+      tx.$queryRaw.mockResolvedValue([{ id: checkId }])
+      tx.screening_check.findMany.mockResolvedValue([{ ...checkFixture({ outcome: 'held' }), screening_review: [reviewFixture()] }])
+      expect((await service.statusSystem('checkin_boarding', passengerId, flightId)).outcome).toBe('clear')
+    })
+    it('answers denied once security confirmed the match', async () => {
+      tx.$queryRaw.mockResolvedValue([{ id: checkId }])
+      tx.screening_check.findMany.mockResolvedValue([
+        { ...checkFixture({ outcome: 'held' }), screening_review: [reviewFixture({ decision: 'confirmed' })] },
+      ])
+      expect((await service.statusSystem('checkin_boarding', passengerId, flightId)).outcome).toBe('denied')
+    })
+    it('records the read as a system view in the audit log', async () => {
+      await service.statusSystem('checkin_boarding', passengerId, flightId)
+      expect(tx.audit_log.create.mock.calls[0][0].data).toMatchObject({ actor_type: 'system' })
+    })
+    it('rejects an invalid source before reading passenger data', async () => {
+      await expect(service.statusSystem('', passengerId, flightId)).rejects.toBeInstanceOf(BadRequestException)
+      expect(tx.passenger.findFirst).not.toHaveBeenCalled()
+    })
+  })
 })

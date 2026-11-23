@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- shadcn exports its variants next to the component */
 import * as React from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
-import { cn } from 'cn'
+import { cn } from '@staff-web/lib/utils'
 import { Toggle as TogglePrimitive } from 'radix-ui'
 
 const toggleVariants = cva(

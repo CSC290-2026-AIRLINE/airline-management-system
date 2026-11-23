@@ -21,7 +21,18 @@ import flythonLogo from '../assets/flython-logo.svg'
 import flythonLogoMark from '../assets/flython-logo-mark.svg'
 import sidebarPattern from '../assets/sidebar-pattern.png'
 import { groupKey, readOpen, writeOpen } from '../hooks/persisted-open'
-import { ADMIN_ITEMS, FLIGHT_SCHEDULING_ITEMS, GROUPS, PRICING_ITEMS, REPORTS_ITEM, type NavItem } from '../nav-items'
+import {
+  ADMIN_ITEMS,
+  CATERING_ITEMS,
+  CHECKIN_ITEMS,
+  CREW_ITEMS,
+  FLIGHT_SCHEDULING_ITEMS,
+  GROUPS,
+  LOYALTY_ITEMS,
+  PRICING_ITEMS,
+  REPORTS_ITEM,
+  type NavItem,
+} from '../nav-items'
 
 /**
  * These screens belong to other feature teams and have no routes in this app yet, so they are listed as disabled
@@ -72,10 +83,10 @@ function LinkedItem({
  * A sidebar group whose header opens and closes it. Closed = quiet and chevron right; open = bright and chevron down.
  * In the collapsed icon rail the header is hidden, a bar closes the group, and every item's icon shows, even in a closed group.
  */
-function NavGroup({ label, children }: { label: string; children: ReactNode }) {
+function NavGroup({ label, defaultOpen = true, children }: { label: string; defaultOpen?: boolean; children: ReactNode }) {
   return (
     <Collapsible
-      defaultOpen={readOpen(groupKey(label), true)}
+      defaultOpen={readOpen(groupKey(label), defaultOpen)}
       onOpenChange={(open) => writeOpen(groupKey(label), open)}
       className="group/collapsible"
     >
@@ -139,11 +150,15 @@ function PaymentsSubGroup({ pathname }: { pathname: string }) {
 
 /**
  * The admin workspace sidebar: the shadcn `Sidebar` (icon-collapsible on desktop, a sheet on a phone). Administration
- * comes first — its three screens are the only live links — then the F15 menu of the other teams' screens.
+ * comes first — its three screens are live links — then the pricing screens and the F15 menu of the other teams' screens.
+ *
+ * `expandedGroup` names the one group that starts open, for the pages whose design shows a single group expanded. The
+ * admin console passes nothing and keeps every group open.
  */
-export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOut: () => void }) {
+export function AppSidebar({ roleName, onSignOut, expandedGroup }: { roleName: string; onSignOut: () => void; expandedGroup?: string }) {
   const { toggleSidebar } = useSidebar()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const groupIsOpen = (label: string) => (expandedGroup === undefined ? true : label === expandedGroup)
 
   return (
     <Sidebar collapsible="icon">
@@ -178,7 +193,7 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
           type="scroll"
           className="min-h-0 flex-1 [&_[data-slot=scroll-area-scrollbar]]:w-1.5 [&_[data-slot=scroll-area-thumb]]:bg-sidebar-foreground/30 [&_[data-slot=scroll-area-viewport]>div]:block!"
         >
-          <NavGroup label="Administration">
+          <NavGroup label="Administration" defaultOpen={groupIsOpen('Administration')}>
             {ADMIN_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton
@@ -196,7 +211,7 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
             ))}
           </NavGroup>
 
-          <NavGroup label="Pricing & Fare Rules">
+          <NavGroup label="Pricing & Fare Rules" defaultOpen={groupIsOpen('Pricing & Fare Rules')}>
             {PRICING_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton asChild isActive={pathname === item.to} tooltip={item.label} className="pl-4">
@@ -209,7 +224,38 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
             ))}
           </NavGroup>
 
-          <NavGroup label="Flight Scheduling">
+          <NavGroup label="Crew & Rostering" defaultOpen={groupIsOpen('Crew & Rostering')}>
+            {CREW_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={item.match.some((path) => pathname === path || pathname.startsWith(path + '/'))}
+                  tooltip={item.label}
+                  className="pl-4"
+                >
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Check-in & Boarding" defaultOpen={groupIsOpen('Check-in & Boarding')}>
+            {CHECKIN_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton asChild isActive={pathname.startsWith(item.to)} tooltip={item.label} className="pl-4">
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Flight Scheduling" defaultOpen={groupIsOpen('Flight Scheduling')}>
             {FLIGHT_SCHEDULING_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton
@@ -229,8 +275,44 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
             ))}
           </NavGroup>
 
+          <NavGroup label="Loyalty Programme" defaultOpen={groupIsOpen('Loyalty Programme')}>
+            {LOYALTY_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === item.to || pathname.startsWith(item.to + '/')}
+                  tooltip={item.label}
+                  className="pl-4"
+                >
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Onboard Products" defaultOpen={groupIsOpen('Onboard Products')}>
+            {CATERING_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === item.to || pathname.startsWith(item.to + '/')}
+                  tooltip={item.label}
+                  className="pl-4"
+                >
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
           {GROUPS.map((group) => (
-            <NavGroup key={group.label} label={group.label}>
+            <NavGroup key={group.label} label={group.label} defaultOpen={groupIsOpen(group.label)}>
               {group.items.map((item) =>
                 item.label === 'Payments & Refunds' ? (
                   <PaymentsSubGroup key={item.label} pathname={pathname} />
@@ -242,6 +324,7 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
               )}
             </NavGroup>
           ))}
+
           <SidebarGroup className="py-1">
             <SidebarGroupContent>
               <SidebarMenu>

@@ -69,6 +69,13 @@ describe('AdminConsoleGuard', () => {
     await expect(guard.canActivate(makeContext())).rejects.toBeInstanceOf(ForbiddenException)
   })
 
+  it('answers with the same { error: { code, message } } body as the other admin routes', async () => {
+    const { guard } = makeDb(null)
+    const err = (await guard.canActivate(makeContext()).catch((e: unknown) => e)) as ForbiddenException
+    expect(err.getStatus()).toBe(403)
+    expect(err.getResponse()).toEqual({ error: { code: 'FORBIDDEN', message: 'Admin role required.' } })
+  })
+
   // The guard's whole security model is the where-clause it builds. Pin its shape so a refactor that drops any of
   // the four conditions fails the test rather than silently reopening a hole.
   it('queries staff with the exact hardening where-clause (4 conditions)', async () => {

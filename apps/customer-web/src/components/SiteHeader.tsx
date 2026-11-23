@@ -9,6 +9,28 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@cus
 
 const links = ['Book', 'My Trips', 'Membership', 'Help']
 
+// Labels with a page behind them. The others stay plain text until their pages exist.
+const linkTo: Partial<Record<(typeof links)[number], '/search' | '/bookings' | '/loyalty'>> = {
+  Book: '/search',
+  'My Trips': '/bookings',
+  Membership: '/loyalty',
+}
+
+function NavItem({ label, onClick }: { label: string; onClick?: () => void }) {
+  const to = linkTo[label]
+  if (!to) return <span className="text-muted-foreground">{label}</span>
+  return (
+    <Link
+      to={to}
+      onClick={onClick}
+      className="rounded-sm text-muted-foreground no-underline hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      activeProps={{ className: 'text-foreground font-medium', 'aria-current': 'page' }}
+    >
+      {label}
+    </Link>
+  )
+}
+
 function UserAvatar({ className }: { className: string }) {
   const { user } = useUser()
   const name = user?.fullName || 'Profile'
@@ -35,11 +57,9 @@ export default function SiteHeader() {
           </Button>
         </SignedOut>
         <SignedIn>
-          <nav aria-label="Main navigation" className="hidden items-center gap-4 md:flex">
+          <nav aria-label="Main navigation" className="hidden items-center gap-4 text-sm md:flex">
             {links.map((link) => (
-              <span key={link} className="text-sm text-muted-foreground">
-                {link}
-              </span>
+              <NavItem key={link} label={link} />
             ))}
             <Button asChild variant="secondary" size="sm">
               <Link to="/account/my-profile">
@@ -66,9 +86,7 @@ export default function SiteHeader() {
                 </SheetHeader>
                 <nav aria-label="Main navigation" className="flex flex-col gap-3 px-4 text-sm">
                   {links.map((link) => (
-                    <span key={link} className="text-muted-foreground">
-                      {link}
-                    </span>
+                    <NavItem key={link} label={link} onClick={() => setOpen(false)} />
                   ))}
                   <Button asChild variant="secondary" className="justify-start" onClick={() => setOpen(false)}>
                     <Link to="/account/my-profile">My Profile</Link>
