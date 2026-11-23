@@ -9,7 +9,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { StockApiError, useOnboardApi } from '@staff-web/features/onboard-products/api'
-import { addDays } from '@staff-web/features/onboard-products/dates'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
@@ -22,7 +21,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { PageHeader } from '@staff-web/features/onboard-products/ui'
 import type {
   Product,
-  ProductCategory,
   PurchaseReceipt,
   PurchaseReceiptDraftLine,
   Supplier,
@@ -45,23 +43,19 @@ interface Row {
   expiresAt: string
 }
 
-function defaultExpiryForCategory(category: ProductCategory): string {
-  if (category === 'duty_free') return ''
-  const days = category === 'meal' ? 2 : 180
-  return addDays(days).slice(0, 10)
-}
-
+// A new row's expiry starts empty: the server then sets it to the received time (on F12's clock) plus the product's
+// own shelf life. Staff can still type a date. (The old browser-side default used the browser's clock and a fixed 2 or
+// 180 days, so new stock could arrive already expired on a shifted simulation clock.)
 function emptyRow(usedProductIds: Set<string>, products: Product[]): Row {
   // Pick the first product not already on the page, so the user doesn't
   // immediately trigger a duplicate-product error.
   const next = products.find((p) => !usedProductIds.has(p.id))
-  const product = next ?? products[0]
   return {
     key: `row-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     productId: next?.id ?? '',
     quantity: '',
     unitCost: '',
-    expiresAt: product ? defaultExpiryForCategory(product.category) : addDays(2).slice(0, 10),
+    expiresAt: '',
   }
 }
 
@@ -223,11 +217,9 @@ export function ReceiveDeliveryPage() {
       setAddingProductPrevious(current)
       return
     }
-    // When the product changes, reset the expiry to its category default so
-    // the user doesn't carry over a date from a different category.
-    const product = products.find((p) => p.id === newProductId)
-    const newExpiry = product ? defaultExpiryForCategory(product.category) : ''
-    patchRow(rowKey, { productId: newProductId, expiresAt: newExpiry })
+    // When the product changes, clear the expiry so a date typed for another product is not carried over; empty
+    // means the server uses the new product's shelf life.
+    patchRow(rowKey, { productId: newProductId, expiresAt: '' })
   }
 
   async function onSubmit() {
@@ -242,8 +234,7 @@ export function ReceiveDeliveryPage() {
     }
     const lines: PurchaseReceiptDraftLine[] = rows.map((r) => {
       const product = products.find((p) => p.id === r.productId)
-      const fallback = product ? defaultExpiryForCategory(product.category) : ''
-      const expiresAt = r.productId && product?.category === 'duty_free' ? null : r.expiresAt === '' ? fallback || null : r.expiresAt
+      const expiresAt = product?.category === 'duty_free' || r.expiresAt === '' ? null : r.expiresAt
       return {
         productId: r.productId,
         quantity: Number(r.quantity),
@@ -505,6 +496,7 @@ export function ReceiveDeliveryPage() {
                         onChange={(e) => patchRow(r.key, { expiresAt: e.target.value })}
                         disabled={expiresDisabled}
                         aria-label="Expiry"
+                        title="Leave empty to use the product's shelf life from today"
                       />
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{lineTotal != null ? formatMoney(lineTotal) : '—'}</TableCell>
@@ -545,10 +537,9 @@ export function ReceiveDeliveryPage() {
             const fallback = products[0]?.id ?? ''
             const next = prev !== '' && prev !== NEW_PRODUCT_SENTINEL ? prev : fallback
             if (next !== '') {
-              const product = products.find((p) => p.id === next)
               patchRow(addingProductFor, {
                 productId: next,
-                expiresAt: product ? defaultExpiryForCategory(product.category) : '',
+                expiresAt: '',
               })
             }
             setAddingProductFor(null)
@@ -562,7 +553,7 @@ export function ReceiveDeliveryPage() {
             void api.products.list().then(setProducts)
             patchRow(addingProductFor, {
               productId: created.id,
-              expiresAt: defaultExpiryForCategory(created.category),
+              expiresAt: '',
             })
             setAddingProductFor(null)
             setAddingProductPrevious('')
