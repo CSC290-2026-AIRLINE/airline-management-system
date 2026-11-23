@@ -2,12 +2,18 @@
 // attributes, selling price, purchase cost, shelf life, and premium switch.
 // Saves via the api layer and reports success/failure to the parent.
 
-import { useId, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Switch } from '@staff-web/components/ui/switch'
+import { Toggle } from '@staff-web/components/ui/toggle'
 import { ImageInvalidError, ProductApiError, useOnboardApi } from '../api'
 import type { DietaryAttribute, Product, ProductCategory, ProductInput, ProductPhoto, SpecialMealCode } from '../api/types'
 import { PhotoPlaceholder } from './PhotoPlaceholder'
-import { useDialogFocusTrap } from './useDialogFocusTrap'
-import styles from './ProductDialog.module.css'
 
 const CATEGORY_OPTIONS: { value: ProductCategory; label: string }[] = [
   { value: 'meal', label: 'Meal' },
@@ -147,10 +153,7 @@ export function ProductDialog({ product, onClose, onSaved, onError }: Props) {
   const [errors, setErrors] = useState<FormErrors>({})
   const [submitting, setSubmitting] = useState(false)
   const [photoError, setPhotoError] = useState<string | null>(null)
-  const dialogRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const headingId = useId()
-  useDialogFocusTrap(true, dialogRef, onClose)
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -235,197 +238,168 @@ export function ProductDialog({ product, onClose, onSaved, onError }: Props) {
   const photoSrc = form.photo?.dataUrl ?? null
 
   return (
-    <div className={styles.backdrop} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={dialogRef} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={headingId}>
-        <header className={styles.header}>
-          <h2 id={headingId} className={styles.title}>
-            {isEdit ? 'Edit product' : 'Add product'}
-          </h2>
-          <p className={styles.subtitle}>Prices are in USD and are charged through F5.</p>
-        </header>
+    <Dialog open onOpenChange={(open) => !open && !submitting && onClose()}>
+      <DialogContent className="max-h-[90vh] gap-5 overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? 'Edit product' : 'Add product'}</DialogTitle>
+          <DialogDescription>Prices are in USD and are charged through F5.</DialogDescription>
+        </DialogHeader>
 
-        <form className={styles.form} onSubmit={onSubmit} noValidate>
-          <section className={styles.photoBlock}>
-            <p className={styles.label}>Photo shown to customers</p>
-            <div className={styles.photoRow}>
+        <form className="flex flex-col gap-5" onSubmit={onSubmit} noValidate>
+          <section className="flex flex-col gap-2">
+            <Label>Photo shown to customers</Label>
+            <div className="flex flex-wrap items-center gap-4">
               {photoSrc ? (
-                <img src={photoSrc} alt="" className={styles.photoPreview} />
+                <img src={photoSrc} alt="" className="size-16 rounded-md border object-cover" />
               ) : (
-                <PhotoPlaceholder
-                  product={{
-                    id: 'preview',
-                    category: form.category,
-                    name: form.name || 'New product',
-                  }}
-                  size="md"
-                />
+                <PhotoPlaceholder product={{ id: 'preview', category: form.category, name: form.name || 'New product' }} size="md" />
               )}
-              <div className={styles.photoButtons}>
+              <div className="flex flex-wrap gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
-                  className={styles.fileInput}
+                  className="sr-only"
                   onChange={onFileChange}
                   aria-label="Upload product photo"
                 />
-                <button type="button" className={styles.photoButton} onClick={() => fileInputRef.current?.click()}>
+                <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
                   {photoSrc ? 'Replace photo' : 'Upload photo'}
-                </button>
+                </Button>
                 {photoSrc && (
-                  <button
+                  <Button
                     type="button"
-                    className={`${styles.photoButton} ${styles.photoButtonDanger}`}
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
                     onClick={() => {
                       setForm((prev) => ({ ...prev, photo: null }))
                       setPhotoError(null)
                     }}
                   >
                     Remove photo
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
             {photoError && (
-              <p className={styles.error} role="alert">
-                {photoError}
-              </p>
+              <Alert variant="destructive" role="alert">
+                <AlertDescription>{photoError}</AlertDescription>
+              </Alert>
             )}
-            <p className={styles.hint}>JPEG, PNG or WebP, up to 5 MB. It is resized and shown on the customer's menu card.</p>
+            <p className="m-0 text-xs text-muted-foreground">
+              JPEG, PNG or WebP, up to 5 MB. It is resized and shown on the customer's menu card.
+            </p>
           </section>
 
-          <div className={styles.field}>
-            <label htmlFor="pd-name" className={styles.label}>
-              Name
-            </label>
-            <input
+          <Field id="pd-name" label="Name" error={errors.name}>
+            <Input
               id="pd-name"
-              className={styles.input}
-              type="text"
               value={form.name}
               onChange={(e) => setField('name', e.target.value)}
               placeholder="e.g. Chicken fried rice"
               autoComplete="off"
+              aria-invalid={errors.name ? true : undefined}
             />
-            {errors.name && <p className={styles.error}>{errors.name}</p>}
-          </div>
+          </Field>
 
-          <div className={styles.field}>
-            <label htmlFor="pd-sku" className={styles.label}>
-              SKU
-            </label>
-            <input
+          <Field id="pd-sku" label="SKU" error={errors.sku}>
+            <Input
               id="pd-sku"
-              className={styles.input}
-              type="text"
               value={form.sku}
               onChange={(e) => setField('sku', e.target.value)}
               placeholder="e.g. MEAL-CHICKEN-FRIED-RICE"
               autoComplete="off"
+              aria-invalid={errors.sku ? true : undefined}
             />
-            {errors.sku && <p className={styles.error}>{errors.sku}</p>}
-          </div>
+          </Field>
 
-          <div className={styles.row}>
-            <div className={styles.field}>
-              <label htmlFor="pd-category" className={styles.label}>
-                Category
-              </label>
-              <select
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field id="pd-category" label="Category">
+              <NativeSelect
                 id="pd-category"
-                className={styles.input}
+                className="w-full"
                 value={form.category}
                 onChange={(e) => setCategory(e.target.value as ProductCategory)}
               >
                 {CATEGORY_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
+                  <NativeSelectOption key={opt.value} value={opt.value}>
                     {opt.label}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
-            </div>
-            <div className={styles.field}>
-              <label htmlFor="pd-price" className={styles.label}>
-                Selling price (USD)
-              </label>
-              <input
+              </NativeSelect>
+            </Field>
+            <Field id="pd-price" label="Selling price (USD)" error={errors.priceAmount}>
+              <Input
                 id="pd-price"
-                className={styles.input}
                 type="number"
                 min="0"
                 step="0.01"
                 value={form.priceAmount}
                 onChange={(e) => setField('priceAmount', e.target.value)}
                 placeholder="0.00"
+                aria-invalid={errors.priceAmount ? true : undefined}
               />
-              {errors.priceAmount && <p className={styles.error}>{errors.priceAmount}</p>}
-            </div>
+            </Field>
           </div>
 
-          <div className={styles.field}>
-            <label htmlFor="pd-typecode" className={styles.label}>
-              Special meal code {typeCodeDisabled ? '(only for meals)' : ''}
-            </label>
-            <select
+          <Field id="pd-typecode" label={`Special meal code${typeCodeDisabled ? ' (only for meals)' : ''}`} error={errors.typeCode}>
+            <NativeSelect
               id="pd-typecode"
-              className={styles.input}
+              className="w-full"
               value={form.typeCode}
               onChange={(e) => setField('typeCode', e.target.value as SpecialMealCode)}
               disabled={typeCodeDisabled}
             >
               {TYPE_CODES.map((c) => (
-                <option key={c} value={c}>
+                <NativeSelectOption key={c} value={c}>
                   {c}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
-            {errors.typeCode && <p className={styles.error}>{errors.typeCode}</p>}
-          </div>
+            </NativeSelect>
+          </Field>
 
-          <div className={styles.field}>
-            <p className={styles.label}>Dietary attributes</p>
-            <div className={styles.chips}>
+          <div className="flex flex-col gap-2">
+            <Label>Dietary attributes</Label>
+            <div className="flex flex-wrap gap-2">
               {DIETARY_OPTIONS.map((attr) => {
                 const active = form.dietaryAttributes.includes(attr)
                 return (
-                  <button
+                  <Toggle
                     key={attr}
-                    type="button"
-                    className={`${styles.chip} ${active ? styles.chipActive : ''}`}
-                    aria-pressed={active}
-                    onClick={() => toggleDietary(attr)}
+                    variant="outline"
+                    size="sm"
+                    pressed={active}
+                    onPressedChange={() => toggleDietary(attr)}
+                    className="capitalize"
                   >
                     {attr.replace('_', ' ')}
-                  </button>
+                  </Toggle>
                 )
               })}
             </div>
           </div>
 
-          <div className={styles.row}>
-            <div className={styles.field}>
-              <label htmlFor="pd-cost" className={styles.label}>
-                Purchase cost (USD)
-              </label>
-              <input
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field id="pd-cost" label="Purchase cost (USD)" error={errors.purchaseCostAmount}>
+              <Input
                 id="pd-cost"
-                className={styles.input}
                 type="number"
                 min="0"
                 step="0.01"
                 value={form.purchaseCostAmount}
                 onChange={(e) => setField('purchaseCostAmount', e.target.value)}
                 placeholder="Optional"
+                aria-invalid={errors.purchaseCostAmount ? true : undefined}
               />
-              {errors.purchaseCostAmount && <p className={styles.error}>{errors.purchaseCostAmount}</p>}
-            </div>
-            <div className={styles.field}>
-              <label htmlFor="pd-shelf" className={styles.label}>
-                Shelf life (days) {shelfLifeDisabled && <span className={styles.muted}>· disabled for duty-free</span>}
-              </label>
-              <input
+            </Field>
+            <Field
+              id="pd-shelf"
+              label={`Shelf life (days)${shelfLifeDisabled ? ' · disabled for duty-free' : ''}`}
+              error={errors.shelfLifeDays}
+            >
+              <Input
                 id="pd-shelf"
-                className={styles.input}
                 type="number"
                 min="1"
                 step="1"
@@ -433,36 +407,41 @@ export function ProductDialog({ product, onClose, onSaved, onError }: Props) {
                 onChange={(e) => setField('shelfLifeDays', e.target.value)}
                 placeholder={shelfLifeDisabled ? 'Not applicable' : 'e.g. 2'}
                 disabled={shelfLifeDisabled}
+                aria-invalid={errors.shelfLifeDays ? true : undefined}
               />
-              {errors.shelfLifeDays && <p className={styles.error}>{errors.shelfLifeDays}</p>}
-            </div>
+            </Field>
           </div>
 
-          <label className={styles.switchRow}>
-            <span className={styles.label}>Premium meal</span>
-            <span className={styles.switchControl}>
-              <input
-                type="checkbox"
-                checked={form.isPremium}
-                onChange={(e) => setField('isPremium', e.target.checked)}
-                className={styles.switchInput}
-              />
-              <span className={styles.switchTrack} aria-hidden="true">
-                <span className={styles.switchThumb} />
-              </span>
-            </span>
-          </label>
+          <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+            <Label htmlFor="pd-premium">Premium meal</Label>
+            <Switch id="pd-premium" checked={form.isPremium} onCheckedChange={(checked) => setField('isPremium', checked)} />
+          </div>
 
-          <footer className={styles.footer}>
-            <button type="button" className={styles.cancelButton} onClick={onClose} disabled={submitting}>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
               Cancel
-            </button>
-            <button type="submit" className={styles.saveButton} disabled={submitting}>
+            </Button>
+            <Button type="submit" disabled={submitting}>
               {isEdit ? 'Save changes' : 'Add product'}
-            </button>
-          </footer>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** A label, its control and the error under it. */
+function Field({ id, label, error, children }: { id: string; label: string; error?: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id}>{label}</Label>
+      {children}
+      {error && (
+        <p className="m-0 text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

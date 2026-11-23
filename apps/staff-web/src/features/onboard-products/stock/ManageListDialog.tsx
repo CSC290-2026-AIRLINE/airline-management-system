@@ -3,11 +3,14 @@
 // each with a kebab menu (Edit / Delete). Reuses KebabMenu,
 // ConfirmDeleteDialog, useDialogFocusTrap and the shared navy styling.
 
-import { useId, useMemo, useRef, useState, type FormEvent } from 'react'
-import { useDialogFocusTrap } from '../catalog/useDialogFocusTrap'
+import { useMemo, useState, type FormEvent } from 'react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
 import { KebabMenu } from '../catalog/KebabMenu'
 import { ConfirmDeleteDialog } from '../catalog/ConfirmDeleteDialog'
-import styles from './ManageListDialog.module.css'
 
 export interface ManageListItem {
   id: string
@@ -57,10 +60,6 @@ export function ManageListDialog(props: Props) {
     onUpdate,
     onDelete,
   } = props
-
-  const dialogRef = useRef<HTMLDivElement | null>(null)
-  const headingId = useId()
-  useDialogFocusTrap(true, dialogRef, onClose)
 
   type EditState = { mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; id: string; initial: ManageListInput }
   const [editState, setEditStateRaw] = useState<EditState>({ mode: 'closed' })
@@ -129,123 +128,110 @@ export function ManageListDialog(props: Props) {
   const sortedItems = useMemo(() => items.slice().sort((a, b) => a.name.localeCompare(b.name)), [items])
 
   return (
-    <div className={styles.backdrop} onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <div ref={dialogRef} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={headingId}>
-        <header className={styles.header}>
-          <div>
-            <h2 id={headingId} className={styles.title}>
-              {title}
-            </h2>
-            <p className={styles.subtitle}>{subtitle}</p>
-          </div>
-          <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close" disabled={busy}>
-            ×
-          </button>
-        </header>
+    <>
+      <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
+        <DialogContent className="max-h-[90vh] gap-4 overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{subtitle}</DialogDescription>
+          </DialogHeader>
 
-        <form className={styles.form} onSubmit={onSubmit} noValidate>
-          <div className={styles.row}>
-            <div className={styles.field}>
-              <label htmlFor="ml-name" className={styles.label}>
-                {nameLabel}
-              </label>
-              <input
-                id="ml-name"
-                type="text"
-                className={styles.input}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={nameLabel}
-                autoComplete="off"
-                disabled={busy}
-              />
-            </div>
-            {showSecondaryField && (
-              <div className={styles.field}>
-                <label htmlFor="ml-secondary" className={styles.label}>
-                  {secondaryLabel}
-                  {secondaryRequired ? '' : ' (optional)'}
-                </label>
-                <input
-                  id="ml-secondary"
-                  type="text"
-                  className={styles.input}
-                  value={secondary}
-                  onChange={(e) => setSecondary(e.target.value)}
-                  placeholder={secondaryLabel}
+          <form className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4" onSubmit={onSubmit} noValidate>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="ml-name">{nameLabel}</Label>
+                <Input
+                  id="ml-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={nameLabel}
                   autoComplete="off"
                   disabled={busy}
                 />
               </div>
+              {showSecondaryField && (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="ml-secondary">
+                    {secondaryLabel}
+                    {secondaryRequired ? '' : ' (optional)'}
+                  </Label>
+                  <Input
+                    id="ml-secondary"
+                    value={secondary}
+                    onChange={(e) => setSecondary(e.target.value)}
+                    placeholder={secondaryLabel}
+                    autoComplete="off"
+                    disabled={busy}
+                  />
+                </div>
+              )}
+            </div>
+            {error && (
+              <Alert variant="destructive" role="alert">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditState({ mode: 'closed' })}
+                disabled={busy || editState.mode === 'closed'}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy || name.trim() === '' || (secondaryRequired && secondary.trim() === '')}>
+                {editState.mode === 'edit' ? (busy ? 'Saving…' : 'Save changes') : busy ? 'Adding…' : addLabel}
+              </Button>
+            </div>
+          </form>
+
+          <div className="flex flex-col divide-y rounded-lg border">
+            {sortedItems.length === 0 ? (
+              <p className="m-0 p-4 text-center text-sm text-muted-foreground">{emptyMessage}</p>
+            ) : (
+              sortedItems.map((it) => (
+                <div key={it.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="m-0 text-sm font-semibold">{it.name}</p>
+                    {it.secondary != null && it.secondary !== '' && <p className="m-0 text-xs text-muted-foreground">{it.secondary}</p>}
+                    {it.hint && <p className="m-0 text-xs text-destructive">{it.hint}</p>}
+                  </div>
+                  <KebabMenu
+                    label={`Actions for ${it.name}`}
+                    actions={[
+                      {
+                        label: 'Edit',
+                        onSelect: () =>
+                          setEditState({ mode: 'edit', id: it.id, initial: { name: it.name, secondary: it.secondary ?? '' } }),
+                      },
+                      ...(it.isProtected
+                        ? []
+                        : [
+                            {
+                              label: 'Remove',
+                              onSelect: () => {
+                                setDeleteError(null)
+                                setDeleting(it)
+                              },
+                              destructive: true,
+                            },
+                          ]),
+                    ]}
+                  />
+                </div>
+              ))
             )}
           </div>
-          {error && (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          )}
-          <div className={styles.formFooter}>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => setEditState({ mode: 'closed' })}
-              disabled={busy || editState.mode === 'closed'}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className={styles.primaryButton}
-              disabled={busy || name.trim() === '' || (secondaryRequired && secondary.trim() === '')}
-            >
-              {editState.mode === 'edit' ? (busy ? 'Saving…' : 'Save changes') : busy ? 'Adding…' : addLabel}
-            </button>
-          </div>
-        </form>
-
-        <div className={styles.list}>
-          {sortedItems.length === 0 ? (
-            <p className={styles.empty}>{emptyMessage}</p>
-          ) : (
-            sortedItems.map((it) => (
-              <div key={it.id} className={styles.listRow}>
-                <div className={styles.itemBody}>
-                  <p className={styles.itemName}>{it.name}</p>
-                  {it.secondary != null && it.secondary !== '' && <p className={styles.itemSecondary}>{it.secondary}</p>}
-                  {it.hint && <p className={styles.itemHint}>{it.hint}</p>}
-                </div>
-                <KebabMenu
-                  label={`Actions for ${it.name}`}
-                  actions={[
-                    {
-                      label: 'Edit',
-                      onSelect: () => setEditState({ mode: 'edit', id: it.id, initial: { name: it.name, secondary: it.secondary ?? '' } }),
-                    },
-                    ...(it.isProtected
-                      ? []
-                      : [
-                          {
-                            label: 'Remove',
-                            onSelect: () => {
-                              setDeleteError(null)
-                              setDeleting(it)
-                            },
-                            destructive: true,
-                          },
-                        ]),
-                  ]}
-                />
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
 
       {deleting && (
         <ConfirmDeleteDialog
           product={{ id: deleting.id, name: deleting.name } as never}
           busy={deleteBusy}
           errorMessage={deleteError}
+          description="This removes it from the list."
           onClose={() => {
             if (deleteBusy) return
             setDeleting(null)
@@ -254,6 +240,6 @@ export function ManageListDialog(props: Props) {
           onConfirm={() => void handleDelete()}
         />
       )}
-    </div>
+    </>
   )
 }

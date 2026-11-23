@@ -5,13 +5,17 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
+import { ArrowLeft } from 'lucide-react'
+import { toast } from 'sonner'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { PageHeader } from '@staff-web/features/onboard-products/ui'
 import { useOnboardApi } from '@staff-web/features/onboard-products/api'
 import type { Cabin, CabinSetting, Product, ProductOffering, SettingPatch } from '@staff-web/features/onboard-products/api/types'
 import { resolveCabinSettings, resolveMenu } from '@staff-web/features/onboard-products/offered-menu/resolve'
-import { SegmentedControl } from './SegmentedControl'
-import { ToggleSwitch } from './ToggleSwitch'
-import styles from './RouteDetailPage.module.css'
+import { CabinTile, MenuPanel, RulesForm } from './parts'
 
 const CABINS: Cabin[] = ['economy', 'premium_economy', 'business']
 
@@ -25,10 +29,6 @@ interface Draft {
   snacksEnabled: boolean
   dutyFreeEnabled: boolean
   onboardBufferPercent: number
-}
-
-function nextToastId(): number {
-  return Date.now() + Math.floor(Math.random() * 1000)
 }
 
 function cabinLabel(c: Cabin): string {
@@ -89,11 +89,12 @@ export function NetworkDefaultPage() {
   const [original, setOriginal] = useState<Draft | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState<ToastData | null>(null)
   const [warning, setWarning] = useState<string | null>(null)
 
-  function showToast(kind: ToastKind, message: string) {
-    setToast({ id: nextToastId(), kind, message })
+  function showToast(kind: 'success' | 'error' | 'info', message: string) {
+    if (kind === 'success') toast.success(message)
+    else if (kind === 'error') toast.error(message)
+    else toast.info(message)
   }
 
   useEffect(() => {
@@ -143,8 +144,21 @@ export function NetworkDefaultPage() {
     }
   }, [draft, cabin])
 
-  if (loading && !settings) return <p className={styles.message}>Loading network default…</p>
-  if (!settings || !offerings) return <p className={styles.error}>Network default not found.</p>
+  if (loading && !settings) {
+    return (
+      <div className="flex flex-col gap-3" aria-busy="true">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    )
+  }
+  if (!settings || !offerings) {
+    return (
+      <Alert variant="destructive" role="alert">
+        <AlertDescription>Network default not found.</AlertDescription>
+      </Alert>
+    )
+  }
 
   const resolved = resolveCabinSettings(settings, cabin, null, null)
 
@@ -152,12 +166,15 @@ export function NetworkDefaultPage() {
     setDraft((d) => (d ? { ...d, [key]: value } : d))
   }
 
+  // The menu also holds snacks, drinks and duty-free; the tiles and the menu panel count meals only.
+  const mealsIn = (menu: { productId: string }[]) => menu.filter((o) => mealProducts.some((p) => p.id === o.productId)).length
+
   function cabinTileSubline(c: Cabin): string {
     const m = resolveMenu(offerings ?? [], c, null, null)
-    if (m.menu.length === 0) return '0 meals · no menu set'
+    if (mealsIn(m.menu) === 0) return '0 meals · no menu set'
     const def = m.menu.find((o) => o.id === m.defaultOfferingId)
     const defName = def ? mealProducts.find((p) => p.id === def.productId)?.name : null
-    return defName ? `${m.menu.length} meals · default ${defName}` : `${m.menu.length} meals · standard menu`
+    return defName ? `${mealsIn(m.menu)} meals · default ${defName}` : `${mealsIn(m.menu)} meals · standard menu`
   }
 
   async function handleSave() {
@@ -269,247 +286,74 @@ export function NetworkDefaultPage() {
   }
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <Link to="/catering/offered-menu" className={styles.backLink}>
-            ← Back to offered menu
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <Button asChild variant="ghost" size="sm" className="-ml-2 self-start text-muted-foreground">
+          <Link to="/catering/offered-menu">
+            <ArrowLeft aria-hidden="true" />
+            Back to offered menu
           </Link>
-          <h1 className={styles.title}>Network default</h1>
-          <p className={styles.subtitle}>Starting rules that apply to every route until a route or single flight overrides them.</p>
-        </div>
-      </header>
+        </Button>
+        <PageHeader
+          title="Network default"
+          description="Starting rules that apply to every route until a route or single flight overrides them."
+        />
+      </div>
 
-      {toast && <Toast toast={toast} onDismiss={() => setToast(null)} />}
-
-      <div className={styles.cabinTiles}>
+      <div className="grid gap-4 md:grid-cols-3">
         {CABINS.map((c) => {
           const s = settings.find((x) => x.scope === 'network' && x.cabin === c) ?? null
           const summary = cabinSummary(s)
-          const sub = cabinTileSubline(c)
           return (
-            <button
+            <CabinTile
               key={c}
-              type="button"
-              className={cabin === c ? styles.cabinTileActive : styles.cabinTile}
+              name={cabinLabel(c)}
+              badge="Default"
+              headline={summary.headline}
+              subline={cabinTileSubline(c)}
+              active={cabin === c}
               onClick={() => setCabin(c)}
-              aria-pressed={cabin === c}
-            >
-              <div className={styles.cabinTileHeader}>
-                <span className={styles.cabinTileName}>{cabinLabel(c)}</span>
-                <span className={styles.inheritedBadge}>Default</span>
-              </div>
-              <p className={styles.cabinTileHeadline}>{summary.headline}</p>
-              <p className={styles.cabinTileSubline}>{sub}</p>
-            </button>
+            />
           )
         })}
       </div>
 
       {draft && (
-        <section className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <h2 className={styles.panelTitle}>{cabinLabel(cabin)} · rules and menu</h2>
-          </div>
-
-          <div className={styles.panelBody}>
-            <div className={styles.settingsColumn}>
-              <p className={styles.sectionHeader}>Meals</p>
-
-              <PlainField label="Meal service" description="Whether meals are free, paid or not served." error={errors.mealService}>
-                <SegmentedControl
-                  ariaLabel="Meal service"
-                  value={draft.mealService}
-                  onChange={(v) => setField('mealService', v as Draft['mealService'])}
-                  options={[
-                    { value: 'complimentary', label: 'Complimentary' },
-                    { value: 'paid', label: 'Paid' },
-                    { value: 'none', label: 'None' },
-                  ]}
-                />
-              </PlainField>
-
-              <PlainField label="Meal selection" description="Whether passengers pick their meal.">
-                <SegmentedControl
-                  ariaLabel="Meal selection"
-                  value={draft.mealSelection}
-                  onChange={(v) => setField('mealSelection', v as Draft['mealSelection'])}
-                  disabled={draft.mealService === 'none'}
-                  options={[
-                    { value: 'choose', label: 'Passengers choose' },
-                    { value: 'fixed', label: 'Fixed meal, no choice' },
-                  ]}
-                />
-              </PlainField>
-
-              <PlainField
-                label="Included meals per passenger"
-                description="Meals each passenger gets at no charge."
-                error={errors.includedPerPassenger}
-              >
-                <SegmentedControl
-                  ariaLabel="Included meals per passenger"
-                  value={draft.includedPerPassenger}
-                  onChange={(v) => setField('includedPerPassenger', v)}
-                  options={[
-                    { value: 0, label: '0' },
-                    { value: 1, label: '1' },
-                    { value: 2, label: '2' },
-                    { value: 3, label: '3' },
-                  ]}
-                />
-              </PlainField>
-
-              <p className={styles.sectionHeader}>Ordering</p>
-
-              <PlainField label="Pre-order in the shop" description="Let passengers buy before the flight.">
-                <ToggleSwitch
-                  ariaLabel="Pre-order in the shop"
-                  checked={draft.preorderEnabled}
-                  onChange={(v) => setField('preorderEnabled', v)}
-                />
-              </PlainField>
-
-              <PlainField
-                label="Order closes before departure"
-                description="Cutoff for the catering order."
-                error={errors.orderWindowHours}
-              >
-                <SegmentedControl
-                  ariaLabel="Order window"
-                  value={[24, 48, 72].includes(draft.orderWindowHours) ? draft.orderWindowHours : 48}
-                  onChange={(v) => setField('orderWindowHours', v)}
-                  options={[
-                    { value: 24, label: '24 hours' },
-                    { value: 48, label: '48 hours' },
-                    { value: 72, label: '72 hours' },
-                  ]}
-                />
-              </PlainField>
-
-              <PlainField label="On-board buffer" description="Extra meals loaded to cover no-shows." error={errors.onboardBufferPercent}>
-                <SegmentedControl
-                  ariaLabel="On-board buffer"
-                  value={[0, 5, 10, 15, 20].includes(draft.onboardBufferPercent) ? draft.onboardBufferPercent : 10}
-                  onChange={(v) => setField('onboardBufferPercent', v)}
-                  options={[
-                    { value: 0, label: '0%' },
-                    { value: 5, label: '5%' },
-                    { value: 10, label: '10%' },
-                    { value: 15, label: '15%' },
-                    { value: 20, label: '20%' },
-                  ]}
-                />
-              </PlainField>
-
-              <p className={styles.sectionHeader}>Extras</p>
-
-              <PlainField label="Snacks and drinks" description="Light snacks and beverages between meals.">
-                <ToggleSwitch ariaLabel="Snacks" checked={draft.snacksEnabled} onChange={(v) => setField('snacksEnabled', v)} />
-              </PlainField>
-
-              <PlainField label="Duty-free" description="Allow duty-free sales in this cabin.">
-                <ToggleSwitch ariaLabel="Duty-free" checked={draft.dutyFreeEnabled} onChange={(v) => setField('dutyFreeEnabled', v)} />
-              </PlainField>
-
-              <PlainField label="Premium meals allowed" description="Passengers can pick premium meals.">
-                <ToggleSwitch
-                  ariaLabel="Premium meals allowed"
-                  checked={draft.premiumMealsAllowed}
-                  onChange={(v) => setField('premiumMealsAllowed', v)}
-                />
-              </PlainField>
-            </div>
-
-            <div className={styles.menuColumn}>
-              <p className={styles.menuTitle}>Menu</p>
-              <p className={styles.menuSubtitle}>
-                {effectiveMenu.menu.length === 0
-                  ? 'No menu for this cabin — turn meals on below to add them.'
-                  : `${effectiveMenu.menu.length} of ${mealProducts.length} meals offered. Tap a meal to offer or withdraw it.`}
-              </p>
-              <div className={styles.chips}>
-                {mealProducts.map((p) => {
-                  const active = effectiveMenu.menu.some((o) => o.productId === p.id && o.isActive)
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className={active ? styles.chipActive : styles.chip}
-                      onClick={() => handleToggleOffering(p.id, !active)}
-                    >
-                      <span className={styles.chipIcon}>{active ? '✓' : '+'}</span>
-                      <span className={styles.chipName}>{p.name}</span>
-                      {p.isPremium && <span className={styles.premium}>Premium</span>}
-                    </button>
-                  )
-                })}
-              </div>
-
-              <p className={styles.defaultMealHeader}>Default meal (if a passenger orders nothing)</p>
-              <select
-                className={styles.defaultMealSelect}
-                value={effectiveMenu.defaultOfferingId ?? ''}
-                onChange={(e) => {
-                  const off = effectiveMenu.menu.find((o) => o.id === e.target.value)
-                  const productId = off ? mealProducts.find((p) => p.id === off.productId)?.id : undefined
-                  if (productId) handleSetDefault(productId)
-                }}
-              >
-                {effectiveMenu.menu.length === 0 && <option value="">No meals offered</option>}
-                {effectiveMenu.menu.map((o) => {
-                  const p = mealProducts.find((mp) => mp.id === o.productId)
-                  return (
-                    <option key={o.id} value={o.id}>
-                      {p?.name ?? 'Unknown meal'}
-                    </option>
-                  )
-                })}
-              </select>
-
-              {warning && (
-                <p className={styles.warning} role="alert">
-                  {warning}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <footer className={styles.actions}>
-            <div className={styles.inheritanceInfo}>
+        <Card className="gap-5">
+          <CardHeader>
+            <CardTitle>{cabinLabel(cabin)} · rules and menu</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <RulesForm draft={draft} errors={errors} setField={setField} />
+            <MenuPanel
+              mealProducts={mealProducts}
+              menu={effectiveMenu.menu}
+              offeredCount={mealsIn(effectiveMenu.menu)}
+              defaultOfferingId={effectiveMenu.defaultOfferingId}
+              warning={warning}
+              onToggle={handleToggleOffering}
+              onSetDefault={(offeringId) => {
+                const off = effectiveMenu.menu.find((o) => o.id === offeringId)
+                const productId = off ? mealProducts.find((p) => p.id === off.productId)?.id : undefined
+                if (productId) handleSetDefault(productId)
+              }}
+            />
+          </CardContent>
+          <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+            <span className="text-sm text-muted-foreground">
               {resolved && <span>Network default — applies to every route until overridden.</span>}
-            </div>
-            <div className={styles.actionButtons}>
-              <button type="button" className={styles.primaryButton} onClick={() => void handleSave()} disabled={saving}>
+            </span>
+            <div className="flex gap-2">
+              <Button type="button" onClick={() => void handleSave()} disabled={saving}>
                 {saving ? 'Saving…' : 'Save'}
-              </button>
-              <Link to="/catering/offered-menu" className={styles.linkButton}>
-                Cancel
-              </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link to="/catering/offered-menu">Cancel</Link>
+              </Button>
             </div>
-          </footer>
-        </section>
+          </CardFooter>
+        </Card>
       )}
-    </div>
-  )
-}
-
-interface PlainFieldProps {
-  label: string
-  description: string
-  error?: string
-  children: React.ReactNode
-}
-
-function PlainField({ label, description, error, children }: PlainFieldProps) {
-  return (
-    <div className={styles.fieldRow}>
-      <div className={styles.fieldRowLabel}>
-        <span className={styles.fieldRowTitle}>{label}</span>
-        <span className={styles.fieldRowDescription}>{description}</span>
-        {error && <span className={styles.error}>{error}</span>}
-      </div>
-      <div className={styles.fieldRowControl}>{children}</div>
     </div>
   )
 }

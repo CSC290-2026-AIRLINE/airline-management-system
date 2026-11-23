@@ -1,7 +1,6 @@
-// On/off toggle switch. Used for boolean settings on the Route detail page
-// (pre-order, premium meals, snacks, duty-free).
+// On/off toggle for boolean settings on the Route detail page (pre-order, premium meals, snacks, duty-free).
 
-import styles from './ToggleSwitch.module.css'
+import { Switch } from '@staff-web/components/ui/switch'
 
 interface Props {
   checked: boolean
@@ -12,19 +11,11 @@ interface Props {
 
 export function ToggleSwitch({ checked, onChange, ariaLabel, disabled }: Props) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={ariaLabel}
-      className={`${styles.switch} ${checked ? styles.on : styles.off}`}
-      onClick={() => !disabled && onChange(!checked)}
-      disabled={disabled}
-    >
-      <span className={styles.track} aria-hidden="true">
-        <span className={styles.thumb} />
+    <span className="inline-flex items-center gap-2 text-sm font-medium">
+      <Switch checked={checked} onCheckedChange={onChange} aria-label={ariaLabel} disabled={disabled} />
+      <span className="min-w-6 text-muted-foreground" aria-hidden="true">
+        {checked ? 'On' : 'Off'}
       </span>
-      <span className={styles.label}>{checked ? 'On' : 'Off'}</span>
-    </button>
+    </span>
   )
 }

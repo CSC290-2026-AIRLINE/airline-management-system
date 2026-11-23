@@ -4,12 +4,15 @@
 
 /* eslint-disable react-hooks/set-state-in-effect -- reset validation error as the form changes */
 
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react'
-import { useDialogFocusTrap } from '../catalog/useDialogFocusTrap'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { Button } from '@staff-web/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
+import { Input } from '@staff-web/components/ui/input'
+import { Label } from '@staff-web/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
 import { ProductApiError, useOnboardApi } from '../api'
 import { addDays } from '../dates'
 import type { Product, ProductCategory, ProductInput } from '../api/types'
-import styles from './AddProductDialog.module.css'
 
 type CategoryChoice = 'meal' | 'snacks_drinks' | 'duty_free'
 
@@ -62,10 +65,7 @@ interface Props {
 }
 
 export function AddProductDialog({ onClose, onSaved, onError }: Props) {
-  const dialogRef = useRef<HTMLDivElement | null>(null)
-  const headingId = useId()
   const api = useOnboardApi()
-  useDialogFocusTrap(true, dialogRef, onClose)
   const [form, setForm] = useState<FormState>(emptyForm)
   const [errors, setErrors] = useState<FormErrors>({})
   const [submitting, setSubmitting] = useState(false)
@@ -139,66 +139,57 @@ export function AddProductDialog({ onClose, onSaved, onError }: Props) {
   const daysFromNowFn = useMemo(() => (iso: string) => daysFromNow(iso), [])
 
   return (
-    <div className={styles.backdrop} onMouseDown={(e) => e.target === e.currentTarget && !submitting && onClose()}>
-      <div ref={dialogRef} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={headingId}>
-        <header className={styles.header}>
-          <h2 id={headingId} className={styles.title}>
-            Add a new product
-          </h2>
-          <p className={styles.subtitle}>
+    <Dialog open onOpenChange={(open) => !open && !submitting && onClose()}>
+      <DialogContent className="max-h-[90vh] gap-5 overflow-y-auto sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add a new product</DialogTitle>
+          <DialogDescription>
             Add a one-off item to the catalog so you can receive it on this delivery. You can edit it later under Product Catalog.
-          </p>
-        </header>
+          </DialogDescription>
+        </DialogHeader>
 
-        <form className={styles.form} onSubmit={onSubmit} noValidate>
-          <div className={styles.field}>
-            <label htmlFor="apd-name" className={styles.label}>
-              Name
-            </label>
-            <input
+        <form className="flex flex-col gap-4" onSubmit={onSubmit} noValidate>
+          <FormField id="apd-name" label="Name" error={errors.name}>
+            <Input
               id="apd-name"
-              className={styles.input}
-              type="text"
               value={form.name}
               onChange={(e) => setField('name', e.target.value)}
               placeholder="e.g. Chicken fried rice"
               autoComplete="off"
               autoFocus
               disabled={submitting}
+              aria-invalid={errors.name ? true : undefined}
             />
-            {errors.name && <p className={styles.error}>{errors.name}</p>}
-          </div>
+          </FormField>
 
-          <div className={styles.field}>
-            <label htmlFor="apd-category" className={styles.label}>
-              Category
-            </label>
-            <select
+          <FormField
+            id="apd-category"
+            label="Category"
+            hint={
+              form.category === 'meal'
+                ? 'Expiry defaults to 2 days after receipt.'
+                : form.category === 'snacks_drinks'
+                  ? 'Expiry defaults to 180 days after receipt.'
+                  : 'Duty-free items do not expire.'
+            }
+          >
+            <NativeSelect
               id="apd-category"
-              className={styles.input}
+              className="w-full"
               value={form.category}
               onChange={(e) => setCategory(e.target.value as CategoryChoice)}
               disabled={submitting}
             >
-              <option value="meal">Meals</option>
-              <option value="snacks_drinks">Snacks & drinks</option>
-              <option value="duty_free">Duty-free</option>
-            </select>
-            <p className={styles.hint}>
-              {form.category === 'meal' && 'Expiry defaults to 2 days after receipt.'}
-              {form.category === 'snacks_drinks' && 'Expiry defaults to 180 days after receipt.'}
-              {form.category === 'duty_free' && 'Duty-free items do not expire.'}
-            </p>
-          </div>
+              <NativeSelectOption value="meal">Meals</NativeSelectOption>
+              <NativeSelectOption value="snacks_drinks">Snacks & drinks</NativeSelectOption>
+              <NativeSelectOption value="duty_free">Duty-free</NativeSelectOption>
+            </NativeSelect>
+          </FormField>
 
-          <div className={styles.row}>
-            <div className={styles.field}>
-              <label htmlFor="apd-cost" className={styles.label}>
-                Unit cost (USD)
-              </label>
-              <input
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField id="apd-cost" label="Unit cost (USD)" error={errors.unitCost}>
+              <Input
                 id="apd-cost"
-                className={styles.input}
                 type="number"
                 min="0"
                 step="0.01"
@@ -206,16 +197,12 @@ export function AddProductDialog({ onClose, onSaved, onError }: Props) {
                 onChange={(e) => setField('unitCost', e.target.value)}
                 placeholder="0.00"
                 disabled={submitting}
+                aria-invalid={errors.unitCost ? true : undefined}
               />
-              {errors.unitCost && <p className={styles.error}>{errors.unitCost}</p>}
-            </div>
-            <div className={styles.field}>
-              <label htmlFor="apd-price" className={styles.label}>
-                Selling price (USD)
-              </label>
-              <input
+            </FormField>
+            <FormField id="apd-price" label="Selling price (USD)" error={errors.sellingPrice}>
+              <Input
                 id="apd-price"
-                className={styles.input}
                 type="number"
                 min="0"
                 step="0.01"
@@ -223,36 +210,63 @@ export function AddProductDialog({ onClose, onSaved, onError }: Props) {
                 onChange={(e) => setField('sellingPrice', e.target.value)}
                 placeholder="0.00"
                 disabled={submitting}
+                aria-invalid={errors.sellingPrice ? true : undefined}
               />
-              {errors.sellingPrice && <p className={styles.error}>{errors.sellingPrice}</p>}
-            </div>
+            </FormField>
           </div>
 
-          <div className={styles.field}>
-            <label htmlFor="apd-expiry" className={styles.label}>
-              Expiry {expiresDisabled && <span className={styles.muted}>· not applicable for duty-free</span>}
-            </label>
-            <input
+          <FormField
+            id="apd-expiry"
+            label={`Expiry${expiresDisabled ? ' · not applicable for duty-free' : ''}`}
+            hint={form.expiresAt !== '' ? `${daysFromNowFn(form.expiresAt)} days after today` : undefined}
+          >
+            <Input
               id="apd-expiry"
-              className={styles.input}
               type="date"
               value={form.expiresAt}
               onChange={(e) => setField('expiresAt', e.target.value)}
               disabled={expiresDisabled || submitting}
             />
-            {form.expiresAt !== '' && <p className={styles.hint}>{daysFromNowFn(form.expiresAt)} days after today</p>}
-          </div>
+          </FormField>
 
-          <footer className={styles.footer}>
-            <button type="button" className={styles.cancelButton} onClick={onClose} disabled={submitting}>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
               Cancel
-            </button>
-            <button type="submit" className={styles.saveButton} disabled={submitting}>
+            </Button>
+            <Button type="submit" disabled={submitting}>
               {submitting ? 'Saving…' : 'Add product'}
-            </button>
-          </footer>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** A label, its control, an optional hint and the error under it. */
+function FormField({
+  id,
+  label,
+  hint,
+  error,
+  children,
+}: {
+  id: string
+  label: string
+  hint?: string
+  error?: string
+  children: ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id}>{label}</Label>
+      {children}
+      {hint && !error ? <p className="m-0 text-xs text-muted-foreground">{hint}</p> : null}
+      {error ? (
+        <p className="m-0 text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   )
 }

@@ -8,7 +8,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { CateringApiError, useOnboardApi } from '@staff-web/features/onboard-products/api'
-import { ConfirmDialog, Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
+import { toast } from 'sonner'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Badge } from '@staff-web/components/ui/badge'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Input } from '@staff-web/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { cn } from '@staff-web/lib/utils'
+import { ConfirmDialog } from '@staff-web/features/onboard-products/catalog'
+import { PageHeader } from '@staff-web/features/onboard-products/ui'
 import type {
   Cabin,
   CateringOrder,
@@ -18,13 +29,8 @@ import type {
   StockBatch,
   Warehouse,
 } from '@staff-web/features/onboard-products/api/types'
-import styles from './CateringOrdersPage.module.css'
 
 // -- helpers ---------------------------------------------------------------
-
-function nextToastId(): number {
-  return Date.now() + Math.floor(Math.random() * 1000)
-}
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-US', {
@@ -100,12 +106,12 @@ function uiStatusLabel(s: UiStatus): string {
   return 'Void'
 }
 
-function chipClass(s: UiStatus): string {
-  if (s === 'ordering_open') return styles.chipOpen
-  if (s === 'order_ready') return styles.chipReady
-  if (s === 'loaded') return styles.chipLoaded
-  if (s === 'closed') return styles.chipClosed
-  return styles.chipVoid
+function statusBadgeVariant(s: UiStatus): 'default' | 'secondary' | 'outline' | 'destructive' {
+  if (s === 'ordering_open') return 'secondary'
+  if (s === 'order_ready') return 'default'
+  if (s === 'loaded') return 'outline'
+  if (s === 'closed') return 'outline'
+  return 'destructive'
 }
 
 function statusFilterValue(s: UiStatus): string {
@@ -155,7 +161,6 @@ export function CateringOrdersPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [toast, setToast] = useState<ToastData | null>(null)
   const [busy, setBusy] = useState(false)
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [pageSize, setPageSize] = useState(8)
@@ -163,8 +168,9 @@ export function CateringOrdersPage() {
   const [airportFilter, setAirportFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
 
-  function showToast(kind: ToastKind, message: string) {
-    setToast({ id: nextToastId(), kind, message })
+  function showToast(kind: 'success' | 'error', message: string) {
+    if (kind === 'success') toast.success(message)
+    else toast.error(message)
   }
 
   // Initial load: list flights, preselect the first (or the one in the URL).
@@ -181,7 +187,7 @@ export function CateringOrdersPage() {
           const o = await api.orders.getCateringOrder(initial.id)
           if (!cancelled) {
             setOrders((prev) => ({ ...prev, [initial.id]: o }))
-            if (o) {
+            if (o?.warehouseId) {
               const bs = await api.stock.listStockBatches({ warehouseId: o.warehouseId })
               if (!cancelled) setBatches(bs)
             }
@@ -210,7 +216,7 @@ export function CateringOrdersPage() {
       .then(async (o) => {
         if (cancelled) return
         setOrders((prev) => ({ ...prev, [selectedId]: o }))
-        if (o) {
+        if (o?.warehouseId) {
           const bs = await api.stock.listStockBatches({ warehouseId: o.warehouseId })
           if (!cancelled) setBatches(bs)
         }
@@ -382,25 +388,18 @@ export function CateringOrdersPage() {
 
   if (loadError) {
     return (
-      <p className={styles.errorMessage} role="alert">
-        {loadError}
-      </p>
+      <Alert variant="destructive" role="alert">
+        <AlertDescription>{loadError}</AlertDescription>
+      </Alert>
     )
   }
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Catering Orders</h1>
-          <p className={styles.subtitle}>
-            What each flight needs once ordering closes, checked against the warehouse before you load it. Transfer to the aircraft when the
-            items are covered, or refresh the order after receiving more stock.
-          </p>
-        </div>
-      </header>
-
-      {toast && <Toast toast={toast} onDismiss={() => setToast(null)} />}
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Catering Orders"
+        description="What each flight needs once ordering closes, checked against the warehouse before you load it. Transfer to the aircraft when the items are covered, or refresh the order after receiving more stock."
+      />
 
       {dialog && (
         <ConfirmDialog
@@ -413,209 +412,225 @@ export function CateringOrdersPage() {
         />
       )}
 
-      <div className={styles.layout}>
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]">
         {/* Left list --------------------------------------------------------- */}
-        <section className={styles.listCard} aria-label="Flights">
-          <div className={styles.listHeader}>
-            <h2 className={styles.listTitle}>Flights</h2>
-            <span className={styles.listCount}>
+        <Card className="gap-4" aria-label="Flights">
+          <CardHeader>
+            <CardTitle>Flights</CardTitle>
+            <CardAction className="text-sm text-muted-foreground">
               {filteredFlights.length} of {flights.length}
-            </span>
-          </div>
-
-          <input
-            type="search"
-            className={styles.searchInput}
-            placeholder="Search flight or route"
-            value={searchText}
-            onChange={(e) => {
-              setSearchText(e.target.value)
-              setPageSize(8)
-            }}
-            aria-label="Search flights"
-          />
-
-          <div className={styles.filtersRow}>
-            <select
-              className={styles.filterSelect}
-              value={airportFilter}
+            </CardAction>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <Input
+              type="search"
+              placeholder="Search flight or route"
+              value={searchText}
               onChange={(e) => {
-                setAirportFilter(e.target.value)
+                setSearchText(e.target.value)
                 setPageSize(8)
               }}
-              aria-label="Airport filter"
-            >
-              <option value="all">All airports</option>
-              {airports.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-            <select
-              className={styles.filterSelect}
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value)
-                setPageSize(8)
-              }}
-              aria-label="Status filter"
-            >
-              <option value="all">Any status</option>
-              <option value="ordering_open">Ordering open</option>
-              <option value="order_ready">Order ready</option>
-              <option value="loaded">Loaded</option>
-              <option value="closed">Closed out</option>
-              <option value="void">Void</option>
-            </select>
-          </div>
+              aria-label="Search flights"
+            />
 
-          {loading ? (
-            <p className={styles.emptyList}>Loading flights…</p>
-          ) : visibleFlights.length === 0 ? (
-            <p className={styles.emptyList}>No flights match these filters.</p>
-          ) : (
-            <div className={styles.flightList}>
-              {visibleFlights.map((f) => {
-                const o = orders[f.id] ?? null
-                const ui = uiStatus(f, o)
-                const active = f.id === selectedId
-                const oShort = o ? o.lines.filter(lineIsShort).length : 0
-                const chipUi: UiStatus = oShort > 0 && ui === 'order_ready' ? 'order_ready' : ui
-                return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    className={`${styles.flightButton} ${active ? styles.flightButtonActive : ''}`}
-                    onClick={() => onSelectFlight(f.id)}
-                  >
-                    <div className={styles.flightTopRow}>
-                      <span className={styles.flightNumber}>{f.flightNumber}</span>
-                      <span className={`${styles.chip} ${chipClass(chipUi)}`}>
-                        {oShort > 0 && ui === 'order_ready' ? 'Short' : uiStatusLabel(ui)}
-                      </span>
-                    </div>
-                    <span className={styles.flightRoute}>
-                      {f.departureAirport} → {f.arrivalAirport}
-                    </span>
-                    <span className={styles.flightMeta}>
-                      <span>{formatDateTime(f.scheduledDeparture)}</span>
-                      <span>{f.passengerCount} pax</span>
-                    </span>
-                  </button>
-                )
-              })}
+            <div className="grid grid-cols-2 gap-2">
+              <NativeSelect
+                className="w-full"
+                value={airportFilter}
+                onChange={(e) => {
+                  setAirportFilter(e.target.value)
+                  setPageSize(8)
+                }}
+                aria-label="Airport filter"
+              >
+                <NativeSelectOption value="all">All airports</NativeSelectOption>
+                {airports.map((a) => (
+                  <NativeSelectOption key={a} value={a}>
+                    {a}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <NativeSelect
+                className="w-full"
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value)
+                  setPageSize(8)
+                }}
+                aria-label="Status filter"
+              >
+                <NativeSelectOption value="all">Any status</NativeSelectOption>
+                <NativeSelectOption value="ordering_open">Ordering open</NativeSelectOption>
+                <NativeSelectOption value="order_ready">Order ready</NativeSelectOption>
+                <NativeSelectOption value="loaded">Loaded</NativeSelectOption>
+                <NativeSelectOption value="closed">Closed out</NativeSelectOption>
+                <NativeSelectOption value="void">Void</NativeSelectOption>
+              </NativeSelect>
             </div>
-          )}
 
-          {canShowMore && (
-            <button type="button" className={styles.showMoreButton} onClick={() => setPageSize((n) => n + 10)} disabled={loading}>
-              Show 10 more
-            </button>
-          )}
-        </section>
+            {loading ? (
+              <div className="flex flex-col gap-2" aria-busy="true">
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            ) : visibleFlights.length === 0 ? (
+              <p className="m-0 py-6 text-center text-sm text-muted-foreground">No flights match these filters.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {visibleFlights.map((f) => {
+                  const o = orders[f.id] ?? null
+                  const ui = uiStatus(f, o)
+                  const active = f.id === selectedId
+                  const oShort = o ? o.lines.filter(lineIsShort).length : 0
+                  const isShort = oShort > 0 && ui === 'order_ready'
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      className={cn(
+                        'flex flex-col gap-1 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                        active && 'border-primary bg-accent ring-1 ring-primary',
+                      )}
+                      onClick={() => onSelectFlight(f.id)}
+                    >
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="font-semibold">{f.flightNumber}</span>
+                        <Badge variant={isShort ? 'destructive' : statusBadgeVariant(ui)}>{isShort ? 'Short' : uiStatusLabel(ui)}</Badge>
+                      </span>
+                      <span className="text-sm">
+                        {f.departureAirport} → {f.arrivalAirport}
+                      </span>
+                      <span className="flex gap-3 text-xs text-muted-foreground">
+                        <span>{formatDateTime(f.scheduledDeparture)}</span>
+                        <span>{f.passengerCount} pax</span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {canShowMore && (
+              <Button type="button" variant="outline" onClick={() => setPageSize((n) => n + 10)} disabled={loading}>
+                Show 10 more
+              </Button>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Right detail ------------------------------------------------------ */}
-        <section className={styles.rightCard} aria-label="Catering order details">
+        <Card className="gap-5" aria-label="Catering order details">
           {!selectedFlight || !selectedStatus ? (
-            <p className={styles.emptyList}>Pick a flight on the left to see the catering order.</p>
+            <CardContent>
+              <p className="m-0 py-6 text-center text-sm text-muted-foreground">Pick a flight on the left to see the catering order.</p>
+            </CardContent>
           ) : (
             <>
-              <div className={styles.rightHeader}>
-                <div>
-                  <h2 className={styles.flightTitle}>
-                    {selectedFlight.flightNumber} · {selectedFlight.departureAirport} → {selectedFlight.arrivalAirport}
-                  </h2>
-                  <p className={styles.flightSubtitle}>Catering order for this flight</p>
-                </div>
-                <div className={styles.rightActions}>
-                  <RefreshButton status={selectedStatus} busy={busy} onClick={handleRefresh} styles={styles} />
-                  <TransferButton
-                    status={selectedStatus}
-                    shortCount={shortLineCount}
-                    busy={busy}
-                    onClick={() => setPendingAction('transfer')}
-                    styles={styles}
-                  />
-                  <CloseOutButton status={selectedStatus} busy={busy} onClick={() => setPendingAction('close')} styles={styles} />
-                </div>
-              </div>
+              <CardHeader>
+                <CardTitle className="text-xl">
+                  {selectedFlight.flightNumber} · {selectedFlight.departureAirport} → {selectedFlight.arrivalAirport}
+                </CardTitle>
+                <CardDescription>Catering order for this flight</CardDescription>
+                <CardAction className="flex flex-wrap items-center justify-end gap-2">
+                  {selectedStatus === 'order_ready' && (
+                    <Button type="button" variant="outline" onClick={handleRefresh} disabled={busy}>
+                      Refresh order
+                    </Button>
+                  )}
+                  {selectedStatus === 'order_ready' && (
+                    <Button
+                      type="button"
+                      onClick={() => setPendingAction('transfer')}
+                      disabled={busy || shortLineCount > 0}
+                      title={shortLineCount > 0 ? 'STOCK_SHORTFALL: receive stock first' : undefined}
+                    >
+                      Transfer to aircraft
+                    </Button>
+                  )}
+                  {selectedStatus === 'loaded' && (
+                    <>
+                      <Button type="button" disabled>
+                        Loaded
+                      </Button>
+                      <Button type="button" variant="outline" onClick={() => setPendingAction('close')} disabled={busy}>
+                        Close out
+                      </Button>
+                    </>
+                  )}
+                </CardAction>
+              </CardHeader>
 
-              <ProgressBar status={selectedStatus} styles={styles} />
+              <CardContent className="flex flex-col gap-5">
+                {selectedStatus === 'order_ready' && shortLineCount > 0 && (
+                  <p className="m-0 text-sm text-destructive">STOCK_SHORTFALL — receive more stock first</p>
+                )}
 
-              <div className={styles.factsRow}>
-                <div className={styles.factCard}>
-                  <p className={styles.factLabel}>Departs</p>
-                  <p className={styles.factValue}>{formatDateTime(selectedFlight.scheduledDeparture)}</p>
-                </div>
-                <div className={styles.factCard}>
-                  <p className={styles.factLabel}>Passengers</p>
-                  <p className={styles.factValue}>{formatQuantity(selectedFlight.passengerCount)}</p>
-                </div>
-                <div className={styles.factCard}>
-                  <p className={styles.factLabel}>Loads from</p>
-                  <p className={styles.factValueSmall}>{selectedWarehouse ? selectedWarehouse.name : selectedFlight.warehouseId}</p>
-                </div>
-                <div className={styles.factCard}>
-                  <p className={styles.factLabel}>Ordering closed</p>
-                  <p className={styles.factValueSmall}>{formatDateTime(selectedFlight.cutoffAt)}</p>
-                </div>
-              </div>
+                <ProgressSteps status={selectedStatus} />
 
-              {selectedStatus === 'ordering_open' && (
-                <div className={styles.banner + ' ' + styles.bannerNeutral}>
-                  <span>
-                    Ordering is open until {formatTime(selectedFlight.cutoffAt)} on {formatDateTime(selectedFlight.cutoffAt)}. The catering
-                    order is generated automatically at the cutoff.
-                  </span>
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <Fact label="Departs" value={formatDateTime(selectedFlight.scheduledDeparture)} />
+                  <Fact label="Passengers" value={formatQuantity(selectedFlight.passengerCount)} />
+                  <Fact label="Loads from" value={selectedWarehouse ? selectedWarehouse.name : selectedFlight.warehouseId || '—'} />
+                  <Fact label="Ordering closed" value={formatDateTime(selectedFlight.cutoffAt)} />
                 </div>
-              )}
 
-              {selectedStatus === 'order_ready' && shortLineCount > 0 && selectedWarehouse && (
-                <div className={styles.banner + ' ' + styles.bannerShort}>
-                  <span>
-                    {shortLineCount} item{shortLineCount === 1 ? '' : 's'} short in {selectedWarehouse.code} (STOCK_SHORTFALL). Receive a
-                    delivery, then refresh the order.
-                  </span>
-                  <button
-                    type="button"
-                    className={styles.bannerButton}
-                    onClick={() => void navigate({ to: '/catering/stock/receive', search: { airport: selectedWarehouse.code } })}
-                  >
-                    Receive delivery
-                  </button>
-                </div>
-              )}
+                {selectedStatus === 'ordering_open' && (
+                  <Alert>
+                    <AlertDescription className="text-foreground">
+                      Ordering is open until {formatTime(selectedFlight.cutoffAt)} on {formatDateTime(selectedFlight.cutoffAt)}. The
+                      catering order is generated automatically at the cutoff.
+                    </AlertDescription>
+                  </Alert>
+                )}
 
-              {selectedStatus === 'ordering_open' && (
-                <div className={styles.orderingOpenPanel}>
-                  <strong>No lines yet</strong>
-                  The catering order is generated automatically when ordering closes at {formatDateTime(selectedFlight.cutoffAt)}. Refresh
-                  the page then.
-                </div>
-              )}
+                {selectedStatus === 'order_ready' && shortLineCount > 0 && selectedWarehouse && (
+                  <Alert variant="destructive">
+                    <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+                      <span>
+                        {shortLineCount} item{shortLineCount === 1 ? '' : 's'} short in {selectedWarehouse.code} (STOCK_SHORTFALL). Receive
+                        a delivery, then refresh the order.
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void navigate({ to: '/catering/stock/receive', search: { airport: selectedWarehouse.code } })}
+                      >
+                        Receive delivery
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
 
-              {selectedStatus === 'void' && (
-                <div className={styles.voidPanel}>
-                  <strong>This flight is cancelled</strong>
-                  The catering order was voided. No transfers will be made.
-                </div>
-              )}
+                {selectedStatus === 'ordering_open' && (
+                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    <strong className="block text-foreground">No lines yet</strong>
+                    The catering order is generated automatically when ordering closes at {formatDateTime(selectedFlight.cutoffAt)}. Refresh
+                    the page then.
+                  </div>
+                )}
 
-              {selectedOrder && selectedStatus !== 'ordering_open' && selectedStatus !== 'void' && (
-                <>
-                  <div className={styles.tableWrap}>
-                    <table className={styles.linesTable}>
-                      <thead>
-                        <tr>
-                          <th>Item</th>
-                          <th>Cabin</th>
-                          <th className="numeric">Required</th>
-                          <th className="numeric">In warehouse</th>
-                          <th className="numeric">Shortfall</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                {selectedStatus === 'void' && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      <strong>This flight is cancelled.</strong> The catering order was voided. No transfers will be made.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {selectedOrder && selectedStatus !== 'ordering_open' && selectedStatus !== 'void' && (
+                  <>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Item</TableHead>
+                          <TableHead>Cabin</TableHead>
+                          <TableHead className="text-right">Required</TableHead>
+                          <TableHead className="text-right">In warehouse</TableHead>
+                          <TableHead className="text-right">Shortfall</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {groupByCabin(selectedOrder.lines).flatMap((group) =>
                           group.lines.map((line) => {
                             const inWh = batches
@@ -623,161 +638,90 @@ export function CateringOrdersPage() {
                               .reduce((acc, b) => acc + b.quantityRemaining, 0)
                             const short = line.quantityShort
                             return (
-                              <tr key={line.id} className={short > 0 ? styles.shortRow : ''}>
-                                <td>
-                                  {line.productName}
-                                  {line.source === 'default' && <span className={styles.sourceBadge}>Default</span>}
-                                </td>
-                                <td>
-                                  <span className={styles.cabinBadge}>{cabinLabel(line.cabin)}</span>
-                                </td>
-                                <td className="numeric">{formatQuantity(line.quantityRequired)}</td>
-                                <td className="numeric">{formatQuantity(inWh)}</td>
-                                <td className={'numeric ' + (short > 0 ? styles.shortValue : '')}>{formatQuantity(short)}</td>
-                              </tr>
+                              <TableRow key={line.id}>
+                                <TableCell className="font-medium">
+                                  <span className="inline-flex flex-wrap items-center gap-2">
+                                    {line.productName}
+                                    {line.source === 'default' && <Badge variant="secondary">Default</Badge>}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline">{cabinLabel(line.cabin)}</Badge>
+                                </TableCell>
+                                <TableCell className="text-right tabular-nums">{formatQuantity(line.quantityRequired)}</TableCell>
+                                <TableCell className="text-right tabular-nums">{formatQuantity(inWh)}</TableCell>
+                                <TableCell className={cn('text-right tabular-nums', short > 0 && 'font-semibold text-destructive')}>
+                                  {formatQuantity(short)}
+                                </TableCell>
+                              </TableRow>
                             )
                           }),
                         )}
-                      </tbody>
-                    </table>
-                  </div>
+                      </TableBody>
+                    </Table>
 
-                  <div className={styles.linesFooter}>
-                    <span>
-                      {selectedOrder.lines.length} item{selectedOrder.lines.length === 1 ? '' : 's'} · {formatQuantity(totalUnits)} units
-                      required
-                    </span>
-                    <span className={shortLineCount > 0 ? styles.linesSummaryShort : styles.linesSummaryOk}>
-                      {shortLineCount > 0
-                        ? `${shortLineCount} item${shortLineCount === 1 ? '' : 's'} short · ${formatQuantity(totalShort)} units`
-                        : 'All items covered'}
-                    </span>
-                  </div>
-                </>
-              )}
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+                      <span>
+                        {selectedOrder.lines.length} item{selectedOrder.lines.length === 1 ? '' : 's'} · {formatQuantity(totalUnits)} units
+                        required
+                      </span>
+                      <span className={shortLineCount > 0 ? 'font-semibold text-destructive' : 'font-semibold text-green-700'}>
+                        {shortLineCount > 0
+                          ? `${shortLineCount} item${shortLineCount === 1 ? '' : 's'} short · ${formatQuantity(totalShort)} units`
+                          : 'All items covered'}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </CardContent>
             </>
           )}
-        </section>
+        </Card>
       </div>
     </div>
   )
 }
 
-// -- progress bar ----------------------------------------------------------
-
-function ProgressBar({ status, styles }: { status: UiStatus; styles: typeof import('./CateringOrdersPage.module.css').default }) {
-  if (status === 'void') {
-    return <div className={styles.progressVoid}>Void — catering order was cancelled</div>
-  }
-  const steps: Array<{ key: string; label: string; idx: number }> = [
-    { key: 'ordering_open', label: 'Ordering open', idx: 0 },
-    { key: 'order_ready', label: 'Order ready', idx: 1 },
-    { key: 'loaded', label: 'Loaded', idx: 2 },
-    { key: 'closed', label: 'Closed out', idx: 3 },
-  ]
-  const currentIdx = steps.findIndex((s) => s.key === status)
+function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <div className={styles.progressRow} role="progressbar" aria-valuenow={currentIdx + 1} aria-valuemin={1} aria-valuemax={4}>
-      <div className={styles.progressBar} />
-      {steps.map((step) => {
-        const isDone = step.idx < currentIdx
-        const isActive = step.idx === currentIdx
-        const dotClass = isActive ? styles.progressDotActive : isDone ? styles.progressDotDone : ''
-        const labelClass = isActive
-          ? `${styles.progressLabel} ${styles.progressLabelActive}`
-          : isDone
-            ? `${styles.progressLabel} ${styles.progressLabelDone}`
-            : styles.progressLabel
-        return (
-          <div key={step.key} className={styles.progressStep}>
-            <span className={`${styles.progressDot} ${dotClass}`} />
-            <span className={labelClass}>{step.label}</span>
-          </div>
-        )
-      })}
+    <div className="flex flex-col gap-1 rounded-lg border bg-muted/40 p-3">
+      <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{label}</span>
+      <span className="text-sm font-semibold">{value}</span>
     </div>
   )
 }
 
-// -- action buttons --------------------------------------------------------
-
-function RefreshButton({
-  status,
-  busy,
-  onClick,
-  styles,
-}: {
-  status: UiStatus
-  busy: boolean
-  onClick: () => void
-  styles: typeof import('./CateringOrdersPage.module.css').default
-}) {
-  // Regenerating the lines only makes sense before the transfer. The
-  // backend rejects a refresh once the order is loaded or closed, so
-  // the button is only offered at the order-ready stage.
-  if (status !== 'order_ready') return null
-  return (
-    <button type="button" className={styles.actionButton} onClick={onClick} disabled={busy}>
-      Refresh order
-    </button>
-  )
-}
-
-function TransferButton({
-  status,
-  shortCount,
-  busy,
-  onClick,
-  styles,
-}: {
-  status: UiStatus
-  shortCount: number
-  busy: boolean
-  onClick: () => void
-  styles: typeof import('./CateringOrdersPage.module.css').default
-}) {
-  if (status === 'ordering_open' || status === 'void' || status === 'closed') return null
-  if (status === 'loaded') {
+// The four stages of a catering order: where it is now, which are done.
+function ProgressSteps({ status }: { status: UiStatus }) {
+  if (status === 'void') {
     return (
-      <button type="button" className={`${styles.actionButton} ${styles.actionPrimary}`} disabled>
-        Loaded
-      </button>
+      <Alert variant="destructive">
+        <AlertDescription>Void — catering order was cancelled</AlertDescription>
+      </Alert>
     )
   }
-  // order_ready
-  const short = shortCount > 0
+  const steps: Array<{ key: string; label: string }> = [
+    { key: 'ordering_open', label: 'Ordering open' },
+    { key: 'order_ready', label: 'Order ready' },
+    { key: 'loaded', label: 'Loaded' },
+    { key: 'closed', label: 'Closed out' },
+  ]
+  const currentIdx = steps.findIndex((st) => st.key === status)
   return (
-    <>
-      <button
-        type="button"
-        className={`${styles.actionButton} ${styles.actionPrimary}`}
-        onClick={onClick}
-        disabled={busy || short}
-        title={short ? 'STOCK_SHORTFALL: receive stock first' : undefined}
-      >
-        Transfer to aircraft
-      </button>
-      {short && <span className={styles.shortHint}>STOCK_SHORTFALL — receive more stock first</span>}
-    </>
-  )
-}
-
-function CloseOutButton({
-  status,
-  busy,
-  onClick,
-  styles,
-}: {
-  status: UiStatus
-  busy: boolean
-  onClick: () => void
-  styles: typeof import('./CateringOrdersPage.module.css').default
-}) {
-  if (status !== 'loaded') return null
-  return (
-    <button type="button" className={styles.actionButton} onClick={onClick} disabled={busy}>
-      Close out
-    </button>
+    <ol className="m-0 grid list-none grid-cols-4 gap-2 p-0" aria-label="Order progress">
+      {steps.map((step, idx) => {
+        const isDone = idx < currentIdx
+        const isActive = idx === currentIdx
+        return (
+          <li key={step.key} className="flex flex-col items-center gap-2" aria-current={isActive ? 'step' : undefined}>
+            <span className={cn('h-1.5 w-full rounded-full', isDone || isActive ? 'bg-primary' : 'bg-muted')} aria-hidden="true" />
+            <span className={cn('text-center text-xs', isActive ? 'font-semibold text-foreground' : 'text-muted-foreground')}>
+              {step.label}
+            </span>
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 

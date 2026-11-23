@@ -1,10 +1,7 @@
-// Confirm dialog used by the offered menu bulk actions, the
-// "clear exception" flow and the catering order stage changes. Modal,
-// ESC-closes, focus-trapped.
+// Confirm dialog used by the offered menu bulk actions, the "clear exception" flow and the catering order stage changes.
 
-import { useEffect, useRef, useState } from 'react'
-import { useDialogFocusTrap } from './useDialogFocusTrap'
-import styles from './ConfirmDialog.module.css'
+import { Button } from '@staff-web/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 
 interface ConfirmDialogProps {
   title: string
@@ -17,42 +14,22 @@ interface ConfirmDialogProps {
 }
 
 export function ConfirmDialog({ title, body, confirmLabel, busy, onClose, onConfirm, danger = false }: ConfirmDialogProps) {
-  const ref = useRef<HTMLDivElement | null>(null)
-  const [open] = useState(true)
-  useDialogFocusTrap(open, ref, onClose)
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !busy) onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [busy, onClose])
-
   return (
-    <div
-      className={styles.backdrop}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !busy) onClose()
-      }}
-    >
-      <div className={styles.dialog} ref={ref}>
-        <h2 id="confirm-title" className={styles.title}>
-          {title}
-        </h2>
-        <p className={styles.body}>{body}</p>
-        <div className={styles.actions}>
-          <button type="button" className={styles.secondary} onClick={onClose} disabled={busy}>
+    <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
+      <DialogContent showCloseButton={false} className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{body}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
             Cancel
-          </button>
-          <button type="button" className={danger ? styles.danger : styles.primary} onClick={onConfirm} disabled={busy}>
+          </Button>
+          <Button type="button" variant={danger ? 'destructive' : 'default'} onClick={onConfirm} disabled={busy}>
             {busy ? 'Working…' : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

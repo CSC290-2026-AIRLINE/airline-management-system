@@ -5,15 +5,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { StockApiError, useOnboardApi } from '@staff-web/features/onboard-products/api'
-import { Toast, type ToastData, type ToastKind } from '@staff-web/features/onboard-products/catalog'
+import { toast } from 'sonner'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Badge } from '@staff-web/components/ui/badge'
+import { Button } from '@staff-web/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Label } from '@staff-web/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
+import { Skeleton } from '@staff-web/components/ui/skeleton'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { PageHeader, StatCard } from '@staff-web/features/onboard-products/ui'
 import { AdjustStockDialog } from './AdjustStockDialog'
 import { ManageListDialog, type ManageListItem } from './ManageListDialog'
 import type { Product, StockBatch, StockMovement, Warehouse, WarehouseStockRow } from '@staff-web/features/onboard-products/api/types'
-import styles from './StockPage.module.css'
-
-function nextToastId(): number {
-  return Date.now() + Math.floor(Math.random() * 1000)
-}
 
 function formatQuantity(n: number): string {
   return n.toLocaleString('en-US')
@@ -81,12 +85,12 @@ export function StockPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [warehouseId, setWarehouseId] = useState<string | null>(null)
   const [adjusting, setAdjusting] = useState<WarehouseStockRow | null>(null)
-  const [toast, setToast] = useState<ToastData | null>(null)
   const [managingAirports, setManagingAirports] = useState(false)
   const [manageBusy, setManageBusy] = useState(false)
 
-  function showToast(kind: ToastKind, message: string) {
-    setToast({ id: nextToastId(), kind, message })
+  function showToast(kind: 'success' | 'error', message: string) {
+    if (kind === 'success') toast.success(message)
+    else toast.error(message)
   }
 
   // Load products once for the warehouse stock derivation.
@@ -245,199 +249,159 @@ export function StockPage() {
 
   if (loadError) {
     return (
-      <p className={styles.errorMessage} role="alert">
-        {loadError}
-      </p>
+      <Alert variant="destructive" role="alert">
+        <AlertDescription>{loadError}</AlertDescription>
+      </Alert>
     )
   }
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Stock</h1>
-          <p className={styles.subtitle}>
-            Stock held at each airport warehouse. Every airport keeps its own stock. Consumed and leftover items are reported by cabin crew
-            after each flight.
-          </p>
-        </div>
-      </header>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Stock"
+        description="Stock held at each airport warehouse. Every airport keeps its own stock. Consumed and leftover items are reported by cabin crew after each flight."
+      />
 
-      {toast && <Toast toast={toast} onDismiss={() => setToast(null)} />}
-
-      <section className={styles.stats} aria-label="Stock stats">
-        <div className={styles.statCard}>
-          <p className={styles.statLabel}>Items stocked</p>
-          <p className={styles.statValue}>{stats.total}</p>
-        </div>
-        <div className={styles.statCard}>
-          <p className={styles.statLabel}>At or below reorder</p>
-          <p className={styles.statValue}>{stats.low}</p>
-        </div>
-        <div className={styles.statCard}>
-          <p className={styles.statLabel}>Units on hand</p>
-          <p className={styles.statValue}>{formatQuantity(stats.onHand)}</p>
-        </div>
-        <div className={styles.statCard}>
-          <p className={styles.statLabel}>Units reserved</p>
-          <p className={styles.statValue}>{formatQuantity(stats.reserved)}</p>
-        </div>
+      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Stock stats">
+        <StatCard label="Items stocked" value={stats.total} />
+        <StatCard label="At or below reorder" value={stats.low} />
+        <StatCard label="Units on hand" value={formatQuantity(stats.onHand)} />
+        <StatCard label="Units reserved" value={formatQuantity(stats.reserved)} />
       </section>
 
-      <div className={styles.pickerRow}>
-        <div className={styles.field}>
-          <label htmlFor="stock-airport" className={styles.label}>
-            Airport
-          </label>
-          <select id="stock-airport" className={styles.select} value={warehouseId ?? ''} onChange={(e) => setWarehouseId(e.target.value)}>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex w-full max-w-xs flex-col gap-2">
+          <Label htmlFor="stock-airport">Airport</Label>
+          <NativeSelect id="stock-airport" className="w-full" value={warehouseId ?? ''} onChange={(e) => setWarehouseId(e.target.value)}>
             {warehouses.map((w) => (
-              <option key={w.id} value={w.id}>
+              <NativeSelectOption key={w.id} value={w.id}>
                 {w.code}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </div>
-        <div className={styles.buttonGroup}>
-          <button type="button" className={styles.manageButton} onClick={() => setManagingAirports(true)}>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={() => setManagingAirports(true)}>
             Manage airports
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className={styles.receiveButton}
             onClick={() => {
               const code = currentWarehouse?.code ?? 'BKK'
               void navigate({ to: '/catering/stock/receive', search: { airport: code } })
             }}
           >
             Receive delivery
-          </button>
+          </Button>
         </div>
       </div>
 
-      <section className={styles.card} aria-label={`${currentWarehouse?.code ?? ''} warehouse stock`}>
-        <div className={styles.cardHeader}>
-          <h2 className={styles.cardTitle}>{currentWarehouse ? `${currentWarehouse.code} warehouse` : 'Warehouse'}</h2>
-          <p className={styles.cardSubtitle}>Reserved stock is held for paid orders and released on cancel or failed payment.</p>
-        </div>
-
-        {loading ? (
-          <p className={styles.message}>Loading warehouse…</p>
-        ) : stock.length === 0 ? (
-          <p className={styles.message}>No stock yet. Use Receive delivery to add the first batch.</p>
-        ) : (
-          <>
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
-                <colgroup>
-                  <col className={styles.colItem} />
-                  <col className={styles.colNumeric} />
-                  <col className={styles.colNumeric} />
-                  <col className={styles.colNumeric} />
-                  <col className={styles.colNumeric} />
-                  <col className={styles.colNumeric} />
-                  <col className={styles.colNumeric} />
-                  <col className={styles.colActions} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th scope="col" className={styles.thItem}>
-                      Item
-                    </th>
-                    <th scope="col" className={styles.thNumeric}>
-                      On hand
-                    </th>
-                    <th scope="col" className={styles.thNumeric}>
-                      Reserved
-                    </th>
-                    <th scope="col" className={styles.thNumeric}>
-                      Available
-                    </th>
-                    <th scope="col" className={styles.thNumeric}>
-                      Reorder at
-                    </th>
-                    <th scope="col" className={styles.thNumeric}>
-                      Unit cost
-                    </th>
-                    <th scope="col" className={styles.thNumeric}>
-                      Total cost
-                    </th>
-                    <th scope="col" className={styles.thActions}>
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
+      <Card className="gap-4" aria-label={`${currentWarehouse?.code ?? ''} warehouse stock`}>
+        <CardHeader>
+          <CardTitle>{currentWarehouse ? `${currentWarehouse.code} warehouse` : 'Warehouse'}</CardTitle>
+          <CardDescription>Reserved stock is held for paid orders and released on cancel or failed payment.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-6">
+          {loading ? (
+            <div className="flex flex-col gap-2" aria-busy="true">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          ) : stock.length === 0 ? (
+            <p className="m-0 py-6 text-center text-sm text-muted-foreground">No stock yet. Use Receive delivery to add the first batch.</p>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead className="text-right">On hand</TableHead>
+                    <TableHead className="text-right">Reserved</TableHead>
+                    <TableHead className="text-right">Available</TableHead>
+                    <TableHead className="text-right">Reorder at</TableHead>
+                    <TableHead className="text-right">Unit cost</TableHead>
+                    <TableHead className="text-right">Total cost</TableHead>
+                    <TableHead className="text-right">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {stock.map((row) => {
-                    // The available quantity and the low-stock flag come
-                    // from the endpoint; the number is only clamped so an
+                    // The available quantity and the low-stock flag come from the endpoint; the number is only clamped so an
                     // over-reserved line never shows a negative figure.
                     const available = Math.max(0, row.availableQuantity)
                     const low = row.isLow
                     const summary = summarizeBatches(batches, row.productId, products)
                     return (
-                      <tr key={row.productId} className={styles.row}>
-                        <td className={styles.tdItem}>
-                          <span className={styles.itemName}>{row.productName}</span>
-                        </td>
-                        <td className={styles.tdNumeric}>{formatQuantity(row.quantityOnHand)}</td>
-                        <td className={styles.tdNumeric}>{formatQuantity(row.quantityReserved)}</td>
-                        <td className={styles.tdNumeric}>
-                          <span className={styles.availableCell}>
-                            {low && <span className={styles.reorderBadge}>Reorder</span>}
-                            <span className={low ? styles.availableLow : styles.availablePositive}>{formatQuantity(available)}</span>
+                      <TableRow key={row.productId}>
+                        <TableCell className="font-medium">{row.productName}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatQuantity(row.quantityOnHand)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatQuantity(row.quantityReserved)}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          <span className="inline-flex items-center justify-end gap-2">
+                            {low && <Badge variant="destructive">Reorder</Badge>}
+                            <span className={low ? 'font-semibold text-destructive' : 'font-semibold'}>{formatQuantity(available)}</span>
                           </span>
-                        </td>
-                        <td className={styles.tdNumeric}>{formatQuantity(row.reorderLevel)}</td>
-                        <td className={styles.tdNumeric}>{summary ? formatMoney(summary.unitCost) : '—'}</td>
-                        <td className={styles.tdNumeric}>{summary ? formatMoney(summary.totalCost) : '—'}</td>
-                        <td className={styles.tdActions}>
-                          <button type="button" className={styles.adjustButton} onClick={() => setAdjusting(row)}>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{formatQuantity(row.reorderLevel)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{summary ? formatMoney(summary.unitCost) : '—'}</TableCell>
+                        <TableCell className="text-right tabular-nums">{summary ? formatMoney(summary.totalCost) : '—'}</TableCell>
+                        <TableCell className="text-right">
+                          <Button type="button" variant="outline" size="sm" onClick={() => setAdjusting(row)}>
                             Adjust stock
-                          </button>
-                        </td>
-                      </tr>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
                     )
                   })}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
 
-            <h3 className={styles.movementsHeader}>Recent movements</h3>
-            {movements.length === 0 ? (
-              <p className={styles.message}>No movements for this warehouse yet.</p>
-            ) : (
-              <div className={styles.movementsList}>
-                {movements
-                  .slice()
-                  .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
-                  .slice(0, 12)
-                  .map((m) => {
-                    const product = products.find((p) => p.id === m.productId)
-                    return (
-                      <div key={m.id} className={styles.movementRow}>
-                        <span
-                          className={`${styles.movementType} ${
-                            m.type === 'receive' ? styles.movementTypeReceive : m.type === 'adjust' ? styles.movementTypeAdjust : ''
-                          }`}
-                        >
-                          {movementTypeLabel(m.type)}
-                        </span>
-                        <span>{product?.name ?? m.productId}</span>
-                        <span
-                          className={`${styles.movementQty} ${m.quantity >= 0 ? styles.movementQtyPositive : styles.movementQtyNegative}`}
-                        >
-                          {m.quantity >= 0 ? `+${m.quantity}` : m.quantity}
-                        </span>
-                        <span className={styles.movementReason}>{m.reason ? reasonLabel(m.reason) : (m.note ?? '')}</span>
-                        <span className={styles.movementTime}>{formatDate(m.occurredAt)}</span>
-                      </div>
-                    )
-                  })}
+              <div className="flex flex-col gap-2">
+                <h3 className="m-0 text-base font-semibold">Recent movements</h3>
+                {movements.length === 0 ? (
+                  <p className="m-0 text-sm text-muted-foreground">No movements for this warehouse yet.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Item</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead className="text-right">When</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {movements
+                        .slice()
+                        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+                        .slice(0, 12)
+                        .map((m) => {
+                          const product = products.find((p) => p.id === m.productId)
+                          return (
+                            <TableRow key={m.id}>
+                              <TableCell>
+                                <Badge variant={m.type === 'receive' ? 'secondary' : 'outline'}>{movementTypeLabel(m.type)}</Badge>
+                              </TableCell>
+                              <TableCell>{product?.name ?? m.productId}</TableCell>
+                              <TableCell className={`text-right tabular-nums ${m.quantity >= 0 ? '' : 'text-destructive'}`}>
+                                {m.quantity >= 0 ? `+${m.quantity}` : m.quantity}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">{m.reason ? reasonLabel(m.reason) : (m.note ?? '')}</TableCell>
+                              <TableCell className="text-right text-muted-foreground">{formatDate(m.occurredAt)}</TableCell>
+                            </TableRow>
+                          )
+                        })}
+                    </TableBody>
+                  </Table>
+                )}
               </div>
-            )}
-          </>
-        )}
-      </section>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {adjusting && (
         <AdjustStockDialog
@@ -476,8 +440,8 @@ export function StockPage() {
         />
       )}
 
-      <p className={styles.subtitle}>
-        <Link to="/catering/offered-menu" style={{ color: '#0b1a3a' }}>
+      <p className="m-0 text-sm">
+        <Link to="/catering/offered-menu" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
           Back to offered menu
         </Link>
       </p>
