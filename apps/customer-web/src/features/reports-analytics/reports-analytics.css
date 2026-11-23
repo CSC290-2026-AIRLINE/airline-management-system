@@ -1,0 +1,982 @@
+/*
+ * Reports & Analytics (Figma "Integrated-F16-G14", frame 4:2).
+ *
+ * Sizes are in px to match the design frame exactly. Colours are the same palette the admin console uses
+ * (see apps/staff-web/src/index.css) so both apps speak the same design language.
+ */
+
+/*
+ * The Vite starter stylesheet centres #root in a 1126px bordered column. This screen is a full-bleed
+ * workspace, so those starter rules are relaxed only while the screen is mounted — the other routes keep
+ * the layout they had.
+ */
+#root:has(.raPage) {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border-inline: 0;
+  text-align: left;
+}
+
+.raPage {
+  --ra-navy: #14213d;
+  --ra-navy-active: #2a4372;
+  --ra-navy-deep: #071426;
+  --ra-ink: #0a1424;
+  --ra-ink-strong: #102544;
+  --ra-page: #f7f9fc;
+  --ra-panel: #eef1f7;
+  --ra-line: #d9dfe9;
+  --ra-line-strong: #cbd5e1;
+  --ra-gold: #f2a800;
+  --ra-success: #2fa568;
+  --ra-muted: #6f7c91;
+  --ra-muted-strong: #455473;
+  --ra-label: #677287;
+
+  display: flex;
+  min-height: 100vh;
+  background: var(--ra-page);
+  color: var(--ra-ink);
+  color-scheme: light;
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+/*
+ * The starter stylesheet does not reset `box-sizing`, and every size in the design frame includes padding and
+ * borders. Without this, heights like the 30px active nav row would grow by their padding.
+ */
+.raPage,
+.raPage *,
+.raPage *::before,
+.raPage *::after {
+  box-sizing: border-box;
+}
+
+.raPage :where(h1, h2, p) {
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------- sidebar */
+
+.ra-sidebar {
+  position: relative;
+  flex: none;
+  width: 260px;
+  min-height: 1220px;
+  overflow: hidden;
+  background: var(--ra-navy);
+  color: #fff;
+}
+
+.ra-sidebarLogo {
+  position: absolute;
+  left: 28px;
+  top: 29px;
+  width: 175px;
+  height: 44px;
+}
+
+.ra-sidebarEyebrow {
+  position: absolute;
+  left: 28px;
+  top: 95px;
+  color: #b7c1d1;
+  font-size: 12px;
+  line-height: 14px;
+}
+
+.ra-nav {
+  position: absolute;
+  left: 22px;
+  top: 127px;
+  display: flex;
+  width: 216px;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ra-navLink {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 26px;
+  padding: 0 12px 0 20px;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  /* The design's 14px Inter has a 17px line box — it is what makes the active row 31px tall. */
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+.ra-navLink--active {
+  /* 7px padding + the 17px text line box = the 31px row the design draws. */
+  height: auto;
+  padding: 7px 12px;
+  border-left: 3px solid var(--ra-gold);
+  background: var(--ra-navy-active);
+  font-weight: 600;
+}
+
+.ra-navLink--admin {
+  height: 32px;
+  padding-left: 12px;
+}
+
+.ra-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.ra-icon img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.ra-navGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.ra-navGroupTitle {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  margin: 0;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: var(--ra-navy-deep);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: pre;
+}
+
+.ra-navGroupItems {
+  display: flex;
+  flex-direction: column;
+}
+
+.ra-navSpacer {
+  height: 6px;
+}
+
+.ra-sidebarCard {
+  position: absolute;
+  left: 22px;
+  display: flex;
+  width: 216px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ra-sidebarCard--clock {
+  top: 770px;
+}
+
+.ra-sidebarCard--user {
+  top: 843px;
+}
+
+.ra-sidebarCardLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.63px;
+  line-height: 14px;
+}
+
+.ra-sidebarCardLabel img {
+  width: 7px;
+  height: 7px;
+}
+
+.ra-sidebarCardValue {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 19px;
+}
+
+.ra-sidebarHint {
+  position: absolute;
+  left: 34px;
+  top: 912px;
+  width: 204px;
+  color: #b7c1d1;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.ra-sidebarSignOut {
+  position: absolute;
+  left: 34px;
+  top: 960px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.ra-sidebarCollapse {
+  position: absolute;
+  left: 218px;
+  top: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(110, 135, 178, 0.8);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* ------------------------------------------------------------------- main */
+
+.raMain {
+  flex: 1;
+  min-width: 0;
+  padding: 36px 123px 48px 55px;
+}
+
+.raPageTitle {
+  margin: 0 0 22px;
+  color: var(--ra-ink);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -1.4px;
+  line-height: 34px;
+}
+
+.raPageDescription {
+  margin: 0 0 21px;
+  color: var(--ra-muted);
+  font-size: 16px;
+  line-height: 19px;
+}
+
+.raTabs {
+  display: flex;
+  height: 40px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--ra-panel);
+}
+
+.raTab {
+  flex: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ra-muted-strong);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.raTab--active {
+  background: var(--ra-ink-strong);
+  color: #fff;
+}
+
+.raContent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* -------------------------------------------------------------- stat cards */
+
+.raStats {
+  display: flex;
+  gap: 16px;
+}
+
+.raStat {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--ra-line-strong);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.raStatLabel {
+  color: var(--ra-label);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  line-height: 13px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.raStatValue {
+  color: var(--ra-ink-strong);
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 29px;
+}
+
+.raStatSub {
+  color: var(--ra-muted);
+  font-size: 13px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------- period toolbar */
+
+.raPeriodToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 40px;
+}
+
+.raPeriodRange {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ra-muted);
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.raPeriodSelector {
+  display: flex;
+  flex: none;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--ra-panel);
+}
+
+.raPeriodButton {
+  height: 40px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ra-muted-strong);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.raPeriodButton--active {
+  background: var(--ra-ink-strong);
+  color: #fff;
+}
+
+/* -------------------------------------------------------------- cards */
+
+.ra-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 12px 16px;
+  overflow: hidden;
+  border: 1px solid var(--ra-line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.ra-logsCard {
+  padding-bottom: 8px;
+}
+
+.ra-cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ra-cardTitle {
+  color: var(--ra-ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.ra-cardSummary {
+  color: var(--ra-muted);
+  font-size: 13px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.raEmptyState {
+  gap: 8px;
+  padding: 24px;
+}
+
+.raEmptyStateText {
+  color: var(--ra-muted);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/* ---------------------------------------------------------------- chart */
+
+.ra-chart {
+  position: relative;
+  width: 978px;
+  height: 226px;
+}
+
+.ra-gridline {
+  position: absolute;
+  left: 52px;
+  width: 922px;
+  height: 1px;
+  background: var(--ra-panel);
+}
+
+.ra-gridline--baseline {
+  background: var(--ra-line);
+}
+
+.ra-yLabel {
+  position: absolute;
+  top: -6px;
+  right: calc(100% + 10px);
+  color: var(--ra-muted);
+  font-size: 11px;
+  line-height: 13px;
+  white-space: nowrap;
+}
+
+.ra-bar {
+  position: absolute;
+  width: 18px;
+  border-radius: 4px 4px 0 0;
+  background: var(--ra-ink-strong);
+}
+
+.ra-bar--today {
+  background: var(--ra-gold);
+}
+
+.ra-xLabel {
+  position: absolute;
+  top: 210px;
+  transform: translateX(-50%);
+  color: var(--ra-muted);
+  font-size: 11px;
+  line-height: 13px;
+  white-space: nowrap;
+}
+
+.ra-legend {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 15px;
+  padding-left: 52px;
+}
+
+.ra-legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ra-muted);
+  font-size: 12px;
+  line-height: 15px;
+}
+
+.ra-legendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.ra-legendSwatch--daily {
+  background: var(--ra-ink-strong);
+}
+
+.ra-legendSwatch--today {
+  background: var(--ra-gold);
+}
+
+/* ---------------------------------------------------------------- table */
+
+.ra-table {
+  width: 976px;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.ra-th {
+  height: 22px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid var(--ra-line);
+  color: var(--ra-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  line-height: 13px;
+  text-align: left;
+  vertical-align: bottom;
+}
+
+.ra-td {
+  height: 51px;
+  padding: 0;
+  border-bottom: 1px solid var(--ra-line);
+  color: var(--ra-ink);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 16px;
+  vertical-align: middle;
+}
+
+.ra-row {
+  cursor: pointer;
+}
+
+.ra-row:last-child .ra-td {
+  border-bottom: 0;
+}
+
+.ra-row:hover .ra-td {
+  background: #f7f9fc;
+}
+
+.ra-th--session,
+.ra-td--session {
+  width: 130px;
+}
+
+.ra-td--session {
+  color: var(--ra-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ra-th--start,
+.ra-td--start {
+  width: auto;
+}
+
+.ra-th--end,
+.ra-td--end {
+  width: 150px;
+}
+
+.ra-td--end {
+  color: var(--ra-muted);
+}
+
+.ra-th--duration,
+.ra-td--duration {
+  width: 130px;
+}
+
+.ra-th--questions,
+.ra-td--questions {
+  width: 100px;
+  text-align: right;
+}
+
+.ra-th--status,
+.ra-td--status {
+  width: 170px;
+  padding-left: 40px;
+}
+
+.ra-th--action,
+.ra-td--action {
+  width: 40px;
+}
+
+.ra-td--action {
+  text-align: right;
+}
+
+.ra-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.ra-status--completed {
+  color: var(--ra-success);
+}
+
+.ra-status--inProgress {
+  color: var(--ra-ink-strong);
+}
+
+.ra-chatButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--ra-line-strong);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.ra-chatButton img {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------------------------------------------------------------- modal */
+
+.ra-modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+  background: rgba(10, 20, 36, 0.55);
+}
+
+.ra-modal {
+  position: relative;
+  display: flex;
+  width: 600px;
+  max-width: 100%;
+  max-height: calc(100vh - 48px);
+  flex-direction: column;
+  border: 1px solid #d6dbe6;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(10, 20, 36, 0.18);
+}
+
+.ra-modalHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 30px 90px 22px 30px;
+  border-bottom: 1px solid var(--ra-line);
+}
+
+.ra-modalTitle {
+  color: var(--ra-ink);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -1.4px;
+  line-height: 34px;
+}
+
+.ra-modalMeta {
+  color: var(--ra-muted);
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.ra-modalIconButton {
+  position: absolute;
+  top: 18px;
+  right: 29px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid var(--ra-line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ra-ink);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.ra-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 30px;
+  overflow-y: auto;
+}
+
+.ra-modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  padding: 20px 30px 24px;
+  border-top: 1px solid var(--ra-line);
+}
+
+.ra-modalClose {
+  width: 100px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid #dbe0eb;
+  border-radius: 9px;
+  background: #fff;
+  color: #131a2b;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.ra-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ra-turn--passenger {
+  align-items: flex-end;
+}
+
+.ra-turn--robot {
+  align-items: flex-start;
+}
+
+.ra-turnLabel {
+  color: var(--ra-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  line-height: 13px;
+  text-transform: uppercase;
+}
+
+.ra-bubble {
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.ra-turn--passenger .ra-bubble {
+  border-radius: 12px 12px 4px 12px;
+  background: var(--ra-ink-strong);
+  color: #fff;
+}
+
+.ra-turn--robot .ra-bubble {
+  max-width: 380px;
+  border-radius: 12px 12px 12px 4px;
+  background: var(--ra-panel);
+  color: var(--ra-ink);
+}
+
+.ra-bubble--unanswered {
+  border: 1px dashed var(--ra-line-strong);
+  border-radius: 12px 12px 12px 4px;
+  background: #fff;
+  color: var(--ra-muted);
+}
+
+/* ----------------------------------------------------------------- utils */
+
+.ra-visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Visible focus ring for every control on the page. */
+.raPage :focus-visible {
+  outline: 2px solid var(--ra-gold);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------ data states */
+
+/* The pill sits between the range text and the period selector, so the layout of the frame never moves. */
+.raStatusPill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--ra-line-strong);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ra-muted-strong);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.raStatusPill--fallback {
+  border-color: #e6c98a;
+  background: #fef8ec;
+  color: #7a5510;
+}
+
+.raStatusPill--empty {
+  border-color: var(--ra-line);
+  background: var(--ra-panel);
+  color: var(--ra-muted);
+}
+
+.raStatusPillDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ra-gold);
+}
+
+.raStatusPillButton {
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid currentColor;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.raErrorCard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid var(--ra-line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.ra-modalNotice {
+  padding: 12px 30px;
+  border-top: 1px solid var(--ra-line);
+  color: #7a5510;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* --------------------------------------------------------------- skeleton */
+
+.raSkeleton {
+  pointer-events: none;
+}
+
+.raSkeletonLine,
+.raSkeletonBlock {
+  display: block;
+  border-radius: 6px;
+  background: #e8ecf3;
+  animation: raSkeletonPulse 1.4s ease-in-out infinite;
+}
+
+.raSkeletonLine--label {
+  width: 110px;
+  height: 11px;
+}
+
+.raSkeletonLine--value {
+  width: 74px;
+  height: 26px;
+}
+
+.raSkeletonLine--sub {
+  width: 168px;
+  height: 12px;
+}
+
+.raSkeletonLine--toolbar {
+  width: 373px;
+  height: 13px;
+}
+
+.raSkeletonLine--title {
+  width: 167px;
+  height: 22px;
+}
+
+.raSkeletonBlock--chart {
+  width: 100%;
+  height: 226px;
+}
+
+.raSkeletonBlock--table {
+  width: 100%;
+  height: 340px;
+}
+
+@keyframes raSkeletonPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .raSkeletonLine,
+  .raSkeletonBlock {
+    animation: none;
+  }
+}
