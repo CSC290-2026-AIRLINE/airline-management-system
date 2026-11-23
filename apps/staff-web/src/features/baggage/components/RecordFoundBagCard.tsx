@@ -85,7 +85,7 @@ export function RecordFoundBagCard({
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <h2
             id="record-found-bag"
-            className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
+            className="m-0 font-sans text-[28px] font-bold tracking-[-1.4px] text-[#14213d] max-md:text-[22px] max-md:tracking-normal"
           >
             Record a found bag
           </h2>

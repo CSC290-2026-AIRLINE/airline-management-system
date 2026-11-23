@@ -68,9 +68,7 @@ export function CaseCosts({
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[22px] font-semibold text-[#14213d]">
-        Costs (paid by the airline)
-      </h3>
+      <h3 className="m-0 font-sans text-[22px] font-semibold text-[#14213d]">Costs (paid by the airline)</h3>
 
       {loading && <Skeleton className="h-12 w-full" />}
       <FormError message={error} />

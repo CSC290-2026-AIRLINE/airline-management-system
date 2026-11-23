@@ -42,7 +42,7 @@ export function DeliveriesPage({
   return (
     <>
       <header className={`flex flex-col gap-2 ${listOnly}`}>
-        <h1 className="m-0 font-[family-name:Inter,system-ui,sans-serif] text-[48px] leading-none font-extrabold tracking-[-2.4px] text-[#14213d] max-md:text-[36px]">
+        <h1 className="m-0 font-sans text-[48px] leading-none font-extrabold tracking-[-2.4px] text-[#14213d] max-md:text-[36px]">
           Deliveries
         </h1>
         <p className="text-lg tracking-[-0.9px] text-[#677287]">

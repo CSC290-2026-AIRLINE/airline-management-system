@@ -33,10 +33,7 @@ export function FoundBagsListCard({
   return (
     <F10Card aria-labelledby="found-bags-list" className={LIST_CARD}>
       <div className={cn('flex items-center gap-3 max-md:flex-col max-md:items-stretch', LIST_PAD)}>
-        <h2
-          id="found-bags-list"
-          className="m-0 font-[family-name:Inter,system-ui,sans-serif] flex-1 text-[22px] font-semibold text-[#14213d]"
-        >
+        <h2 id="found-bags-list" className="m-0 font-sans flex-1 text-[22px] font-semibold text-[#14213d]">
           Found bags
         </h2>
         <Input

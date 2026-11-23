@@ -93,7 +93,7 @@ export function SelectBox({
         position="popper"
         side="bottom"
         align="start"
-        className="max-h-[min(18rem,var(--radix-select-content-available-height))] font-[family-name:Inter,system-ui,sans-serif]"
+        className="max-h-[min(18rem,var(--radix-select-content-available-height))] font-sans"
       >
         {options.map((o) => (
           <SelectItem key={o.value} value={o.value}>
@@ -191,7 +191,7 @@ export function SearchSelectBox({
         side="bottom"
         align="start"
         avoidCollisions={false}
-        className="flex w-(--radix-popover-trigger-width) min-w-[16rem] flex-col gap-1 p-1 font-[family-name:Inter,system-ui,sans-serif]"
+        className="flex w-(--radix-popover-trigger-width) min-w-[16rem] flex-col gap-1 p-1 font-sans"
       >
         <div className="flex items-center gap-2 border-b border-[#d8dce6] px-2.5 py-2">
           <Search className="size-4 shrink-0 text-[#677287]" aria-hidden />
@@ -409,12 +409,12 @@ const SIM_DAY = new Intl.DateTimeFormat('en-GB', {
   hour12: false,
 })
 
-/** "Simulated today · Wed 21 Oct 2026, 10:30" under a page title on phones, where the sidebar clock is hidden. */
+/** "Simulated today · Wed 21 Oct 2026, 10:30" under a page title: the desk works on the simulation clock, not real time. */
 export function SimulatedToday() {
   const { now } = useDesk()
   if (!now) return null
   return (
-    <p className="self-start rounded-md border border-[#d8dce6] bg-white px-2 py-1 text-xs text-[#677287] md:hidden">
+    <p className="self-start rounded-md border border-[#d8dce6] bg-white px-2 py-1 text-xs text-[#677287]">
       Simulated today · {SIM_DAY.format(now)}
     </p>
   )
