@@ -288,7 +288,14 @@ export async function fetchShop(booking: Booking, flightId: string, cabin: Cabin
   const products: Product[] = wire.products
     .filter((p) => (p.category !== 'snack' && p.category !== 'beverage') || wire.settings.snacksEnabled)
     .filter((p) => p.category !== 'duty_free' || wire.settings.dutyFreeEnabled)
-    .filter((p) => p.stockStatus === 'in_stock' || p.category === 'meal')
+    .filter((p) => {
+      if (p.category !== 'meal') return true
+      return (
+        wire.settings.mealService !== 'none' &&
+        (wire.settings.mealSelection !== 'fixed' || p.typeCode !== 'STD') &&
+        (wire.settings.premiumMealsAllowed || !p.isPremium)
+      )
+    })
     .map((p) => ({
       id: p.id,
       category: p.category,
@@ -301,6 +308,7 @@ export async function fetchShop(booking: Booking, flightId: string, cabin: Cabin
       thumbnailColor: THUMB_COLOR[p.category],
       imageUrl: p.imageKey && (p.imageKey.startsWith('/') || p.imageKey.startsWith('http')) ? p.imageKey : null,
       isDefaultChoice: false,
+      availableQuantity: Math.max(0, p.availableQuantity),
     }))
   const hasMeals = products.some((p) => p.category === 'meal')
   return {

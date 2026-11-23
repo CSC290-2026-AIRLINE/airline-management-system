@@ -94,17 +94,9 @@ function uiStatus(flight: Flight, order: CateringOrder | null): UiStatus {
   // the flight's own status, which the list endpoint returns for all of
   // them, and prefer the fetched order when there is one: right after an
   // action it is the fresher of the two.
-  const base = order
-    ? order.status === 'closed'
-      ? 'closed'
-      : order.status === 'loaded'
-        ? 'loaded'
-        : order.status === 'void'
-          ? 'void'
-          : 'order_ready'
-    : flight.status === 'open' && !flight.orderingOpen
-      ? 'no_order'
-      : flightStatusToUi(flight.status)
+  const status = order?.status ?? flight.status
+  const orderingOpen = order?.orderingOpen ?? flight.orderingOpen
+  const base = status === 'open' && !orderingOpen ? 'no_order' : flightStatusToUi(status)
   return base === 'order_ready' && flight.departed ? 'not_loaded' : base
 }
 
@@ -273,13 +265,14 @@ export function CateringOrdersPage() {
   // "are you sure" dialog is confirmed. Each handler closes the dialog
   // when it finishes, whichever way it went; failures show a toast.
 
-  async function handleRefresh() {
+  async function handleRefresh(generate = false) {
     if (selectedId == null) return
     setBusy(true)
     try {
       const order = await api.orders.refreshCateringOrderApi(selectedId)
       setOrders((prev) => ({ ...prev, [selectedId]: order }))
-      showToast('success', 'Order refreshed against current warehouse stock.')
+      await refreshFlights()
+      showToast('success', generate ? 'Catering order generated.' : 'Order refreshed against current warehouse stock.')
     } catch (err) {
       if (err instanceof CateringApiError) {
         showToast('error', err.message)
@@ -287,6 +280,21 @@ export function CateringOrdersPage() {
         const message = err instanceof Error ? err.message : 'Could not refresh the order.'
         showToast('error', message)
       }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleSimulateClose() {
+    if (!selectedId) return
+    setBusy(true)
+    try {
+      const order = await api.orders.simulateOrderingClosed(selectedId)
+      setOrders((prev) => ({ ...prev, [selectedId]: order }))
+      await refreshFlights()
+      showToast('success', 'Ordering closed for this flight. The catering order is ready to review.')
+    } catch (err) {
+      showToast('error', err instanceof Error ? err.message : 'Could not simulate closing ordering.')
     } finally {
       setBusy(false)
     }
@@ -346,6 +354,8 @@ export function CateringOrdersPage() {
   const selectedFlight = flights.find((f) => f.id === selectedId) ?? null
   const selectedOrder = selectedId ? (orders[selectedId] ?? null) : null
   const selectedStatus: UiStatus | null = selectedFlight ? uiStatus(selectedFlight, selectedOrder) : null
+  const canGenerate =
+    selectedStatus === 'no_order' && !selectedFlight?.departed && Boolean(selectedOrder?.warehouseId || selectedFlight?.warehouseId)
   const selectedWarehouse = selectedFlight ? (warehouses.find((w) => w.id === selectedFlight.warehouseId) ?? null) : null
   const shortLineCount = selectedOrder ? selectedOrder.lines.filter(lineIsShort).length : 0
   const totalUnits = selectedOrder ? selectedOrder.lines.reduce((acc, l) => acc + l.quantityRequired, 0) : 0
@@ -530,8 +540,18 @@ export function CateringOrdersPage() {
                       Reload customer orders
                     </Button>
                   )}
+                  {selectedStatus === 'ordering_open' && selectedFlight.simulationAvailable && selectedFlight.warehouseId && (
+                    <Button type="button" variant="outline" onClick={() => void handleSimulateClose()} disabled={busy}>
+                      Simulate orders closed
+                    </Button>
+                  )}
+                  {canGenerate && (
+                    <Button type="button" variant="outline" onClick={() => void handleRefresh(true)} disabled={busy}>
+                      Generate catering order
+                    </Button>
+                  )}
                   {selectedStatus === 'order_ready' && (
-                    <Button type="button" variant="outline" onClick={handleRefresh} disabled={busy}>
+                    <Button type="button" variant="outline" onClick={() => void handleRefresh()} disabled={busy || !selectedOrder}>
                       Refresh order
                     </Button>
                   )}
@@ -539,7 +559,7 @@ export function CateringOrdersPage() {
                     <Button
                       type="button"
                       onClick={() => setPendingAction('transfer')}
-                      disabled={busy || shortLineCount > 0}
+                      disabled={busy || !selectedOrder || shortLineCount > 0}
                       title={shortLineCount > 0 ? 'Some items are short: receive stock first' : undefined}
                     >
                       Transfer to aircraft
@@ -635,8 +655,12 @@ export function CateringOrdersPage() {
                 {selectedStatus === 'no_order' && (
                   <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                     <strong className="block text-foreground">No catering order</strong>
-                    Ordering closed at {formatDateTime(selectedFlight.cutoffAt, selectedFlight.departureTimeZone)}, but no order was
-                    generated for this flight. This happens when its departure airport has no warehouse.
+                    Ordering closed at {formatDateTime(selectedFlight.cutoffAt, selectedFlight.departureTimeZone)}.{' '}
+                    {canGenerate
+                      ? 'Generate the catering order before transferring stock.'
+                      : selectedFlight.departed
+                        ? 'The flight has already departed.'
+                        : 'Add a warehouse for the departure airport to generate the order.'}
                   </div>
                 )}
 
@@ -648,7 +672,7 @@ export function CateringOrdersPage() {
                   </Alert>
                 )}
 
-                {selectedOrder && selectedStatus !== 'ordering_open' && selectedStatus !== 'void' && (
+                {selectedOrder && selectedOrder.status !== 'open' && selectedStatus !== 'void' && (
                   <>
                     <Table>
                       <TableHeader>

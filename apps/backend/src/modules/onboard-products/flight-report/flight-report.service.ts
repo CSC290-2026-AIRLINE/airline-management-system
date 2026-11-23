@@ -1,19 +1,11 @@
-// FlightReportService: per-flight report. The "initial" column is
-// derived from the flight's aircraft stock at submit time. The
-// validation enforces remaining >= 0 for every line. After validation
-// we apply the completion rules (meals -> discard all, snacks/bevs/
-// duty-free only discard damaged or expired) and close the catering
-// order. product_sale.unit_cost_amount is filled from the earliest
-// valid aircraft batch for each sold product.
+// Flight reports use the load transferred for that flight, even when the aircraft serves several flights.
 
 import { Injectable } from '@nestjs/common'
 import { DbService } from '../../../db/db.service'
 import { ApiErrorException } from '../common/api-error'
 import { AuditService } from '../common/audit.service'
 import { SystemClock } from '../common/clock'
-import { applyCompletionRule, type F12ProductCategory } from '../common/mapping'
-import { SalesService } from '../sales/sales.service'
-import { CateringOrdersService } from '../catering-orders/catering-orders.service'
+import type { Prisma } from '../../../db/generated/prisma/client'
 
 export interface FlightReportLineDto {
   id: string
@@ -54,8 +46,6 @@ export class FlightReportService {
     private readonly db: DbService,
     private readonly audit: AuditService,
     private readonly clock: SystemClock,
-    private readonly sales: SalesService,
-    private readonly cateringOrders: CateringOrdersService,
   ) {}
 
   async getByFlight(flightId: string): Promise<FlightReportDto | null> {
@@ -120,158 +110,140 @@ export class FlightReportService {
     }))
   }
 
+  async listLoadedProducts(flightId: string): Promise<Array<{ productId: string; quantity: number }>> {
+    const rows = await this.db.stock_transfer_line.groupBy({
+      by: ['product_id'],
+      where: { stock_transfer: { flight_id: flightId } },
+      _sum: { quantity: true },
+    })
+    return rows.map((row) => ({ productId: row.product_id, quantity: row._sum.quantity ?? 0 }))
+  }
+
   async submit(flightId: string, input: SubmitFlightReportInput, staffId: string): Promise<FlightReportDto> {
-    const existing = await this.db.flight_report.findUnique({ where: { flight_id: flightId } })
-    if (existing) throw new ApiErrorException('REPORT_ALREADY_SUBMITTED', 'This flight already has a submitted report.', 409)
-    const flight = await this.db.flight.findUnique({
-      where: { id: flightId },
-      include: { route: { include: { airport_route_originToairport: true, airport_route_destinationToairport: true } } },
-    })
-    if (!flight) throw new ApiErrorException('NOT_FOUND', 'Flight not found.', 404)
-    const aircraft_stock = await this.db.aircraft_stock.findMany({
-      where: { aircraft_id: flight.aircraft_id, quantity: { gt: 0 } },
-      include: { stock_batch: { include: { product: true } } },
-    })
-    // Group aircraft stock by product; initial = sum of quantities.
-    const initialByProduct = new Map<string, { quantity: number; product: { id: string; name: string; category: string } }>()
-    for (const row of aircraft_stock) {
-      const prev = initialByProduct.get(row.product_id)
-      if (prev) prev.quantity += row.quantity
-      else
-        initialByProduct.set(row.product_id, {
-          quantity: row.quantity,
-          product: { id: row.product_id, name: row.stock_batch.product.name, category: row.stock_batch.product.category },
-        })
-    }
-    // Compute sold totals from product_sale.
-    const sales = await this.db.product_sale.findMany({ where: { flight_id: flightId } })
-    const soldByProduct = new Map<string, number>()
-    for (const s of sales) soldByProduct.set(s.product_id, (soldByProduct.get(s.product_id) ?? 0) + s.quantity)
-    // Validate every input line.
-    for (const line of input.lines) {
-      if (!Number.isInteger(line.served) || line.served < 0) {
-        throw new ApiErrorException('REPORT_INVALID', 'served must be a non-negative integer.', 400)
-      }
-      if (!Number.isInteger(line.wasted) || line.wasted < 0) {
-        throw new ApiErrorException('REPORT_INVALID', 'wasted must be a non-negative integer.', 400)
-      }
-      if (!Number.isInteger(line.damaged) || line.damaged < 0) {
-        throw new ApiErrorException('REPORT_INVALID', 'damaged must be a non-negative integer.', 400)
-      }
-      const initial = initialByProduct.get(line.productId)?.quantity ?? 0
-      const sold = soldByProduct.get(line.productId) ?? 0
-      const remaining = initial - line.served - sold - line.wasted - line.damaged
-      if (remaining < 0) {
-        throw new ApiErrorException(
-          'REPORT_MISMATCH',
-          `${initialByProduct.get(line.productId)?.product.name ?? line.productId}: remaining would be ${remaining} (served + sold + wasted + damaged exceeds initial).`,
-          409,
-        )
-      }
-    }
-    // Apply completion rules and write everything in one transaction.
     const now = this.clock.now()
-    return this.db
-      .$transaction(async (tx) => {
-        const report = await tx.flight_report.create({
+    await this.db.$transaction(async (tx) => {
+      const flight = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM flight WHERE id = ${flightId}::uuid FOR UPDATE`
+      if (!flight.length) throw new ApiErrorException('NOT_FOUND', 'Flight not found.', 404)
+      if (await tx.flight_report.findUnique({ where: { flight_id: flightId } })) {
+        throw new ApiErrorException('REPORT_ALREADY_SUBMITTED', 'This flight already has a submitted report.', 409)
+      }
+      const order = await tx.catering_order.findUnique({ where: { flight_id: flightId } })
+      if (order?.status !== 'loaded') {
+        throw new ApiErrorException('REPORT_INVALID', 'Load the catering order before submitting the flight report.', 409)
+      }
+      const transfers = await tx.stock_transfer_line.findMany({
+        where: { stock_transfer: { flight_id: flightId } },
+        include: { stock_transfer: { select: { aircraft_id: true } }, stock_batch: { include: { product: true } } },
+        orderBy: [{ stock_batch: { expires_at: 'asc' } }, { stock_batch: { received_at: 'asc' } }, { id: 'asc' }],
+      })
+      const byProduct = new Map<string, typeof transfers>()
+      for (const row of transfers) {
+        const current = byProduct.get(row.product_id) ?? []
+        current.push(row)
+        byProduct.set(row.product_id, current)
+      }
+      const seen = new Set(input.lines.map((line) => line.productId))
+      if (seen.size !== input.lines.length || seen.size !== byProduct.size || [...seen].some((id) => !byProduct.has(id))) {
+        throw new ApiErrorException('REPORT_INVALID', 'Enter one report line for every product loaded on this flight.', 400)
+      }
+
+      const sales = await tx.product_sale.groupBy({ by: ['product_id'], where: { flight_id: flightId }, _sum: { quantity: true } })
+      const soldByProduct = new Map(sales.map((row) => [row.product_id, row._sum.quantity ?? 0]))
+      const report = await tx.flight_report.create({
+        data: { flight_id: flightId, status: 'submitted', submitted_by_staff_id: staffId, submitted_at: now },
+      })
+      for (const line of input.lines) {
+        if (![line.served, line.wasted, line.damaged].every((quantity) => Number.isInteger(quantity) && quantity >= 0)) {
+          throw new ApiErrorException('REPORT_INVALID', 'Served, wasted and damaged must be non-negative integers.', 400)
+        }
+        const loads = byProduct.get(line.productId)!
+        const initial = loads.reduce((sum, row) => sum + row.quantity, 0)
+        const sold = soldByProduct.get(line.productId) ?? 0
+        const remaining = initial - line.served - sold - line.wasted - line.damaged
+        const product = loads[0].stock_batch.product
+        if (remaining < 0) {
+          throw new ApiErrorException(
+            'REPORT_MISMATCH',
+            `${product.name}: entered quantities exceed the ${initial} units loaded for this flight.`,
+            409,
+          )
+        }
+        await tx.flight_report_line.create({
           data: {
-            flight_id: flightId,
-            status: 'submitted',
-            submitted_by_staff_id: staffId,
-            submitted_at: now,
+            flight_report_id: report.id,
+            product_id: line.productId,
+            initial_quantity: initial,
+            served: line.served,
+            sold,
+            wasted: line.wasted,
+            damaged: line.damaged,
+            remaining,
           },
         })
-        for (const line of input.lines) {
-          const initial = initialByProduct.get(line.productId)?.quantity ?? 0
-          const sold = soldByProduct.get(line.productId) ?? 0
-          const remaining = initial - line.served - sold - line.wasted - line.damaged
-          const product = initialByProduct.get(line.productId)?.product
-          await tx.flight_report_line.create({
-            data: {
-              flight_report_id: report.id,
-              product_id: line.productId,
-              initial_quantity: initial,
-              served: line.served,
-              sold,
-              wasted: line.wasted,
-              damaged: line.damaged,
-              remaining,
-            },
+        if (sold > 0) {
+          const cost = loads.find((row) => !row.stock_batch.is_damaged)?.stock_batch.unit_cost_amount ?? product.purchase_cost_amount
+          await tx.product_sale.updateMany({ where: { flight_id: flightId, product_id: line.productId }, data: { unit_cost_amount: cost } })
+        }
+
+        let consumed = line.served + sold
+        let damaged = line.damaged
+        let wasted = line.wasted
+        for (const row of loads) {
+          const usedHere = Math.min(consumed, row.quantity)
+          consumed -= usedHere
+          const damagedHere = Math.min(damaged, row.quantity - usedHere)
+          damaged -= damagedHere
+          const wastedHere = Math.min(wasted, row.quantity - usedHere - damagedHere)
+          wasted -= wastedHere
+          const left = row.quantity - usedHere - damagedHere - wastedHere
+          const expired = !!row.stock_batch.expires_at && row.stock_batch.expires_at <= now
+          const discardLeft = product.category === 'meal' || row.stock_batch.is_damaged || expired ? left : 0
+          const quantity = usedHere + damagedHere + wastedHere + discardLeft
+          if (!quantity) continue
+          const changed = await tx.aircraft_stock.updateMany({
+            where: { aircraft_id: row.stock_transfer.aircraft_id, stock_batch_id: row.stock_batch_id, quantity: { gte: quantity } },
+            data: { quantity: { decrement: quantity } },
           })
-          // Apply completion rules to aircraft stock.
-          const category = (product?.category ?? 'meal') as F12ProductCategory
-          const totalOnAircraft = initial
-          const stockRows = aircraft_stock.filter((r) => r.product_id === line.productId)
-          let hasValidBatch = false
-          let discardQty = 0
-          for (const r of stockRows) {
-            const valid = !r.stock_batch.is_damaged && (!r.stock_batch.expires_at || r.stock_batch.expires_at > now)
-            if (valid) hasValidBatch = true
+          if (changed.count !== 1) {
+            throw new ApiErrorException(
+              'REPORT_MISMATCH',
+              `Aircraft stock for ${product.name} changed. Check the loaded stock and try again.`,
+              409,
+            )
           }
-          const rule = applyCompletionRule({ category, totalOnAircraft, hasValidBatch })
-          if (rule.discardQty > 0) {
-            // For meals: discard the full quantity on the aircraft, write
-            // one discard movement per product. For snacks/bevs: only
-            // discard the rows that are not valid.
-            for (const r of stockRows) {
-              const valid = !r.stock_batch.is_damaged && (!r.stock_batch.expires_at || r.stock_batch.expires_at > now)
-              if (category === 'meal' || !valid) {
-                discardQty += r.quantity
-                await tx.aircraft_stock.update({ where: { id: r.id }, data: { quantity: 0 } })
-                await tx.stock_movement.create({
-                  data: {
-                    product_id: r.product_id,
-                    aircraft_id: r.aircraft_id,
-                    stock_batch_id: r.stock_batch_id,
-                    flight_id: flightId,
-                    type: 'discard',
-                    quantity: -r.quantity,
-                    reason: category === 'meal' ? null : r.stock_batch.is_damaged ? 'damage' : 'expired',
-                    note: `flight report submit (${rule.afterLabel})`,
-                    created_by_staff_id: staffId,
-                    occurred_at: now,
-                  },
-                })
-              }
-            }
+          const base: Omit<Prisma.stock_movementUncheckedCreateInput, 'type' | 'quantity' | 'reason'> = {
+            flight_id: flightId,
+            product_id: product.id,
+            aircraft_id: row.stock_transfer.aircraft_id,
+            stock_batch_id: row.stock_batch_id,
+            stock_transfer_id: row.stock_transfer_id,
+            created_by_staff_id: staffId,
+            occurred_at: now,
           }
-          void discardQty
+          for (const [amount, reason] of [
+            [damagedHere, 'damage'],
+            [wastedHere, null],
+            [discardLeft, row.stock_batch.is_damaged ? 'damage' : expired ? 'expired' : null],
+          ] as const) {
+            if (amount) await tx.stock_movement.create({ data: { ...base, type: 'discard', quantity: -amount, reason } })
+          }
         }
-        await this.audit.record(
-          {
-            actorType: 'staff',
-            actorId: staffId,
-            actorRole: 'catering',
-            sourceFeature: 'onboard-products',
-            action: 'flight_report.submit',
-            entityType: 'flight_report',
-            entityId: report.id,
-            summary: `Submitted flight report for flight ${flightId}: ${input.lines.length} line(s).`,
-          },
-          tx,
-        )
-        return report
-      })
-      .then(async (report) => {
-        // Fill unit costs on every sale and close the catering order.
-        await this.sales.fillUnitCosts(flightId, flight.aircraft_id)
-        try {
-          await this.cateringOrders.close(flightId, staffId)
-        } catch {
-          /* catering order might not exist; ignore */
-        }
-        const fresh = await this.getByFlight(flightId)
-        return (
-          fresh ?? {
-            id: report.id,
-            flightId,
-            flightNumber: flight.flight_number,
-            route: `${flight.route.origin} → ${flight.route.destination}`,
-            status: 'submitted' as const,
-            submittedAt: now.toISOString(),
-            lines: [],
-          }
-        )
-      })
+      }
+      await tx.catering_order.update({ where: { id: order.id }, data: { status: 'closed', closed_at: now } })
+      await this.audit.record(
+        {
+          actorType: 'staff',
+          actorId: staffId,
+          actorRole: 'catering',
+          sourceFeature: 'onboard-products',
+          action: 'flight_report.submit',
+          entityType: 'flight_report',
+          entityId: report.id,
+          summary: `Submitted flight report for flight ${flightId}: ${input.lines.length} line(s).`,
+        },
+        tx,
+      )
+    })
+    return (await this.getByFlight(flightId))!
   }
 }

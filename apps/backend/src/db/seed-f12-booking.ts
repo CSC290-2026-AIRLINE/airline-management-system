@@ -12,6 +12,7 @@ import path from 'node:path'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/prisma/client'
 import { seedF12 } from './seed-f12'
+import { seedF12ExistingFlight } from './seed-f12-existing-flight'
 
 try {
   process.loadEnvFile(path.join(__dirname, '..', '..', '.env'))
@@ -44,7 +45,11 @@ const hoursFromNow = (h: number): Date => new Date(Date.now() + h * 3_600_000)
 const addMinutes = (d: Date, m: number): Date => new Date(d.getTime() + m * 60_000)
 
 async function main() {
-  const email = process.argv[2]?.trim().toLowerCase()
+  const [emailArg, option, flightNumber, ...extra] = process.argv.slice(2)
+  if (option && (option !== '--flight' || !flightNumber?.trim() || extra.length)) {
+    throw new Error('Usage: npm run db:seed:f12-booking -w apps/backend -- <email> [--flight "<flight number>"]')
+  }
+  const email = emailArg?.trim().toLowerCase()
   if (!email) {
     throw new Error('Usage: npm run db:seed:f12-booking -w apps/backend -- <the email you sign in with>')
   }
@@ -54,6 +59,11 @@ async function main() {
     const customer = user?.customer[0]
     if (!customer) {
       throw new Error(`No customer with email ${email}. Sign in to the customer web app once, then run this again.`)
+    }
+
+    if (flightNumber) {
+      await seedF12ExistingFlight(prisma, customer.id, email, flightNumber)
+      return
     }
 
     await seedF12(prisma)

@@ -17,6 +17,7 @@ interface Props {
   products: Product[]
   selectedMealProductId: string | null
   quantities: Map<string, number>
+  cartQuantities: Map<string, number>
   currency: string
   onSelectMeal: (productId: string) => void
   onAddOne: (productId: string) => void
@@ -33,6 +34,7 @@ export function ProductList(props: Props) {
         products={props.products}
         selectedId={props.selectedMealProductId}
         onSelect={props.onSelectMeal}
+        cartQuantities={props.cartQuantities}
         currency={props.currency}
         disabled={!!props.disabled}
       />
@@ -42,6 +44,7 @@ export function ProductList(props: Props) {
     <AddonTableList
       products={props.products}
       quantities={props.quantities}
+      cartQuantities={props.cartQuantities}
       currency={props.currency}
       onAdd={props.onAddOne}
       onRemove={props.onRemoveOne}
@@ -53,12 +56,14 @@ export function ProductList(props: Props) {
 function MealRadioList({
   products,
   selectedId,
+  cartQuantities,
   onSelect,
   currency,
   disabled,
 }: {
   products: Product[]
   selectedId: string | null
+  cartQuantities: Map<string, number>
   onSelect: (id: string) => void
   currency: string
   disabled: boolean
@@ -68,20 +73,24 @@ function MealRadioList({
       <RadioGroup value={selectedId ?? ''} onValueChange={(value) => onSelect(String(value))} disabled={disabled} className="gap-0">
         {products.map((p) => {
           const isSelected = p.id === selectedId
+          const outOfStock = !p.isDefaultChoice && p.availableQuantity === 0
+          const atLimit = !p.isDefaultChoice && (cartQuantities.get(p.id) ?? 0) >= (p.availableQuantity ?? Infinity)
+          const unavailable = outOfStock || (!isSelected && atLimit)
           return (
             <label
               key={p.id}
               className={cn(
                 'flex cursor-pointer items-center gap-3 border-b px-4 py-3 transition-colors hover:bg-muted sm:px-6',
                 isSelected && 'bg-secondary hover:bg-secondary',
-                disabled && 'cursor-not-allowed opacity-60',
+                (disabled || unavailable) && 'cursor-not-allowed opacity-60',
               )}
             >
-              <RadioGroupItem value={p.id} />
+              <RadioGroupItem value={p.id} disabled={unavailable} />
               <ProductThumb imageUrl={p.imageUrl} color={p.thumbnailColor} />
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="text-sm font-semibold">{p.name}</span>
+                  {outOfStock && <Badge variant="outline">Out of stock</Badge>}
                   {p.isPremium ? <Badge variant="warning">Premium</Badge> : null}
                   {p.typeCode ? <Badge variant="outline">{p.typeCode}</Badge> : null}
                 </span>
@@ -101,6 +110,7 @@ function MealRadioList({
 function AddonTableList({
   products,
   quantities,
+  cartQuantities,
   currency,
   onAdd,
   onRemove,
@@ -108,6 +118,7 @@ function AddonTableList({
 }: {
   products: Product[]
   quantities: Map<string, number>
+  cartQuantities: Map<string, number>
   currency: string
   onAdd: (id: string) => void
   onRemove: (id: string) => void
@@ -117,11 +128,14 @@ function AddonTableList({
     <ul className="m-0 flex list-none flex-col border-t p-0">
       {products.map((p) => {
         const qty = quantities.get(p.id) ?? 0
+        const outOfStock = p.availableQuantity === 0
+        const cannotAdd = disabled || (cartQuantities.get(p.id) ?? 0) >= (p.availableQuantity ?? Infinity)
         return (
           <li key={p.id} className="flex flex-wrap items-center gap-3 border-b px-4 py-3 sm:px-6">
             <ProductThumb imageUrl={p.imageUrl} color={p.thumbnailColor} />
             <span className="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
               <span className="text-sm font-medium">{p.name}</span>
+              {outOfStock && <span className="text-sm text-muted-foreground">Out of stock</span>}
               {p.description ? <span className="text-sm text-muted-foreground">{p.description}</span> : null}
             </span>
             <span className="shrink-0 text-sm font-medium tabular-nums">
@@ -150,7 +164,7 @@ function AddonTableList({
                     className="rounded-full"
                     aria-label={`Add one more ${p.name}`}
                     onClick={() => onAdd(p.id)}
-                    disabled={disabled}
+                    disabled={cannotAdd}
                   >
                     <Plus />
                   </Button>
@@ -162,7 +176,7 @@ function AddonTableList({
                   className="rounded-full px-4"
                   aria-label={`Add ${p.name}`}
                   onClick={() => onAdd(p.id)}
-                  disabled={disabled}
+                  disabled={cannotAdd}
                 >
                   Add
                 </Button>

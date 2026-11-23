@@ -224,30 +224,31 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
     const flight = readyBooking.flights.find((f) => f.id === selectedFlightId)
     if (!flight) return
     let cancelled = false
-    fetchShop(readyBooking, selectedFlightId, flight.cabinClass, fetchWithAuth)
-      .then(({ products, setting, cutoffAt, orderWindowOpen, currency, complimentarySnackAvailable }) => {
-        if (cancelled) return
-        setCatalogState({
-          kind: 'ready',
-          flightId: selectedFlightId,
-          products,
-          setting,
-          cutoffAt,
-          orderWindowOpen,
-          currency,
-          complimentarySnackAvailable,
+    let request = 0
+    const refresh = () => {
+      const current = ++request
+      fetchShop(readyBooking, selectedFlightId, flight.cabinClass, fetchWithAuth)
+        .then((data) => {
+          if (!cancelled && current === request) setCatalogState({ kind: 'ready', flightId: selectedFlightId, ...data })
         })
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return
-        setCatalogState({
-          kind: 'error',
-          flightId: selectedFlightId,
-          error: e instanceof Error ? e.message : 'Failed to load catalog',
+        .catch((error: unknown) => {
+          if (!cancelled && current === request) {
+            setCatalogState({
+              kind: 'error',
+              flightId: selectedFlightId,
+              error: error instanceof Error ? error.message : 'Failed to load catalog',
+            })
+          }
         })
-      })
+    }
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refresh()
+    }
+    refresh()
+    document.addEventListener('visibilitychange', refreshWhenVisible)
     return () => {
       cancelled = true
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
     }
   }, [selectedFlightId, readyBooking, fetchWithAuth])
 
@@ -362,10 +363,16 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
     }
   }
 
+  const cartQuantities = new Map<string, number>()
+  for (const lines of Object.values(cart)) {
+    for (const line of lines) cartQuantities.set(line.productId, (cartQuantities.get(line.productId) ?? 0) + line.quantity)
+  }
+
   function handleSelectMeal(productId: string) {
     if (!selectedPassengerId || catalog.kind !== 'ready') return
     const product = catalog.products.find((p) => p.id === productId)
     if (!product || product.category !== 'meal') return
+    if (!product.isDefaultChoice && (cartQuantities.get(product.id) ?? 0) >= (product.availableQuantity ?? Infinity)) return
     const existing = cart[selectedPassengerId] ?? []
     if (product.isDefaultChoice) {
       const next = existing.filter((l) => l.category !== 'meal')
@@ -389,6 +396,7 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
     if (!selectedPassengerId || catalog.kind !== 'ready') return
     const product = catalog.products.find((p) => p.id === productId)
     if (!product || product.category === 'meal') return
+    if ((cartQuantities.get(product.id) ?? 0) >= (product.availableQuantity ?? Infinity)) return
     const existing = cart[selectedPassengerId] ?? []
     const found = existing.find((l) => l.productId === productId)
     if (found) {
@@ -601,11 +609,16 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
                   <AlertDescription className="col-start-2">{catalog.error}</AlertDescription>
                 </Alert>
               </div>
+            ) : products.length === 0 ? (
+              <p className="my-2 text-sm text-muted-foreground">
+                No {tabLabel(activeTab).toLowerCase()} offered for this flight and cabin.
+              </p>
             ) : (
               <ProductList
                 products={products}
                 selectedMealProductId={selectedMealProductId}
                 quantities={quantities}
+                cartQuantities={cartQuantities}
                 currency={shop?.currency ?? 'USD'}
                 onSelectMeal={handleSelectMeal}
                 onAddOne={handleAddOne}

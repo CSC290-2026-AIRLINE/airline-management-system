@@ -6,6 +6,7 @@
 
 import type { DbService } from '../../../db/db.service'
 import type { AuditService } from '../common/audit.service'
+import type { ProductOrdersService } from '../product-orders/product-orders.service'
 import type { FlightContextService } from '../common/flight-context.service'
 import type { CabinSettingsService } from '../cabin-settings/cabin-settings.service'
 import { CateringOrdersService } from './catering-orders.service'
@@ -51,16 +52,17 @@ function setup(opts: SetupOptions) {
     { now: () => new Date() },
     {} as CabinSettingsService,
     {} as FlightContextService,
+    {} as ProductOrdersService,
   )
   const internals = service as unknown as {
     passengerSummary: () => Promise<Map<string, unknown>>
     defaultOfferings: () => Promise<Map<string, string>>
-    buildLines: (flightId: string, routeId: string, warehouseId: string, resolved: unknown) => Promise<LineDraft[]>
+    buildLines: (flightId: string, routeId: string, warehouseId: string, resolved: unknown, db: unknown) => Promise<LineDraft[]>
   }
   const perCabin = new Map(Object.entries(opts.perCabin ?? {}))
   jest.spyOn(internals, 'passengerSummary').mockResolvedValue(new Map([['flight-1', { passengers: 0, orderedMeals: 0, perCabin }]]))
   jest.spyOn(internals, 'defaultOfferings').mockResolvedValue(new Map(Object.entries(opts.defaults ?? {})))
-  return () => internals.buildLines('flight-1', 'route-1', 'wh-1', opts.resolved ?? NO_DEFAULT_MEALS)
+  return () => internals.buildLines('flight-1', 'route-1', 'wh-1', opts.resolved ?? NO_DEFAULT_MEALS, db)
 }
 
 const shorts = (lines: LineDraft[]) => lines.map((l) => [l.cabin, l.quantityShort])

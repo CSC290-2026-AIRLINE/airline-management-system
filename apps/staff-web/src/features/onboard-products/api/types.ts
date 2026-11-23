@@ -167,7 +167,8 @@ export interface CateringOrder {
   arrivalAirport: string
   scheduledDeparture: string
   passengerCount: number
-  status: CateringOrderStatus
+  orderingOpen: boolean
+  status: FlightCateringStatus
   cutoffAt: string
   generatedAt: string
   loadedAt: string | null
@@ -200,6 +201,7 @@ export interface Flight {
   departureTimeZone: string | null
   // From the server's F12 clock: false once the cutoff has passed.
   orderingOpen: boolean
+  simulationAvailable: boolean
   // From the server's F12 clock: true once the scheduled departure has passed.
   departed: boolean
 }

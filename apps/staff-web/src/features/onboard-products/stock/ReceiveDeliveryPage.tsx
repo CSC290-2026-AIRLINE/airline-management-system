@@ -101,7 +101,9 @@ export function ReceiveDeliveryPage() {
         setProducts(productsData)
         if (warehousesData.length > 0) {
           const initial =
-            search.airport != null ? (warehousesData.find((w) => w.code === search.airport) ?? warehousesData[0]) : warehousesData[0]
+            search.airport != null
+              ? (warehousesData.find((w) => w.code === search.airport || w.airportCode === search.airport) ?? warehousesData[0])
+              : warehousesData[0]
           setWarehouseId(initial.id)
         }
       })
@@ -130,7 +132,7 @@ export function ReceiveDeliveryPage() {
       .then((data) => {
         if (cancelled) return
         setSuppliers(data)
-        const firstActive = data.find((s) => s.isActive) ?? data[0]
+        const firstActive = data.find((s) => s.isActive)
         setSupplierId(firstActive?.id ?? '')
       })
       .catch(() => {
@@ -174,7 +176,7 @@ export function ReceiveDeliveryPage() {
   const validation = useMemo(() => {
     const issues: string[] = []
     if (rows.length === 0) issues.push('Add at least one item.')
-    if (!supplierId) issues.push('Pick a supplier.')
+    if (!activeSuppliers.some((supplier) => supplier.id === supplierId)) issues.push('Pick an active supplier for this airport.')
     const seen = new Set<string>()
     for (const r of rows) {
       if (!r.productId) {
@@ -188,11 +190,11 @@ export function ReceiveDeliveryPage() {
       seen.add(r.productId)
       const q = parseNumber(r.quantity)
       const c = parseNumber(r.unitCost)
-      if (q == null || q <= 0) issues.push('Each row needs a quantity greater than zero.')
-      if (c == null || c < 0) issues.push('Unit cost must be 0 or more.')
+      if (q == null || !Number.isInteger(q) || q <= 0) issues.push('Each row needs a whole quantity greater than zero.')
+      if (c == null || !Number.isFinite(c) || c < 0) issues.push('Unit cost must be 0 or more.')
     }
     return issues
-  }, [rows, supplierId])
+  }, [rows, supplierId, activeSuppliers])
 
   function addRow() {
     setRows((prev) => [...prev, emptyRow(new Set(prev.map((r) => r.productId).filter(Boolean)), products)])
@@ -279,7 +281,7 @@ export function ReceiveDeliveryPage() {
     setSuppliers(data)
     const stillThere = data.find((s) => s.id === supplierId)
     if (!stillThere) {
-      const firstActive = data.find((s) => s.isActive) ?? data[0]
+      const firstActive = data.find((s) => s.isActive)
       setSupplierId(firstActive?.id ?? '')
     }
   }
@@ -368,7 +370,17 @@ export function ReceiveDeliveryPage() {
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2">
             <Label htmlFor="rd-airport">Airport</Label>
-            <NativeSelect id="rd-airport" className="w-full" value={warehouseId ?? ''} onChange={(e) => setWarehouseId(e.target.value)}>
+            <NativeSelect
+              id="rd-airport"
+              className="w-full"
+              value={warehouseId ?? ''}
+              onChange={(e) => {
+                setSupplierId('')
+                setSuppliers([])
+                setWarehouseId(e.target.value)
+                setError(null)
+              }}
+            >
               {warehouses.map((w) => (
                 <NativeSelectOption key={w.id} value={w.id}>
                   {w.code}
@@ -386,7 +398,9 @@ export function ReceiveDeliveryPage() {
                 onChange={(e) => setSupplierId(e.target.value)}
                 disabled={activeSuppliers.length === 0}
               >
-                {activeSuppliers.length === 0 && <NativeSelectOption value="">No active suppliers for this airport</NativeSelectOption>}
+                {activeSuppliers.length === 0 && (
+                  <NativeSelectOption value="">No active suppliers. Use Manage to add one.</NativeSelectOption>
+                )}
                 {activeSuppliers.map((s) => (
                   <NativeSelectOption key={s.id} value={s.id}>
                     {s.name}
@@ -520,6 +534,7 @@ export function ReceiveDeliveryPage() {
             <Button type="button" variant="outline" onClick={() => void navigate({ to: '/catering/stock' })} disabled={submitting}>
               Cancel
             </Button>
+            {!loading && validation.length > 0 && <span className="self-center text-sm text-muted-foreground">{validation[0]}</span>}
             <Button type="button" onClick={() => void onSubmit()} disabled={submitting || validation.length > 0 || loading}>
               {submitting ? 'Saving…' : 'Confirm receive'}
             </Button>
@@ -572,7 +587,7 @@ export function ReceiveDeliveryPage() {
           emptyMessage="No suppliers for this airport yet."
           addLabel="Add supplier"
           busy={supplierManageBusy}
-          items={activeSuppliers.map<ManageListItem>((s) => ({
+          items={suppliers.map<ManageListItem>((s) => ({
             id: s.id,
             name: s.name,
             secondary: s.contact ?? '',

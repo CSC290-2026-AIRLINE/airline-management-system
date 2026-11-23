@@ -7,11 +7,8 @@
 
 import { Module } from '@nestjs/common'
 import { FlightReportService } from './flight-report.service'
-import { SalesModule } from '../sales/sales.module'
-import { CateringOrdersModule } from '../catering-orders/catering-orders.module'
 
 @Module({
-  imports: [SalesModule, CateringOrdersModule],
   providers: [FlightReportService],
   exports: [FlightReportService],
 })

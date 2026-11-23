@@ -1,7 +1,4 @@
-// Small CRUD dialog used to manage a list of named items (warehouses,
-// suppliers). Header + a top-of-dialog add form, then a list of rows
-// each with a kebab menu (Edit / Delete). Reuses KebabMenu,
-// ConfirmDeleteDialog, useDialogFocusTrap and the shared navy styling.
+// Shared create and edit dialog for warehouses and suppliers.
 
 import { useMemo, useState, type FormEvent } from 'react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
@@ -61,8 +58,8 @@ export function ManageListDialog(props: Props) {
     onDelete,
   } = props
 
-  type EditState = { mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; id: string; initial: ManageListInput }
-  const [editState, setEditStateRaw] = useState<EditState>({ mode: 'closed' })
+  type EditState = { mode: 'create' } | { mode: 'edit'; id: string; initial: ManageListInput }
+  const [editState, setEditStateRaw] = useState<EditState>({ mode: 'create' })
   const [name, setName] = useState('')
   const [secondary, setSecondary] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -104,7 +101,7 @@ export function ManageListDialog(props: Props) {
       } else if (editState.mode === 'edit') {
         await onUpdate(editState.id, { name: trimmedName, secondary: trimmedSecondary })
       }
-      setEditState({ mode: 'closed' })
+      setEditState({ mode: 'create' })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the item.')
     }
@@ -175,8 +172,8 @@ export function ManageListDialog(props: Props) {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setEditState({ mode: 'closed' })}
-                disabled={busy || editState.mode === 'closed'}
+                onClick={() => setEditState({ mode: 'create' })}
+                disabled={busy || (editState.mode === 'create' && !name && !secondary)}
               >
                 Cancel
               </Button>

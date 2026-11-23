@@ -1,3 +1,4 @@
+import { seedDemoWarehouses } from './seed-f12-existing-flight'
 import { DEMO_CABIN, DEMO_FLIGHT_ID } from '../modules/onboard-products/common/demo-booking'
 // F12 seed (idempotent). Runs after the base Level 1 seed (which gives
 // us roles, customers, and staff). Inserts the network/route/flight
@@ -685,6 +686,9 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
       create: w,
     })
   }
+
+  // Demo data also covers airports introduced by other feature seeds.
+  await seedDemoWarehouses(prisma)
 
   // --- Suppliers (≥1 per airport) ---------------------------------------
   const supSeed = [

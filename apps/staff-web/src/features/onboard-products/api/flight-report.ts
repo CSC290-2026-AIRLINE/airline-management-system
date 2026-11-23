@@ -7,14 +7,7 @@ import { useMemo } from 'react'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { ApiClient, ApiError, type ApiFetch } from './client'
 import { FlightReportApiError } from './errors'
-import {
-  mapAircraftStockRow,
-  mapFlightReport,
-  mapProductSale,
-  mapReportableFlight,
-  toCreateSaleInput,
-  type ReportableFlight,
-} from './mappers'
+import { mapFlightReport, mapProductSale, mapReportableFlight, toCreateSaleInput, type ReportableFlight } from './mappers'
 import { MissingIdError, requireId } from './guards'
 import type { CreateFlightSaleInput, FlightReport, ProductSale, UpdateFlightSaleInput } from './types'
 
@@ -31,7 +24,7 @@ export interface FlightReportApi {
   updateFlightSaleApi: (flightId: string, saleId: string, patch: UpdateFlightSaleInput) => Promise<ProductSale>
   deleteFlightSaleApi: (flightId: string, saleId: string) => Promise<void>
   listReportableFlights: () => Promise<ReportableFlight[]>
-  getAircraftStock: (aircraftId: string) => Promise<ReturnType<typeof mapAircraftStockRow>[]>
+  listLoadedProducts: (flightId: string) => Promise<Array<{ productId: string; quantity: number }>>
   // The resolved meal policy of each cabin on the flight (GET /api/staff/flights/:flightId/cabin-settings).
   getFlightMealPolicy: (flightId: string) => Promise<FlightMealPolicy[]>
 }
@@ -154,14 +147,13 @@ export function createFlightReportApi(client: ApiClient): FlightReportApi {
         rethrow(err, new FlightReportApiError('UNKNOWN', 'Could not load the meal policy.', 0))
       }
     },
-    async getAircraftStock(aircraftId) {
+    async listLoadedProducts(flightId) {
+      const endpoint = `/api/staff/flights/${flightId}/flight-report/loaded-products`
       try {
-        requireId('GET /api/staff/aircraft/:aircraftId/stock', 'aircraftId', aircraftId)
-        const wire = await client.get<unknown[]>(`/api/staff/aircraft/${aircraftId}/stock`)
-        return (wire ?? []).map((r) => mapAircraftStockRow(r as never))
+        requireId(endpoint, 'flightId', flightId)
+        return await client.get<Array<{ productId: string; quantity: number }>>(endpoint)
       } catch (err) {
-        if (err instanceof MissingIdError) return []
-        rethrow(err, new FlightReportApiError('UNKNOWN', 'Could not load aircraft stock.', 0))
+        rethrow(err, new FlightReportApiError('UNKNOWN', 'Could not load the products transferred for this flight.', 0))
       }
     },
   }

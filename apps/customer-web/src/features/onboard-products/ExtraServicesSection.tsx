@@ -18,7 +18,7 @@ import { Badge } from '@customer-web/components/ui/badge'
 import { Button } from '@customer-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@customer-web/components/ui/card'
 import { Skeleton } from '@customer-web/components/ui/skeleton'
-import { cancelProductOrder, fetchProductOrdersForBooking } from './api'
+import { cancelProductOrder, fetchProductOrdersForBooking, fetchShop } from './api'
 import { CancelOrderDialog } from './CancelOrderDialog'
 import { ProductOrderCard } from './ProductOrderCard'
 import { defaultCutoffFor, formatDateTime } from './format'
@@ -36,6 +36,7 @@ type OrdersState = { kind: 'loading' } | { kind: 'error'; error: string } | { ki
 export function ExtraServicesSection({ booking, preset, initialCancelTarget, refundIdHint }: Props) {
   const { fetchWithAuth, isLoading: isAuthLoading } = useAppAuth()
   const [now] = useState(() => Date.now())
+  const [cutoffState, setCutoffState] = useState<CutoffState>(() => computeCutoffState(booking, Date.now()))
   const [ordersState, setOrdersState] = useState<OrdersState>({ kind: 'loading' })
   const [cancelTarget, setCancelTarget] = useState<ProductOrder | null>(null)
   const [cancelPending, setCancelPending] = useState(false)
@@ -72,7 +73,33 @@ export function ExtraServicesSection({ booking, preset, initialCancelTarget, ref
   const orders = ordersState.kind === 'ready' ? ordersState.orders : []
   const activeOrders = orders.filter((o) => o.status === 'pending_payment' || o.status === 'confirmed')
 
-  const cutoffState = computeCutoffState(booking, now)
+  useEffect(() => {
+    if (isAuthLoading) return
+    let cancelled = false
+    let request = 0
+    const refresh = async () => {
+      const current = ++request
+      const windows = await Promise.allSettled(
+        booking.flights.map((flight) => fetchShop(booking, flight.id, flight.cabinClass, fetchWithAuth)),
+      )
+      if (cancelled || current !== request) return
+      const flights = booking.flights.flatMap((flight, index) => {
+        const result = windows[index]
+        if (result?.status !== 'fulfilled') return [flight]
+        return result.value.orderWindowOpen ? [{ ...flight, cutoffAt: result.value.cutoffAt }] : []
+      })
+      setCutoffState(computeCutoffState({ ...booking, flights }, Date.now()))
+    }
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    void refresh()
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [booking, fetchWithAuth, isAuthLoading])
 
   async function handleConfirmCancel() {
     if (!cancelTarget) return

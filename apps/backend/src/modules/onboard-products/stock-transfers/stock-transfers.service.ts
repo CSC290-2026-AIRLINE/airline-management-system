@@ -109,6 +109,9 @@ export class StockTransfersService {
     }
 
     return this.db.$transaction(async (tx) => {
+      // Warehouse availability already includes this flight's holds. Release them in the
+      // same transaction before decreasing on-hand stock so the database constraint stays valid.
+      await this.releasePaidReservations(tx, input)
       const transfer = await tx.stock_transfer.create({
         data: {
           flight_id: input.flightId,
@@ -208,7 +211,6 @@ export class StockTransfersService {
           )
         }
       }
-      await this.releasePaidReservations(tx, input)
       await this.audit.record(
         {
           actorType: 'staff',

@@ -109,6 +109,11 @@ export class FlightsController {
     return this.cateringOrders.refresh(flightId, staff.id)
   }
 
+  @Post('catering-order/simulate-close')
+  async simulateOrderingClosed(@Param('flightId') flightId: string, @CurrentStaff() staff: StaffContext) {
+    return this.cateringOrders.simulateOrderingClosed(flightId, staff.id)
+  }
+
   // Mark the order loaded, after the stock transfer.
   @Put('catering-order/loaded')
   async markCateringOrderLoaded(@Param('flightId') flightId: string, @CurrentStaff() staff: StaffContext) {
@@ -125,6 +130,11 @@ export class FlightsController {
 
   // The flight report, with the served, sold, wasted and damaged
   // quantities per line.
+  @Get('flight-report/loaded-products')
+  async listReportLoadedProducts(@Param('flightId') flightId: string) {
+    return this.reports.listLoadedProducts(flightId)
+  }
+
   @Get('flight-report')
   async getFlightReport(@Param('flightId') flightId: string) {
     const report = await this.reports.getByFlight(flightId)

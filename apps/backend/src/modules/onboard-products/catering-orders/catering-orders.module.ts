@@ -8,10 +8,11 @@ import { Module } from '@nestjs/common'
 import { CateringOrdersController } from './catering-orders.controller'
 import { CateringOrdersService } from './catering-orders.service'
 import { StockTransfersModule } from '../stock-transfers/stock-transfers.module'
+import { ProductOrdersModule } from '../product-orders/product-orders.module'
 import { CabinSettingsModule } from '../cabin-settings/cabin-settings.module'
 
 @Module({
-  imports: [StockTransfersModule, CabinSettingsModule],
+  imports: [StockTransfersModule, CabinSettingsModule, ProductOrdersModule],
   controllers: [CateringOrdersController],
   providers: [CateringOrdersService],
   exports: [CateringOrdersService],

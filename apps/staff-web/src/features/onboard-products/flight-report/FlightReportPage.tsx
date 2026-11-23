@@ -215,7 +215,6 @@ export function FlightReportPage() {
 
   const [flights, setFlights] = useState<ReportableFlight[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [aircraftId, setAircraftId] = useState<string | null>(null)
   const [report, setReport] = useState<FlightReport | null>(null)
   const [sales, setSales] = useState<ProductSale[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -289,9 +288,7 @@ export function FlightReportPage() {
     if (selectedId == null) return
     let cancelled = false
     setLoading(true)
-    const flight = flights.find((f) => f.id === selectedId)
-    const aId = flight?.aircraftId ?? null
-    setAircraftId(aId)
+    setLoadError(null)
     api.flightReport
       .getFlightMealPolicy(selectedId)
       .then((policy) => {
@@ -304,9 +301,7 @@ export function FlightReportPage() {
     Promise.all([
       api.flightReport.getFlightReport(selectedId),
       api.flightReport.listFlightSales(selectedId),
-      aId != null
-        ? api.flightReport.getAircraftStock(aId).then((rows) => rows.map((r) => ({ productId: r.productId, quantity: r.quantity })))
-        : Promise.resolve([] as Array<{ productId: string; quantity: number }>),
+      api.flightReport.listLoadedProducts(selectedId),
     ])
       .then(async ([reportData, salesData, stockData]) => {
         if (cancelled) return
@@ -333,9 +328,7 @@ export function FlightReportPage() {
     const [reportData, salesData, stockData] = await Promise.all([
       api.flightReport.getFlightReport(selectedId),
       api.flightReport.listFlightSales(selectedId),
-      aircraftId != null
-        ? api.flightReport.getAircraftStock(aircraftId).then((rows) => rows.map((r) => ({ productId: r.productId, quantity: r.quantity })))
-        : Promise.resolve([] as Array<{ productId: string; quantity: number }>),
+      api.flightReport.listLoadedProducts(selectedId),
     ])
     setReport(reportData)
     setSales(salesData)
@@ -547,6 +540,20 @@ export function FlightReportPage() {
         }
       />
 
+      <Button
+        type="button"
+        variant="outline"
+        className="self-start"
+        disabled={busy || recordBusy}
+        onClick={() =>
+          void handleRefreshFlights().catch((error: unknown) =>
+            showToast('error', error instanceof Error ? error.message : 'Could not reload reportable flights.'),
+          )
+        }
+      >
+        Refresh loaded flights
+      </Button>
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" role="tablist" aria-label="Reportable flights">
         {flights.map((f) => {
           const active = f.id === selectedId
@@ -561,6 +568,7 @@ export function FlightReportPage() {
                 active && 'border-primary ring-1 ring-primary',
               )}
               onClick={() => onSelectFlight(f.id)}
+              disabled={busy || recordBusy}
             >
               <span className="flex items-center justify-between gap-2">
                 <span className="font-semibold">{f.flightNumber}</span>

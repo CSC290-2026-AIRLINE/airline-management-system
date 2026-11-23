@@ -120,15 +120,85 @@ See [G10 local testing](docs/g10-local-testing.md) for the fresh-checkout sequen
 
 ## F2 and F12 integration demo
 
-Run the configured stack and sign in on staff web. Open `/routes`, create an
-unused route between two existing airports, then open `/catering/offered-menu`
-and find that route. Open it to inspect its inherited cabin and menu settings.
+### Start on the borrowed laptop
 
-For the optional F12 checkout demo, sign in once on customer web and create
-booking `FTEST2` for that account.
+Open Command Prompt in the existing project folder. Stop any dev servers from
+another branch so the demo can use ports 8080, 5151 and 6161. Start Docker Desktop
+and wait for `docker version` to show the Server section.
 
 ```cmd
-npm.cmd run db:seed:f12-booking -w apps/backend -- your-customer-email@example.com
+git fetch origin
+git switch demo/f02-f12
+git pull --ff-only origin demo/f02-f12
+npm.cmd install
+npm.cmd run db:up
+npm.cmd run db:prepare
 ```
 
-Then open `/bookings/FTEST2` on customer web.
+If the branch is new to the laptop, `git switch demo/f02-f12` tracks the fetched
+branch automatically when `origin` is its only remote match. Keep the laptop's
+existing app `.env` files and Clerk credentials. Add or update these entries in
+`apps/backend/.env` before starting the apps.
+
+```dotenv
+NODE_ENV=development
+F12_DEMO_ENABLED=true
+```
+
+Set VITE_F12_MOCK=false in apps/customer-web/.env so checkout uses the shared database.
+
+Run the shared seed once if this local database is fresh or is missing demo
+airports, warehouses, products or flights. This is the seed for both staff
+and customer data.
+
+```cmd
+npm.cmd run db:seed
+```
+
+Start the backend and both web apps, and leave this terminal running.
+
+```cmd
+npm.cmd run dev
+```
+
+### Seed a booking for the signed-in customer
+
+Sign in at [My bookings](http://localhost:5151/bookings) first so the backend
+has a customer record for the email you use. Keep that browser session open.
+In a second terminal in the same project folder, run:
+
+```cmd
+npm.cmd run db:seed:f12-booking -w apps/backend -- YOUR_CUSTOMER_EMAIL
+```
+
+Replace `YOUR_CUSTOMER_EMAIL` with the email you just used. Open
+[booking FTEST2](http://localhost:5151/bookings/FTEST2/shop) and select
+**FL501 (BKK to NRT)**. It departs from the stocked BKK warehouse. The seed is
+intended for a local demo database and reuses the `FTEST2` fixture.
+
+To book an existing flight from your own F2 schedule instead, pass its exact
+flight number. Replace `FA 111` with the number on this laptop. The flight needs
+an open preorder window and a cabin with snacks and drinks enabled. This
+option stocks sparkling water at its departure warehouse and prints the
+new booking link.
+
+```cmd
+npm.cmd run db:seed:f12-booking -w apps/backend -- YOUR_CUSTOMER_EMAIL --flight "FA 111"
+```
+
+### Show the connection
+
+1. Sign in at [F2 Routes](http://localhost:6161/routes). Create a route between
+   two existing airports that do not already have that directional route.
+2. Open [F12 Offered menu](http://localhost:6161/catering/offered-menu) and find
+   the same route. Open it to show the inherited cabin and menu settings.
+3. For the checkout and catering demo, open [FTEST2](http://localhost:5151/bookings/FTEST2/shop)
+   or the link printed by the existing-flight seed. Order sparkling water and
+   click **F5 reports: paid** while ordering is still open.
+4. In [Catering Orders](http://localhost:6161/catering/orders), select the booked
+   flight and click **Reload customer orders** to show the confirmed quantity.
+   Click **Simulate orders closed**, then **Transfer to aircraft**.
+5. Open [Flight Report](http://localhost:6161/catering/flight-report), select the
+   same flight, and show the transferred items. Use **Refresh loaded flights**
+   if the report page was already open. Submit only after showing the loaded
+   quantities because submission closes the catering order.

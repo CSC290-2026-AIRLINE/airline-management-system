@@ -626,6 +626,7 @@ interface WireCateringOrder {
   arrivalAirport: string
   scheduledDeparture: string
   passengerCount?: number
+  orderingOpen?: boolean
   status: string
   cutoffAt: string
   generatedAt: string
@@ -659,6 +660,7 @@ export function mapCateringOrder(wire: WireCateringOrder): CateringOrder {
     scheduledDeparture: toIsoString(wire.scheduledDeparture),
     passengerCount: wire.passengerCount == null ? 0 : Number(wire.passengerCount),
     status: required('GET /api/staff/flights/:flightId/catering-order', 'status', wire.status) as CateringOrder['status'],
+    orderingOpen: wire.orderingOpen ?? wire.status === 'open',
     cutoffAt: toIsoString(wire.cutoffAt),
     generatedAt: toIsoString(wire.generatedAt),
     loadedAt: toNullableIsoString(wire.loadedAt),
@@ -688,6 +690,7 @@ interface WireFlight {
   isCancelled?: boolean
   departureTimeZone?: string | null
   orderingOpen?: boolean
+  simulationAvailable?: boolean
   departed?: boolean
 }
 
@@ -713,6 +716,7 @@ export function mapFlight(wire: WireFlight): Flight {
     departureTimeZone: wire.departureTimeZone ?? null,
     // Only open orders carry it; a generated (or later) order means ordering has closed.
     orderingOpen: wire.orderingOpen ?? wire.status === 'open',
+    simulationAvailable: Boolean(wire.simulationAvailable),
     departed: Boolean(wire.departed),
   }
 }
