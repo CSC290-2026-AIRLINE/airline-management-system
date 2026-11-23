@@ -3,7 +3,9 @@
 // tick re-counted the shortage after the stock had moved to the aircraft
 // and wrote an audit row each minute.
 
+import { Logger } from '@nestjs/common'
 import type { DbService } from '../../../db/db.service'
+import { ApiErrorException } from '../common/api-error'
 import type { CateringOrdersService } from '../catering-orders/catering-orders.service'
 import type { ProductOrdersService } from '../product-orders/product-orders.service'
 import type { StockBatchesService } from '../stock-batches/stock-batches.service'
@@ -53,5 +55,28 @@ describe('SchedulerService catering generation', () => {
     const { scheduler, cateringOrders } = setup(null, new Date('2026-11-23T11:00:00Z'))
     await scheduler.tick()
     expect(cateringOrders.generate).not.toHaveBeenCalled()
+  })
+
+  it('skips a flight from an airport without an F12 warehouse without warning', async () => {
+    const { scheduler, cateringOrders } = setup(null)
+    cateringOrders.generate.mockRejectedValue(new ApiErrorException('NO_WAREHOUSE_FOR_AIRPORT', 'No warehouse is available at XXX.', 409))
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+
+    const result = await scheduler.tick()
+
+    expect(result.generated).toBe(0)
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('still warns, with the F12 error code, on any other failure', async () => {
+    const { scheduler, cateringOrders } = setup(null)
+    cateringOrders.generate.mockRejectedValue(new ApiErrorException('NOT_FOUND', 'Flight not found.', 404))
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+
+    await scheduler.tick()
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('NOT_FOUND: Flight not found.'))
+    warn.mockRestore()
   })
 })

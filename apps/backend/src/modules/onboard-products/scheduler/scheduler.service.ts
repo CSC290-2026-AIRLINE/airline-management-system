@@ -14,6 +14,7 @@
 
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { DbService } from '../../../db/db.service'
+import { ApiErrorException } from '../common/api-error'
 import { SystemClock } from '../common/clock'
 import { CateringOrdersService } from '../catering-orders/catering-orders.service'
 import { ProductOrdersService } from '../product-orders/product-orders.service'
@@ -104,6 +105,10 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
         await this.cateringOrders.generate(flight.id, null)
         generated += 1
       } catch (err) {
+        // A flight from an airport without an F12 warehouse (another
+        // feature's flight) is not catered by F12: skip it quietly
+        // instead of warning on every tick.
+        if (errorCode(err) === 'NO_WAREHOUSE_FOR_AIRPORT') continue
         this.logger.warn(`Could not generate the catering order of flight ${flight.id}: ${describe(err)}`)
       }
     }
@@ -149,8 +154,20 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-// The message of an error, without the stack.
+// The F12 error code of an ApiErrorException, or null.
+function errorCode(err: unknown): string | null {
+  if (!(err instanceof ApiErrorException)) return null
+  const body = err.getResponse() as { error?: { code?: string } }
+  return body.error?.code ?? null
+}
+
+// The message of an error, without the stack. An ApiErrorException's
+// own message is generic, so its F12 code and message are used.
 function describe(err: unknown): string {
+  if (err instanceof ApiErrorException) {
+    const body = err.getResponse() as { error?: { code?: string; message?: string } }
+    return `${body.error?.code ?? 'ERROR'}: ${body.error?.message ?? err.message}`
+  }
   if (err instanceof Error) return err.message
   return String(err)
 }

@@ -50,7 +50,7 @@ async function main() {
   }
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) })
   try {
-    const user = await prisma.user.findFirst({ where: { email }, include: { customer: true } })
+    const user = await prisma.user.findFirst({ where: { email, customer: { some: {} } }, include: { customer: true } })
     const customer = user?.customer[0]
     if (!customer) {
       throw new Error(`No customer with email ${email}. Sign in to the customer web app once, then run this again.`)
