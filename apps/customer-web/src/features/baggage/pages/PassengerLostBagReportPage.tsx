@@ -441,7 +441,7 @@ export function PassengerLostBagReportPage() {
                       )}
                       <RadioGroup
                         value={pageState.selectedTravellerId ?? ''}
-                        onValueChange={selectTraveller}
+                        onValueChange={(value) => selectTraveller(String(value))}
                         disabled={pageState.submitState === 'submitting'}
                         aria-label="Whose bag is it?"
                       >
@@ -451,7 +451,7 @@ export function PassengerLostBagReportPage() {
                             <Label
                               key={traveller.bookingPassengerId}
                               htmlFor={itemId}
-                              className="cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-accent"
+                              className="cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 has-data-checked:border-primary has-data-checked:bg-accent"
                             >
                               <RadioGroupItem id={itemId} value={traveller.bookingPassengerId} />
                               <span className="flex-1 font-medium">

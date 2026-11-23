@@ -143,7 +143,7 @@ export function DeliveryChoiceForm({ onSaveChoice, locked = false, initialChoice
               <Label
                 key={option.value}
                 htmlFor={`${id}-${option.value}`}
-                className="cursor-pointer items-start gap-3 rounded-md border p-3 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-accent"
+                className="cursor-pointer items-start gap-3 rounded-md border p-3 has-data-checked:border-primary has-data-checked:bg-accent"
               >
                 <RadioGroupItem id={`${id}-${option.value}`} value={option.value} className="mt-0.5" />
                 <span className="grid gap-0.5">

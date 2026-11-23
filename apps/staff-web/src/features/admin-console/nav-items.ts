@@ -96,10 +96,7 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
   },
   {
     label: 'Airport & Onboard',
-    items: [
-      { label: 'Gate Counter & Devices', icon: Monitor },
-      { label: 'Onboard Products', icon: Utensils },
-    ],
+    items: [{ label: 'Gate Counter & Devices', icon: Monitor }],
   },
 ]
 
@@ -169,4 +166,13 @@ export const LOYALTY_ITEMS = [
   { to: '/loyalty/rules', label: 'Loyalty Rules', icon: SlidersHorizontal },
   { to: '/loyalty/award-release', label: 'Award Release', icon: Star },
   { to: '/loyalty/lounge', label: 'Lounge Desk', icon: Sofa },
+] as const
+
+/** The Feature 12 (onboard products) staff pages: catalog, menus, catering orders, warehouse stock and the flight report. */
+export const CATERING_ITEMS = [
+  { to: '/catering/catalog', label: 'Product Catalog', icon: Utensils },
+  { to: '/catering/offered-menu', label: 'Offered Menu', icon: ListChecks },
+  { to: '/catering/orders', label: 'Catering Orders', icon: ClipboardCheck },
+  { to: '/catering/stock', label: 'Stock', icon: Package },
+  { to: '/catering/flight-report', label: 'Flight Report', icon: FileText },
 ] as const

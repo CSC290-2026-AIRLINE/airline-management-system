@@ -1,8 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { Check } from 'lucide-react'
 import type { BookingDetail, InsurancePolicySummary } from '../api/types'
-import { FeatureAction } from '../booking-detail/FeatureAction'
-import { MEALS_DISABLED, partyLabel } from '../booking-detail/booking-detail-model'
+import { partyLabel } from '../booking-detail/booking-detail-model'
 import { StatusChip } from '../components/StatusChip'
 import { formatCabin, formatDateTime, formatFlightDate, formatMoney, formatTime } from '../lib/format'
 import { Button } from '@customer-web/components/ui/button'
@@ -118,9 +117,15 @@ export function ConfirmedState({
                   View trip
                 </Link>
               </Button>
-              <FeatureAction label="Add meals" reason={MEALS_DISABLED} variant="outline" />
+              <Button asChild variant="outline">
+                <Link to="/bookings/$reference/shop" params={{ reference: booking.reference }}>
+                  Add meals &amp; extras
+                </Link>
+              </Button>
             </div>
-            <p className="text-xs text-muted-foreground">Meals can be added from your booking once onboard ordering is available.</p>
+            <p className="text-xs text-muted-foreground">
+              Optional. Meals, snacks and duty-free can be ordered until 48 hours before departure.
+            </p>
           </div>
         </CardContent>
       </Card>
