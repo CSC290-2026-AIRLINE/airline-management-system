@@ -1,5 +1,8 @@
 import { useNavigate } from '@tanstack/react-router'
+import { Badge } from '@customer-web/components/ui/badge'
 import { Button } from '@customer-web/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@customer-web/components/ui/card'
+import { Progress } from '@customer-web/components/ui/progress'
 import { cn } from '@customer-web/lib/utils'
 import type { PaymentResultAction, PaymentResultDto } from '../payment-result'
 
@@ -41,26 +44,11 @@ function ResultButton({ action, className }: { action: PaymentResultAction; clas
   )
 }
 
-/** The pill above a card's heading. */
-function Pill({ className, children }: { className: string; children: string }) {
-  return <span className={cn('inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-medium', className)}>{children}</span>
-}
-
-/** The bar the confirming page shows: it is the frame's way of saying the page is working on it. */
-function ConfirmingBar() {
-  return (
-    <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-secondary" role="progressbar" aria-label="Confirming your booking">
-      <div className="h-full w-3/5 rounded-full bg-navy" />
-    </div>
-  )
-}
-
 /**
- * One payment result: the frames' payment result page.
- *
- * The state of the payment in a pill, what it means in a heading, what happened in a paragraph and the reference of the
- * payment behind it. The miles page carries more — the trip, the passenger and the receipt are cards under the heading
- * card. A phone gets its own layout for a paid booking: the trip and the charge in the card, the receipt button under it.
+ * One payment result: the state of the payment in a badge, what it means in a heading, what happened in a paragraph and
+ * the reference of the payment behind it. The miles page carries more — the trip, the passenger and the receipt are cards
+ * under the heading card. A phone gets its own layout for a paid booking: the trip and the charge in the card, the receipt
+ * button under it.
  */
 export function PaymentResultCard({ result }: { result: PaymentResultDto }) {
   const mobile = result.mobile
@@ -68,77 +56,76 @@ export function PaymentResultCard({ result }: { result: PaymentResultDto }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* The result ------------------------------------------------------ */}
-      <div
-        className={cn(
-          'flex flex-col items-start rounded-2xl border border-line bg-card p-5 text-left max-phone:p-4',
-          wide ? 'w-full' : 'w-full max-w-162',
-          mobile && 'max-phone:hidden',
-        )}
-      >
-        <Pill className={result.badge_class}>{result.badge}</Pill>
-
-        <h2 className="m-0 mt-3 font-sans text-xl font-bold tracking-tight text-foreground">{result.title}</h2>
-
-        {result.body && <p className="m-0 mt-2 text-sm text-muted-foreground">{result.body}</p>}
-
-        {result.progress && <ConfirmingBar />}
-
-        {result.reference && <p className="m-0 mt-3 text-sm text-muted-foreground">{result.reference}</p>}
-
-        {result.actions.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {result.actions.map((action) => (
-              <ResultButton key={action.label} action={action} />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* The phone's own layout of a paid booking -------------------------- */}
-      {mobile && (
-        <div className="hidden flex-col gap-4 max-phone:flex">
-          <div className="rounded-2xl border border-line bg-card p-5">
-            <Pill className={result.badge_class}>{result.badge}</Pill>
-            <h2 className="m-0 mt-3 font-sans text-2xl font-bold tracking-tight text-foreground">{result.title}</h2>
-            <div className="mt-3 flex flex-col gap-1 text-base text-muted-foreground">
-              {mobile.summary.map((line) => (
-                <p key={line} className="m-0">
-                  {line}
-                </p>
-              ))}
-            </div>
-            <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-4 text-base text-foreground">
-              <span>{mobile.charged}</span>
-              <span className="font-semibold tabular-nums">{mobile.amount}</span>
-            </div>
-          </div>
-          {result.actions[0] && <ResultButton action={result.actions[0]} className="h-12 w-full" />}
-          <p className="m-0 text-base text-muted-foreground">{mobile.note}</p>
-        </div>
-      )}
-
-      {/* The cards ------------------------------------------------------- */}
-      {wide && (
-        <div className="grid grid-cols-[2fr_1fr] gap-4 max-tablet:grid-cols-1">
-          {result.blocks.map((block, index) => (
-            <div
-              key={block.title}
-              className={cn(
-                'flex flex-col items-start gap-1 rounded-2xl border border-line bg-card p-5',
-                /* The receipt, the last card, stands on the right and is as tall as the two on the left. */
-                index === 2 && 'col-start-2 row-span-2 row-start-1 max-tablet:col-start-1 max-tablet:row-span-1 max-tablet:row-start-auto',
-              )}
-            >
-              <Pill className="bg-success-soft text-success-strong">{block.badge}</Pill>
-              <h3 className="m-0 mt-2 font-sans text-xl font-bold text-foreground">{block.title}</h3>
-              {block.body && <p className="m-0 text-sm text-muted-foreground">{block.body}</p>}
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                {block.actions.map((action) => (
+      <Card className={cn(wide ? 'w-full' : 'w-full max-w-2xl', mobile && 'max-sm:hidden')}>
+        <CardHeader>
+          <Badge variant={result.badge_variant} className="w-fit">
+            {result.badge}
+          </Badge>
+          <CardTitle className="text-xl">{result.title}</CardTitle>
+          {result.body && <CardDescription>{result.body}</CardDescription>}
+        </CardHeader>
+        {(result.progress || result.reference || result.actions.length > 0) && (
+          <CardContent className="flex flex-col gap-4">
+            {result.progress && <Progress value={60} aria-label="Confirming your booking" />}
+            {result.reference && <p className="text-sm text-muted-foreground">{result.reference}</p>}
+            {result.actions.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                {result.actions.map((action) => (
                   <ResultButton key={action.label} action={action} />
                 ))}
               </div>
-            </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
+      {mobile && (
+        <div className="hidden flex-col gap-4 max-sm:flex">
+          <Card>
+            <CardHeader>
+              <Badge variant={result.badge_variant} className="w-fit">
+                {result.badge}
+              </Badge>
+              <CardTitle className="text-xl">{result.title}</CardTitle>
+              <CardDescription className="flex flex-col gap-1">
+                {mobile.summary.map((line) => (
+                  <span key={line}>{line}</span>
+                ))}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex items-center justify-between gap-3 border-t pt-6">
+              <span>{mobile.charged}</span>
+              <span className="font-semibold tabular-nums">{mobile.amount}</span>
+            </CardContent>
+          </Card>
+          {result.actions[0] && <ResultButton action={result.actions[0]} className="w-full" />}
+          <p className="text-sm text-muted-foreground">{mobile.note}</p>
+        </div>
+      )}
+
+      {wide && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[2fr_1fr]">
+          {result.blocks.map((block, index) => (
+            <Card
+              key={block.title}
+              // The receipt, the last card, stands on the right and is as tall as the two on the left.
+              className={cn(index === 2 && 'md:col-start-2 md:row-span-2 md:row-start-1')}
+            >
+              <CardHeader>
+                <Badge variant="success" className="w-fit">
+                  {block.badge}
+                </Badge>
+                <CardTitle className="text-xl">{block.title}</CardTitle>
+                {block.body && <CardDescription>{block.body}</CardDescription>}
+              </CardHeader>
+              {block.actions.length > 0 && (
+                <CardContent className="flex flex-wrap items-center gap-2">
+                  {block.actions.map((action) => (
+                    <ResultButton key={action.label} action={action} />
+                  ))}
+                </CardContent>
+              )}
+            </Card>
           ))}
         </div>
       )}

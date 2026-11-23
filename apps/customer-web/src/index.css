@@ -238,12 +238,3 @@
   --color-danger-soft: #fdecec;
   --color-danger-line: #e5484d;
 }
-
-/*
- * The starter styles set the root font size to 18px on a desktop, which makes every rem-based Tailwind size 12.5% bigger.
- * The Feature 5 pages are designed in px (a 16px root), so while one of them is on screen the root is 16px. Only then: the
- * pages of other teams keep the root they were built on.
- */
-:root:has(.customer-shell) {
-  font-size: 16px;
-}

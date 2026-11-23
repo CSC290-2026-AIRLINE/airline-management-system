@@ -1,15 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { createPortal } from 'react-dom'
-import { X } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@customer-web/components/ui/alert'
 import { Button } from '@customer-web/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@customer-web/components/ui/dialog'
+import { Input } from '@customer-web/components/ui/input'
+import { Label } from '@customer-web/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
 import { useRefundsApi } from '../api/refunds'
 import { formatAmount } from '../format'
 import type { MyRefundDto, RefundablePaymentDto } from '../types'
-
-/** The small grey caption over a field, the way the frames set it. */
-const FIELD_LABEL = 'text-xs text-muted-foreground'
-/** A boxed field or row, the way the frames set them. */
-const FIELD_BOX = 'rounded-lg border border-line bg-card px-3 py-2.5 text-sm text-foreground'
 
 interface RefundRequestDialogProps {
   /** Opened from a receipt: only that booking is offered. Left out, every booking with something to refund is. */
@@ -61,14 +59,6 @@ export function RefundRequestDialog({ bookingReference, onClose, onViewRefunds, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookingReference])
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
-
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (!payment || !line) return
@@ -95,117 +85,102 @@ export function RefundRequestDialog({ bookingReference, onClose, onViewRefunds, 
     }
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-ink/60 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="refund-dialog-title"
-        className="relative my-6 w-full max-w-md rounded-3xl bg-card p-6 shadow-2xl"
-      >
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <h2 id="refund-dialog-title" className="m-0 text-xl font-bold text-foreground">
-            Request a refund
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-          >
-            <X className="size-4" aria-hidden="true" />
-          </button>
-        </div>
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="text-left sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Request a refund</DialogTitle>
+          <DialogDescription>
+            Requests inside the fare rules are refunded automatically. Anything else goes to our staff, who reply within 2 working days.
+          </DialogDescription>
+        </DialogHeader>
 
         {sent ? (
-          <div className="flex flex-col gap-5">
-            <div role="status" className="rounded-xl bg-success-soft px-4 py-3 text-success-strong">
-              <p className="m-0 text-sm font-semibold">Request sent.</p>
-              <p className="m-0 mt-1 text-sm">
+          <>
+            <Alert>
+              <AlertTitle>Request sent.</AlertTitle>
+              <AlertDescription>
                 Refund {sent.reference} for {formatAmount(sent.amount)} {sent.currency} is now awaiting review. We email you when it is
                 decided.
-              </p>
-            </div>
-            <div className="flex justify-end gap-3">
+              </AlertDescription>
+            </Alert>
+            <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose}>
                 Done
               </Button>
               <Button type="button" onClick={onViewRefunds}>
                 View my refunds
               </Button>
-            </div>
-          </div>
+            </DialogFooter>
+          </>
         ) : loadError ? (
-          <p role="alert" className="m-0 text-sm text-danger">
-            {loadError}
-          </p>
+          <Alert variant="destructive">
+            <AlertDescription>{loadError}</AlertDescription>
+          </Alert>
         ) : !payments ? (
-          <p className="m-0 py-6 text-center text-sm text-muted-foreground">Loading what you can refund…</p>
+          <p className="text-sm text-muted-foreground">Loading what you can refund…</p>
         ) : !payment || !line ? (
-          <div className="flex flex-col gap-5">
-            <p className="m-0 text-sm text-muted-foreground">
+          <>
+            <p className="text-sm text-muted-foreground">
               {bookingReference
                 ? `Nothing on ${bookingReference} can be refunded right now.`
                 : 'You have no paid items that can be refunded right now.'}
             </p>
-            <div className="flex justify-end">
+            <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose}>
                 Close
               </Button>
-            </div>
-          </div>
+            </DialogFooter>
+          </>
         ) : (
-          <form onSubmit={(event) => void submit(event)} className="flex flex-col gap-3">
+          <form onSubmit={(event) => void submit(event)} className="flex flex-col gap-4">
             {payments.length > 1 ? (
-              <div className="flex flex-col gap-1">
-                <label htmlFor="refund-booking" className={FIELD_LABEL}>
-                  Booking
-                </label>
-                <select
-                  id="refund-booking"
-                  value={paymentIndex}
-                  onChange={(event) => {
-                    setPaymentIndex(Number(event.target.value))
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="refund-booking">Booking</Label>
+                <Select
+                  value={String(paymentIndex)}
+                  onValueChange={(value) => {
+                    setPaymentIndex(Number(value))
                     setLineIndex(0)
                   }}
-                  className={`${FIELD_BOX} focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none`}
                 >
-                  {payments.map((candidate, index) => (
-                    <option key={candidate.booking_reference} value={index}>
-                      {candidate.booking_reference}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="refund-booking" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {payments.map((candidate, index) => (
+                      <SelectItem key={candidate.booking_reference} value={String(index)}>
+                        {candidate.booking_reference}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             ) : (
-              <p className={`m-0 ${FIELD_BOX} bg-muted/50`}>
-                Booking <span className="font-semibold">{payment.booking_reference}</span>
+              <p className="text-sm">
+                Booking <span className="font-medium">{payment.booking_reference}</span>
               </p>
             )}
 
-            <div className="flex flex-col gap-1">
-              <label htmlFor="refund-item" className={FIELD_LABEL}>
-                Item to refund
-              </label>
-              <select
-                id="refund-item"
-                value={lineIndex}
-                onChange={(event) => setLineIndex(Number(event.target.value))}
-                className={`${FIELD_BOX} focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none`}
-              >
-                {payment.lines.map((candidate, index) => (
-                  <option key={candidate.description} value={index}>
-                    {candidate.description} · {formatAmount(candidate.remaining)}
-                  </option>
-                ))}
-              </select>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="refund-item">Item to refund</Label>
+              <Select value={String(lineIndex)} onValueChange={(value) => setLineIndex(Number(value))}>
+                <SelectTrigger id="refund-item" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {payment.lines.map((candidate, index) => (
+                    <SelectItem key={candidate.description} value={String(index)}>
+                      {candidate.description} · {formatAmount(candidate.remaining)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label htmlFor="refund-reason" className={FIELD_LABEL}>
-                Reason
-              </label>
-              <input
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="refund-reason">Reason</Label>
+              <Input
                 id="refund-reason"
                 type="text"
                 value={reason}
@@ -216,39 +191,33 @@ export function RefundRequestDialog({ bookingReference, onClose, onViewRefunds, 
                 maxLength={500}
                 placeholder="Tell us why"
                 aria-invalid={error !== null && reason.trim() === ''}
-                className={`${FIELD_BOX} focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none`}
               />
             </div>
 
-            <p className={`m-0 flex items-center justify-between ${FIELD_BOX} bg-muted/50`}>
-              <span>Estimated return</span>
-              <span className="font-bold tabular-nums">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Estimated return</span>
+              <span className="font-semibold tabular-nums">
                 {formatAmount(line.remaining)} {payment.currency}
               </span>
-            </p>
-
-            <p className="m-0 text-xs text-muted-foreground">
-              Requests inside the fare rules are refunded automatically. Anything else goes to our staff, who reply within 2 working days.
-            </p>
+            </div>
 
             {error && (
-              <p role="alert" className="m-0 text-sm text-danger">
-                {error}
-              </p>
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             )}
 
-            <div className="flex justify-end gap-3">
+            <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
                 Cancel
               </Button>
               <Button type="submit" disabled={busy}>
                 {busy ? 'Sending…' : 'Send request'}
               </Button>
-            </div>
+            </DialogFooter>
           </form>
         )}
-      </div>
-    </div>,
-    document.body,
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -1,5 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { ArrowLeft, CircleAlert } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@customer-web/components/ui/alert'
+import { Button } from '@customer-web/components/ui/button'
 import { Card, CardContent } from '@customer-web/components/ui/card'
 import { CustomerShell } from '../components/CustomerShell'
 import { ReceiptDetailBody } from '../components/ReceiptDetailBody'
@@ -23,36 +25,38 @@ export function ReceiptDetailPage({ receiptId }: ReceiptDetailPageProps) {
     <CustomerShell
       title="Receipt"
       action={
-        <Link to="/receipts" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
-          <ArrowLeft className="size-4" aria-hidden="true" />
-          All receipts
-        </Link>
+        <Button asChild variant="link">
+          <Link to="/receipts">
+            <ArrowLeft aria-hidden="true" />
+            All receipts
+          </Link>
+        </Button>
       }
     >
-      <div className="rounded-3xl border border-line bg-card p-8 max-phone:p-4">
-        {loading && <ReceiptDetailSkeleton />}
+      {loading && <ReceiptDetailSkeleton />}
 
-        {!loading && error && (
-          <Card className={notFound ? '' : 'border-danger-line/40 bg-danger-soft'} role="alert">
-            <CardContent className="flex items-start gap-3">
-              <CircleAlert className="mt-0.5 size-5 shrink-0 text-danger" aria-hidden="true" />
-              <div>
-                <h2 className="m-0 font-sans text-base font-semibold text-foreground">
-                  {notFound ? 'We could not find that receipt' : 'We could not load this receipt'}
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground break-words">{error}</p>
-                {notFound && (
-                  <Link to="/receipts" className="mt-3 inline-block text-sm font-medium text-primary underline underline-offset-4">
-                    Back to your receipts
-                  </Link>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+      {!loading && error && (
+        <Alert variant={notFound ? 'default' : 'destructive'}>
+          <CircleAlert />
+          <AlertTitle>{notFound ? 'We could not find that receipt' : 'We could not load this receipt'}</AlertTitle>
+          <AlertDescription className="break-words">
+            {error}
+            {notFound && (
+              <Link to="/receipts" className="mt-2 block font-medium text-primary underline underline-offset-4">
+                Back to your receipts
+              </Link>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
 
-        {!loading && !error && receipt && <ReceiptDetailBody receipt={receipt} />}
-      </div>
+      {!loading && !error && receipt && (
+        <Card>
+          <CardContent>
+            <ReceiptDetailBody receipt={receipt} />
+          </CardContent>
+        </Card>
+      )}
     </CustomerShell>
   )
 }

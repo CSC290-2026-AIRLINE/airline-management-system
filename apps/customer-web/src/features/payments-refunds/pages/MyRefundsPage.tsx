@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
 import { Badge } from '@customer-web/components/ui/badge'
+import type { BadgeVariant } from '@customer-web/features/payments-checkout/receipt-copy'
+import { Input } from '@customer-web/components/ui/input'
 import { Button } from '@customer-web/components/ui/button'
-import { Card, CardContent } from '@customer-web/components/ui/card'
-import { cn } from '@customer-web/lib/utils'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@customer-web/components/ui/card'
 import { useRefundsApi } from '../api/refunds'
 import { FilterChips } from '@customer-web/features/payments-checkout/components/FilterChips'
 import { RefundRequestDialog } from '../components/RefundRequestDialog'
@@ -13,20 +15,20 @@ import { MY_REFUND_TABS, type MyRefundDto, type MyRefundListDto, type MyRefundTa
 
 const TAB_LABELS: Record<MyRefundTab, string> = { all: 'All', in_progress: 'In progress', refunded: 'Refunded', rejected: 'Rejected' }
 
-/** The colour of a state. The words come from the API (`status_label`); only the colour is decided here. */
-function badgeClass(status: RefundStatus): string {
+/** The badge variant of a state. The words come from the API (`status_label`); only the variant is decided here. */
+function badgeVariant(status: RefundStatus): BadgeVariant {
   switch (status) {
     case 'requested':
     case 'pending_approval':
-      return 'bg-[#EAF0FB] text-navy'
+      return 'secondary'
     case 'approved':
     case 'processing':
-      return 'bg-warning-soft text-warning'
+      return 'warning'
     case 'succeeded':
-      return 'bg-success-soft text-success-strong'
+      return 'success'
     case 'failed':
     case 'rejected':
-      return 'bg-danger-soft text-danger'
+      return 'destructive'
     default: {
       const unreachable: never = status
       return unreachable
@@ -78,38 +80,38 @@ export function MyRefundsPage({ tab, onTabChange }: MyRefundsPageProps) {
         </Button>
       }
     >
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <FilterChips
           ariaLabel="Refund state"
           value={tab}
           onChange={onTabChange}
           options={MY_REFUND_TABS.map((value) => ({ value, label: TAB_LABELS[value], count: data?.counts[value] }))}
         />
-        <input
+        <Input
           type="search"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search booking ref or refund number (e.g. REF-0121)"
+          placeholder="Search booking or refund no."
           aria-label="Search refund or booking"
-          className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none sm:w-72"
+          className="sm:w-72"
         />
       </div>
 
       {error && (
-        <Card className="border-danger-line/40 bg-danger-soft" role="alert">
-          <CardContent className="text-sm text-danger">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
-      {!data && !error && <p className="py-8 text-center text-sm text-muted-foreground">Loading your refunds…</p>}
-      {data?.items.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">No refunds here.</p>}
+      {!data && !error && <p className="text-sm text-muted-foreground">Loading your refunds…</p>}
+      {data?.items.length === 0 && <p className="text-sm text-muted-foreground">No refunds here.</p>}
 
-      <ul className="m-0 flex list-none flex-col gap-3 p-0">
+      <ul className="flex flex-col gap-4">
         {data?.items.map((refund) => (
           <RefundCard key={refund.id} refund={refund} />
         ))}
       </ul>
 
-      <p className="mt-6 text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         Refunds to a card take 5–10 working days to show on your statement. The voucher share of a mixed payment comes back as a new
         voucher. Staff approve anything outside the fare rules.
       </p>
@@ -132,31 +134,29 @@ function RefundCard({ refund }: { refund: MyRefundDto }) {
   return (
     <li>
       <Card>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="m-0 text-lg font-semibold text-foreground">
-                {refund.title} <span className="text-sm font-normal text-muted-foreground">· {refund.reference}</span>
-              </h2>
-              <p className="m-0 mt-0.5 text-sm text-muted-foreground">
-                Booking {refund.booking_reference} · asked {formatDate(refund.requested_at)}
-                {refund.completed_at && ` · paid ${formatDate(refund.completed_at)}`}
-                {refund.decided_at && ' · Decided by staff'}
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-1.5">
-              <span className="text-xl font-bold text-foreground tabular-nums">
-                {formatAmount(refund.amount)} {refund.currency}
-              </span>
-              <Badge className={cn('border-0', badgeClass(refund.status))}>{refund.status_label}</Badge>
-            </div>
-          </div>
-          <p className="m-0 text-sm text-muted-foreground">{refund.outcome_note}</p>
+        <CardHeader>
+          <CardTitle>
+            {refund.title} <span className="text-sm font-normal text-muted-foreground">· {refund.reference}</span>
+          </CardTitle>
+          <CardDescription>
+            Booking {refund.booking_reference} · asked {formatDate(refund.requested_at)}
+            {refund.completed_at && ` · paid ${formatDate(refund.completed_at)}`}
+            {refund.decided_at && ' · Decided by staff'}
+          </CardDescription>
+          <CardAction className="flex flex-col items-end gap-2">
+            <span className="text-lg font-semibold tabular-nums">
+              {formatAmount(refund.amount)} {refund.currency}
+            </span>
+            <Badge variant={badgeVariant(refund.status)}>{refund.status_label}</Badge>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
+          <p>{refund.outcome_note}</p>
           {(refund.voucher_code || refund.credit_note_number) && (
-            <p className="m-0 text-sm text-muted-foreground">
+            <p>
               {refund.voucher_code && (
                 <>
-                  Voucher <span className="font-mono font-semibold text-foreground">{refund.voucher_code}</span> ·{' '}
+                  Voucher <span className="font-mono font-medium text-foreground">{refund.voucher_code}</span> ·{' '}
                   <Link to="/vouchers" className="text-primary underline underline-offset-4">
                     View my vouchers
                   </Link>

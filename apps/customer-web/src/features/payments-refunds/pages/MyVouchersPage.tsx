@@ -1,20 +1,19 @@
 import { useEffect, useState } from 'react'
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
 import { Badge } from '@customer-web/components/ui/badge'
+import type { BadgeVariant } from '@customer-web/features/payments-checkout/receipt-copy'
 import { Button } from '@customer-web/components/ui/button'
-import { Card, CardContent } from '@customer-web/components/ui/card'
-import { cn } from '@customer-web/lib/utils'
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@customer-web/components/ui/card'
 import { useRefundsApi } from '../api/refunds'
 import { RefundsShell } from '../components/RefundsShell'
 import { formatAmount, formatDate } from '../format'
 import type { MyVoucherDto, MyVoucherListDto } from '../types'
 
-/** The colour of a voucher's state. The words come from the API (`status_label`). */
-function badgeClass(voucher: MyVoucherDto): string {
-  if (voucher.status === 'active') {
-    return voucher.status_label === 'Expiring' ? 'bg-warning-soft text-warning' : 'bg-success-soft text-success-strong'
-  }
-  if (voucher.status === 'redeemed') return 'bg-[#EAF0FB] text-navy'
-  return 'bg-muted text-muted-foreground'
+/** The badge variant of a voucher's state. The words come from the API (`status_label`). */
+function badgeVariant(voucher: MyVoucherDto): BadgeVariant {
+  if (voucher.status === 'active') return voucher.status_label === 'Expiring' ? 'warning' : 'success'
+  if (voucher.status === 'redeemed') return 'secondary'
+  return 'outline'
 }
 
 /** The line under a voucher: when it ends, or what happened to it. */
@@ -67,44 +66,46 @@ export function MyVouchersPage() {
       current="vouchers"
     >
       {error && (
-        <Card className="border-danger-line/40 bg-danger-soft" role="alert">
-          <CardContent className="text-sm text-danger">{error}</CardContent>
-        </Card>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
-      {!data && !error && <p className="py-8 text-center text-sm text-muted-foreground">Loading your vouchers…</p>}
-      {data?.items.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">You have no vouchers yet.</p>}
+      {!data && !error && <p className="text-sm text-muted-foreground">Loading your vouchers…</p>}
+      {data?.items.length === 0 && <p className="text-sm text-muted-foreground">You have no vouchers yet.</p>}
 
-      <ul className="m-0 grid list-none gap-4 p-0 md:grid-cols-2 lg:grid-cols-3">
+      <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {data?.items.map((voucher) => (
           <li key={voucher.id}>
             <Card className="h-full">
-              <CardContent className="flex h-full flex-col gap-3">
-                <div className="flex items-start justify-between gap-3">
-                  <h2 className="m-0 font-mono text-base font-semibold tracking-wide text-foreground">{voucher.code}</h2>
-                  <Badge className={cn('border-0', badgeClass(voucher))}>{voucher.status_label}</Badge>
-                </div>
-                <p className="m-0 text-3xl font-bold text-foreground tabular-nums">
-                  {formatAmount(voucher.amount)} <span className="text-base font-medium text-muted-foreground">{voucher.currency}</span>
+              <CardHeader>
+                <CardTitle className="font-mono">{voucher.code}</CardTitle>
+                <CardDescription>{voucher.description}</CardDescription>
+                <CardAction>
+                  <Badge variant={badgeVariant(voucher)}>{voucher.status_label}</Badge>
+                </CardAction>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                <p className="text-3xl font-semibold tabular-nums">
+                  {formatAmount(voucher.amount)} <span className="text-base font-normal text-muted-foreground">{voucher.currency}</span>
                 </p>
-                <p className="m-0 text-sm text-muted-foreground">{voucher.description}</p>
-                <p className="m-0 text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Issued {formatDate(voucher.issued_at)} · {endNote(voucher)}
                 </p>
-                {voucher.status === 'active' && (
-                  <div className="mt-auto pt-1">
-                    {/* The checkout is Feature 5a's; the button copies the code to paste there. */}
-                    <Button type="button" variant="outline" className="w-full" onClick={() => void copy(voucher.code)}>
-                      {copied === voucher.code ? 'Code copied' : 'Use at checkout'}
-                    </Button>
-                  </div>
-                )}
               </CardContent>
+              {voucher.status === 'active' && (
+                <CardFooter className="mt-auto">
+                  {/* The checkout is Feature 5a's; the button copies the code to paste there. */}
+                  <Button type="button" variant="outline" className="w-full" onClick={() => void copy(voucher.code)}>
+                    {copied === voucher.code ? 'Code copied' : 'Use at checkout'}
+                  </Button>
+                </CardFooter>
+              )}
             </Card>
           </li>
         ))}
       </ul>
 
-      <p className="mt-6 text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         A voucher is used once, in full, at checkout. If it is worth more than your total, the excess is forfeited, so use it on a booking
         at least as large as its value.
       </p>

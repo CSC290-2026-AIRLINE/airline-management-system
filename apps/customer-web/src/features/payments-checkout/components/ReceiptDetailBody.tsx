@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
+import { Badge } from '@customer-web/components/ui/badge'
 import { Button } from '@customer-web/components/ui/button'
+import { Separator } from '@customer-web/components/ui/separator'
+import { Table, TableBody, TableCell, TableRow } from '@customer-web/components/ui/table'
 import { RefundRequestDialog } from '@customer-web/features/payments-refunds/components/RefundRequestDialog'
 import {
   AIRPORT_CITIES,
@@ -17,12 +21,12 @@ import {
 import { ReceiptStateBadge, ReceiptStatusBadge } from './ReceiptStatusBadge'
 import type { ReceiptDetailDto } from '../types'
 
-/** A labelled value, the way the frames set them: a grey name over a dark value. */
+/** A labelled value: a muted name over the value. */
 function Detail({ label, value, align = 'start' }: { label: string; value: string; align?: 'start' | 'end' }) {
   return (
     <div className={align === 'end' ? 'flex flex-col gap-1 text-right' : 'flex flex-col gap-1'}>
-      <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">{label}</span>
-      <span className="text-base text-foreground">{value}</span>
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="font-medium">{value}</span>
     </div>
   )
 }
@@ -104,21 +108,21 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
   const actionHint = cargo ? 'Coming with the cargo feature' : undefined
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* The document ---------------------------------------------------- */}
-      <div className="flex flex-col gap-1 pr-14">
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-md bg-[#EAF0FB] px-2 py-1 font-mono text-sm font-medium text-navy">{receipt.document_number}</span>
+          <Badge variant="outline" className="font-mono">
+            {receipt.document_number}
+          </Badge>
           <ReceiptStateBadge status={receipt.receipt_status} />
           {/* The receipt state never changes, so a refunded payment says so separately. */}
           {receipt.status !== 'captured' && <ReceiptStatusBadge status={receipt.status} />}
         </div>
-        {/* A flight names its flight, a cargo names its waybill. */}
         {cargo ? (
-          <p className="m-0 text-sm text-muted-foreground">{cargoWaybill(receipt.title)}</p>
+          <p className="text-sm text-muted-foreground">{cargoWaybill(receipt.title)}</p>
         ) : (
           receipt.flight_number && (
-            <p className="m-0 text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Flight {receipt.flight_number}
               {note && ` · ${note}`}
             </p>
@@ -126,76 +130,66 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
         )}
       </div>
 
-      {/* The trip --------------------------------------------------------- */}
       {receipt.route ? (
-        <>
-          <div className="flex items-end justify-between gap-6">
-            <div className="flex flex-col">
-              <span className="text-3xl font-bold text-foreground">{from}</span>
-              <span className="text-sm text-muted-foreground">{AIRPORT_CITIES[from] ?? from}</span>
-            </div>
-            <div className="flex-1 pb-2">
-              {/* The flight's day, or for a cargo the flight and the weight. */}
-              {(receipt.flight_date || cargo) && (
-                <p className="m-0 text-center text-sm text-muted-foreground">
-                  {cargo ? cargoLegend(receipt.title) : formatFlightDate(receipt.flight_date ?? '', flown)}
-                </p>
-              )}
-              <div className="mt-2 h-px bg-border" />
-            </div>
-            <div className="flex flex-col text-right">
-              <span className="text-3xl font-bold text-foreground">{to}</span>
-              <span className="text-sm text-muted-foreground">{AIRPORT_CITIES[to] ?? to}</span>
-            </div>
+        <div className="flex items-end justify-between gap-4">
+          <div className="flex flex-col">
+            <span className="text-2xl font-semibold">{from}</span>
+            <span className="text-sm text-muted-foreground">{AIRPORT_CITIES[from] ?? from}</span>
           </div>
-          <div className="border-t border-dashed border-border" />
-        </>
+          <div className="flex flex-1 flex-col gap-2 pb-2">
+            {(receipt.flight_date || cargo) && (
+              <p className="text-center text-sm text-muted-foreground">
+                {cargo ? cargoLegend(receipt.title) : formatFlightDate(receipt.flight_date ?? '', flown)}
+              </p>
+            )}
+            <Separator />
+          </div>
+          <div className="flex flex-col text-right">
+            <span className="text-2xl font-semibold">{to}</span>
+            <span className="text-sm text-muted-foreground">{AIRPORT_CITIES[to] ?? to}</span>
+          </div>
+        </div>
       ) : (
-        <>
-          <p className="m-0 text-sm text-muted-foreground">{receipt.source_feature_label}</p>
-          <div className="border-t border-dashed border-border" />
-        </>
+        <p className="text-sm text-muted-foreground">{receipt.source_feature_label}</p>
       )}
 
-      {/* The booking and what was paid with ------------------------------ */}
+      <Separator />
+
       <div className="flex items-start justify-between gap-4">
         <Detail label="Booking" value={receipt.booking_reference ?? '—'} />
         <Detail label="Paid with" value={receipt.paid_with} align="end" />
       </div>
 
-      {/* What the money paid for ----------------------------------------- */}
-      <div>
-        <h3 className="m-0 text-xs font-semibold tracking-wider text-muted-foreground uppercase">What you paid for</h3>
-        <ul className="m-0 mt-3 list-none p-0">
-          {receipt.lines.map((line, index) => (
-            <li
-              key={`${line.line_type}-${index}`}
-              className="flex items-start justify-between gap-4 border-b border-line py-3 last:border-b-0"
-            >
-              <span className="text-base text-foreground">{line.description}</span>
-              <span className="shrink-0 text-base text-foreground tabular-nums">{formatAmount(line.amount)}</span>
-            </li>
-          ))}
-        </ul>
+      <div className="flex flex-col gap-2">
+        <h3 className="text-sm font-medium text-muted-foreground">What you paid for</h3>
+        <Table>
+          <TableBody>
+            {receipt.lines.map((line, index) => (
+              <TableRow key={`${line.line_type}-${index}`}>
+                <TableCell className="whitespace-normal">{line.description}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatAmount(line.amount)}</TableCell>
+              </TableRow>
+            ))}
+            <TableRow>
+              <TableCell className="font-semibold">Total charged</TableCell>
+              <TableCell className="text-right font-semibold tabular-nums">
+                {formatAmount(receipt.amount)} {receipt.currency}
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
       </div>
 
-      {/* The total ------------------------------------------------------- */}
-      <div className="flex items-center justify-between gap-4">
-        <span className="text-base font-bold text-foreground">Total charged</span>
-        <span className="text-lg font-bold text-foreground tabular-nums">
-          {formatAmount(receipt.amount)} {receipt.currency}
-        </span>
-      </div>
-
-      {/* The credit note ------------------------------------------------- */}
       {receipt.credit_note && (
         <>
-          <p className="m-0 rounded-xl bg-warning-soft px-4 py-3 text-sm text-foreground">
-            Credit note {receipt.credit_note.document_number}: {receipt.credit_note.description ?? 'refund'}, −
-            {formatAmount(receipt.credit_note.amount)} {receipt.currency}
-          </p>
+          <Alert>
+            <AlertDescription>
+              Credit note {receipt.credit_note.document_number}: {receipt.credit_note.description ?? 'refund'}, −
+              {formatAmount(receipt.credit_note.amount)} {receipt.currency}
+            </AlertDescription>
+          </Alert>
           {showCreditNote && (
-            <dl className="m-0 grid grid-cols-3 gap-4 rounded-xl border border-line bg-card px-4 py-3 max-phone:grid-cols-1">
+            <dl className="grid grid-cols-1 gap-4 rounded-lg border p-4 sm:grid-cols-3">
               <Detail label="Credit note" value={receipt.credit_note.document_number} />
               <Detail label="Issued" value={formatDateTime(receipt.credit_note.issued_at)} />
               <Detail label="Refunded" value={`−${formatAmount(receipt.credit_note.amount)} ${receipt.currency}`} />
@@ -204,9 +198,8 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
         </>
       )}
 
-      {/* The actions ----------------------------------------------------- */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" className="min-w-40 flex-1" onClick={() => downloadReceipt(receipt)}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" onClick={() => downloadReceipt(receipt)}>
           {download}
         </Button>
         {/* A flight's refund is Feature 5b's: the button opens its request for this booking. Cargo has its own page. */}
@@ -215,10 +208,7 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
             {action}
           </Button>
         )}
-        {/* A fare that cannot be refunded says so beside the download, in plain words. */}
-        {!cargo && receipt.refund_state === 'not_refundable' && (
-          <span className="px-3 text-sm font-medium text-muted-foreground">{refund.label}</span>
-        )}
+        {!cargo && receipt.refund_state === 'not_refundable' && <span className="text-sm text-muted-foreground">{refund.label}</span>}
         {receipt.credit_note && (
           <Button type="button" variant="outline" onClick={() => setShowCreditNote((shown) => !shown)}>
             View credit note
@@ -226,8 +216,7 @@ export function ReceiptDetailBody({ receipt }: { receipt: ReceiptDetailDto }) {
         )}
       </div>
 
-      {/* The note under the buttons -------------------------------------- */}
-      <p className="m-0 -mt-2 text-sm text-muted-foreground">{refundNote(receipt)}</p>
+      <p className="text-sm text-muted-foreground">{refundNote(receipt)}</p>
 
       {refundOpen && (
         <RefundRequestDialog

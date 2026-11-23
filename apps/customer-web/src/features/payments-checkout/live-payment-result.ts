@@ -12,10 +12,10 @@ import type { PaymentStatusDto } from './types'
  * `state` on the result is only the nearest frame; the live page never reads it.
  */
 
-const WARNING = 'bg-warning-soft text-warning'
-const SUCCESS = 'bg-success-soft text-success-strong'
-const DANGER = 'bg-danger-soft text-danger'
-const MUTED = 'bg-secondary text-muted-foreground'
+const WARNING = 'warning' as const
+const SUCCESS = 'success' as const
+const DANGER = 'destructive' as const
+const MUTED = 'secondary' as const
 
 /** The parts of a result the live page never fills: no reference line, cards, notes or phone layout. */
 function empty(): Pick<PaymentResultDto, 'reference' | 'blocks' | 'annotation' | 'note' | 'mobile'> {
@@ -56,7 +56,7 @@ export function toPaymentResult(payment: PaymentStatusDto, outcome: PaymentOutco
         ...empty(),
         state: 'paid',
         badge: 'Captured',
-        badge_class: SUCCESS,
+        badge_variant: SUCCESS,
         title: 'Your payment is complete',
         body: `${charged}${voucher}${issued}`,
         actions: receipt,
@@ -68,7 +68,7 @@ export function toPaymentResult(payment: PaymentStatusDto, outcome: PaymentOutco
         ...empty(),
         state: 'paid',
         badge: 'Refunded',
-        badge_class: MUTED,
+        badge_variant: MUTED,
         title: 'This payment was refunded',
         body: 'The money was returned to you. The receipt and its credit note are in your payments.',
         actions: [{ label: 'View my payments', link: { to: '/receipts' }, variant: 'outline' }],
@@ -79,7 +79,7 @@ export function toPaymentResult(payment: PaymentStatusDto, outcome: PaymentOutco
         ...empty(),
         state: 'capture_stalled',
         badge: 'Confirming payment',
-        badge_class: WARNING,
+        badge_variant: WARNING,
         title: 'We are completing your payment',
         body: `We are still completing the card charge for ${card}; it is taking longer than usual. You do not need to pay again. We keep retrying and will email you when it finishes.`,
         actions: [{ label: 'View my payments', link: { to: '/receipts' }, variant: 'outline' }],
@@ -90,7 +90,7 @@ export function toPaymentResult(payment: PaymentStatusDto, outcome: PaymentOutco
         ...empty(),
         state: 'card_declined',
         badge: 'Failed',
-        badge_class: DANGER,
+        badge_variant: DANGER,
         title: 'Your card was declined',
         body: 'Nothing was charged. Go back to your booking and try another card while your hold lasts.',
         actions: [],
@@ -101,7 +101,7 @@ export function toPaymentResult(payment: PaymentStatusDto, outcome: PaymentOutco
         ...empty(),
         state: 'hold_expired',
         badge: 'Expired',
-        badge_class: WARNING,
+        badge_variant: WARNING,
         title: 'Your hold ran out',
         body: 'The hold ended before payment finished. Any card authorisation was voided and you were not charged. Start again to pay.',
         actions: [],
@@ -113,7 +113,7 @@ export function toPaymentResult(payment: PaymentStatusDto, outcome: PaymentOutco
           ...empty(),
           state: 'processing',
           badge: payment.status === 'authorised' ? 'Authorised' : 'Confirming',
-          badge_class: WARNING,
+          badge_variant: WARNING,
           title: 'Confirming your payment…',
           body:
             payment.status === 'authorised'
@@ -129,7 +129,7 @@ export function toPaymentResult(payment: PaymentStatusDto, outcome: PaymentOutco
         ...empty(),
         state: 'card_declined',
         badge: 'Not paid',
-        badge_class: WARNING,
+        badge_variant: WARNING,
         title: 'Your payment is not finished',
         body: `Nothing was charged.${outcome === 'cancelled' ? ' You left the Stripe page before paying.' : ''}${
           ends ? ` Your hold lasts until ${ends}; go back to your booking to pay.` : ' Your hold has ended.'

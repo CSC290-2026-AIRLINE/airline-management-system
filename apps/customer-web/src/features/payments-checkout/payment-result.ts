@@ -1,3 +1,4 @@
+import type { BadgeVariant } from './receipt-copy'
 /**
  * The payment result page: the screen Stripe sends the customer back to.
  *
@@ -96,7 +97,7 @@ export interface PaymentResultDto {
   /** The pill above the heading, e.g. "Captured". */
   badge: string
   /** The pill's colours, from the status colours the app uses. */
-  badge_class: string
+  badge_variant: BadgeVariant
   /** The page's heading, e.g. "You are booked on FY214". */
   title: string
   /** The paragraph under the heading. */

@@ -28,7 +28,7 @@ export const MOCK_PAYMENT_RESULTS: PaymentResultDto[] = [
   {
     state: 'processing',
     badge: 'Authorised',
-    badge_class: 'bg-warning-soft text-warning',
+    badge_variant: 'warning',
     title: 'Confirming your booking…',
     body: 'Stripe has authorised your card. We are confirming your seats now. This page updates by itself; please do not pay again or close the tab.',
     reference: 'Booking K7QF2M · Payment PAY-20261104-0042',
@@ -42,7 +42,7 @@ export const MOCK_PAYMENT_RESULTS: PaymentResultDto[] = [
   {
     state: 'paid',
     badge: 'Captured',
-    badge_class: 'bg-success-soft text-success-strong',
+    badge_variant: 'success',
     title: 'You are booked on FY214',
     body: 'YGN → BKK · Tue 17 Nov 2026 · 2 adults · seats 12A, 12B. 705.00 USD was charged to the card ending 4242. A receipt has been issued.',
     reference: null,
@@ -65,7 +65,7 @@ export const MOCK_PAYMENT_RESULTS: PaymentResultDto[] = [
     state: 'paid_with_miles',
     badge: 'Paid with miles',
     /* The frame draws "Paid with miles" in the same green as "Captured". */
-    badge_class: 'bg-success-soft text-success-strong',
+    badge_variant: 'success',
     title: 'Your booking is confirmed',
     body: 'FY102 · BKK → YGN · Sat 21 Nov 2026 · 1 adult · Paid with 24,000 miles',
     reference: null,
@@ -101,7 +101,7 @@ export const MOCK_PAYMENT_RESULTS: PaymentResultDto[] = [
   {
     state: 'cargo_paid',
     badge: 'Captured',
-    badge_class: 'bg-success-soft text-success-strong',
+    badge_variant: 'success',
     title: 'Your cargo is booked',
     /* TODO(F5a): the Air Waybill number comes with the cargo booking; the API does not carry it yet. */
     body: '1,260.00 USD was charged to the card ending 4242. Your Air Waybill is 217-48201936.',
@@ -115,7 +115,7 @@ export const MOCK_PAYMENT_RESULTS: PaymentResultDto[] = [
   {
     state: 'capture_stalled',
     badge: 'Confirming payment',
-    badge_class: 'bg-warning-soft text-warning',
+    badge_variant: 'warning',
     title: 'You are booked on FY214',
     body: 'Your booking is confirmed. We are still completing the card charge for 705.00 USD; it is taking longer than usual. You do not need to pay again. We keep retrying and will email you when it finishes.',
     reference: 'Booking K7QF2M · Payment PAY-20261104-0042',
@@ -128,7 +128,7 @@ export const MOCK_PAYMENT_RESULTS: PaymentResultDto[] = [
   {
     state: 'card_declined',
     badge: 'Failed',
-    badge_class: 'bg-danger-soft text-danger',
+    badge_variant: 'destructive',
     title: 'Your card was declined',
     body: 'Nothing was charged. Your seats are still held for 09:12. Try another card to keep them.',
     reference: null,
@@ -142,7 +142,7 @@ export const MOCK_PAYMENT_RESULTS: PaymentResultDto[] = [
   {
     state: 'hold_expired',
     badge: 'Expired',
-    badge_class: 'bg-warning-soft text-warning',
+    badge_variant: 'warning',
     title: 'Your seat hold ran out',
     body: 'The 15-minute hold ended before payment finished, so the seats were released. Any card authorisation was voided and you were not charged. Search again to pick new seats.',
     reference: null,

@@ -1,4 +1,4 @@
-import { cn } from '@customer-web/lib/utils'
+import { Tabs, TabsList, TabsTrigger } from '@customer-web/components/ui/tabs'
 
 export interface PageTab {
   /** What the tab shows. */
@@ -18,43 +18,19 @@ interface PageTabsProps {
   onChange?: (value: string) => void
   /** What the group of tabs controls, for screen readers. */
   ariaLabel: string
-  /** The id of the panel the tabs control, so a screen reader can pair them up. */
-  panelId?: string
 }
 
-/**
- * The tabs above a page's content, the way the frames draw them: a row of rounded boxes, with the open one outlined in
- * navy.
- *
- * A tab that another feature owns is drawn but not clickable, so the page shows the shape the frames show without
- * pretending the screen exists.
- */
-export function PageTabs({ tabs, value, onChange, ariaLabel, panelId }: PageTabsProps) {
+/** The tabs above a page's content: shadcn's `Tabs`, with each tab opening its own page. */
+export function PageTabs({ tabs, value, onChange, ariaLabel }: PageTabsProps) {
   return (
-    <div role="tablist" aria-label={ariaLabel} className="flex flex-wrap items-center gap-3">
-      {tabs.map((tab) => {
-        const active = tab.value === value
-        return (
-          <button
-            key={tab.value}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            aria-controls={active ? panelId : undefined}
-            disabled={tab.disabled}
-            title={tab.hint}
-            onClick={() => onChange?.(tab.value)}
-            className={cn(
-              'rounded-lg border px-4 py-2 text-sm font-medium transition-colors',
-              'focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
-              active ? 'border-navy bg-[#EAF0FB] text-navy' : 'border-border bg-card text-foreground hover:border-navy/40',
-              tab.disabled && 'cursor-not-allowed opacity-60 hover:border-border',
-            )}
-          >
+    <Tabs value={value} onValueChange={(next) => onChange?.(next)}>
+      <TabsList aria-label={ariaLabel}>
+        {tabs.map((tab) => (
+          <TabsTrigger key={tab.value} value={tab.value} disabled={tab.disabled} title={tab.hint}>
             {tab.label}
-          </button>
-        )
-      })}
-    </div>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   )
 }

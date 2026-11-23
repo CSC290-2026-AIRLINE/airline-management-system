@@ -7,6 +7,9 @@ import type { PaymentStatus, ReceiptDocumentType, ReceiptFilter, ReceiptStatus, 
  * pages.
  */
 
+/** The shadcn `Badge` variants the receipt screens use. */
+export type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning'
+
 /** `2026-11-06T10:12:00.000Z` → `Nov 6, 2026, 10:12 AM`. */
 export function formatDateTime(iso: string): string {
   return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso))
@@ -84,11 +87,11 @@ export const RECEIPT_STATUS_LABELS: Record<ReceiptStatus, string> = {
   flown: 'Flown',
 }
 
-/** The badge colours for the receipt states, from the frames. */
-export const RECEIPT_STATUS_BADGE_CLASSES: Record<ReceiptStatus, string> = {
-  paid: 'bg-success-soft text-success-strong',
-  miles_and_cash: 'bg-[#EAF0FB] text-navy',
-  flown: 'bg-secondary text-muted-foreground',
+/** The shadcn badge variant for each receipt state. */
+export const RECEIPT_STATUS_BADGE_VARIANTS: Record<ReceiptStatus, BadgeVariant> = {
+  paid: 'success',
+  miles_and_cash: 'secondary',
+  flown: 'outline',
 }
 
 /** The filter chips above the receipts list, in the frames' words. */
@@ -118,15 +121,15 @@ export const STATUS_LABELS: Record<PaymentStatus, string> = {
   reversed: 'Refunded',
 }
 
-/** The badge colours per status, from the receipt frames. */
-export const STATUS_BADGE_CLASSES: Record<PaymentStatus, string> = {
-  created: 'bg-secondary text-muted-foreground',
-  authorised: 'bg-warning-soft text-warning',
-  captured: 'bg-success-soft text-success-strong',
-  failed: 'bg-danger-soft text-danger',
-  voided: 'bg-danger-soft text-danger',
-  expired: 'bg-secondary text-muted-foreground',
-  reversed: 'bg-[#EAF0FB] text-navy',
+/** The shadcn badge variant for each payment status. */
+export const STATUS_BADGE_VARIANTS: Record<PaymentStatus, BadgeVariant> = {
+  created: 'secondary',
+  authorised: 'warning',
+  captured: 'success',
+  failed: 'destructive',
+  voided: 'destructive',
+  expired: 'secondary',
+  reversed: 'secondary',
 }
 
 /**
