@@ -1,4 +1,13 @@
-import { ConflictException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common'
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { SimulationClock } from '../admin-console/simulation-clock'
@@ -32,10 +41,15 @@ function formatTime(isoStr: string | null | undefined): string {
   }
 }
 
+/** How often (real time) stored events from other features are picked up and sent. */
+export const STORED_EVENT_TICK_MS = 15_000
+
 @Injectable()
-export class NotificationService implements OnModuleInit {
+export class NotificationService implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(NotificationService.name)
   private mockFailure = false
+  private timer: NodeJS.Timeout | null = null
+  private ticking = false
 
   constructor(
     private readonly db: DbService,
@@ -48,6 +62,35 @@ export class NotificationService implements OnModuleInit {
       this.flightEventBus.subscribe(async (event) => {
         await this.handleFlightStatusEvent(event)
       })
+    }
+  }
+
+  /**
+   * Starts the stored-event sender. Off under NODE_ENV=test (Jest sets it) so tests never touch a database. Read from
+   * process.env rather than ConfigService: @nestjs/config is ESM-only under Jest, and every module that imports this one
+   * would otherwise need to stub it in its specs.
+   */
+  onApplicationBootstrap(): void {
+    if (process.env.NODE_ENV === 'test') return
+    this.timer = setInterval(() => void this.tick(), STORED_EVENT_TICK_MS)
+    this.timer.unref()
+  }
+
+  onModuleDestroy(): void {
+    if (this.timer) clearInterval(this.timer)
+    this.timer = null
+  }
+
+  /** One sender step; a tick still running when the next fires is skipped, not queued. Public for tests. */
+  async tick(): Promise<void> {
+    if (this.ticking) return
+    this.ticking = true
+    try {
+      await this.processStoredEvents()
+    } catch (e) {
+      this.logger.error('Sending stored events failed', e instanceof Error ? e.stack : String(e))
+    } finally {
+      this.ticking = false
     }
   }
 
@@ -178,24 +221,7 @@ export class NotificationService implements OnModuleInit {
     }
 
     // Everything that only reads happens before the transaction, so the transaction holds only the writes.
-    let recipients = input.recipients
-    if (!recipients) {
-      if (input.eventType === 'security_alert' || input.eventType === 'security_alert_withdrawn') {
-        recipients = [
-          {
-            passengerName: input.payload.passenger_name ?? 'Authority',
-            email: SECURITY_AUTHORITY_EMAIL,
-            phone: null,
-            customerId: null,
-          },
-        ]
-      } else if (input.payload?.flight_id) {
-        recipients = await this.findPassengersForFlightTemporary(input.payload.flight_id)
-      } else {
-        recipients = []
-      }
-    }
-
+    const recipients = await this.resolveRecipients(input)
     const plan = recipients.length > 0 ? await this.planMessages(input, recipients, now) : { rows: [], recipientNames: {} }
 
     // The event, its messages and processed_at are written together: a failure part-way leaves no stored event, so the
@@ -245,8 +271,8 @@ export class NotificationService implements OnModuleInit {
           })
 
           return { ignored: false, eventId: savedEvent.id, sentCount }
-          // A full flight writes a message per passenger and channel, well past Prisma's 5 s default.
         },
+        // A full flight writes a message per passenger and channel, well past Prisma's 5 s default.
         { timeout: 30_000 },
       )
     } catch (e: any) {
@@ -256,6 +282,95 @@ export class NotificationService implements OnModuleInit {
       }
       throw e
     }
+  }
+
+  /**
+   * Who an event goes to: the recipients the publisher named; else the authority for a security alert; else every
+   * passenger on `payload.flight_id`; else the customer in `payload.customer_id` (how Feature 11 addresses a member).
+   */
+  private async resolveRecipients(input: InboundEventInput): Promise<EventRecipient[]> {
+    if (input.recipients) return input.recipients
+    const payload = input.payload ?? {}
+    if (input.eventType === 'security_alert' || input.eventType === 'security_alert_withdrawn') {
+      return [{ passengerName: payload.passenger_name ?? 'Authority', email: SECURITY_AUTHORITY_EMAIL, phone: null, customerId: null }]
+    }
+    if (payload.flight_id) return this.findPassengersForFlightTemporary(payload.flight_id)
+    if (typeof payload.customer_id === 'string') {
+      const customer = await this.db.customer.findFirst({
+        where: { id: payload.customer_id, deleted_at: null },
+        select: { id: true, phone: true, user: { select: { email: true } }, passenger: { select: { first_name: true, last_name: true } } },
+      })
+      if (!customer) return []
+      const name = customer.passenger ? `${customer.passenger.first_name} ${customer.passenger.last_name}`.trim() : ''
+      return [
+        {
+          passengerName: typeof payload.passenger_name === 'string' && payload.passenger_name ? payload.passenger_name : name,
+          email: customer.user?.email ?? null,
+          phone: customer.phone ?? null,
+          customerId: customer.id,
+        },
+      ]
+    }
+    return []
+  }
+
+  /**
+   * Sends events that other features stored straight into inbound_event, in their own transaction, instead of calling
+   * `publish` (Feature 11's loyalty jobs, Feature 7's security alerts). Events from `handleEvent` are stored already
+   * processed, so only these are picked up. Returns how many events were sent.
+   */
+  async processStoredEvents(limit = 50): Promise<number> {
+    const pending = await this.db.inbound_event.findMany({
+      where: { processed_at: null },
+      orderBy: { received_at: 'asc' },
+      take: limit,
+    })
+    let processed = 0
+    for (const event of pending) {
+      try {
+        if (await this.processStoredEvent(event)) processed++
+      } catch (e) {
+        // One bad event must not hold up the rest; it stays unprocessed and is tried again on the next tick.
+        this.logger.error(`Stored event ${event.id} (${event.event_type}) failed`, e instanceof Error ? e.stack : String(e))
+      }
+    }
+    return processed
+  }
+
+  private async processStoredEvent(event: {
+    id: string
+    source: string
+    source_event_id: string
+    event_type: string
+    payload: Prisma.JsonValue
+  }): Promise<boolean> {
+    const payload = (event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload) ? event.payload : {}) as Record<
+      string,
+      any
+    >
+    const input: InboundEventInput = { source: event.source, sourceEventId: event.source_event_id, eventType: event.event_type, payload }
+    const now = this.clock.now()
+    const recipients = await this.resolveRecipients(input)
+    const plan = recipients.length > 0 ? await this.planMessages(input, recipients, now) : { rows: [], recipientNames: {} }
+
+    return this.db.$transaction(
+      async (tx) => {
+        // Claim the event: a second tick or server that reads it at the same time finds it processed and sends nothing.
+        const { count } = await tx.inbound_event.updateMany({ where: { id: event.id, processed_at: null }, data: { processed_at: now } })
+        if (count === 0) return false
+        for (const row of plan.rows) {
+          await tx.notification.create({ data: { ...row, inbound_event_id: event.id } })
+        }
+        if (Object.keys(plan.recipientNames).length > 0) {
+          await tx.inbound_event.update({
+            where: { id: event.id },
+            data: { payload: { ...payload, recipient_names: plan.recipientNames } },
+          })
+        }
+        return true
+      },
+      { timeout: 30_000 },
+    )
   }
 
   /**

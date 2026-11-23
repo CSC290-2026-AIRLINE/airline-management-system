@@ -51,6 +51,96 @@ describe('NotificationService', () => {
     service = new NotificationService(db, clock as unknown as SimulationClock)
   })
 
+  describe('Stored events from other features (processStoredEvents)', () => {
+    const tierEvent = {
+      id: 'ev-11',
+      source: '11',
+      source_event_id: 'tier_changed:m1:2026-11-01T00:00:00.000Z',
+      event_type: 'tier_changed',
+      payload: { customer_id: 'cust-1', member_id: 'm1', passenger_name: 'Anna Lee', tier_name: 'Gold', tier_expires_on: '2027-11-01' },
+    }
+
+    beforeEach(() => {
+      db.inbound_event.findMany = jest.fn().mockResolvedValue([tierEvent])
+      db.inbound_event.updateMany = jest.fn().mockResolvedValue({ count: 1 })
+      db.customer.findFirst = jest.fn().mockResolvedValue({
+        id: 'cust-1',
+        phone: null,
+        user: { email: 'anna.lee@example.com' },
+        passenger: { first_name: 'Anna', last_name: 'Lee' },
+      })
+      db.notification_type.findUnique.mockResolvedValue({ code: 'tier_changed', is_mandatory: false })
+      db.notification_template.findMany.mockResolvedValue([
+        {
+          channel: 'email',
+          is_active: true,
+          subject_template: 'Your tier is now {{tier_name}}',
+          body_template: 'Dear {{passenger_name}}, your tier is now {{tier_name}}, valid until {{tier_expires_on}}.',
+        },
+      ])
+      db.notification_preference.findMany.mockResolvedValue([])
+    })
+
+    it('sends a loyalty event to the customer it names, filling placeholders from its payload', async () => {
+      await expect(service.processStoredEvents()).resolves.toBe(1)
+
+      expect(db.inbound_event.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { processed_at: null } }))
+      expect(db.inbound_event.updateMany).toHaveBeenCalledWith({ where: { id: 'ev-11', processed_at: null }, data: { processed_at: NOW } })
+      expect(db.notification.create).toHaveBeenCalledTimes(1)
+      expect(db.notification.create.mock.calls[0][0].data).toEqual(
+        expect.objectContaining({
+          inbound_event_id: 'ev-11',
+          type_code: 'tier_changed',
+          channel: 'email',
+          recipient: 'anna.lee@example.com',
+          customer_id: 'cust-1',
+          subject: 'Your tier is now Gold',
+          body: 'Dear Anna Lee, your tier is now Gold, valid until 2027-11-01.',
+          status: 'sent',
+        }),
+      )
+    })
+
+    it('sends nothing when another tick already claimed the event', async () => {
+      db.inbound_event.updateMany.mockResolvedValue({ count: 0 })
+      await expect(service.processStoredEvents()).resolves.toBe(0)
+      expect(db.notification.create).not.toHaveBeenCalled()
+    })
+
+    it('sends a stored security alert to the authority', async () => {
+      db.inbound_event.findMany.mockResolvedValue([
+        {
+          id: 'ev-7',
+          source: '7',
+          source_event_id: 'security_alert:rev-1',
+          event_type: 'security_alert',
+          payload: { passenger_name: 'Tom Baker', flight_number: 'FY308', service_date: '2026-10-12', reference: 'chk-1' },
+        },
+      ])
+      db.notification_type.findUnique.mockResolvedValue({ code: 'security_alert', is_mandatory: true })
+      await service.processStoredEvents()
+      expect(db.customer.findFirst).not.toHaveBeenCalled()
+      expect(db.notification.create.mock.calls[0][0].data).toEqual(expect.objectContaining({ recipient: SECURITY_AUTHORITY_EMAIL }))
+    })
+
+    it('keeps going after one event fails, leaving it for the next tick', async () => {
+      db.inbound_event.findMany.mockResolvedValue([{ ...tierEvent, id: 'ev-bad' }, tierEvent])
+      db.inbound_event.updateMany.mockRejectedValueOnce(new Error('lock timeout')).mockResolvedValueOnce({ count: 1 })
+      await expect(service.processStoredEvents()).resolves.toBe(1)
+    })
+
+    it('marks an event for a customer that no longer exists as processed without sending', async () => {
+      db.customer.findFirst.mockResolvedValue(null)
+      await expect(service.processStoredEvents()).resolves.toBe(1)
+      expect(db.notification.create).not.toHaveBeenCalled()
+    })
+
+    it('a tick swallows errors so the timer keeps running', async () => {
+      db.inbound_event.findMany.mockRejectedValue(new Error('db down'))
+      await expect(service.tick()).resolves.toBeUndefined()
+    })
+  })
+
   describe('Core sender (handleEvent)', () => {
     it('1. saves event in inbound_event and ignores repeated events with same source + source_event_id', async () => {
       // First attempt: new event
