@@ -1,6 +1,10 @@
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
 import { Link, useLocation } from '@tanstack/react-router'
 import { useAppAuth } from '../../../auth/AuthProvider'
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
+import { Button } from '@customer-web/components/ui/button'
+import { Field } from '@customer-web/components/ui/cw-field'
+import { Input } from '@customer-web/components/ui/input'
 import { DeliveryChoiceForm, type PassengerDeliveryChoice } from '../components/DeliveryChoiceForm'
 import { createPassengerCasePageState, isCurrentCaseRequest, passengerCasePageReducer, passengerDeliveryFormKey } from './case-page-state'
 import {
@@ -146,14 +150,21 @@ function TryCaseChips({
     <div className="passenger-case-access__suggestions" role="group" aria-label="Find or open baggage cases">
       <span>Try:</span>
       {cases.map((caseItem) => (
-        <button aria-pressed={caseItem === currentCase} key={caseItem} type="button" onClick={() => onOpen(caseItem)}>
+        <Button
+          aria-pressed={caseItem === currentCase}
+          key={caseItem}
+          variant={caseItem === currentCase ? 'secondary' : 'outline'}
+          size="sm"
+          type="button"
+          onClick={() => onOpen(caseItem)}
+        >
           {caseItem}
-        </button>
+        </Button>
       ))}
       {onFindMyCases && (
-        <button className="passenger-case-access__find-cases" type="button" onClick={onFindMyCases}>
+        <Button variant="link" size="sm" type="button" onClick={onFindMyCases}>
           Find my cases
-        </button>
+        </Button>
       )}
     </div>
   )
@@ -527,9 +538,9 @@ export function PassengerLostBagCasePage() {
         className="passenger-case-access__form"
         onSubmit={(event) => void handleLookup(event)}
       >
-        <label>
-          <span>Case number</span>
-          <input
+        <Field id={`${surface}-case-number`} label="Case number">
+          <Input
+            id={`${surface}-case-number`}
             autoComplete="off"
             required
             maxLength={14}
@@ -538,10 +549,10 @@ export function PassengerLostBagCasePage() {
             onChange={(event) => setCaseNumber(event.currentTarget.value)}
             placeholder="LB-2026-000118"
           />
-        </label>
-        <label>
-          <span>Booking reference</span>
-          <input
+        </Field>
+        <Field id={`${surface}-booking-reference`} label="Booking reference">
+          <Input
+            id={`${surface}-booking-reference`}
             autoComplete="off"
             required
             maxLength={6}
@@ -550,10 +561,10 @@ export function PassengerLostBagCasePage() {
             onChange={(event) => updateRecoveryDetails('bookingReference', event.currentTarget.value)}
             placeholder="ABC123"
           />
-        </label>
-        <label>
-          <span>Surname</span>
-          <input
+        </Field>
+        <Field id={`${surface}-surname`} label="Surname">
+          <Input
+            id={`${surface}-surname`}
             autoComplete="family-name"
             required
             maxLength={100}
@@ -562,10 +573,10 @@ export function PassengerLostBagCasePage() {
             onChange={(event) => updateRecoveryDetails('surname', event.currentTarget.value)}
             placeholder="Surname on booking"
           />
-        </label>
-        <button type="submit" disabled={isLookingUp}>
+        </Field>
+        <Button type="submit" disabled={isLookingUp}>
           {isLookingUp ? 'Opening…' : 'Open case'}
-        </button>
+        </Button>
       </form>
     )
   }
@@ -770,9 +781,9 @@ export function PassengerLostBagCasePage() {
                     {report.caseNumber} · {access?.surname}
                   </strong>
                 </div>
-                <button type="button" onClick={() => setIsEditingAccess(true)}>
+                <Button variant="outline" size="sm" type="button" onClick={() => setIsEditingAccess(true)}>
                   Change
-                </button>
+                </Button>
               </div>
             </>
           ) : (
@@ -781,14 +792,14 @@ export function PassengerLostBagCasePage() {
         </div>
         {renderTryCaseChips()}
         {error && (
-          <p className="passenger-case-page__error" role="alert">
-            {error}
-          </p>
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
         {isLookingUp && (
-          <p className="passenger-case-page__loading" role="status">
-            Loading case details…
-          </p>
+          <Alert role="status">
+            <AlertDescription>Loading case details…</AlertDescription>
+          </Alert>
         )}
         {caseListMessage && (
           <p className="passenger-case-page__loading" role="status">
@@ -801,9 +812,9 @@ export function PassengerLostBagCasePage() {
         <section className="passenger-case-empty" aria-labelledby="passenger-case-empty-title">
           <h2 id="passenger-case-empty-title">No case open yet</h2>
           <p>Enter your case details above to follow a report. If you have not reported a bag yet, start here.</p>
-          <Link className="passenger-case-empty__link" to="/report-lost-bag">
-            Report a lost bag
-          </Link>
+          <Button asChild variant="outline">
+            <Link to="/report-lost-bag">Report a lost bag</Link>
+          </Button>
         </section>
       )}
 
@@ -923,33 +934,28 @@ export function PassengerLostBagCasePage() {
             {canReportBagFoundByPassenger(report.status, delivery?.status ?? null) && access && ownerActionsAllowed && (
               <div className="passenger-case-self-found">
                 {!isConfirmingSelfFound ? (
-                  <button
-                    className="passenger-case-self-found__trigger"
-                    type="button"
-                    disabled={isCancelling}
-                    onClick={() => setIsConfirmingSelfFound(true)}
-                  >
+                  <Button variant="outline" type="button" disabled={isCancelling} onClick={() => setIsConfirmingSelfFound(true)}>
                     The bag has been found
-                  </button>
+                  </Button>
                 ) : (
                   <div className="passenger-case-self-found__confirmation" role="group" aria-label="Confirm found bag cancellation">
                     <p>Cancel this report because the bag was found?</p>
                     <div>
-                      <button type="button" disabled={isCancelling} onClick={() => void reportBagFoundByPassenger()}>
+                      <Button type="button" variant="destructive" disabled={isCancelling} onClick={() => void reportBagFoundByPassenger()}>
                         {isCancelling ? 'Cancelling…' : 'Yes, cancel report'}
-                      </button>
-                      <button type="button" disabled={isCancelling} onClick={() => setIsConfirmingSelfFound(false)}>
+                      </Button>
+                      <Button type="button" variant="outline" disabled={isCancelling} onClick={() => setIsConfirmingSelfFound(false)}>
                         Keep searching
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
               </div>
             )}
             {shouldShowCancellationUnavailable(report.status, delivery?.status ?? null) && access && ownerActionsAllowed && (
-              <p className="passenger-case-cancel-unavailable" role="status">
-                {CANCELLATION_UNAVAILABLE_MESSAGE}
-              </p>
+              <Alert role="status">
+                <AlertDescription>{CANCELLATION_UNAVAILABLE_MESSAGE}</AlertDescription>
+              </Alert>
             )}
           </section>
 
