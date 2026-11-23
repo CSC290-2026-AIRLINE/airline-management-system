@@ -611,6 +611,7 @@ interface WireCateringOrderLine {
   productName: string
   quantityRequired: number
   quantityShort: number
+  quantityInWarehouse?: number
   source?: string
 }
 
@@ -641,6 +642,7 @@ export function mapCateringOrderLine(wire: WireCateringOrderLine): CateringOrder
     productName: required('GET /api/staff/flights/:flightId/catering-order', 'productName', wire.productName),
     quantityRequired: Number(wire.quantityRequired),
     quantityShort: Number(wire.quantityShort),
+    quantityInWarehouse: wire.quantityInWarehouse == null ? null : Number(wire.quantityInWarehouse),
     source: ((wire.source as CateringOrderLine['source']) ?? 'order') as CateringOrderLine['source'],
   }
 }
@@ -682,6 +684,9 @@ interface WireFlight {
   cutoffAt?: string
   warehouseId?: string
   isCancelled?: boolean
+  departureTimeZone?: string | null
+  orderingOpen?: boolean
+  departed?: boolean
 }
 
 export function mapFlight(wire: WireFlight): Flight {
@@ -703,6 +708,10 @@ export function mapFlight(wire: WireFlight): Flight {
     // Empty until a catering order exists for the flight, so it is not required.
     warehouseId: wire.warehouseId ?? '',
     isCancelled: Boolean(wire.isCancelled),
+    departureTimeZone: wire.departureTimeZone ?? null,
+    // Only open orders carry it; a generated (or later) order means ordering has closed.
+    orderingOpen: wire.orderingOpen ?? wire.status === 'open',
+    departed: Boolean(wire.departed),
   }
 }
 
@@ -883,6 +892,9 @@ export interface ReportableFlight {
   scheduledDeparture: string
   aircraftId: string
   reportSubmitted: boolean
+  // Display fields from the server: the departure airport's time zone and the aircraft's registration.
+  departureTimeZone: string | null
+  aircraftTailNumber: string | null
 }
 
 export function mapReportableFlight(wire: {
@@ -894,6 +906,8 @@ export function mapReportableFlight(wire: {
   scheduledDeparture: string
   aircraftId: string
   reportSubmitted: boolean
+  departureTimeZone?: string | null
+  aircraftTailNumber?: string | null
 }): ReportableFlight {
   return {
     id: required('GET /api/staff/catering-orders', 'flightId', wire.flightId),
@@ -904,6 +918,8 @@ export function mapReportableFlight(wire: {
     scheduledDeparture: toIsoString(wire.scheduledDeparture),
     aircraftId: required('GET /api/staff/catering-orders', 'aircraftId', wire.aircraftId),
     reportSubmitted: Boolean(wire.reportSubmitted),
+    departureTimeZone: wire.departureTimeZone ?? null,
+    aircraftTailNumber: wire.aircraftTailNumber ?? null,
   }
 }
 

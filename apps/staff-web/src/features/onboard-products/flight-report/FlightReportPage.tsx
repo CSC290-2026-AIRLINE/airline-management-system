@@ -24,18 +24,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@staff-web/lib/utils'
 import { PageHeader, StatCard } from '@staff-web/features/onboard-products/ui'
 import type { FlightReport, Product, ProductCategory, ProductSale } from '@staff-web/features/onboard-products/api/types'
-import type { ReportableFlight } from '@staff-web/features/onboard-products/api/flight-report'
+import type { FlightMealPolicy, ReportableFlight } from '@staff-web/features/onboard-products/api/flight-report'
 
 // -- helpers --------------------------------------------------------------
 
-function formatDateTime(iso: string): string {
+// Flight times are shown in the departure airport's local time (like F2's flight pages), falling back to the
+// browser's zone when the server sends none.
+function formatDateTime(iso: string, timeZone?: string | null): string {
   return new Date(iso).toLocaleString('en-US', {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: 'UTC',
+    ...(timeZone ? { timeZone } : {}),
   })
 }
 
@@ -78,7 +80,9 @@ interface AfterFlight {
   detail: string
 }
 
-function computeAfterFlight(category: ProductCategory, initial: number): AfterFlight {
+// `left` is what remains after served, sold, wasted and damaged.
+function computeAfterFlight(category: ProductCategory, left: number): AfterFlight {
+  const initial = Math.max(0, left)
   if (category === 'meal') {
     return {
       text: `Discarded: aircraft stock becomes 0 (${formatQuantity(initial)} thrown away)`,
@@ -100,6 +104,25 @@ function computeAfterFlight(category: ProductCategory, initial: number): AfterFl
   }
 }
 
+const CABIN_ORDER = ['economy', 'premium_economy', 'business', 'first']
+
+function cabinName(cabin: string): string {
+  const name = cabin.replace('_', ' ')
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}
+
+// "Economy: paid · Business: complimentary, 1 meal each", from the flight's resolved cabin settings.
+function mealPolicySummary(policy: FlightMealPolicy[]): string {
+  return [...policy]
+    .sort((a, b) => CABIN_ORDER.indexOf(a.cabin) - CABIN_ORDER.indexOf(b.cabin))
+    .map((p) => {
+      if (p.mealService === 'complimentary') return `${cabinName(p.cabin)}: complimentary, ${p.includedPerPassenger} meal each`
+      if (p.mealService === 'paid') return `${cabinName(p.cabin)}: paid`
+      return `${cabinName(p.cabin)}: no meal service`
+    })
+    .join(' · ')
+}
+
 // Row shape used inside the page state. One per (flight, product).
 interface UsageRow {
   productId: string
@@ -110,8 +133,6 @@ interface UsageRow {
   served: number
   wasted: number
   damaged: number
-  // Cached preview state for the right-most column.
-  after: AfterFlight
 }
 
 function buildUsageRows(
@@ -121,6 +142,24 @@ function buildUsageRows(
   report: FlightReport | null,
 ): UsageRow[] {
   const rows: UsageRow[] = []
+  // A submitted report is shown as submitted: its own lines, with the numbers that were entered. The aircraft stock
+  // no longer has the meals by then (they are discarded), so building from it would drop those rows.
+  if (report?.status === 'submitted') {
+    for (const line of report.lines) {
+      const category = products.find((p) => p.id === line.productId)?.category ?? 'meal'
+      rows.push({
+        productId: line.productId,
+        productName: line.productName,
+        category,
+        initial: line.initialQuantity,
+        sold: line.sold,
+        served: line.served,
+        wasted: line.wasted,
+        damaged: line.damaged,
+      })
+    }
+    return sortRows(rows)
+  }
   const byProduct = new Map<string, number>()
   for (const r of aircraftRows) {
     byProduct.set(r.productId, (byProduct.get(r.productId) ?? 0) + r.quantity)
@@ -144,18 +183,20 @@ function buildUsageRows(
       served: saved?.served ?? 0,
       wasted: saved?.wasted ?? 0,
       damaged: saved?.damaged ?? 0,
-      after: computeAfterFlight(product.category, initialClamped),
     })
   }
-  // Sort: meals first, then snack, beverage, duty-free, then by name.
+  return sortRows(rows)
+}
+
+// Meals first, then snack, beverage, duty-free, then by name.
+function sortRows(rows: UsageRow[]): UsageRow[] {
   const order: ProductCategory[] = ['meal', 'snack', 'beverage', 'duty_free']
-  rows.sort((a, b) => {
+  return rows.sort((a, b) => {
     const ai = order.indexOf(a.category)
     const bi = order.indexOf(b.category)
     if (ai !== bi) return ai - bi
     return a.productName.localeCompare(b.productName)
   })
-  return rows
 }
 
 function emptyInputs(rows: UsageRow[]): Record<string, { served: string; wasted: string; damaged: string }> {
@@ -179,6 +220,7 @@ export function FlightReportPage() {
   const [sales, setSales] = useState<ProductSale[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [rows, setRows] = useState<UsageRow[]>([])
+  const [mealPolicy, setMealPolicy] = useState<FlightMealPolicy[]>([])
   const [inputs, setInputs] = useState<Record<string, { served: string; wasted: string; damaged: string }>>({})
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -250,6 +292,15 @@ export function FlightReportPage() {
     const flight = flights.find((f) => f.id === selectedId)
     const aId = flight?.aircraftId ?? null
     setAircraftId(aId)
+    api.flightReport
+      .getFlightMealPolicy(selectedId)
+      .then((policy) => {
+        if (!cancelled) setMealPolicy(policy)
+      })
+      .catch(() => {
+        // Only the policy chip depends on it; the report still works.
+        if (!cancelled) setMealPolicy([])
+      })
     Promise.all([
       api.flightReport.getFlightReport(selectedId),
       api.flightReport.listFlightSales(selectedId),
@@ -491,7 +542,9 @@ export function FlightReportPage() {
       <PageHeader
         title="Flight Report"
         description="Report what was served, sold, wasted and damaged. This is a flight total, not a passenger history."
-        actions={<Badge variant="outline">Policy · Complimentary, 1 meal each</Badge>}
+        actions={
+          selectedId && mealPolicy.length > 0 ? <Badge variant="outline">Policy · {mealPolicySummary(mealPolicy)}</Badge> : undefined
+        }
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" role="tablist" aria-label="Reportable flights">
@@ -516,7 +569,7 @@ export function FlightReportPage() {
               <span className="text-sm">
                 {f.departureAirport} → {f.arrivalAirport}
               </span>
-              <span className="text-xs text-muted-foreground">{formatDateTime(f.scheduledDeparture)}</span>
+              <span className="text-xs text-muted-foreground">{formatDateTime(f.scheduledDeparture, f.departureTimeZone)}</span>
             </button>
           )
         })}
@@ -530,7 +583,8 @@ export function FlightReportPage() {
               {selectedFlight.flightNumber} · {selectedFlight.departureAirport} → {selectedFlight.arrivalAirport}
             </CardTitle>
             <CardDescription>
-              aircraft {selectedFlight.aircraftId.toUpperCase()} · {formatDateTime(selectedFlight.scheduledDeparture)}
+              Aircraft {selectedFlight.aircraftTailNumber ?? selectedFlight.aircraftId} ·{' '}
+              {formatDateTime(selectedFlight.scheduledDeparture, selectedFlight.departureTimeZone)}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -577,6 +631,8 @@ export function FlightReportPage() {
                       const damaged = parseNonNegativeInt(inputs[r.productId]?.damaged ?? '0')
                       const remaining = r.initial - served - r.sold - wasted - damaged
                       const short = remaining < 0
+                      // The preview follows what is typed: it is about the quantity left, not the starting one.
+                      const after = computeAfterFlight(r.category, remaining)
                       return (
                         <TableRow key={r.productId}>
                           <TableCell>
@@ -621,14 +677,14 @@ export function FlightReportPage() {
                             <span
                               className={cn(
                                 'block text-sm',
-                                r.after.kind === 'discarded'
+                                after.kind === 'discarded'
                                   ? 'text-destructive'
-                                  : r.after.kind === 'carried'
+                                  : after.kind === 'carried'
                                     ? 'text-foreground'
                                     : 'text-muted-foreground',
                               )}
                             >
-                              {r.after.text}
+                              {after.text}
                             </span>
                           </TableCell>
                         </TableRow>
@@ -654,7 +710,9 @@ export function FlightReportPage() {
                       </Button>
                     </>
                   ) : (
-                    <Badge variant="secondary">Submitted · {report?.submittedAt ? formatDateTime(report.submittedAt) : ''}</Badge>
+                    <Badge variant="secondary">
+                      Submitted · {report?.submittedAt ? formatDateTime(report.submittedAt, selectedFlight?.departureTimeZone) : ''}
+                    </Badge>
                   )}
                 </div>
               </>

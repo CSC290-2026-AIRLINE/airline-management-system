@@ -32,19 +32,21 @@ import type {
 
 // -- helpers ---------------------------------------------------------------
 
-function formatDateTime(iso: string): string {
+// Flight times are shown in the departure airport's local time (like F2's flight pages), falling back to the
+// browser's zone when the server sends none.
+function formatDateTime(iso: string, timeZone?: string | null): string {
   return new Date(iso).toLocaleString('en-US', {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: 'UTC',
+    ...(timeZone ? { timeZone } : {}),
   })
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })
+function formatTime(iso: string, timeZone?: string | null): string {
+  return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', ...(timeZone ? { timeZone } : {}) })
 }
 
 function formatQuantity(n: number): string {
@@ -63,7 +65,10 @@ function cabinLabel(c: Cabin | 'all'): string {
 // Build the derived UI status used by the right-card title and the
 // progress bar. Distinct from Flight.status so we can say
 // "Ordering open" / "Order ready" / "Loaded" / "Closed out" / "Void".
-type UiStatus = 'ordering_open' | 'order_ready' | 'loaded' | 'closed' | 'void'
+// no_order: ordering has closed but the flight never got a catering order (for example its departure airport has no
+// F12 warehouse), so it must not read "Ordering open".
+// not_loaded: the order was generated but the flight departed without it being loaded.
+type UiStatus = 'ordering_open' | 'no_order' | 'order_ready' | 'not_loaded' | 'loaded' | 'closed' | 'void'
 
 // The list endpoint already carries each flight's catering-order status
 // on Flight.status, so the chips can be right for every row.
@@ -89,17 +94,24 @@ function uiStatus(flight: Flight, order: CateringOrder | null): UiStatus {
   // the flight's own status, which the list endpoint returns for all of
   // them, and prefer the fetched order when there is one: right after an
   // action it is the fresher of the two.
-  if (order) {
-    if (order.status === 'closed') return 'closed'
-    if (order.status === 'loaded') return 'loaded'
-    if (order.status === 'void') return 'void'
-    return 'order_ready'
-  }
-  return flightStatusToUi(flight.status)
+  const base = order
+    ? order.status === 'closed'
+      ? 'closed'
+      : order.status === 'loaded'
+        ? 'loaded'
+        : order.status === 'void'
+          ? 'void'
+          : 'order_ready'
+    : flight.status === 'open' && !flight.orderingOpen
+      ? 'no_order'
+      : flightStatusToUi(flight.status)
+  return base === 'order_ready' && flight.departed ? 'not_loaded' : base
 }
 
 function uiStatusLabel(s: UiStatus): string {
   if (s === 'ordering_open') return 'Ordering open'
+  if (s === 'no_order') return 'No order'
+  if (s === 'not_loaded') return 'Not loaded'
   if (s === 'order_ready') return 'Order ready'
   if (s === 'loaded') return 'Loaded'
   if (s === 'closed') return 'Closed out'
@@ -108,6 +120,8 @@ function uiStatusLabel(s: UiStatus): string {
 
 function statusBadgeVariant(s: UiStatus): 'default' | 'secondary' | 'outline' | 'destructive' {
   if (s === 'ordering_open') return 'secondary'
+  if (s === 'no_order') return 'outline'
+  if (s === 'not_loaded') return 'destructive'
   if (s === 'order_ready') return 'default'
   if (s === 'loaded') return 'outline'
   if (s === 'closed') return 'outline'
@@ -429,6 +443,8 @@ export function CateringOrdersPage() {
               >
                 <NativeSelectOption value="all">Any status</NativeSelectOption>
                 <NativeSelectOption value="ordering_open">Ordering open</NativeSelectOption>
+                <NativeSelectOption value="no_order">No order</NativeSelectOption>
+                <NativeSelectOption value="not_loaded">Not loaded</NativeSelectOption>
                 <NativeSelectOption value="order_ready">Order ready</NativeSelectOption>
                 <NativeSelectOption value="loaded">Loaded</NativeSelectOption>
                 <NativeSelectOption value="closed">Closed out</NativeSelectOption>
@@ -469,7 +485,7 @@ export function CateringOrdersPage() {
                         {f.departureAirport} → {f.arrivalAirport}
                       </span>
                       <span className="flex gap-3 text-xs text-muted-foreground">
-                        <span>{formatDateTime(f.scheduledDeparture)}</span>
+                        <span>{formatDateTime(f.scheduledDeparture, f.departureTimeZone)}</span>
                         <span>{f.passengerCount} pax</span>
                       </span>
                     </button>
@@ -510,7 +526,7 @@ export function CateringOrdersPage() {
                       type="button"
                       onClick={() => setPendingAction('transfer')}
                       disabled={busy || shortLineCount > 0}
-                      title={shortLineCount > 0 ? 'STOCK_SHORTFALL: receive stock first' : undefined}
+                      title={shortLineCount > 0 ? 'Some items are short: receive stock first' : undefined}
                     >
                       Transfer to aircraft
                     </Button>
@@ -536,23 +552,24 @@ export function CateringOrdersPage() {
 
               <CardContent className="flex flex-col gap-5">
                 {selectedStatus === 'order_ready' && shortLineCount > 0 && (
-                  <p className="m-0 text-sm text-destructive">STOCK_SHORTFALL — receive more stock first</p>
+                  <p className="m-0 text-sm text-destructive">Some items are short — receive more stock first</p>
                 )}
 
                 <ProgressSteps status={selectedStatus} />
 
                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                  <Fact label="Departs" value={formatDateTime(selectedFlight.scheduledDeparture)} />
+                  <Fact label="Departs" value={formatDateTime(selectedFlight.scheduledDeparture, selectedFlight.departureTimeZone)} />
                   <Fact label="Passengers" value={formatQuantity(selectedFlight.passengerCount)} />
                   <Fact label="Loads from" value={selectedWarehouse ? selectedWarehouse.name : selectedFlight.warehouseId || '—'} />
-                  <Fact label="Ordering closed" value={formatDateTime(selectedFlight.cutoffAt)} />
+                  <Fact label="Ordering closed" value={formatDateTime(selectedFlight.cutoffAt, selectedFlight.departureTimeZone)} />
                 </div>
 
                 {selectedStatus === 'ordering_open' && (
                   <Alert>
                     <AlertDescription className="text-foreground">
-                      Ordering is open until {formatTime(selectedFlight.cutoffAt)} on {formatDateTime(selectedFlight.cutoffAt)}. The
-                      catering order is generated automatically at the cutoff.
+                      Ordering is open until {formatTime(selectedFlight.cutoffAt, selectedFlight.departureTimeZone)} on{' '}
+                      {formatDateTime(selectedFlight.cutoffAt, selectedFlight.departureTimeZone)}. The catering order is generated
+                      automatically at the cutoff.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -561,8 +578,8 @@ export function CateringOrdersPage() {
                   <Alert variant="destructive">
                     <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
                       <span>
-                        {shortLineCount} item{shortLineCount === 1 ? '' : 's'} short in {selectedWarehouse.code} (STOCK_SHORTFALL). Receive
-                        a delivery, then refresh the order.
+                        {shortLineCount} item{shortLineCount === 1 ? '' : 's'} short in {selectedWarehouse.code}. Receive a delivery, then
+                        refresh the order.
                       </span>
                       <Button
                         type="button"
@@ -579,8 +596,24 @@ export function CateringOrdersPage() {
                 {selectedStatus === 'ordering_open' && (
                   <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                     <strong className="block text-foreground">No lines yet</strong>
-                    The catering order is generated automatically when ordering closes at {formatDateTime(selectedFlight.cutoffAt)}. Refresh
-                    the page then.
+                    The catering order is generated automatically when ordering closes at{' '}
+                    {formatDateTime(selectedFlight.cutoffAt, selectedFlight.departureTimeZone)}. Refresh the page then.
+                  </div>
+                )}
+
+                {selectedStatus === 'not_loaded' && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      This flight departed before its catering order was loaded, so the stock was never transferred.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {selectedStatus === 'no_order' && (
+                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    <strong className="block text-foreground">No catering order</strong>
+                    Ordering closed at {formatDateTime(selectedFlight.cutoffAt, selectedFlight.departureTimeZone)}, but no order was
+                    generated for this flight. This happens when its departure airport has no warehouse.
                   </div>
                 )}
 
@@ -607,9 +640,11 @@ export function CateringOrdersPage() {
                       <TableBody>
                         {groupByCabin(selectedOrder.lines).flatMap((group) =>
                           group.lines.map((line) => {
-                            const inWh = batches
-                              .filter((b) => b.warehouseId === selectedOrder.warehouseId && b.productId === line.productId)
-                              .reduce((acc, b) => acc + b.quantityRemaining, 0)
+                            const inWh =
+                              line.quantityInWarehouse ??
+                              batches
+                                .filter((b) => b.warehouseId === selectedOrder.warehouseId && b.productId === line.productId)
+                                .reduce((acc, b) => acc + b.quantityRemaining, 0)
                             const short = line.quantityShort
                             return (
                               <TableRow key={line.id}>
@@ -667,6 +702,7 @@ function Fact({ label, value }: { label: string; value: string }) {
 
 // The four stages of a catering order: where it is now, which are done.
 function ProgressSteps({ status }: { status: UiStatus }) {
+  if (status === 'no_order' || status === 'not_loaded') return null
   if (status === 'void') {
     return (
       <Alert variant="destructive">

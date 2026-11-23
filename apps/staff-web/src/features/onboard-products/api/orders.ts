@@ -24,7 +24,8 @@ export interface OrdersApi {
   refreshCateringOrderApi: (flightId: string) => Promise<CateringOrder>
   markCateringOrderLoadedApi: (flightId: string) => Promise<CateringOrder>
   closeCateringOrderApi: (flightId: string) => Promise<CateringOrder>
-  createStockTransfer: (flightId: string) => Promise<StockTransfer>
+  // The newest transfer for the flight, or null when there was nothing to move.
+  createStockTransfer: (flightId: string) => Promise<StockTransfer | null>
   getAircraftStock: (aircraftId: string) => Promise<AircraftStockRow[]>
 }
 
@@ -100,8 +101,11 @@ export function createOrdersApi(client: ApiClient): OrdersApi {
         // aircraft, earliest expiry first. The order is marked loaded
         // afterwards, with a separate call.
         requireId('POST /api/staff/flights/:flightId/stock-transfers', 'flightId', flightId)
+        // The backend answers with every transfer for the flight, newest first (a retry that has nothing left to
+        // move returns the earlier ones), so take the first. An empty list means the order had no lines.
         const wire = await client.post<unknown>(`/api/staff/flights/${flightId}/stock-transfers`, {})
-        return mapStockTransfer(wire as never)
+        const first = Array.isArray(wire) ? (wire[0] as unknown) : wire
+        return first ? mapStockTransfer(first as never) : null
       } catch (err) {
         if (err instanceof MissingIdError) {
           rethrow(err, new CateringApiError('NOT_FOUND', 'Flight not found.', 0))
