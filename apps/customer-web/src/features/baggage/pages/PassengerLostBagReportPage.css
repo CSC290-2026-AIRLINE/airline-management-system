@@ -1,0 +1,467 @@
+/* Full-width page: overrides the app's centred #root column while this page is mounted. */
+#root:has(.passenger-report-page) {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  border-inline: 0;
+  background: var(--muted);
+}
+
+.passenger-report-page {
+  --report-ink: var(--foreground);
+  --report-muted: var(--muted-foreground);
+  --report-border: var(--border);
+  --report-orange: var(--primary);
+  --report-orange-soft: var(--muted);
+
+  width: 100%;
+  min-height: 100svh;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 2rem 8.3% 4rem;
+  background: var(--muted);
+  color: var(--report-ink);
+  font-family: var(--font-sans);
+  letter-spacing: normal;
+  color-scheme: light;
+  text-align: left;
+}
+
+.passenger-report-page__intro {
+  margin-bottom: 1.4rem;
+}
+
+.passenger-report-page__intro h1 {
+  margin: 0 0 0.4rem;
+  color: var(--report-ink);
+  font-family: var(--font-sans);
+  font-size: clamp(1.875rem, 4vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.passenger-report-page__intro p {
+  max-width: 54rem;
+  margin: 0;
+  color: var(--report-muted);
+  line-height: 1.45;
+}
+
+.passenger-report-layout,
+.passenger-report-success-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr);
+  align-items: start;
+  gap: 1.5rem;
+}
+
+.passenger-report-card {
+  min-width: 0;
+  border: 1px solid var(--report-border);
+  border-radius: var(--radius-xl);
+  background: var(--card);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgb(0 0 0 / 5%));
+}
+
+.passenger-report-form {
+  padding: 1.5rem;
+}
+
+.passenger-report-form__section + .passenger-report-form__section {
+  margin-top: 1.5rem;
+}
+
+.passenger-report-form__section-heading {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.passenger-report-next li > span {
+  display: grid;
+  flex: 0 0 1.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.passenger-report-form__section-heading h2 {
+  margin: 0;
+  color: var(--report-ink);
+  font-family: var(--font-sans);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.passenger-report-next h2,
+.passenger-report-existing h2 {
+  margin: 0;
+  color: var(--report-ink);
+  font-family: var(--font-sans);
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.passenger-report-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.passenger-report-fields--booking {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.passenger-report-booking-lookup__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.passenger-report-booking-lookup__actions p {
+  margin: 0;
+  color: var(--report-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.passenger-report-booking-found {
+  margin: 1rem 0 0;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.55rem;
+  background: var(--muted);
+  color: var(--foreground);
+  font-size: 0.9rem;
+}
+
+.passenger-report-booking-summary {
+  min-width: 0;
+  margin: 1rem 0 0;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.55rem;
+  background: var(--report-orange-soft);
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.passenger-report-success__note {
+  margin: 0.25rem 0 1rem;
+  color: var(--report-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.passenger-report-fields--flight {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: end;
+  margin-top: 1rem;
+}
+
+.passenger-report-photo {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.passenger-report-photo__dropzone {
+  position: relative;
+  display: grid;
+  min-height: 6.75rem;
+  box-sizing: border-box;
+  place-content: center;
+  justify-items: center;
+  gap: 0.35rem;
+  padding: 0.8rem 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.55rem;
+  color: var(--report-muted);
+  text-align: center;
+  cursor: pointer;
+}
+
+.passenger-report-photo__dropzone:hover {
+  border-color: var(--report-orange);
+  background: var(--muted);
+}
+
+.passenger-report-photo__dropzone:focus-within {
+  outline: 2px solid var(--report-orange);
+  outline-offset: 2px;
+}
+
+.passenger-report-photo__dropzone.is-disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.passenger-report-photo__dropzone svg {
+  width: 1.35rem;
+  height: 1.35rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.passenger-report-photo__dropzone strong {
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+}
+
+.passenger-report-photo__dropzone > span {
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.passenger-report-photo__mobile-help {
+  display: none;
+}
+
+.passenger-report-photo__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.passenger-report-photo__browse {
+  color: var(--report-ink);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.passenger-report-photo__selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+  color: var(--report-muted);
+  font-size: 0.85rem;
+}
+
+.passenger-report-photo__selected > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.passenger-report-photo__preview {
+  display: block;
+  width: 4.5rem;
+  max-width: 100%;
+  height: 4.5rem;
+  object-fit: contain;
+  border: 1px solid var(--report-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+}
+
+.passenger-report-photo__error {
+  margin: 0;
+  color: var(--destructive);
+  font-size: 0.8rem;
+}
+
+.passenger-report-field__error {
+  color: var(--destructive);
+  font-size: 0.8rem;
+}
+
+.passenger-report-fields__wide {
+  grid-column: 1 / -1;
+}
+
+.passenger-report-form__hint {
+  margin: 0 0 0.85rem;
+  color: var(--report-muted);
+  font-size: 0.9rem;
+}
+
+.passenger-report-form__submit-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.passenger-report-sidebar {
+  display: grid;
+  gap: 1rem;
+}
+
+.passenger-report-next {
+  padding: 1.35rem;
+  background: var(--card);
+  color: var(--card-foreground);
+}
+
+.passenger-report-next h2 {
+  margin-bottom: 1.1rem;
+  color: var(--card-foreground);
+  font-size: 1.125rem;
+}
+
+.passenger-report-next ol {
+  display: grid;
+  gap: 0.95rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.passenger-report-next li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 0.7rem;
+}
+
+.passenger-report-next li > span {
+  align-self: start;
+}
+
+.passenger-report-next p,
+.passenger-report-existing p {
+  margin: 0.25rem 0 0;
+  color: var(--report-muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.passenger-report-next p {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.passenger-report-next li p {
+  margin: 0;
+}
+
+.passenger-report-existing {
+  padding: 1.25rem;
+}
+
+.passenger-report-existing a {
+  margin-top: 0.85rem;
+}
+
+.passenger-report-success {
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+}
+
+.passenger-report-success__eyebrow {
+  margin: 0 0 0.5rem;
+  color: var(--muted-foreground);
+  font-weight: 700;
+}
+
+.passenger-report-success h2 {
+  margin: 0;
+  color: var(--report-ink);
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+}
+
+.passenger-report-success > p:not(.passenger-report-success__eyebrow) {
+  color: var(--report-muted);
+}
+
+.passenger-report-success__case-number {
+  display: inline-block;
+  margin: 0.7rem 0 1rem;
+  padding: 0.7rem 1rem;
+  border-radius: 0.6rem;
+  background: var(--report-orange-soft);
+  color: var(--report-ink);
+  font-size: 1.3rem;
+  font-weight: 750;
+}
+
+.passenger-report-success__summary {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  gap: 0.55rem 0.8rem;
+  margin: 0;
+}
+
+.passenger-report-success__summary dt {
+  color: var(--report-muted);
+}
+
+.passenger-report-success__summary dd {
+  margin: 0;
+  color: var(--report-ink);
+  overflow-wrap: anywhere;
+}
+
+.passenger-report-success__actions {
+  display: flex;
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 760px) {
+  .passenger-report-page {
+    padding: 1.25rem 1.5rem 2.5rem;
+    background: var(--muted);
+  }
+
+  .passenger-report-layout,
+  .passenger-report-success-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .passenger-report-form {
+    padding: 1.15rem;
+  }
+
+  .passenger-report-fields,
+  .passenger-report-fields--booking,
+  .passenger-report-fields--flight {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .passenger-report-fields__wide {
+    grid-column: auto;
+  }
+
+  .passenger-report-booking-lookup__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .passenger-report-existing a {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .passenger-report-form__submit-row {
+    display: block;
+  }
+
+  .passenger-report-success__actions {
+    display: grid;
+  }
+
+  .passenger-report-photo__desktop-help {
+    display: none;
+  }
+
+  .passenger-report-photo__mobile-help {
+    display: inline;
+  }
+}

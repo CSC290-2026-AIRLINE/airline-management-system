@@ -6,6 +6,9 @@ import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
 import { OnboardProductsModule } from './modules/onboard-products/onboard-products.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
+import { BaggageModule } from './modules/baggage/baggage.module'
+import { BaggageLifecycleModule } from './modules/baggage/baggage-lifecycle.module'
+import { PassengerLostReportModule } from './modules/baggage/passenger-lost-report.module'
 import { LoyaltyModule } from './modules/loyalty/loyalty.module'
 import { CheckinBoardingModule } from './modules/checkin-boarding/checkin-boarding.module'
 import { BookingPnrModule } from './modules/booking-pnr/booking-pnr.module'
@@ -25,10 +28,16 @@ import { FlightSchedulingModule } from './modules/flight-scheduling/flight-sched
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validate: validateEnv,
+    }),
     DbModule,
     AuthModule,
     AdminConsoleModule,
+    BaggageModule,
+    BaggageLifecycleModule,
+    PassengerLostReportModule,
     BuildPairingModule,
     AssignCrewModule,
     FixPublishModule,
