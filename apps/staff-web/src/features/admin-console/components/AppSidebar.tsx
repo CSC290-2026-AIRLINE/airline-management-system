@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { Banknote, ChevronRight, CreditCard, Gift, LogOut, Search, TriangleAlert, Undo2, Wallet } from 'lucide-react'
+import { Banknote, ChevronRight, Gift, LogOut, Search, TriangleAlert, Undo2, Wallet } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@staff-web/components/ui/collapsible'
 import { ScrollArea } from '@staff-web/components/ui/scroll-area'
 import {
@@ -30,26 +30,8 @@ import {
   GROUPS,
   LOYALTY_ITEMS,
   PRICING_ITEMS,
-  REPORTS_ITEM,
   type NavItem,
 } from '../nav-items'
-
-/**
- * These screens belong to other feature teams and have no routes in this app yet, so they are listed as disabled
- * buttons (dimmed, not focusable) instead of links that go nowhere. When a team registers its route, swap its entry for
- * a `<SidebarMenuButton asChild><Link/></SidebarMenuButton>`.
- */
-// `indent` is for items inside a group: the padding sits on the button, so its hover block spans the full width.
-function PendingItem({ item, indent = false }: { item: NavItem; indent?: boolean }) {
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton disabled className={indent ? 'pl-4' : undefined}>
-        <item.icon />
-        <span>{item.label}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  )
-}
 
 /** A screen whose team has registered a route. A plain link, so the page swaps in without remounting the sidebar frame. */
 function LinkedItem({
@@ -118,35 +100,6 @@ const PAYMENTS_ITEMS: (NavItem & { to: NonNullable<NavItem['to']> })[] = [
   { label: 'Pay Runs', icon: Banknote, to: '/payments/pay-runs' },
   { label: 'My Pay', icon: Wallet, to: '/payments/my-pay' },
 ]
-
-/**
- * "Payments & Refunds" inside Commercial: a heading that opens and closes its screens. It opens by itself when one of
- * them is the current page, so the active item is never hidden.
- */
-function PaymentsSubGroup({ pathname }: { pathname: string }) {
-  const hasActive = PAYMENTS_ITEMS.some((item) => pathname === item.to || pathname.startsWith(item.to + '/'))
-
-  return (
-    <Collapsible defaultOpen={hasActive} className="group/payments">
-      <SidebarMenuItem>
-        <CollapsibleTrigger asChild>
-          <SidebarMenuButton className="pl-4" tooltip="Payments & Refunds">
-            <CreditCard />
-            <span className="truncate">Payments & Refunds</span>
-            <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/payments:rotate-90 motion-reduce:transition-none" />
-          </SidebarMenuButton>
-        </CollapsibleTrigger>
-      </SidebarMenuItem>
-      <CollapsibleContent className="group-data-[collapsible=icon]:block!">
-        <SidebarMenu className="pl-4">
-          {PAYMENTS_ITEMS.map((item) => (
-            <LinkedItem key={item.label} item={item} pathname={pathname} indent />
-          ))}
-        </SidebarMenu>
-      </CollapsibleContent>
-    </Collapsible>
-  )
-}
 
 /**
  * The admin workspace sidebar: the shadcn `Sidebar` (icon-collapsible on desktop, a sheet on a phone). Administration
@@ -311,27 +264,19 @@ export function AppSidebar({ roleName, onSignOut, expandedGroup }: { roleName: s
             ))}
           </NavGroup>
 
+          <NavGroup label="Payments & Refunds" defaultOpen={groupIsOpen('Payments & Refunds')}>
+            {PAYMENTS_ITEMS.map((item) => (
+              <LinkedItem key={item.label} item={item} pathname={pathname} indent />
+            ))}
+          </NavGroup>
+
           {GROUPS.map((group) => (
             <NavGroup key={group.label} label={group.label} defaultOpen={groupIsOpen(group.label)}>
-              {group.items.map((item) =>
-                item.label === 'Payments & Refunds' ? (
-                  <PaymentsSubGroup key={item.label} pathname={pathname} />
-                ) : item.to ? (
-                  <LinkedItem key={item.label} item={{ ...item, to: item.to }} pathname={pathname} indent />
-                ) : (
-                  <PendingItem key={item.label} item={item} indent />
-                ),
-              )}
+              {group.items.map((item) => (
+                <LinkedItem key={item.label} item={item} pathname={pathname} indent />
+              ))}
             </NavGroup>
           ))}
-
-          <SidebarGroup className="py-1">
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <PendingItem item={REPORTS_ITEM} />
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
         </ScrollArea>
       </SidebarContent>
 
