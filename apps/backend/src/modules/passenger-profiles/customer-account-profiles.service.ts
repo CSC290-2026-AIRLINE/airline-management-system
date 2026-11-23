@@ -62,6 +62,7 @@ function profileView(customer: Customer) {
     ProfileResponseDto,
     {
       id: customer.id,
+      passengerId: customer.passenger.id,
       needsIdentitySetup:
         !/^[A-Za-z][A-Za-z .'-]*$/.test(customer.passenger.first_name) ||
         !/^[A-Za-z][A-Za-z .'-]*$/.test(customer.passenger.last_name) ||
@@ -199,6 +200,7 @@ export class CustomerAccountProfilesService {
           ProfileResponseDto,
           {
             id: null,
+            passengerId: null,
             needsIdentitySetup: true,
             firstName: '',
             lastName: '',

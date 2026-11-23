@@ -10,6 +10,8 @@ import { BaggageLifecycleModule } from './modules/baggage/baggage-lifecycle.modu
 import { PassengerLostReportModule } from './modules/baggage/passenger-lost-report.module'
 import { LoyaltyModule } from './modules/loyalty/loyalty.module'
 import { CheckinBoardingModule } from './modules/checkin-boarding/checkin-boarding.module'
+import { BookingPnrModule } from './modules/booking-pnr/booking-pnr.module'
+import { BookingSearchModule } from './modules/booking-search/booking-search.module'
 import { validateEnv } from './config/env.validation'
 import { AssignCrewModule } from './modules/crew-rostering/assign-crew/assign-crew.module'
 import { BuildPairingModule } from './modules/crew-rostering/build-pairing/build-pairing.module'
@@ -48,6 +50,8 @@ import { FlightSchedulingModule } from './modules/flight-scheduling/flight-sched
     AircraftManagementModule,
     FlightSchedulingModule,
     LoyaltyModule,
+    BookingSearchModule,
+    BookingPnrModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -3,10 +3,14 @@ WORKDIR /usr/src/app
 
 COPY package.json package-lock.json ./
 COPY apps/staff-web/package.json ./apps/staff-web/
+# Book for customer reuses customer-web's search, passenger and seat components through the @customer-web alias, so its
+# packages are installed and its source is in the build.
+COPY apps/customer-web/package.json ./apps/customer-web/
 
 RUN npm ci
 
 COPY tsconfig*.json ./
+COPY apps/customer-web/ ./apps/customer-web/
 COPY apps/staff-web/ ./apps/staff-web/
 
 ARG VITE_CLERK_PUBLISHABLE_KEY

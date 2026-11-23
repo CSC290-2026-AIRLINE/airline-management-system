@@ -152,6 +152,7 @@ describe('CustomerAccountProfilesService', () => {
     )
     expect(result).toEqual({
       id: 'customer-1',
+      passengerId: 'passenger-1',
       needsIdentitySetup: false,
       firstName: 'Anya',
       lastName: 'Saranpat',

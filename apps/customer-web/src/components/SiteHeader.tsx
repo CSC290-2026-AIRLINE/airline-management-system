@@ -10,7 +10,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@cus
 const links = ['Book', 'My Trips', 'Membership', 'Help']
 
 // Labels with a page behind them. The others stay plain text until their pages exist.
-const linkTo: Partial<Record<(typeof links)[number], '/loyalty'>> = { Membership: '/loyalty' }
+const linkTo: Partial<Record<(typeof links)[number], '/search' | '/bookings' | '/loyalty'>> = {
+  Book: '/search',
+  'My Trips': '/bookings',
+  Membership: '/loyalty',
+}
 
 function NavItem({ label, onClick }: { label: string; onClick?: () => void }) {
   const to = linkTo[label]
