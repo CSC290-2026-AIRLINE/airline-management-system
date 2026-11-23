@@ -134,6 +134,13 @@ export interface PaymentGateway {
   verifyWebhook?(rawBody: Buffer, signatureHeader: string | undefined): boolean
   /** A verified webhook body as an event. May read the card details from the provider. */
   parseEvent?(rawBody: Buffer): Promise<ProviderEvent>
+  /**
+   * Re-reads a hosted session from the provider, for the reconcile job that mends a lost webhook. Answers the event the
+   * webhook would have carried (`authorised` or `session_expired`), or null when the session is still open or unknown.
+   */
+  readCheckout?(sessionId: string): Promise<ProviderEvent | null>
+  /** Re-reads a refund from the provider, for the reconcile job: how it ended, or null while it is still pending. */
+  readRefund?(providerRefundId: string): Promise<RefundResult | null>
 }
 
 /**

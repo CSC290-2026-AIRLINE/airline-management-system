@@ -181,3 +181,15 @@ export interface CompensationEntryDto {
 export interface CompensationListDto extends ListDto<CompensationEntryDto> {
   counts: Record<CompensationFilter, number>
 }
+
+/** What `POST /api/vouchers/validate` answers for a code that can be used. Nothing is reserved. */
+export interface VoucherValidationDto {
+  code: string
+  value: number
+  currency: string
+  expires_at: string
+  /** With a total: the part of the checkout the voucher pays (the lesser of its value and the total). */
+  applied: number | null
+  /** With a total: the part of the voucher that is lost, because a voucher is used whole. */
+  forfeited: number | null
+}

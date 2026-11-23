@@ -52,6 +52,11 @@ export interface RefundRecord {
   payment_id: string
   /** The payment line this refund is for, when the payment has lines. The refund then also writes a `refund_line`. */
   payment_line_id: string | null
+  /**
+   * The lines this refund splits across, when it covers several (an airline cancel refunds every paid coupon of a
+   * payment at once). Absent, the single `payment_line_id` carries the whole amount.
+   */
+  lines?: { payment_line_id: string; amount: number }[]
   source_key: string
   reason: RefundReason
   method: RefundMethod
@@ -132,4 +137,25 @@ export interface RefundablePayment {
   booking: BookingInfo
   total: number
   lines: RefundableLine[]
+}
+
+/** A `flight.cancelled` event with resolution `refund` that 5b has not handled yet. */
+export interface FlightCancellation {
+  event_id: string
+  flight_id: string
+  /** The event's insert order: catch-up handles them in this order. */
+  seq: number
+}
+
+/** A captured payment that has money on a cancelled flight, with the lines (fare, award fee, seat fee) still refundable. */
+export interface PaidOnFlight {
+  booking: BookingInfo
+  lines: { payment_line_id: string; description: string; remaining: number }[]
+}
+
+/** One captured payment with what is left on each of its refundable lines, found by its id (a cancelled booking's). */
+export interface PaidPayment extends PaidOnFlight {
+  amount_total: number
+  /** The part of the payment a voucher paid, which a refund returns as a new voucher in the same share. */
+  voucher_amount: number
 }

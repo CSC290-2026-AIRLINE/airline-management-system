@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, UseGuards, UsePipes, ValidationPipe, UseFilters } from '@nestjs/common'
+import { PaymentsErrorFilter } from '@backend/modules/payments-checkout/payments-error.filter'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { PaymentsRefundsService } from './payments-refunds.service'
@@ -16,6 +17,7 @@ import { ScreenAccessGuard } from '@backend/modules/payments-checkout/guards/scr
  * on the Role access tab, and a caller with no staff account holds no grants, so a customer's token is refused here too.
  */
 @Controller('staff')
+@UseFilters(PaymentsErrorFilter)
 @UseGuards(ScreenAccessGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
 export class StaffRefundsController {
@@ -63,6 +65,45 @@ export class StaffRefundsController {
   @RequireScreen('f5.compensation_vouchers')
   @HttpCode(200)
   voidVoucher(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: VoidVoucherDto): Promise<CompensationEntryDto> {
+    return this.svc.voidVoucher(id, user.id, dto)
+  }
+
+  /* The spec's names for the same screens, next to the routes the frontends use today. */
+
+  /** `PUT /staff/refunds/:id` — approve, reject or reissue as a voucher (same as `POST /staff/refunds/:id/decision`). */
+  @Put('refunds/:id')
+  @RequireScreen('f5.refund_queue')
+  decideByPut(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: RefundDecisionDto): Promise<RefundDetailDto> {
+    return this.svc.decide(id, user.id, dto)
+  }
+
+  /** `POST /staff/refunds` — a staff refund with a mandatory reason: to the card or as a voucher. */
+  @Post('refunds')
+  @RequireScreen('f5.refund_queue')
+  @HttpCode(201)
+  createRefund(@CurrentUser() user: AuthenticatedUser, @Body() dto: IssueCompensationDto): Promise<CompensationEntryDto> {
+    return this.svc.issueCompensation(user.id, dto)
+  }
+
+  /** `POST /staff/compensations` — pays a compensation decision (same as `POST /staff/compensation`). */
+  @Post('compensations')
+  @RequireScreen('f5.compensation_vouchers')
+  @HttpCode(201)
+  issueCompensation(@CurrentUser() user: AuthenticatedUser, @Body() dto: IssueCompensationDto): Promise<CompensationEntryDto> {
+    return this.svc.issueCompensation(user.id, dto)
+  }
+
+  /** `GET /staff/vouchers` — the vouchers, filtered (the compensation list with the voucher chip on). */
+  @Get('vouchers')
+  @RequireScreen('f5.compensation_vouchers')
+  listVouchers(@Query() query: CompensationQueryDto): Promise<CompensationListDto> {
+    return this.svc.listCompensation({ ...query, filter: query.filter ?? 'vouchers' })
+  }
+
+  /** `PUT /staff/vouchers/:id` — cancels a voucher with a reason (same as `POST /staff/vouchers/:id/void`). */
+  @Put('vouchers/:id')
+  @RequireScreen('f5.compensation_vouchers')
+  voidByPut(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: VoidVoucherDto): Promise<CompensationEntryDto> {
     return this.svc.voidVoucher(id, user.id, dto)
   }
 }

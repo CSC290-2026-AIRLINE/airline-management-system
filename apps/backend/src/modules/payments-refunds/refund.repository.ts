@@ -1,7 +1,15 @@
 import { DEMO_CUSTOMER_ID, MOCK_BOOKINGS } from './mock-refund-state'
 import { REFUND_REPOSITORY } from './refund-repository.interface'
 import type { RefundRepository } from './refund-repository.interface'
-import type { BookingInfo, RefundablePayment, RefundRecord, VoucherRecord } from './refund.types'
+import type {
+  BookingInfo,
+  FlightCancellation,
+  PaidOnFlight,
+  PaidPayment,
+  RefundablePayment,
+  RefundRecord,
+  VoucherRecord,
+} from './refund.types'
 
 export { REFUND_REPOSITORY }
 export type { RefundRepository }
@@ -46,6 +54,47 @@ export class InMemoryRefundRepository implements RefundRepository {
     const saved = mode === 'insert' ? await this.insertRefund(refund) : await this.updateRefund(refund)
     this.vouchers.set(voucher.id, voucher)
     return { refund: saved, voucher }
+  }
+
+  /** The cancelled flights the tests queue up, and the events already handled. */
+  readonly cancellations: FlightCancellation[] = []
+  readonly paidOnFlight = new Map<string, PaidOnFlight[]>()
+  readonly handledEvents = new Set<string>()
+
+  listUnprocessedFlightCancellations(): Promise<FlightCancellation[]> {
+    return Promise.resolve(this.cancellations.filter((event) => !this.handledEvents.has(event.event_id)).sort((a, b) => a.seq - b.seq))
+  }
+
+  listPaidLinesOnFlight(flightId: string): Promise<PaidOnFlight[]> {
+    return Promise.resolve(this.paidOnFlight.get(flightId) ?? [])
+  }
+
+  readonly paidPayments = new Map<string, PaidPayment>()
+
+  findPaidPayment(paymentId: string): Promise<PaidPayment | undefined> {
+    return Promise.resolve(this.paidPayments.get(paymentId))
+  }
+
+  async insertFlightRefunds(eventId: string, refunds: RefundRecord[]): Promise<RefundRecord[]> {
+    const known = new Set([...this.refunds.values()].map((refund) => refund.source_key))
+    const created: RefundRecord[] = []
+    for (const refund of refunds) {
+      if (known.has(refund.source_key)) continue
+      created.push(await this.insertRefund(refund))
+    }
+    this.handledEvents.add(eventId)
+    return created
+  }
+
+  expireDueVouchers(now: Date): Promise<number> {
+    let count = 0
+    for (const voucher of this.vouchers.values()) {
+      if (voucher.status === 'active' && voucher.expires_at.getTime() <= now.getTime()) {
+        voucher.status = 'expired'
+        count += 1
+      }
+    }
+    return Promise.resolve(count)
   }
 
   listVouchers(): Promise<VoucherRecord[]> {

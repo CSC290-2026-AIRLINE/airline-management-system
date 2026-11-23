@@ -112,7 +112,7 @@ async function main(): Promise<void> {
       (await call(me, 'POST', '/refunds', { booking_reference: 'ZZZZZZ', item: 'Seat 12B', amount: 18, reason: 'x' })).status,
       404,
     )
-    assert.equal((await call(me, 'POST', '/refunds', { booking_reference: ref, item: 'Seat 12B', amount: 19, reason: 'x' })).status, 400)
+    assert.equal((await call(me, 'POST', '/refunds', { booking_reference: ref, item: 'Seat 12B', amount: 19, reason: 'x' })).status, 422)
     step('POST /refunds: a missing reason, a negative amount, an unknown field, an unknown booking and too much are all refused')
 
     const sent = await call(me, 'POST', '/refunds', {
@@ -220,7 +220,7 @@ async function main(): Promise<void> {
     assert.equal(
       (await call(boss, 'POST', '/staff/compensation', { booking_reference: ref, kind: 'card_refund', amount: 500, reason: 'Too much' }))
         .status,
-      400,
+      422,
     )
     const cash = await call(boss, 'POST', '/staff/compensation', {
       booking_reference: ref,
@@ -238,6 +238,17 @@ async function main(): Promise<void> {
     assert.equal((await call(boss, 'POST', `/staff/vouchers/${gift.body.id}/void`, {})).status, 409)
     assert.equal((await call(boss, 'POST', '/staff/vouchers/not-a-voucher/void', {})).status, 404)
     step('POST /staff/vouchers/:id/void -> 200, again -> 409, unknown -> 404')
+
+    /* The counter on each line is kept in step with the refund lines: what the lines of refunds that still count add up to. */
+    const lines = await db.payment_line.findMany({ where: { payment_id: payment.id }, select: { id: true, refunded_amount: true } })
+    for (const line of lines) {
+      const counted = await db.refund_line.aggregate({
+        where: { payment_line_id: line.id, refund: { status: { notIn: ['rejected', 'failed'] } } },
+        _sum: { amount: true },
+      })
+      assert.equal(Number(line.refunded_amount), Number(counted._sum.amount ?? 0), `refunded_amount of line ${line.id}`)
+    }
+    step('every line’s refunded_amount equals the sum of its refund lines')
 
     console.log('\nAll HTTP checks passed against the real database.')
   } finally {

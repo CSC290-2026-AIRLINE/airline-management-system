@@ -1,12 +1,14 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UseGuards, UsePipes } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards, UsePipes, UseFilters } from '@nestjs/common'
+import { PaymentsErrorFilter } from '@backend/modules/payments-checkout/payments-error.filter'
 import { PaymentsStaffGuard, StaffCaller, type PaymentsStaff } from './payments-staff.guard'
 import { toCents } from './money'
 import { paymentsValidationPipe } from './payments.pipes'
-import { AdjustmentDto, ApprovePayRunDto, CreatePayRunDto } from './crew-pay.dto'
+import { AdjustmentDto, ApprovePayRunDto, CreatePayRunDto, PostingsQueryDto } from './crew-pay.dto'
 import { CrewPayService } from './crew-pay.service'
 
 /** Crew pay (5c, stretch). Pay runs are finance work (S, finance); My Pay is the crew member's own read-only view. */
 @Controller()
+@UseFilters(PaymentsErrorFilter)
 @UseGuards(PaymentsStaffGuard)
 @UsePipes(paymentsValidationPipe)
 export class CrewPayController {
@@ -63,6 +65,13 @@ export class CrewPayController {
   @HttpCode(200)
   retryPayout(@StaffCaller() staff: PaymentsStaff, @Param('id', ParseUUIDPipe) id: string) {
     return this.crewPay.retryPayout(staff, id)
+  }
+
+  /** The finance journal (money movements of 5a, 5b and 5c) by `occurred_at`, with totals per type and category. */
+  @Get('staff/finance/postings')
+  postings(@StaffCaller() staff: PaymentsStaff, @Query() query: PostingsQueryDto) {
+    this.crewPay.assertFinance(staff)
+    return this.crewPay.readPostings(new Date(query.from), new Date(query.to), query.type)
   }
 
   @Get('crew/me/pay')

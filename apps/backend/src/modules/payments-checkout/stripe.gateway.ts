@@ -234,6 +234,37 @@ export class StripePaymentGateway implements PaymentGateway {
     return base
   }
 
+  async readCheckout(sessionId: string): Promise<ProviderEvent | null> {
+    const session = await this.call('GET', `/checkout/sessions/${sessionId}`)
+    const intentId = str(session.payment_intent)
+    const base: ProviderEvent = {
+      id: `reconcile:${sessionId}`,
+      type: 'reconcile',
+      kind: 'ignored',
+      payment_id: str(obj(session.metadata)?.payment_id),
+      session_id: sessionId,
+      intent_id: intentId,
+    }
+    if (str(session.status) === 'expired') return { ...base, id: `reconcile:${sessionId}:expired`, kind: 'session_expired' }
+    if (!intentId) return null
+    const intent = await this.call('GET', `/payment_intents/${intentId}`)
+    const status = str(intent.status)
+    if (status === 'requires_capture') {
+      return { ...base, id: `reconcile:${sessionId}:authorised`, kind: 'authorised', ...(await this.readCard(intentId)) }
+    }
+    return null
+  }
+
+  async readRefund(providerRefundId: string): Promise<RefundResult | null> {
+    const refund = await this.call('GET', `/refunds/${providerRefundId}`)
+    const status = str(refund.status)
+    if (status === 'succeeded') return { status: 'succeeded', provider_refund_id: providerRefundId }
+    if (status === 'failed' || status === 'canceled') {
+      return { status: 'failed', provider_refund_id: providerRefundId, failure_code: str(refund.failure_reason) ?? 'refund_failed' }
+    }
+    return null
+  }
+
   /** The card's brand and last four, for the receipt. A failure here only costs the receipt those two details. */
   private async readCard(intentId: string): Promise<Pick<ProviderEvent, 'card_brand' | 'card_last4'>> {
     try {

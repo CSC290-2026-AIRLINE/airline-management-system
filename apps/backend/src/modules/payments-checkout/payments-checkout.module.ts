@@ -1,13 +1,15 @@
-import { Module, type OnModuleInit } from '@nestjs/common'
+import { Logger, Module, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type { EnvConfig } from '@backend/config/env.validation'
 import { AdminConsoleModule } from '@backend/modules/admin-console/admin-console.module'
 import { AdminConsoleService } from '@backend/modules/admin-console/admin-console.service'
+import { BookingChargeAdapter } from './booking-charge.adapter'
 import { PaymentsCheckoutService } from './payments-checkout.service'
 import { ReceiptsController } from './receipts.controller'
-import { PaymentsController } from './payments.controller'
+import { CustomerPaymentsController, PaymentsController } from './payments.controller'
 import { PaymentWebhookController } from './stripe-webhook.controller'
 import { StaffPaymentsController } from './staff-payments.controller'
+import { F5_SCREENS } from './guards/f5-screens'
 import { ScreenAccessGuard } from './guards/screen-access.guard'
 import { PAYMENT_REPOSITORY } from './payment.repository'
 import { PrismaPaymentRepository } from './prisma-payment.repository'
@@ -30,11 +32,16 @@ import { StripePaymentGateway } from './stripe.gateway'
  * The same import is what lets `ScreenAccessGuard` ask the admin console whether the caller may open a screen: the
  * grant an admin makes on the Role access tab is the only thing that decides, and it is read from one place.
  */
+/** How often the hold-end, capture-retry and reconcile jobs run. A real-clock timer: every step is safe to repeat. */
+const MAINTENANCE_INTERVAL_MS = 30_000
+
 @Module({
   imports: [AdminConsoleModule],
-  controllers: [ReceiptsController, PaymentsController, StaffPaymentsController, PaymentWebhookController],
+  controllers: [ReceiptsController, PaymentsController, CustomerPaymentsController, StaffPaymentsController, PaymentWebhookController],
   providers: [
     PaymentsCheckoutService,
+    // Feature 3's checkout port: a paid seat or insurance charged inside its own transaction.
+    BookingChargeAdapter,
     // The server half of the Role access matrix: it refuses a request whose caller was not granted the screen the
     // route needs, and records the refusal in the audit log.
     ScreenAccessGuard,
@@ -52,10 +59,16 @@ import { StripePaymentGateway } from './stripe.gateway'
     // The real tables. `InMemoryPaymentRepository` is the drop-in the unit tests use.
     { provide: PAYMENT_REPOSITORY, useClass: PrismaPaymentRepository },
   ],
-  exports: [PaymentsCheckoutService, FakePaymentGateway],
+  exports: [PaymentsCheckoutService, FakePaymentGateway, BookingChargeAdapter],
 })
-export class PaymentsCheckoutModule implements OnModuleInit {
-  constructor(private readonly admin: AdminConsoleService) {}
+export class PaymentsCheckoutModule implements OnModuleInit, OnApplicationShutdown {
+  private readonly logger = new Logger(PaymentsCheckoutModule.name)
+  private timer: ReturnType<typeof setInterval> | undefined
+
+  constructor(
+    private readonly admin: AdminConsoleService,
+    private readonly payments: PaymentsCheckoutService,
+  ) {}
 
   /**
    * Register 5a's staff screens so an admin can grant them to a role on the Role access tab. Without this the staff
@@ -65,9 +78,21 @@ export class PaymentsCheckoutModule implements OnModuleInit {
    * convention is `f<feature_no>.<snake_name>`.
    */
   async onModuleInit(): Promise<void> {
-    await this.admin.registerSelfScreens([
-      { code: 'f5.payment_lookup', name: 'Payment lookup', kind: 'assignable', feature_no: '5' },
-      { code: 'f5.payment_exceptions', name: 'Payment exceptions', kind: 'assignable', feature_no: '5' },
-    ])
+    await this.admin.registerSelfScreens(F5_SCREENS)
+    this.timer = setInterval(() => void this.maintain(), MAINTENANCE_INTERVAL_MS)
+    this.timer.unref()
+  }
+
+  onApplicationShutdown(): void {
+    if (this.timer) clearInterval(this.timer)
+  }
+
+  private async maintain(): Promise<void> {
+    try {
+      const done = await this.payments.runMaintenancePass()
+      if (done.expired + done.retried + done.reconciled > 0) this.logger.log(`Payment jobs: ${JSON.stringify(done)}`)
+    } catch (error) {
+      this.logger.error(`Payment jobs failed: ${String(error)}`)
+    }
   }
 }

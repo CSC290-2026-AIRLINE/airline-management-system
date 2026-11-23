@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards, UsePipes, ValidationPipe, UseFilters } from '@nestjs/common'
+import { PaymentsErrorFilter } from '@backend/modules/payments-checkout/payments-error.filter'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { PaymentsCheckoutService } from './payments-checkout.service'
@@ -22,6 +23,7 @@ import { ScreenAccessGuard } from './guards/screen-access.guard'
  * routes here are the two actions the exception list offers.
  */
 @Controller('staff')
+@UseFilters(PaymentsErrorFilter)
 @UseGuards(ScreenAccessGuard)
 @UsePipes(
   new ValidationPipe({
@@ -93,5 +95,17 @@ export class StaffPaymentsController {
   ): Promise<StaffPaymentDetailDto> {
     await this.svc.sendFinancePosting(id, user.id, dto.note ?? null)
     return this.svc.getStaffPayment(id)
+  }
+
+  /** `POST /staff/payments/:id/retry-capture` — the spec's name for the retry above. */
+  @Post('payments/:id/retry-capture')
+  @RequireScreen('f5.payment_exceptions')
+  @HttpCode(200)
+  retryCaptureByPayment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: StaffPaymentActionDto,
+  ): Promise<StaffPaymentDetailDto> {
+    return this.retryCapture(user, id, dto)
   }
 }

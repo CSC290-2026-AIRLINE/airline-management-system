@@ -87,3 +87,18 @@ export class VoidVoucherDto {
   @MaxLength(500)
   reason?: string
 }
+
+/** Body of `POST /api/vouchers/validate`: a code and, optionally, the total it would be applied to. */
+export class ValidateVoucherDto {
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(40)
+  code!: string
+
+  /** The checkout total. With it, the answer says how much of the voucher would be used and how much forfeited. */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  total?: number
+}

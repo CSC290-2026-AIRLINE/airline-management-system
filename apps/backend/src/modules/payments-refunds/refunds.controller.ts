@@ -1,10 +1,11 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, Post, Query, UsePipes, ValidationPipe, UseFilters } from '@nestjs/common'
+import { PaymentsErrorFilter } from '@backend/modules/payments-checkout/payments-error.filter'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { PaymentsRefundsService } from './payments-refunds.service'
-import { CreateRefundRequestDto } from './dto/refund-action.dto'
+import { CreateRefundRequestDto, ValidateVoucherDto } from './dto/refund-action.dto'
 import { MyRefundQueryDto } from './dto/refund-query.dto'
-import type { MyRefundDto, MyRefundListDto, MyVoucherListDto, RefundableListDto } from './dto/payments-refunds.types'
+import type { MyRefundDto, MyRefundListDto, MyVoucherListDto, RefundableListDto, VoucherValidationDto } from './dto/payments-refunds.types'
 
 const validation = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
 
@@ -15,6 +16,7 @@ const validation = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: t
  * filtered by the token's user in the service, so one customer can never read another's refund.
  */
 @Controller('refunds')
+@UseFilters(PaymentsErrorFilter)
 @UsePipes(validation)
 export class RefundsController {
   constructor(private readonly svc: PaymentsRefundsService) {}
@@ -47,6 +49,7 @@ export class RefundsController {
 
 /** `/api/vouchers` — the signed-in customer's own vouchers. */
 @Controller('vouchers')
+@UseFilters(PaymentsErrorFilter)
 @UsePipes(validation)
 export class VouchersController {
   constructor(private readonly svc: PaymentsRefundsService) {}
@@ -54,6 +57,45 @@ export class VouchersController {
   /** The customer's vouchers, the usable ones first. */
   @Get()
   list(@CurrentUser() user: AuthenticatedUser): Promise<MyVoucherListDto> {
+    return this.svc.listMyVouchers(user.id)
+  }
+
+  /** Checks a code and shows its value and what would be forfeited at a given total. Reserves nothing. */
+  @Post('validate')
+  @HttpCode(200)
+  validate(@CurrentUser() user: AuthenticatedUser, @Body() dto: ValidateVoucherDto): Promise<VoucherValidationDto> {
+    return this.svc.validateVoucher(user.id, dto)
+  }
+}
+
+/** `/api/refund-requests` — the spec's name for the "Request a refund" dialog (also `POST /api/refunds`). */
+@Controller('refund-requests')
+@UseFilters(PaymentsErrorFilter)
+@UsePipes(validation)
+export class RefundRequestsController {
+  constructor(private readonly svc: PaymentsRefundsService) {}
+
+  @Post()
+  @HttpCode(201)
+  request(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateRefundRequestDto): Promise<MyRefundDto> {
+    return this.svc.requestRefund(user.id, dto)
+  }
+}
+
+/** `/api/customers/me/refunds` and `/vouchers` — the spec's names for the customer's own lists (also `GET /api/refunds`, `/api/vouchers`). */
+@Controller('customers/me')
+@UseFilters(PaymentsErrorFilter)
+@UsePipes(validation)
+export class CustomerRefundsController {
+  constructor(private readonly svc: PaymentsRefundsService) {}
+
+  @Get('refunds')
+  refunds(@CurrentUser() user: AuthenticatedUser, @Query() query: MyRefundQueryDto): Promise<MyRefundListDto> {
+    return this.svc.listMyRefunds(user.id, query)
+  }
+
+  @Get('vouchers')
+  vouchers(@CurrentUser() user: AuthenticatedUser): Promise<MyVoucherListDto> {
     return this.svc.listMyVouchers(user.id)
   }
 }

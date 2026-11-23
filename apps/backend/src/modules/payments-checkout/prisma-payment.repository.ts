@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { capturedPostings, writePostings } from './finance-journal'
 import { DbService } from '@backend/db/db.service'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { LIVE_STATUSES, type PaymentRepository } from './payment.repository'
@@ -132,6 +133,17 @@ export class PrismaPaymentRepository implements PaymentRepository {
         },
       })
       for (const attempt of payment.attempts) await this.writeAttempt(tx, attempt)
+      // The capture and its journal rows commit together, so a movement is never missed or half-written.
+      if (payment.status === 'captured') {
+        await writePostings(tx, capturedPostings(payment))
+        // The voucher was reserved by naming it on the payment; a captured payment uses it up, whole.
+        if (payment.voucher_id) {
+          await tx.compensation_voucher.updateMany({
+            where: { id: payment.voucher_id, status: 'active' },
+            data: { status: 'redeemed', redeemed_at: payment.captured_at ?? payment.updated_at, updated_at: payment.updated_at },
+          })
+        }
+      }
     })
     return (await this.findById(payment.id)) ?? payment
   }
@@ -156,6 +168,55 @@ export class PrismaPaymentRepository implements PaymentRepository {
       include: PAYMENT_INCLUDE,
     })
     return row ? this.toPayment(row) : undefined
+  }
+
+  async findLiveByCargoBookingId(cargoBookingId: string): Promise<PaymentRecord | undefined> {
+    const row = await this.db.payment.findFirst({
+      where: { cargo_booking_id: cargoBookingId, status: { in: ['authorised', 'captured'] } },
+      orderBy: { started_at: 'desc' },
+      include: PAYMENT_INCLUDE,
+    })
+    return row ? this.toPayment(row) : undefined
+  }
+
+  async milesRedeemed(bookingId: string): Promise<number | null> {
+    const redeems = await this.db.loyalty_transaction.findMany({
+      where: { type: 'redeem', booking_coupon: { booking_id: bookingId } },
+      select: { id: true, miles: true },
+    })
+    if (redeems.length === 0) return null
+    const reversed = await this.db.loyalty_transaction.findMany({
+      where: { type: 'redeem_reversal', reversed_transaction_id: { in: redeems.map((row) => row.id) } },
+      select: { reversed_transaction_id: true },
+    })
+    const gone = new Set(reversed.map((row) => row.reversed_transaction_id))
+    const miles = redeems.filter((row) => !gone.has(row.id)).reduce((sum, row) => sum + Math.abs(row.miles), 0)
+    return miles > 0 ? miles : null
+  }
+
+  async readSetting(key: 'min_hold_minutes' | 'capture_retry_limit'): Promise<number | undefined> {
+    const row = await this.db.payment_setting.findUnique({ where: { key } })
+    const value = Number(row?.value)
+    return Number.isInteger(value) && value >= 0 ? value : undefined
+  }
+
+  async findLiveByBookingId(bookingId: string): Promise<PaymentRecord | undefined> {
+    const row = await this.db.payment.findFirst({
+      where: { booking_id: bookingId, status: { in: ['authorised', 'captured'] } },
+      orderBy: { started_at: 'desc' },
+      include: PAYMENT_INCLUDE,
+    })
+    return row ? this.toPayment(row) : undefined
+  }
+
+  async listByStatus(statuses: readonly PaymentStatus[]): Promise<PaymentRecord[]> {
+    const rows = await this.db.payment.findMany({
+      where: { status: { in: [...statuses] } },
+      orderBy: { started_at: 'asc' },
+      take: LIST_LIMIT,
+      include: PAYMENT_INCLUDE,
+    })
+    return rows.map((row) => this.toPayment(row))
   }
 
   async listPayments(): Promise<PaymentRecord[]> {

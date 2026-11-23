@@ -16,4 +16,6 @@ export interface CardRefundPort {
   recordRefundSucceeded: (request: RefundSucceededRequest) => Promise<{ credit_note_number: string }>
   /** A refund that was counted as through did not go through after all. */
   recordRefundFailed: (paymentId: string) => Promise<void>
+  /** How a refund ended at the provider, or null while it is still pending or the provider cannot say. */
+  readRefundOutcome?: (providerRefundId: string) => Promise<CardRefundOutcome | null>
 }

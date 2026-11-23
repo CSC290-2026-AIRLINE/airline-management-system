@@ -1,7 +1,19 @@
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  UnprocessableEntityException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common'
 import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import type { RefundSettlement } from '@backend/modules/payments-checkout/card-refund.types'
+import { PaymentErrorCode, paymentFailure } from '@backend/modules/payments-crew-pay/payments.errors'
+import type { RefundReason } from './refund-status'
 import { CARD_REFUND_PORT } from './card-refund.port'
 import type { CardRefundPort } from './card-refund.port'
 import type {
@@ -11,13 +23,20 @@ import type {
   MyRefundListDto,
   MyVoucherDto,
   MyVoucherListDto,
+  VoucherValidationDto,
   RefundableListDto,
   RefundDetailDto,
   RefundQueueListDto,
   RefundSummaryDto,
 } from './dto/payments-refunds.types'
 import type { CompensationQueryDto, MyRefundQueryDto, RefundQueueQueryDto } from './dto/refund-query.dto'
-import type { CreateRefundRequestDto, IssueCompensationDto, RefundDecisionDto, VoidVoucherDto } from './dto/refund-action.dto'
+import type {
+  CreateRefundRequestDto,
+  IssueCompensationDto,
+  RefundDecisionDto,
+  ValidateVoucherDto,
+  VoidVoucherDto,
+} from './dto/refund-action.dto'
 import { REFUND_REPOSITORY } from './refund-repository.interface'
 import type { RefundRepository } from './refund-repository.interface'
 import {
@@ -31,7 +50,7 @@ import {
   staffRefundLabel,
   voucherLabel,
 } from './refund-status'
-import type { BookingInfo, RefundRecord, VoucherRecord } from './refund.types'
+import type { BookingInfo, FlightCancellation, RefundRecord, VoucherRecord } from './refund.types'
 
 const DAY = 24 * 60 * 60 * 1000
 const CURRENCY = 'USD'
@@ -143,6 +162,15 @@ export class PaymentsRefundsService {
     const before = refund.status
     const now = this.clock.now()
     const override = dto.decision !== 'reject' && refund.context.fare_rule === 'outside'
+    // A refund the fare rules do not allow can only be approved by an admin, whose reason goes to the audit trail.
+    if (override && (await this.audit.resolveActor(actorId).catch(() => null))?.role !== 'admin') {
+      throw new ForbiddenException(
+        paymentFailure(
+          PaymentErrorCode.REFUND_NEEDS_APPROVAL,
+          `${referenceOf(refund)} is outside the fare rules and needs an admin to approve it`,
+        ),
+      )
+    }
     let voucher: VoucherRecord | undefined
 
     if (dto.decision === 'reject') {
@@ -222,9 +250,14 @@ export class PaymentsRefundsService {
   }
 
   /** Asks the provider to send an approved card refund back, and records what it says. */
-  private async payToCard(refund: RefundRecord, actorId: string): Promise<void> {
+  private async payToCard(refund: RefundRecord, actorId: string | null): Promise<void> {
     if (!this.cardRefunds) return
-    const outcome = await this.cardRefunds.refundToCard({ payment_id: refund.payment_id, refund_id: refund.id, amount: refund.amount })
+    // A mixed payment returns the voucher's share as a new voucher, so only the card's share goes back to the card.
+    const outcome = await this.cardRefunds.refundToCard({
+      payment_id: refund.payment_id,
+      refund_id: refund.id,
+      amount: Math.round((refund.amount - refund.voucher_amount) * 100) / 100,
+    })
     await this.settleCardPayout(refund, outcome, actorId)
   }
 
@@ -326,7 +359,7 @@ export class PaymentsRefundsService {
   async getMyRefund(userId: string, idOrReference: string): Promise<MyRefundDto> {
     const refund = await this.requireRefund(idOrReference)
     if (refund.context.customer_id !== (await this.repo.resolveCustomerId(userId)) || isCompensation(refund)) {
-      throw new NotFoundException(`Refund ${idOrReference} not found`)
+      throw new NotFoundException(paymentFailure(PaymentErrorCode.REFUND_NOT_FOUND, `Refund ${idOrReference} not found`))
     }
     return this.toMyRefund(refund)
   }
@@ -362,10 +395,14 @@ export class PaymentsRefundsService {
     }
 
     if (dto.amount > line.remaining) {
-      throw new BadRequestException(
-        line.remaining > 0
-          ? `You can ask for at most ${line.remaining.toFixed(2)} ${booking.currency} for ${dto.item}`
-          : `${dto.item} has nothing left to refund`,
+      throw new UnprocessableEntityException(
+        paymentFailure(
+          PaymentErrorCode.REFUND_EXCEEDS_PAID,
+          line.remaining > 0
+            ? `You can ask for at most ${line.remaining.toFixed(2)} ${booking.currency} for ${dto.item}`
+            : `${dto.item} has nothing left to refund`,
+          { refundable: line.remaining },
+        ),
       )
     }
 
@@ -426,6 +463,324 @@ export class PaymentsRefundsService {
     return this.toMyRefund(saved)
   }
 
+  /**
+   * Refunds every paid coupon of a cancelled flight, once per `flight_event`.
+   *
+   * It works from 5b's own `payment_line` rows (they point at coupons that carry the flight), so it never asks Feature 3
+   * what status a coupon has, and Feature 3 never asks it. One refund per payment, split across that payment's lines,
+   * 100% of the fare, award-fee and seat-fee lines, no fee, back to the original method. `source_key` is
+   * `flight_cancelled:<event id>:<payment id>`, and the event's receipt is saved in the same transaction as the refunds,
+   * so a replay (or a crash between the two) finds either everything or nothing and pays nobody twice.
+   */
+  async handleFlightCancelled(event: FlightCancellation): Promise<{ refunds: number }> {
+    const paid = await this.repo.listPaidLinesOnFlight(event.flight_id)
+    const now = this.clock.now()
+    const drafts: RefundRecord[] = paid.map(({ booking, lines }) => {
+      const id = crypto.randomUUID()
+      const cents = lines.reduce((sum, line) => sum + Math.round(line.remaining * 100), 0)
+      return {
+        id,
+        reference: '',
+        payment_id: booking.payment_id,
+        payment_line_id: null,
+        lines: lines.map((line) => ({ payment_line_id: line.payment_line_id, amount: line.remaining })),
+        source_key: `flight_cancelled:${event.event_id}:${booking.payment_id}`,
+        reason: 'flight_cancelled',
+        method: 'original',
+        /* It is already approved by the airline's own decision; the card is asked next and `processing` says so. */
+        status: 'processing',
+        amount: cents / 100,
+        voucher_amount: 0,
+        fee_withheld: 0,
+        provider_refund_id: null,
+        requested_by_user_id: null,
+        case_compensation_id: null,
+        audit_log_id: null,
+        decision_note: 'The airline cancelled the flight',
+        failure_reason: null,
+        requested_at: now,
+        completed_at: null,
+        created_at: now,
+        updated_at: now,
+        context: {
+          customer_id: booking.customer_id,
+          booking_reference: booking.reference,
+          item: lines.map((line) => line.description).join(', '),
+          customer_reason: null,
+          fare_rule: 'inside',
+          fare_rule_label: 'Flight cancelled by the airline',
+          fare_rule_note: 'A cancelled flight is refunded in full, with no fee.',
+          paid_by: this.paidBy(booking),
+          card_brand: booking.card_brand,
+          card_last4: booking.card_last4,
+          credit_note_number: null,
+          voucher_code: null,
+          decided_at: now,
+          decided_by: null,
+          override: false,
+          older: false,
+        },
+      }
+    })
+
+    const created = await this.repo.insertFlightRefunds(event.event_id, drafts, now)
+    for (const refund of created) {
+      await this.writeAudit(null, {
+        action: 'create',
+        entityType: 'refund',
+        entityId: refund.id,
+        summary: `${referenceOf(refund)} refunds ${refund.amount.toFixed(2)} ${refund.context.booking_reference} for a cancelled flight`,
+        reason: refund.decision_note,
+        after: { status: refund.status, source_key: refund.source_key, flight_event_id: event.event_id },
+      })
+      /* A failed payout stays on the refund (and in the staff exception list); one bad card must not stop the others. */
+      if (this.cardRefunds)
+        await this.payToCard(refund, null).catch((error: unknown) => this.logger.error(`Refund ${refund.id}: ${String(error)}`))
+      else {
+        refund.provider_refund_id = providerRefundOf(refund)
+        await this.repo.updateRefund(refund)
+      }
+    }
+    return { refunds: created.length }
+  }
+
+  /**
+   * Feature 3 cancelled a booking and says how much to give back (fare lines less the cancellation fee, which 3 gets from
+   * Feature 4). One `customer_cancel` refund is made against the booking's payment, split across its lines, once per
+   * booking (`source_key = customer_cancel:<booking id>`), and a replay finds it and does nothing.
+   *
+   * A payment that used a voucher is refunded pro rata: the voucher's share comes back as a new voucher and the rest goes
+   * to the card, with any rounding remainder on the card. The fee kept is stored on the refund (`fee_withheld`), so the
+   * amount can be explained later.
+   */
+  async refundCancelledBooking(input: {
+    paymentId: string
+    bookingId: string
+    amount: number
+    reason: string
+  }): Promise<RefundRecord | undefined> {
+    return this.refundPaidPayment({
+      paymentId: input.paymentId,
+      sourceKey: `customer_cancel:${input.bookingId}`,
+      reason: 'customer_cancel',
+      amount: input.amount,
+      note: input.reason,
+      label: 'Cancelled by the customer',
+      rule: 'Fare less the cancellation fee from the fare rules.',
+    })
+  }
+
+  /**
+   * A customer cancels an onboard order (feature 12) that was already paid: the whole payment goes back, once per payment
+   * (`source_key = order_cancel:<payment id>`), to the card. Feature 12 decides the amount.
+   */
+  async refundOnboardOrder(input: { paymentId: string; amount: number; note: string }): Promise<RefundRecord | undefined> {
+    return this.refundPaidPayment({
+      paymentId: input.paymentId,
+      sourceKey: `order_cancel:${input.paymentId}`,
+      reason: 'customer_cancel',
+      amount: input.amount,
+      note: input.note,
+      label: 'Order cancelled by the customer',
+      rule: 'An onboard order is refunded in full when it is cancelled.',
+      lineTypes: ['onboard_order'],
+    })
+  }
+
+  /**
+   * Feature 17 cancels a cargo booking, rejects a shipment or re-weighs it lower, and says how much goes back: the whole
+   * payment before acceptance, the part the fee and refundable percent leave after it, or the difference for a re-weigh.
+   * `source_key` is per cargo booking (`cargo_cancel:<id>`, `cargo_rejected:<id>`), and a re-weigh is numbered
+   * (`cargo_reweigh:<id>:<n>`) because a booking can be re-weighed more than once. A payment that was only authorised
+   * (capture stalled) is not refunded: nothing was charged, so the caller voids it instead (`voidPayment`).
+   */
+  async refundCargoBooking(input: {
+    paymentId: string
+    cargoBookingId: string
+    reason: 'cargo_cancel' | 'cargo_rejected' | 'cargo_reweigh'
+    amount: number
+    note: string
+    reweighNo?: number
+  }): Promise<RefundRecord | undefined> {
+    const key = input.reason === 'cargo_reweigh' ? `${input.cargoBookingId}:${input.reweighNo ?? 1}` : input.cargoBookingId
+    return this.refundPaidPayment({
+      paymentId: input.paymentId,
+      sourceKey: `${input.reason}:${key}`,
+      reason: input.reason,
+      amount: input.amount,
+      note: input.note,
+      label: { cargo_cancel: 'Cancelled by the shipper', cargo_rejected: 'Shipment rejected', cargo_reweigh: 'Re-weighed lower' }[
+        input.reason
+      ],
+      rule: 'The amount Feature 17 worked out from its fee and refundable percent.',
+      lineTypes: ['cargo_freight', 'cargo_surcharge'],
+    })
+  }
+
+  /**
+   * One refund of a captured payment, split across its lines in proportion to what each has left. It is once per
+   * `source_key`, never more than is left, and a voucher's share comes back as a new voucher.
+   */
+  private async refundPaidPayment(input: {
+    paymentId: string
+    sourceKey: string
+    reason: RefundReason
+    amount: number
+    note: string
+    label: string
+    rule: string
+    lineTypes?: string[]
+  }): Promise<RefundRecord | undefined> {
+    const sourceKey = input.sourceKey
+    const existing = (await this.repo.listRefunds()).find((refund) => refund.source_key === sourceKey)
+    if (existing) return existing
+    const paid = await this.repo.findPaidPayment(input.paymentId, input.lineTypes)
+    if (!paid || paid.lines.length === 0) return undefined
+
+    const cents = (value: number) => Math.round(value * 100)
+    const refundable = paid.lines.reduce((sum, line) => sum + cents(line.remaining), 0)
+    const want = Math.min(cents(input.amount), refundable)
+    if (want <= 0) return undefined
+    if (want < cents(input.amount)) this.logger.warn(`Refund of ${input.amount} for ${input.sourceKey} is capped at ${refundable / 100}`)
+
+    // Split across the lines in proportion to what each has left; the last line takes the rounding remainder.
+    let left = want
+    const lines = paid.lines.map((line, index) => {
+      const share = index === paid.lines.length - 1 ? left : Math.min(left, Math.round((want * cents(line.remaining)) / refundable))
+      left -= share
+      return { payment_line_id: line.payment_line_id, amount: share / 100 }
+    })
+    const voucherShare = paid.amount_total > 0 ? Math.round((want * cents(paid.voucher_amount)) / cents(paid.amount_total)) / 100 : 0
+    const cardShare = (want - cents(voucherShare)) / 100
+
+    const now = this.clock.now()
+    const id = crypto.randomUUID()
+    const refund: RefundRecord = {
+      id,
+      reference: '',
+      payment_id: input.paymentId,
+      payment_line_id: null,
+      lines: lines.filter((line) => line.amount > 0),
+      source_key: sourceKey,
+      reason: input.reason,
+      method: 'original',
+      status: cardShare > 0 ? 'processing' : 'succeeded',
+      amount: want / 100,
+      voucher_amount: voucherShare,
+      fee_withheld: Math.max(0, (refundable - want) / 100),
+      provider_refund_id: null,
+      requested_by_user_id: null,
+      case_compensation_id: null,
+      audit_log_id: null,
+      decision_note: input.note,
+      failure_reason: null,
+      requested_at: now,
+      completed_at: cardShare > 0 ? null : now,
+      created_at: now,
+      updated_at: now,
+      context: {
+        customer_id: paid.booking.customer_id,
+        booking_reference: paid.booking.reference,
+        item: paid.lines.map((line) => line.description).join(', '),
+        customer_reason: null,
+        fare_rule: 'inside',
+        fare_rule_label: input.label,
+        fare_rule_note: input.rule,
+        paid_by: this.paidBy(paid.booking),
+        card_brand: paid.booking.card_brand,
+        card_last4: paid.booking.card_last4,
+        credit_note_number: null,
+        voucher_code: null,
+        decided_at: now,
+        decided_by: null,
+        override: false,
+        older: false,
+      },
+    }
+
+    let saved: RefundRecord
+    if (voucherShare > 0) {
+      const voucher = await this.newVoucher({
+        customerId: paid.booking.customer_id,
+        amount: voucherShare,
+        currency: paid.booking.currency,
+        booking: paid.booking.reference,
+        refundId: id,
+        note: 'Your voucher’s share of a cancelled booking',
+        description: `Returned from the cancelled booking ${paid.booking.reference}`,
+      })
+      refund.context.voucher_code = voucher.code
+      saved = (await this.repo.saveRefundWithVoucher(refund, voucher, 'insert')).refund
+    } else {
+      saved = await this.repo.insertRefund(refund)
+    }
+    await this.writeAudit(null, {
+      action: 'create',
+      entityType: 'refund',
+      entityId: saved.id,
+      summary: `${referenceOf(saved)} refunds ${saved.amount.toFixed(2)} ${paid.booking.currency} of ${paid.booking.reference} (${input.reason})`,
+      reason: input.note,
+      after: { status: saved.status, source_key: sourceKey, fee_withheld: saved.fee_withheld, voucher_amount: saved.voucher_amount },
+    })
+    if (cardShare > 0) {
+      if (this.cardRefunds)
+        await this.payToCard(saved, null).catch((error: unknown) => this.logger.error(`Refund ${saved.id}: ${String(error)}`))
+      else {
+        saved.provider_refund_id = providerRefundOf(saved)
+        await this.repo.updateRefund(saved)
+      }
+    }
+    return saved
+  }
+
+  /**
+   * Re-reads from the provider every card refund that has been `processing` for more than 2 minutes, so a lost
+   * `refund.*` webhook does not leave a refund waiting for ever (problem 6). A refund still pending is left alone.
+   */
+  /** Marks the vouchers that ran out as expired, each with its journal row (the liability leaves). */
+  expireVouchers(): Promise<number> {
+    return this.repo.expireDueVouchers(this.clock.now())
+  }
+
+  async reconcileProcessingRefunds(): Promise<number> {
+    const port = this.cardRefunds
+    if (!port?.readRefundOutcome) return 0
+    const cutoff = this.clock.now().getTime() - 2 * 60 * 1000
+    let settled = 0
+    for (const refund of await this.repo.listRefunds()) {
+      if (refund.status !== 'processing' || refund.method !== 'original' || !refund.provider_refund_id) continue
+      if (refund.updated_at.getTime() > cutoff) continue
+      try {
+        const outcome = await port.readRefundOutcome(refund.provider_refund_id)
+        if (!outcome || outcome.status === 'pending') continue
+        await this.settleFromProvider({
+          refund_id: refund.id,
+          provider_refund_id: refund.provider_refund_id,
+          outcome: outcome.status === 'succeeded' ? 'succeeded' : 'failed',
+          failure_code: outcome.failure_code,
+        })
+        settled += 1
+      } catch (error) {
+        this.logger.error(`Refund ${refund.id} could not be re-read from the provider: ${String(error)}`)
+      }
+    }
+    return settled
+  }
+
+  /** Handles every cancelled flight with resolution `refund` that has no receipt yet, in `seq` order (startup and the poll). */
+  async catchUpFlightCancellations(): Promise<number> {
+    let refunds = 0
+    for (const event of await this.repo.listUnprocessedFlightCancellations()) {
+      try {
+        refunds += (await this.handleFlightCancelled(event)).refunds
+      } catch (error) {
+        /* Leave the event without a receipt: the next pass tries it again. */
+        this.logger.error(`flight.cancelled ${event.event_id} not handled yet: ${String(error)}`)
+      }
+    }
+    return refunds
+  }
+
   /** The customer's captured payments, with the lines they can still ask money back for (the "Request a refund" dialog). */
   async listMyRefundable(userId: string): Promise<RefundableListDto> {
     const customerId = await this.repo.resolveCustomerId(userId)
@@ -455,6 +810,30 @@ export class PaymentsRefundsService {
       items: mine.map((voucher) => this.toMyVoucher(voucher, now)),
       total: mine.length,
       usable: mine.filter((v) => v.status === 'active').length,
+    }
+  }
+
+  /**
+   * Checks a voucher code for checkout and says what it is worth, without reserving it. A code that does not exist, is
+   * someone else's, is used, expired or voided all answer the same `VOUCHER_INVALID`, so a code cannot be probed.
+   * A voucher is used whole: with a `total`, whatever the voucher is worth above it is forfeited, and the answer says so.
+   */
+  async validateVoucher(userId: string, dto: ValidateVoucherDto): Promise<VoucherValidationDto> {
+    const invalid = () => new UnprocessableEntityException(paymentFailure(PaymentErrorCode.VOUCHER_INVALID, 'This voucher cannot be used'))
+    const customerId = await this.repo.resolveCustomerId(userId)
+    const found = customerId ? await this.repo.findVoucherByCode(dto.code.trim().toUpperCase()) : undefined
+    if (!found || found.customer_id !== customerId) throw invalid()
+    const voucher = this.current(found, this.clock.now())
+    if (voucher.status !== 'active') throw invalid()
+    const cents = (value: number) => Math.round(value * 100)
+    const applied = dto.total === undefined ? null : Math.min(cents(voucher.amount), cents(dto.total)) / 100
+    return {
+      code: voucher.code,
+      value: voucher.amount,
+      currency: voucher.currency,
+      expires_at: voucher.expires_at.toISOString(),
+      applied,
+      forfeited: applied === null ? null : (cents(voucher.amount) - cents(applied)) / 100,
     }
   }
 
@@ -508,10 +887,14 @@ export class PaymentsRefundsService {
         .reduce((sum, refund) => sum + refund.amount, 0)
       const left = Math.max(0, booking.total - counted)
       if (dto.amount > left) {
-        throw new BadRequestException(
-          left > 0
-            ? `A card refund on ${booking.reference} can be at most ${left.toFixed(2)} ${booking.currency}, what the payment still holds`
-            : `The payment for ${booking.reference} has nothing left to refund to the card`,
+        throw new UnprocessableEntityException(
+          paymentFailure(
+            PaymentErrorCode.REFUND_EXCEEDS_PAID,
+            left > 0
+              ? `A card refund on ${booking.reference} can be at most ${left.toFixed(2)} ${booking.currency}, what the payment still holds`
+              : `The payment for ${booking.reference} has nothing left to refund to the card`,
+            { refundable: left },
+          ),
         )
       }
     }
@@ -634,7 +1017,7 @@ export class PaymentsRefundsService {
 
   private async requireRefund(idOrReference: string): Promise<RefundRecord> {
     const found = (await this.repo.findRefundById(idOrReference)) ?? (await this.repo.findRefundByReference(idOrReference))
-    if (!found) throw new NotFoundException(`Refund ${idOrReference} not found`)
+    if (!found) throw new NotFoundException(paymentFailure(PaymentErrorCode.REFUND_NOT_FOUND, `Refund ${idOrReference} not found`))
     return found
   }
 

@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer'
-import { IsDateString, IsNumber, IsOptional, IsString, IsUUID, Length, Max, Min } from 'class-validator'
+import { IsDateString, IsIn, IsNumber, IsOptional, IsString, IsUUID, Length, Max, Min } from 'class-validator'
+import { POSTING_TYPES } from './support.services'
 
 export class CreatePayRunDto {
   @IsDateString({ strict: true })
@@ -44,4 +45,17 @@ export class AdjustmentDto {
   @IsOptional()
   @IsUUID()
   pay_run_id?: string
+}
+
+/** The journal by date range: `occurred_at` from (inclusive) to (exclusive), optionally one posting type. Never a "last seq seen" cursor. */
+export class PostingsQueryDto {
+  @IsDateString({ strict: true })
+  from!: string
+
+  @IsDateString({ strict: true })
+  to!: string
+
+  @IsOptional()
+  @IsIn(POSTING_TYPES)
+  type?: string
 }

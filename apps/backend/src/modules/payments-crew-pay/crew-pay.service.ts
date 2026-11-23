@@ -43,6 +43,11 @@ export class CrewPayService {
     }
   }
 
+  /** The journal for the finance group, by date range (callers check the finance role first). */
+  readPostings(from: Date, to: Date, type?: string) {
+    return this.postings.read(from, to, type)
+  }
+
   // ----- pricing job ----------------------------------------------------------------------------------------------
 
   /**

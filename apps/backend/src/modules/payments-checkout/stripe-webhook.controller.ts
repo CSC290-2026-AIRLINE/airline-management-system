@@ -1,4 +1,5 @@
-import { Controller, Headers, HttpCode, Post, Req, type RawBodyRequest } from '@nestjs/common'
+import { Controller, Headers, HttpCode, Post, Req, type RawBodyRequest, UseFilters } from '@nestjs/common'
+import { PaymentsErrorFilter } from '@backend/modules/payments-checkout/payments-error.filter'
 import type { Request } from 'express'
 import { Public } from '@backend/auth/decorators/public.decorator'
 import { PaymentsCheckoutService } from './payments-checkout.service'
@@ -10,6 +11,7 @@ import { PaymentsCheckoutService } from './payments-checkout.service'
  * (`main.ts` keeps them on `req.rawBody`). A bad signature is a 400 and nothing is read from the body.
  */
 @Controller('webhooks')
+@UseFilters(PaymentsErrorFilter)
 export class PaymentWebhookController {
   constructor(private readonly svc: PaymentsCheckoutService) {}
 

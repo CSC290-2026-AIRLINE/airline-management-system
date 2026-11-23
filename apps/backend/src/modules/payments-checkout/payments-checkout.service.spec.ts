@@ -187,17 +187,31 @@ describe('PaymentsCheckoutService.expireIfPastDeadline', () => {
     expect(expired.authorised_at).toBeNull()
   })
 
-  it('voids an authorised payment whose hold ran out', async () => {
+  it('voids an authorised payment nobody confirmed when its hold runs out', async () => {
     const { svc, clock, repo } = await makeService()
-    // The seeded capture-stalled payment is authorised and still inside its deadline.
+    // The seeded capture-stalled payment is authorised; this one's seller never answered, so no capture was tried.
     const payment = (await repo.findById('pay_00000000-0000-4000-8000-000000000006')) as PaymentRecord
     expect(payment.status).toBe('authorised')
+    payment.capture_attempts = 0
+    payment.capture_stalled_at = null
     clock.shift(20 * 60 * 1000)
 
     const ended = await svc.expireIfPastDeadline(payment.id)
 
     expect(ended.status).toBe('voided')
     expect(ended.voided_at).not.toBeNull()
+  })
+
+  it('leaves a confirmed payment whose capture is stalled alone: the ticket exists, staff retry or cancel it', async () => {
+    const { svc, clock, repo } = await makeService()
+    const payment = (await repo.findById('pay_00000000-0000-4000-8000-000000000006')) as PaymentRecord
+    expect(payment.capture_attempts).toBeGreaterThan(0)
+    clock.shift(20 * 60 * 1000)
+
+    const after = await svc.expireIfPastDeadline(payment.id)
+
+    expect(after.status).toBe('authorised')
+    expect(after.voided_at).toBeNull()
   })
 })
 

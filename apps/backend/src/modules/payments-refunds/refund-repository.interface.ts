@@ -1,4 +1,12 @@
-import type { BookingInfo, RefundablePayment, RefundRecord, VoucherRecord } from './refund.types'
+import type {
+  BookingInfo,
+  FlightCancellation,
+  PaidOnFlight,
+  PaidPayment,
+  RefundablePayment,
+  RefundRecord,
+  VoucherRecord,
+} from './refund.types'
 
 /**
  * The DI token for the repository. The module provides the Prisma-backed implementation under this token; the tests
@@ -33,6 +41,24 @@ export interface RefundRepository {
     voucher: VoucherRecord,
     mode: 'insert' | 'update',
   ): Promise<{ refund: RefundRecord; voucher: VoucherRecord }>
+
+  /** `flight.cancelled` events with resolution `refund` that have no `refund_event_receipt` yet, in `seq` order. */
+  listUnprocessedFlightCancellations(): Promise<FlightCancellation[]>
+  /**
+   * The captured payments with fare, award-fee or seat-fee lines on this flight that still have money on them. It works
+   * from 5b's own payment lines (which point at coupons that carry the flight), so it never asks Feature 3 for a status.
+   */
+  listPaidLinesOnFlight(flightId: string): Promise<PaidOnFlight[]>
+  /** A captured payment's refundable lines (fare, award fee and seat fee unless `lineTypes` says otherwise), or undefined when it is not captured. */
+  findPaidPayment(paymentId: string, lineTypes?: string[]): Promise<PaidPayment | undefined>
+  /**
+   * Saves the refunds of one cancelled flight and the event's receipt in one transaction, skipping any refund whose
+   * `source_key` already exists. Returns the refunds that were new, so a replay pays nobody twice.
+   */
+  insertFlightRefunds(eventId: string, refunds: RefundRecord[], at: Date): Promise<RefundRecord[]>
+
+  /** Marks every active voucher that ran out by `now` as expired, and posts each to the journal. Returns how many. */
+  expireDueVouchers(now: Date): Promise<number>
 
   listVouchers(): Promise<VoucherRecord[]>
   findVoucherById(id: string): Promise<VoucherRecord | undefined>

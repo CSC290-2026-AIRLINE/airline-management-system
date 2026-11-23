@@ -1,9 +1,24 @@
 import { Injectable } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import type { Prisma } from '@backend/db/generated/prisma/client'
+import {
+  refundReversedPosting,
+  voucherExpiredPosting,
+  refundSucceededPostings,
+  voucherIssuedPosting,
+  writePostings,
+} from '@backend/modules/payments-checkout/finance-journal'
 import type { RefundRepository } from './refund-repository.interface'
 import type { RefundMethod, RefundReason, RefundStatus, VoucherStatus } from './refund-status'
-import type { BookingInfo, RefundablePayment, RefundRecord, VoucherRecord } from './refund.types'
+import type {
+  BookingInfo,
+  FlightCancellation,
+  PaidOnFlight,
+  PaidPayment,
+  RefundablePayment,
+  RefundRecord,
+  VoucherRecord,
+} from './refund.types'
 
 /** The most rows one list reads. The queue and the history are short today; add a cursor before they are not. */
 const LIST_LIMIT = 500
@@ -13,6 +28,10 @@ const GIVES_BACK = ['rejected', 'failed'] as const
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/** The reference a person reads for a payment: the booking's own reference, or the purchase_ref of anything else. */
+const refOf = (payment: { purchase_ref: string; booking?: { booking_reference: string } | null }): string =>
+  payment.booking?.booking_reference ?? payment.purchase_ref
+
 const num = (value: { toString(): string }): number => Number(value.toString())
 
 /** What a refund row needs from the payment it is on. */
@@ -20,6 +39,7 @@ const REFUND_INCLUDE = {
   payment: {
     select: {
       purchase_ref: true,
+      booking: { select: { booking_reference: true } },
       payer_customer_id: true,
       currency: true,
       amount_total: true,
@@ -39,8 +59,14 @@ type RefundRow = Prisma.refundGetPayload<{ include: typeof REFUND_INCLUDE }>
 
 /** What a voucher row needs from the refund and the payment around it. */
 const VOUCHER_INCLUDE = {
-  refund: { select: { decision_note: true, reason: true, payment: { select: { purchase_ref: true } } } },
-  payment: { select: { purchase_ref: true }, take: 1 },
+  refund: {
+    select: {
+      decision_note: true,
+      reason: true,
+      payment: { select: { purchase_ref: true, booking: { select: { booking_reference: true } } } },
+    },
+  },
+  payment: { select: { purchase_ref: true, booking: { select: { booking_reference: true } } }, take: 1 },
 } satisfies Prisma.compensation_voucherInclude
 type VoucherRow = Prisma.compensation_voucherGetPayload<{ include: typeof VOUCHER_INCLUDE }>
 
@@ -147,6 +173,7 @@ export class PrismaRefundRepository implements RefundRepository {
           updated_at: voucher.updated_at,
         },
       })
+      await writePostings(tx, [voucherIssuedPosting(voucher)])
     })
     refund.reference = referenceOf(refund.id)
     return { refund, voucher }
@@ -176,11 +203,12 @@ export class PrismaRefundRepository implements RefundRepository {
         updated_at: refund.updated_at,
       },
     })
-    if (refund.payment_line_id) {
+    const lines = refund.lines ?? (refund.payment_line_id ? [{ payment_line_id: refund.payment_line_id, amount: refund.amount }] : [])
+    for (const line of lines) {
       await tx.refund_line.create({
-        data: { refund_id: refund.id, payment_id: refund.payment_id, payment_line_id: refund.payment_line_id, amount: refund.amount },
+        data: { refund_id: refund.id, payment_id: refund.payment_id, payment_line_id: line.payment_line_id, amount: line.amount },
       })
-      await tx.payment_line.update({ where: { id: refund.payment_line_id }, data: { refunded_amount: { increment: refund.amount } } })
+      await tx.payment_line.update({ where: { id: line.payment_line_id }, data: { refunded_amount: { increment: line.amount } } })
     }
   }
 
@@ -203,6 +231,7 @@ export class PrismaRefundRepository implements RefundRepository {
         updated_at: refund.updated_at,
       },
     })
+    await this.postRefundMovement(tx, refund, before.status)
     const wasCounted = !(GIVES_BACK as readonly string[]).includes(before.status)
     const isCounted = !(GIVES_BACK as readonly string[]).includes(refund.status)
     if (wasCounted && !isCounted) {
@@ -217,7 +246,186 @@ export class PrismaRefundRepository implements RefundRepository {
     }
   }
 
+  /**
+   * The journal rows of a refund that just changed, written in the same transaction as the change: a card refund that
+   * succeeded posts `refund_succeeded` (or `compensation_paid`), one that had succeeded and then failed late posts
+   * `refund_reversed`. A refund returned as a voucher is not cash out, so it posts through its voucher instead.
+   */
+  private async postRefundMovement(tx: Prisma.TransactionClient, refund: RefundRecord, before: string): Promise<void> {
+    const nowSucceeded = refund.status === 'succeeded' && before !== 'succeeded' && refund.method === 'original'
+    const lateFailure = before === 'succeeded' && refund.status === 'failed' && refund.method === 'original'
+    if (!nowSucceeded && !lateFailure) return
+    const payment = await tx.payment.findUniqueOrThrow({ where: { id: refund.payment_id }, select: { currency: true } })
+    const at = refund.completed_at ?? refund.updated_at
+    if (lateFailure) {
+      await writePostings(tx, [refundReversedPosting({ ...refund, currency: payment.currency, at: refund.updated_at })])
+      return
+    }
+    const lines = await tx.refund_line.findMany({
+      where: { refund_id: refund.id },
+      select: { amount: true, payment_line: { select: { line_type: true } } },
+    })
+    await writePostings(
+      tx,
+      refundSucceededPostings({
+        ...refund,
+        currency: payment.currency,
+        at,
+        lines: lines.map((line) => ({ line_type: line.payment_line.line_type, amount: num(line.amount) })),
+      }),
+    )
+  }
+
+  /* ---- Airline cancellations --------------------------------------------------------------------------------- */
+
+  async listUnprocessedFlightCancellations(): Promise<FlightCancellation[]> {
+    const rows = await this.db.flight_event.findMany({
+      where: { type: 'cancelled', resolution: 'refund', refund_event_receipt: null },
+      orderBy: { seq: 'asc' },
+      take: LIST_LIMIT,
+      select: { id: true, flight_id: true, seq: true },
+    })
+    return rows.map((row) => ({ event_id: row.id, flight_id: row.flight_id, seq: Number(row.seq) }))
+  }
+
+  async listPaidLinesOnFlight(flightId: string): Promise<PaidOnFlight[]> {
+    const payments = await this.db.payment.findMany({
+      where: {
+        status: 'captured',
+        payment_line_payment_line_payment_idTopayment: {
+          some: { line_type: { in: ['fare', 'award_fee', 'seat_fee'] }, booking_coupon: { flight_id: flightId } },
+        },
+      },
+      take: LIST_LIMIT,
+      select: {
+        id: true,
+        purchase_ref: true,
+        booking: { select: { booking_reference: true } },
+        payer_customer_id: true,
+        currency: true,
+        amount_total: true,
+        payment_attempt: {
+          where: { card_last4: { not: null } },
+          orderBy: { created_at: 'desc' },
+          take: 1,
+          select: { card_brand: true, card_last4: true },
+        },
+        payment_line_payment_line_payment_idTopayment: {
+          where: { line_type: { in: ['fare', 'award_fee', 'seat_fee'] }, booking_coupon: { flight_id: flightId } },
+          orderBy: { created_at: 'asc' },
+          select: { id: true, description: true, amount: true, refunded_amount: true },
+        },
+      },
+    })
+    return payments
+      .map((payment) => ({
+        booking: {
+          reference: refOf(payment),
+          customer_id: payment.payer_customer_id ?? '',
+          payment_id: payment.id,
+          currency: payment.currency,
+          total: num(payment.amount_total),
+          card_brand: payment.payment_attempt[0]?.card_brand ?? null,
+          card_last4: payment.payment_attempt[0]?.card_last4 ?? null,
+        },
+        lines: payment.payment_line_payment_line_payment_idTopayment
+          .map((line) => ({
+            payment_line_id: line.id,
+            description: line.description,
+            remaining: Math.max(0, num(line.amount) - num(line.refunded_amount)),
+          }))
+          .filter((line) => line.remaining > 0),
+      }))
+      .filter((payment) => payment.lines.length > 0)
+  }
+
+  async findPaidPayment(paymentId: string, lineTypes: string[] = ['fare', 'award_fee', 'seat_fee']): Promise<PaidPayment | undefined> {
+    const payment = await this.db.payment.findFirst({
+      where: { id: paymentId, status: 'captured' },
+      select: {
+        id: true,
+        purchase_ref: true,
+        booking: { select: { booking_reference: true } },
+        payer_customer_id: true,
+        currency: true,
+        amount_total: true,
+        voucher_amount: true,
+        payment_attempt: {
+          where: { card_last4: { not: null } },
+          orderBy: { created_at: 'desc' },
+          take: 1,
+          select: { card_brand: true, card_last4: true },
+        },
+        payment_line_payment_line_payment_idTopayment: {
+          where: { line_type: { in: lineTypes } },
+          orderBy: { created_at: 'asc' },
+          select: { id: true, description: true, amount: true, refunded_amount: true },
+        },
+      },
+    })
+    if (!payment) return undefined
+    return {
+      booking: {
+        reference: refOf(payment),
+        customer_id: payment.payer_customer_id ?? '',
+        payment_id: payment.id,
+        currency: payment.currency,
+        total: num(payment.amount_total),
+        card_brand: payment.payment_attempt[0]?.card_brand ?? null,
+        card_last4: payment.payment_attempt[0]?.card_last4 ?? null,
+      },
+      amount_total: num(payment.amount_total),
+      voucher_amount: num(payment.voucher_amount),
+      lines: payment.payment_line_payment_line_payment_idTopayment
+        .map((line) => ({
+          payment_line_id: line.id,
+          description: line.description,
+          remaining: Math.max(0, num(line.amount) - num(line.refunded_amount)),
+        }))
+        .filter((line) => line.remaining > 0),
+    }
+  }
+
+  async insertFlightRefunds(eventId: string, refunds: RefundRecord[], at: Date): Promise<RefundRecord[]> {
+    const created = await this.db.$transaction(async (tx) => {
+      const made: RefundRecord[] = []
+      for (const refund of refunds) {
+        /* The payment's row lock: a payment and its refunds change one at a time (the counter is raised under it). */
+        await tx.$executeRaw`SELECT 1 FROM payment WHERE id = ${refund.payment_id}::uuid FOR UPDATE`
+        const known = await tx.refund.findUnique({ where: { source_key: refund.source_key }, select: { id: true } })
+        if (known) continue
+        await this.createRefund(tx, refund)
+        made.push(refund)
+      }
+      /* The receipt goes in with the refunds, so an event is either fully handled or not at all. A replay finds it. */
+      await tx.refund_event_receipt.upsert({ where: { event_id: eventId }, create: { event_id: eventId, processed_at: at }, update: {} })
+      return made
+    })
+    for (const refund of created) refund.reference = referenceOf(refund.id)
+    return created
+  }
+
   /* ---- Vouchers ---------------------------------------------------------------------------------------------- */
+
+  async expireDueVouchers(now: Date): Promise<number> {
+    return this.db.$transaction(async (tx) => {
+      const due = await tx.compensation_voucher.findMany({
+        where: { status: 'active', expires_at: { lte: now } },
+        take: LIST_LIMIT,
+        select: { id: true, amount: true, currency: true, expires_at: true },
+      })
+      if (due.length === 0) return 0
+      await tx.compensation_voucher.updateMany({
+        where: { id: { in: due.map((v) => v.id) }, status: 'active' },
+        data: { status: 'expired', updated_at: now },
+      })
+      await writePostings(
+        tx,
+        due.map((v) => voucherExpiredPosting({ id: v.id, amount: num(v.amount), currency: v.currency, expires_at: v.expires_at })),
+      )
+      return due.length
+    })
+  }
 
   async listVouchers(): Promise<VoucherRecord[]> {
     const rows = await this.db.compensation_voucher.findMany({ orderBy: { issued_at: 'desc' }, take: LIST_LIMIT, include: VOUCHER_INCLUDE })
@@ -252,7 +460,12 @@ export class PrismaRefundRepository implements RefundRepository {
 
   async findBooking(reference: string): Promise<BookingInfo | undefined> {
     const payment = await this.db.payment.findFirst({
-      where: { purchase_ref: reference, status: 'captured', payer_customer_id: { not: null } },
+      where: {
+        // The customer reads the booking's own reference; any other purchase is named by its purchase_ref.
+        OR: [{ purchase_ref: reference }, { booking: { booking_reference: reference } }],
+        status: 'captured',
+        payer_customer_id: { not: null },
+      },
       orderBy: { started_at: 'desc' },
       select: {
         id: true,
@@ -260,6 +473,7 @@ export class PrismaRefundRepository implements RefundRepository {
         currency: true,
         amount_total: true,
         purchase_ref: true,
+        booking: { select: { booking_reference: true } },
         payment_attempt: {
           where: { card_last4: { not: null } },
           orderBy: { created_at: 'desc' },
@@ -270,7 +484,7 @@ export class PrismaRefundRepository implements RefundRepository {
     })
     if (!payment?.payer_customer_id) return undefined
     return {
-      reference: payment.purchase_ref,
+      reference: refOf(payment),
       customer_id: payment.payer_customer_id,
       payment_id: payment.id,
       currency: payment.currency,
@@ -294,6 +508,7 @@ export class PrismaRefundRepository implements RefundRepository {
       select: {
         id: true,
         purchase_ref: true,
+        booking: { select: { booking_reference: true } },
         currency: true,
         amount_total: true,
         payment_attempt: {
@@ -329,14 +544,14 @@ export class PrismaRefundRepository implements RefundRepository {
           : [
               {
                 payment_line_id: null,
-                description: `Payment · ${payment.purchase_ref}`,
+                description: `Payment · ${refOf(payment)}`,
                 amount: total,
                 remaining: Math.max(0, total - payment.refund.reduce((sum, row) => sum + num(row.amount), 0)),
               },
             ]
       return {
         booking: {
-          reference: payment.purchase_ref,
+          reference: refOf(payment),
           customer_id: customerId,
           payment_id: payment.id,
           currency: payment.currency,
@@ -380,10 +595,7 @@ export class PrismaRefundRepository implements RefundRepository {
     const attempt = row.payment.payment_attempt[0]
     const open = row.status === 'requested' || row.status === 'pending_approval'
     const item =
-      text(created?.after, 'item') ??
-      row.refund_line[0]?.payment_line.description ??
-      row.decision_note ??
-      `Payment · ${row.payment.purchase_ref}`
+      text(created?.after, 'item') ?? row.refund_line[0]?.payment_line.description ?? row.decision_note ?? `Payment · ${refOf(row.payment)}`
 
     return {
       id: row.id,
@@ -409,7 +621,7 @@ export class PrismaRefundRepository implements RefundRepository {
       updated_at: row.updated_at,
       context: {
         customer_id: row.payment.payer_customer_id ?? '',
-        booking_reference: row.payment.purchase_ref,
+        booking_reference: refOf(row.payment),
         item,
         customer_reason: text(created?.after, 'customer_reason'),
         fare_rule: 'inside',
@@ -431,8 +643,8 @@ export class PrismaRefundRepository implements RefundRepository {
   }
 
   private toVoucher(row: VoucherRow): VoucherRecord {
-    const booking = row.refund?.payment.purchase_ref ?? '—'
-    const usedOn = row.payment[0]?.purchase_ref
+    const booking = row.refund ? refOf(row.refund.payment) : '—'
+    const usedOn = row.payment[0] ? refOf(row.payment[0]) : undefined
     return {
       id: row.id,
       code: shownCode(row.code),

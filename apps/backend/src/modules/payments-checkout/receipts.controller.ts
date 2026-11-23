@@ -1,4 +1,5 @@
-import { Controller, Get, Param, Query, UsePipes, ValidationPipe } from '@nestjs/common'
+import { Controller, Get, Param, Query, UsePipes, ValidationPipe, UseFilters } from '@nestjs/common'
+import { PaymentsErrorFilter } from '@backend/modules/payments-checkout/payments-error.filter'
 import { CurrentUser } from '@backend/auth/decorators/current-user.decorator'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { PaymentsCheckoutService } from './payments-checkout.service'
@@ -15,6 +16,7 @@ import type { ReceiptDetailDto, ReceiptListDto } from './dto/payments-checkout.t
  * comes back with it.
  */
 @Controller('receipts')
+@UseFilters(PaymentsErrorFilter)
 @UsePipes(
   new ValidationPipe({
     whitelist: true,

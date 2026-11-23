@@ -27,6 +27,14 @@ export const PaymentErrorCode = {
 } as const
 export type PaymentErrorCode = (typeof PaymentErrorCode)[keyof typeof PaymentErrorCode]
 
+/**
+ * A Feature 5 failure for the spec's error body, `{ error: { code, message, details? } }`. It also carries a top-level
+ * `message`, which Nest reads for `exception.message` and which the two web apps already show.
+ */
+export function paymentFailure(code: PaymentErrorCode, message: string, details?: Record<string, unknown>) {
+  return { message, ...paymentError(code, message, details) }
+}
+
 export function paymentError(code: PaymentErrorCode, message: string, details?: Record<string, unknown>) {
   return { error: { code, message, ...(details && { details }) } }
 }

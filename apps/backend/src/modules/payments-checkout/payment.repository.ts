@@ -1,5 +1,12 @@
-import type { PaymentExceptionRecord, PaymentLineRecord, PaymentRecord, PaymentSourceFeature, ReceiptRecord } from './payment.types'
-import { DEMO_CUSTOMER_ID, resolveCustomerId as resolveMockCustomerId } from './mock-booking-state'
+import type {
+  PaymentExceptionRecord,
+  PaymentLineRecord,
+  PaymentRecord,
+  PaymentSourceFeature,
+  PaymentStatus,
+  ReceiptRecord,
+} from './payment.types'
+import { DEMO_CUSTOMER_ID, MOCK_MILES_REDEEMED, resolveCustomerId as resolveMockCustomerId } from './mock-booking-state'
 
 /**
  * The DI token for the repository. The module provides the mock implementation under this token; the real
@@ -26,9 +33,19 @@ export interface PaymentRepository {
   findById(id: string): Promise<PaymentRecord | undefined>
   /** The one live payment for a purchase, if any. `created | authorised | captured | reversed` count as live. */
   findLiveByPurchaseRef(sourceFeature: PaymentSourceFeature, purchaseRef: string): Promise<PaymentRecord | undefined>
+  /** The live payment (`authorised`, `captured`) of a cargo booking, if any. */
+  findLiveByCargoBookingId(cargoBookingId: string): Promise<PaymentRecord | undefined>
+  /** The miles a booking was paid for with, from Feature 11's `redeem` rows (less any `redeem_reversal`), or null when it used none. */
+  milesRedeemed(bookingId: string): Promise<number | null>
+  /** A `payment_setting` value (`min_hold_minutes`, `capture_retry_limit`), or undefined when it is not set or not a number. */
+  readSetting(key: 'min_hold_minutes' | 'capture_retry_limit'): Promise<number | undefined>
+  /** The live payment (`authorised`, `captured`) of a booking, if any. A cancelled booking asks for it. */
+  findLiveByBookingId(bookingId: string): Promise<PaymentRecord | undefined>
   /** The payment made with an idempotency key, whatever its status. Replaying a key returns the same payment. */
   findByIdempotencyKey(payerCustomerId: string | null, idempotencyKey: string): Promise<PaymentRecord | undefined>
   listPayments(): Promise<PaymentRecord[]>
+  /** The payments in any of these statuses, oldest first (what the background jobs walk). */
+  listByStatus(statuses: readonly PaymentStatus[]): Promise<PaymentRecord[]>
   insertReceipt(receipt: ReceiptRecord): Promise<ReceiptRecord>
   listReceipts(): Promise<ReceiptRecord[]>
   findReceiptById(id: string): Promise<ReceiptRecord | undefined>
@@ -86,9 +103,33 @@ export class InMemoryPaymentRepository implements PaymentRepository {
     return Promise.resolve(live)
   }
 
+  findLiveByCargoBookingId(cargoBookingId: string): Promise<PaymentRecord | undefined> {
+    return Promise.resolve(
+      this.allPayments().find((p) => p.cargo_booking_id === cargoBookingId && (p.status === 'authorised' || p.status === 'captured')),
+    )
+  }
+
+  milesRedeemed(bookingId: string): Promise<number | null> {
+    return Promise.resolve(MOCK_MILES_REDEEMED[bookingId] ?? null)
+  }
+
+  readSetting(): Promise<number | undefined> {
+    return Promise.resolve(undefined)
+  }
+
+  findLiveByBookingId(bookingId: string): Promise<PaymentRecord | undefined> {
+    return Promise.resolve(
+      this.allPayments().find((p) => p.booking_id === bookingId && (p.status === 'authorised' || p.status === 'captured')),
+    )
+  }
+
   findByIdempotencyKey(payerCustomerId: string | null, idempotencyKey: string): Promise<PaymentRecord | undefined> {
     const payment = this.allPayments().find((p) => p.payer_customer_id === payerCustomerId && p.idempotency_key === idempotencyKey)
     return Promise.resolve(payment)
+  }
+
+  listByStatus(statuses: readonly PaymentStatus[]): Promise<PaymentRecord[]> {
+    return Promise.resolve(this.allPayments().filter((p) => statuses.includes(p.status)))
   }
 
   listPayments(): Promise<PaymentRecord[]> {
