@@ -1,5 +1,12 @@
 import { useId, useState, type FormEvent } from 'react'
-import './DeliveryChoiceForm.css'
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
+import { Button } from '@customer-web/components/ui/button'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@customer-web/components/ui/card'
+import { Field } from '@customer-web/components/ui/cw-field'
+import { Input } from '@customer-web/components/ui/input'
+import { Label } from '@customer-web/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@customer-web/components/ui/radio-group'
+import { Textarea } from '@customer-web/components/ui/textarea'
 
 const DELIVERY_OPTIONS = [
   { value: 'home', label: 'Home', description: 'Your home address' },
@@ -102,110 +109,101 @@ export function DeliveryChoiceForm({ onSaveChoice, locked = false, initialChoice
 
   const addressLabel = values.deliveryType === 'airport_pickup' ? 'Pickup airport code' : ADDRESS_LABELS[values.deliveryType]
 
+  const pickupId = `${id}-pickup-airport`
+  const addressId = `${id}-delivery-address`
+
   return (
-    <section className="delivery-choice" aria-labelledby={`${id}-title`}>
-      <header className="delivery-choice__header">
-        <h2 id={`${id}-title`}>Where should we send it?</h2>
-        <p>{locked ? 'Your bag is already on its way, so the choice is locked.' : 'You can change this until the bag is sent.'}</p>
-      </header>
-
-      {!onSaveChoice && !locked && (
-        <p className="delivery-choice__notice" role="status">
-          Saving is unavailable until the passenger delivery service is connected. Nothing entered here will be saved.
-        </p>
-      )}
-
-      <form className="delivery-choice__form" onSubmit={(event) => void handleSubmit(event)} noValidate>
-        <fieldset className="delivery-choice__options" disabled={isDisabled} aria-labelledby={`${id}-title`}>
-          <legend className="delivery-choice__sr-only">Delivery method</legend>
-          {DELIVERY_OPTIONS.map((option) => (
-            <label
-              className={`delivery-choice__option${values.deliveryType === option.value ? ' delivery-choice__option--selected' : ''}`}
-              key={option.value}
-            >
-              <input
-                type="radio"
-                name="deliveryType"
-                value={option.value}
-                checked={values.deliveryType === option.value}
-                onChange={() => updateValues({ ...values, deliveryType: option.value })}
-              />
-              <span className="delivery-choice__option-copy">
-                <span className="delivery-choice__option-title">{option.label}</span>
-                <span className="delivery-choice__option-description">{option.description}</span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
-
-        {!locked &&
-          (values.deliveryType === 'airport_pickup' ? (
-            <label className="delivery-choice__field" htmlFor={`${id}-pickup-airport`}>
-              <span>{addressLabel}</span>
-              <input
-                id={`${id}-pickup-airport`}
-                name="pickupAirport"
-                type="text"
-                autoComplete="off"
-                autoCapitalize="characters"
-                maxLength={3}
-                placeholder="YYZ"
-                value={values.pickupAirport}
-                disabled={isDisabled}
-                aria-invalid={Boolean(errors.pickupAirport)}
-                aria-describedby={errors.pickupAirport ? `${id}-pickup-airport-error` : `${id}-pickup-airport-hint`}
-                onChange={(event) => updateValues({ ...values, pickupAirport: event.currentTarget.value.trim().toUpperCase() })}
-                onBlur={() => setErrors(validate(values))}
-              />
-              {errors.pickupAirport && (
-                <span className="delivery-choice__error" id={`${id}-pickup-airport-error`} role="alert">
-                  {errors.pickupAirport}
-                </span>
-              )}
-              <span className="delivery-choice__hint" id={`${id}-pickup-airport-hint`}>
-                Use the three-letter airport code, such as YYZ.
-              </span>
-            </label>
-          ) : (
-            <label className="delivery-choice__field" htmlFor={`${id}-delivery-address`}>
-              <span>{addressLabel}</span>
-              <textarea
-                id={`${id}-delivery-address`}
-                name="address"
-                autoComplete="street-address"
-                maxLength={500}
-                rows={3}
-                value={values.address}
-                disabled={isDisabled}
-                aria-invalid={Boolean(errors.address)}
-                aria-describedby={errors.address ? `${id}-delivery-address-error` : `${id}-delivery-address-hint`}
-                onChange={(event) => updateValues({ ...values, address: event.currentTarget.value })}
-                onBlur={() => setErrors(validate(values))}
-              />
-              {errors.address ? (
-                <span className="delivery-choice__error" id={`${id}-delivery-address-error`} role="alert">
-                  {errors.address}
-                </span>
-              ) : (
-                <span className="delivery-choice__hint" id={`${id}-delivery-address-hint`}>
-                  {values.address.trim().length}/500 characters
-                </span>
-              )}
-            </label>
-          ))}
-
-        {message && (
-          <p className="delivery-choice__message" role="status">
-            {message}
-          </p>
+    <Card aria-labelledby={`${id}-title`} role="region">
+      <CardHeader>
+        <CardTitle id={`${id}-title`} className="text-lg">
+          Where should we send it?
+        </CardTitle>
+        <CardDescription>
+          {locked ? 'Your bag is already on its way, so the choice is locked.' : 'You can change this until the bag is sent.'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {!onSaveChoice && !locked && (
+          <Alert role="status">
+            <AlertDescription>
+              Saving is unavailable until the passenger delivery service is connected. Nothing entered here will be saved.
+            </AlertDescription>
+          </Alert>
         )}
-        {!locked && (
-          <button className="delivery-choice__submit" type="submit" disabled={isSaving}>
-            {isSaving ? 'Saving…' : onSaveChoice ? 'Save choice' : 'Check choice'}
-          </button>
-        )}
-      </form>
-      <p className="delivery-choice__cost">The airline pays every delivery cost. You never pay.</p>
-    </section>
+
+        <form className="grid gap-4" onSubmit={(event) => void handleSubmit(event)} noValidate>
+          <RadioGroup
+            value={values.deliveryType}
+            onValueChange={(value) => updateValues({ ...values, deliveryType: value as DeliveryType })}
+            disabled={isDisabled}
+            aria-labelledby={`${id}-title`}
+            className="grid-cols-1 gap-2 sm:grid-cols-2"
+          >
+            {DELIVERY_OPTIONS.map((option) => (
+              <Label
+                key={option.value}
+                htmlFor={`${id}-${option.value}`}
+                className="cursor-pointer items-start gap-3 rounded-md border p-3 has-data-[state=checked]:border-primary has-data-[state=checked]:bg-accent"
+              >
+                <RadioGroupItem id={`${id}-${option.value}`} value={option.value} className="mt-0.5" />
+                <span className="grid gap-0.5">
+                  <span className="font-medium">{option.label}</span>
+                  <span className="text-xs font-normal text-muted-foreground">{option.description}</span>
+                </span>
+              </Label>
+            ))}
+          </RadioGroup>
+
+          {!locked &&
+            (values.deliveryType === 'airport_pickup' ? (
+              <Field id={pickupId} label={addressLabel} error={errors.pickupAirport} hint="Use the three-letter airport code, such as YYZ.">
+                <Input
+                  id={pickupId}
+                  name="pickupAirport"
+                  type="text"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  maxLength={3}
+                  placeholder="YYZ"
+                  value={values.pickupAirport}
+                  disabled={isDisabled}
+                  aria-invalid={Boolean(errors.pickupAirport)}
+                  aria-describedby={errors.pickupAirport ? `${pickupId}-error` : `${pickupId}-hint`}
+                  onChange={(event) => updateValues({ ...values, pickupAirport: event.currentTarget.value.trim().toUpperCase() })}
+                  onBlur={() => setErrors(validate(values))}
+                />
+              </Field>
+            ) : (
+              <Field id={addressId} label={addressLabel} error={errors.address} hint={`${values.address.trim().length}/500 characters`}>
+                <Textarea
+                  id={addressId}
+                  name="address"
+                  autoComplete="street-address"
+                  maxLength={500}
+                  rows={3}
+                  value={values.address}
+                  disabled={isDisabled}
+                  aria-invalid={Boolean(errors.address)}
+                  aria-describedby={errors.address ? `${addressId}-error` : `${addressId}-hint`}
+                  onChange={(event) => updateValues({ ...values, address: event.currentTarget.value })}
+                  onBlur={() => setErrors(validate(values))}
+                />
+              </Field>
+            ))}
+
+          {message && (
+            <Alert role="status">
+              <AlertDescription>{message}</AlertDescription>
+            </Alert>
+          )}
+          {!locked && (
+            <Button type="submit" disabled={isSaving} className="justify-self-start">
+              {isSaving ? 'Saving…' : onSaveChoice ? 'Save choice' : 'Check choice'}
+            </Button>
+          )}
+        </form>
+      </CardContent>
+      <CardFooter className="text-sm text-muted-foreground">The airline pays every delivery cost. You never pay.</CardFooter>
+    </Card>
   )
 }
