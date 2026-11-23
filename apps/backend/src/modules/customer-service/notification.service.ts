@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common'
+import { ConflictException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { SimulationClock } from '../admin-console/simulation-clock'
@@ -158,13 +158,13 @@ export class NotificationService implements OnModuleInit {
    * 5. Fill {{placeholders}} from the event data, using names in notification-placeholders.ts.
    * 6. Mock provider: write the notification row, mark it sent, and set attempts and sent_at from simulation clock.
    * 7. Switched-off template: skip that channel. Missing template: save row as failed with error, subject and body NULL.
-   * 8. No phone number: skip SMS and send other channels. No customer account (guests): skip push.
+   * 8. No phone number: skip SMS and send other channels. No customer account (a co-traveller or lost-bag contact): skip push.
    * 9. Set processed_at on the event.
    */
   async handleEvent(input: InboundEventInput): Promise<{ ignored: boolean; eventId?: string; sentCount?: number }> {
     const now = this.clock.now()
 
-    // 1. Save event in inbound_event. Ignore repeated event (same source + source_event_id).
+    // 1. Ignore a repeated event (same source + source_event_id).
     const existing = await this.db.inbound_event.findUnique({
       where: {
         source_source_event_id: {
@@ -177,26 +177,7 @@ export class NotificationService implements OnModuleInit {
       return { ignored: true, eventId: existing.id }
     }
 
-    let savedEvent: { id: string }
-    try {
-      savedEvent = await this.db.inbound_event.create({
-        data: {
-          source: input.source,
-          source_event_id: input.sourceEventId,
-          event_type: input.eventType,
-          payload: input.payload,
-          received_at: now,
-        },
-        select: { id: true },
-      })
-    } catch (e: any) {
-      if (e?.code === 'P2002') {
-        return { ignored: true }
-      }
-      throw e
-    }
-
-    // Resolve recipients
+    // Everything that only reads happens before the transaction, so the transaction holds only the writes.
     let recipients = input.recipients
     if (!recipients) {
       if (input.eventType === 'security_alert' || input.eventType === 'security_alert_withdrawn') {
@@ -215,15 +196,77 @@ export class NotificationService implements OnModuleInit {
       }
     }
 
-    // A flight with no passengers: save the event and send nothing.
-    if (recipients.length === 0) {
-      await this.db.inbound_event.update({
-        where: { id: savedEvent.id },
-        data: { processed_at: this.clock.now() },
-      })
-      return { ignored: false, eventId: savedEvent.id, sentCount: 0 }
-    }
+    const plan = recipients.length > 0 ? await this.planMessages(input, recipients, now) : { rows: [], recipientNames: {} }
 
+    // The event, its messages and processed_at are written together: a failure part-way leaves no stored event, so the
+    // publisher can send it again instead of it being ignored as a duplicate.
+    let eventSaved = false
+    try {
+      return await this.db.$transaction(
+        async (tx) => {
+          const savedEvent = await tx.inbound_event.create({
+            data: {
+              source: input.source,
+              source_event_id: input.sourceEventId,
+              event_type: input.eventType,
+              payload: input.payload,
+              received_at: now,
+            },
+            select: { id: true },
+          })
+          eventSaved = true
+
+          // A flight with no passengers: save the event and send nothing.
+          if (recipients.length === 0) {
+            await tx.inbound_event.update({
+              where: { id: savedEvent.id },
+              data: { processed_at: this.clock.now() },
+            })
+            return { ignored: false, eventId: savedEvent.id, sentCount: 0 }
+          }
+
+          let sentCount = 0
+          for (const row of plan.rows) {
+            await tx.notification.create({ data: { ...row, inbound_event_id: savedEvent.id } })
+            // A missing template is saved as failed but is not counted as sent.
+            if (row.error !== 'TEMPLATE_MISSING') sentCount++
+          }
+
+          // 9. Set processed_at on the event and record recipient names map in payload so retry keeps passenger name
+          await tx.inbound_event.update({
+            where: { id: savedEvent.id },
+            data: {
+              payload: {
+                ...input.payload,
+                recipient_names: plan.recipientNames,
+              },
+              processed_at: this.clock.now(),
+            },
+          })
+
+          return { ignored: false, eventId: savedEvent.id, sentCount }
+          // A full flight writes a message per passenger and channel, well past Prisma's 5 s default.
+        },
+        { timeout: 30_000 },
+      )
+    } catch (e: any) {
+      // Another request stored the same event between the check above and this insert.
+      if (!eventSaved && e?.code === 'P2002') {
+        return { ignored: true }
+      }
+      throw e
+    }
+  }
+
+  /**
+   * Works out every message an event sends (steps 2 to 8), without writing anything. Each row still needs its
+   * inbound_event_id. Also returns the name for each address a row goes to, for retries.
+   */
+  private async planMessages(
+    input: InboundEventInput,
+    recipients: EventRecipient[],
+    now: Date,
+  ): Promise<{ rows: Omit<Prisma.notificationUncheckedCreateInput, 'inbound_event_id'>[]; recipientNames: Record<string, string> }> {
     // Load notification_type to inspect is_mandatory flag
     const notifType = await this.db.notification_type.findUnique({
       where: { code: input.eventType },
@@ -236,41 +279,27 @@ export class NotificationService implements OnModuleInit {
     })
     const templateByChannel = new Map(templates.map((t) => [t.channel, t]))
 
-    const sentKeys = new Set<string>()
-    let sentCount = 0
+    // 3. Every recipient's preferences for this type, in one query.
+    const customerIds = [...new Set(recipients.map((r) => r.customerId).filter((id): id is string => Boolean(id)))]
+    const prefs =
+      customerIds.length > 0
+        ? await this.db.notification_preference.findMany({
+            where: { customer_id: { in: customerIds }, type_code: input.eventType },
+          })
+        : []
+    const prefByCustomerChannel = new Map(prefs.map((p) => [`${p.customer_id}:${p.channel}`, p.is_enabled]))
 
+    const sentKeys = new Set<string>()
+    const rows: Omit<Prisma.notificationUncheckedCreateInput, 'inbound_event_id'>[] = []
     const recipientNames: Record<string, string> = { ...((input.payload?.recipient_names as Record<string, string>) || {}) }
-    for (const r of recipients) {
-      if (r.passengerName) {
-        if (r.email?.trim()) recipientNames[r.email.trim()] = r.passengerName
-        if (r.phone?.trim()) recipientNames[r.phone.trim()] = r.passengerName
-        if (r.customerId) recipientNames[r.customerId] = r.passengerName
-      }
-    }
 
     for (const r of recipients) {
       // 3. Respect notification_preference. With no row: email on, SMS and push off.
-      let emailOn = true
-      let smsOn = false
-      let pushOn = false
-
-      if (r.customerId) {
-        const prefs = await this.db.notification_preference.findMany({
-          where: { customer_id: r.customerId, type_code: input.eventType },
-        })
-        const emailPref = prefs.find((p) => p.channel === 'email')
-        const smsPref = prefs.find((p) => p.channel === 'sms')
-        const pushPref = prefs.find((p) => p.channel === 'push')
-
-        if (emailPref) emailOn = emailPref.is_enabled
-        if (smsPref) smsOn = smsPref.is_enabled
-        if (pushPref) pushOn = pushPref.is_enabled
-      }
-
-      // 4. Types with is_mandatory still go out by email when customer switched every channel off
-      if (isMandatory && r.email && !emailOn && !smsOn && !pushOn) {
-        emailOn = true
-      }
+      const pref = (channel: string, fallback: boolean) =>
+        r.customerId ? (prefByCustomerChannel.get(`${r.customerId}:${channel}`) ?? fallback) : fallback
+      const emailOn = pref('email', true)
+      const smsOn = pref('sms', false)
+      const pushOn = pref('push', false)
 
       // Determine channels for this recipient
       const channels: { channel: 'email' | 'sms' | 'push'; recipientAddress: string }[] = []
@@ -281,16 +310,23 @@ export class NotificationService implements OnModuleInit {
       if (smsOn && r.phone?.trim()) {
         channels.push({ channel: 'sms', recipientAddress: r.phone.trim() })
       }
-      // 8. No customer account (guests): skip push, since table requires customer_id for push
+      // 8. No customer account (a co-traveller or lost-bag contact): skip push, since table requires customer_id for push
       if (pushOn && r.customerId) {
         channels.push({ channel: 'push', recipientAddress: r.customerId })
+      }
+      // 4. A mandatory type always reaches the recipient: when their settings leave no channel (every channel off, or
+      // only SMS on with no phone), it goes by email.
+      if (isMandatory && channels.length === 0 && r.email?.trim()) {
+        channels.push({ channel: 'email', recipientAddress: r.email.trim() })
       }
 
       for (const { channel, recipientAddress } of channels) {
         // 2. Send at most one message per event, recipient and channel
-        const dedupeKey = `${savedEvent.id}:${recipientAddress}:${channel}`
+        const dedupeKey = `${recipientAddress}:${channel}`
         if (sentKeys.has(dedupeKey)) continue
         sentKeys.add(dedupeKey)
+        // The first recipient at an address owns its row, so a retry uses their name, not a later co-traveller's.
+        if (r.passengerName) recipientNames[recipientAddress] = r.passengerName
 
         const tpl = templateByChannel.get(channel)
 
@@ -299,25 +335,19 @@ export class NotificationService implements OnModuleInit {
           continue
         }
 
+        const base = {
+          type_code: input.eventType,
+          channel,
+          recipient: recipientAddress,
+          customer_id: r.customerId ?? null,
+          case_id: input.caseId ?? null,
+          attempts: 1,
+          queued_at: now,
+        }
+
         // 7. Missing template: save row as failed with an error, and subject and body as NULL
         if (!tpl) {
-          await this.db.notification.create({
-            data: {
-              inbound_event_id: savedEvent.id,
-              type_code: input.eventType,
-              channel,
-              recipient: recipientAddress,
-              customer_id: r.customerId ?? null,
-              case_id: input.caseId ?? null,
-              subject: null,
-              body: null,
-              status: 'failed',
-              attempts: 1,
-              error: 'TEMPLATE_MISSING',
-              queued_at: now,
-              sent_at: null,
-            },
-          })
+          rows.push({ ...base, subject: null, body: null, status: 'failed', error: 'TEMPLATE_MISSING', sent_at: null })
           continue
         }
 
@@ -328,45 +358,20 @@ export class NotificationService implements OnModuleInit {
           passenger_name: r.passengerName,
         }
 
-        const subject = renderTemplate(tpl.subject_template, placeholderData)
-        const body = renderTemplate(tpl.body_template, placeholderData) ?? ''
-
-        // 6. Mock provider: set attempts and sent_at from simulation clock
+        // 6. Mock provider: set attempts and sent_at from simulation clock. A failure is a saved failed row, not a throw.
         const fail = this.mockFailure
-        await this.db.notification.create({
-          data: {
-            inbound_event_id: savedEvent.id,
-            type_code: input.eventType,
-            channel,
-            recipient: recipientAddress,
-            customer_id: r.customerId ?? null,
-            case_id: input.caseId ?? null,
-            subject,
-            body,
-            status: fail ? 'failed' : 'sent',
-            attempts: 1,
-            error: fail ? 'MOCK_PROVIDER_FAILURE' : null,
-            queued_at: now,
-            sent_at: fail ? null : now,
-          },
+        rows.push({
+          ...base,
+          subject: renderTemplate(tpl.subject_template, placeholderData),
+          body: renderTemplate(tpl.body_template, placeholderData) ?? '',
+          status: fail ? 'failed' : 'sent',
+          error: fail ? 'MOCK_PROVIDER_FAILURE' : null,
+          sent_at: fail ? null : now,
         })
-        sentCount++
       }
     }
 
-    // 9. Set processed_at on the event and record recipient names map in payload so retry keeps passenger name
-    await this.db.inbound_event.update({
-      where: { id: savedEvent.id },
-      data: {
-        payload: {
-          ...input.payload,
-          recipient_names: recipientNames,
-        },
-        processed_at: this.clock.now(),
-      },
-    })
-
-    return { ignored: false, eventId: savedEvent.id, sentCount }
+    return { rows, recipientNames }
   }
 
   /**
@@ -513,15 +518,16 @@ export class NotificationService implements OnModuleInit {
    * - Increase attempts and update status, sent_at and error.
    * - A row that failed because its template was missing (subject & body NULL):
    *   Once template exists, fill them in on retry in same update that marks row sent.
+   * - A message that is not failed is a 409 NOT_FAILED, so nothing is changed or audited.
+   * Pass `db` to run it inside the caller's transaction, so its audit entry commits with it.
    */
-  /** Retries a failed message. Pass `db` to run it inside the caller's transaction, so its audit entry commits with it. */
   async retryFailedNotification(notificationId: string, db: Prisma.TransactionClient = this.db) {
     const notif = await db.notification.findUnique({
       where: { id: notificationId },
       include: { inbound_event: true },
     })
     if (!notif) throw new NotFoundException(`Notification ${notificationId} not found`)
-    if (notif.status !== 'failed') return notif
+    if (notif.status !== 'failed') throw new ConflictException('NOT_FAILED')
 
     const now = this.clock.now()
 
@@ -536,12 +542,13 @@ export class NotificationService implements OnModuleInit {
         },
       })
 
+      // Still unsendable: the row stays failed and says why, so staff know whether to add or switch on the template.
       if (!tpl || !tpl.is_active) {
         return db.notification.update({
           where: { id: notificationId },
           data: {
             attempts: { increment: 1 },
-            error: 'TEMPLATE_STILL_MISSING',
+            error: tpl ? 'TEMPLATE_DISABLED' : 'TEMPLATE_STILL_MISSING',
           },
         })
       }

@@ -4,7 +4,14 @@ import type { Request } from 'express'
 import { DbService } from '@backend/db/db.service'
 import type { AuthenticatedUser } from '@backend/auth/guards/jwt-auth.guard'
 import { IS_SUPERVISOR_KEY } from '../decorators/supervisor-only.decorator'
-import type { StaffPrincipal } from '../decorators/current-staff.decorator'
+
+/** The CS staff member the guard found, set on the request. */
+export interface StaffPrincipal {
+  id: string
+  userId: string
+  roleCode: string
+  isSupervisor: boolean
+}
 
 type StaffRequest = Request & { user?: AuthenticatedUser; staff?: StaffPrincipal }
 

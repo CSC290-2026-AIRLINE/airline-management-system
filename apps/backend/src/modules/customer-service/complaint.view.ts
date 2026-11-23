@@ -98,7 +98,7 @@ export interface ComplaintView {
   updatedAt: string
   /** Figma Staff & Customer display metadata */
   summary?: string
-  fromSource?: 'Customer' | 'No account' | 'Feature 10'
+  fromSource?: 'Customer' | 'Feature 10'
   age?: string
   unread?: boolean
   bookingRef?: string | null
@@ -130,8 +130,9 @@ function formatDayMonth(d: Date): string {
   return `${dow} ${day} ${mon}`
 }
 
-function computeAgeLabel(openedAt: Date): string {
-  const diffMin = Math.max(1, Math.floor((Date.now() - openedAt.getTime()) / 60_000))
+/** How long the case has been open, measured against the simulation clock's `now`. */
+function computeAgeLabel(openedAt: Date, now: Date): string {
+  const diffMin = Math.max(1, Math.floor((now.getTime() - openedAt.getTime()) / 60_000))
   if (diffMin < 60) return `${diffMin} min`
   const diffHours = Math.floor(diffMin / 60)
   if (diffHours < 24) return `${diffHours} h`
@@ -147,12 +148,7 @@ function deriveSummary(row: CaseRow): string {
   return `${firstSentence.slice(0, 41)}...`
 }
 
-function mapEventView(
-  e: CaseRow['case_event'][number],
-  audience: 'staff' | 'customer',
-  contactEmail: string | null,
-  isGuest: boolean,
-): CaseEventView {
+function mapEventView(e: CaseRow['case_event'][number], audience: 'staff' | 'customer', contactEmail: string | null): CaseEventView {
   const staffFullName = fullName(e.staff)
   const timeLabel = formatShortTime(e.occurred_at)
   let actorLabel = e.actor_type === 'staff' ? (staffFullName ?? 'Staff') : e.actor_type === 'complainant' ? 'Customer' : 'System'
@@ -160,9 +156,7 @@ function mapEventView(
 
   if (e.event_type === 'created') {
     actorLabel = 'System'
-    title = isGuest
-      ? `Created by passenger without an account (${contactEmail ?? 'guest'})`
-      : `Created by customer (${contactEmail ?? 'account'})`
+    title = `Created by customer (${contactEmail ?? 'account'})`
   } else if (e.event_type === 'routed_to_supervisor') {
     actorLabel = 'System'
     title = 'Routed to Customer Service supervisor'
@@ -183,7 +177,8 @@ function mapEventView(
     actorLabel = staffFullName ?? 'Staff'
     title = 'Closed case'
   } else if (e.event_type === 'reopened') {
-    actorLabel = staffFullName ?? 'Staff'
+    // Only the complainant reopens a case today, but keep a staff name if one ever does.
+    actorLabel = e.actor_type === 'complainant' ? 'Customer' : (staffFullName ?? 'Staff')
     title = 'Reopened case'
   }
 
@@ -204,10 +199,11 @@ function mapEventView(
   }
 }
 
-export function toComplaintView(row: CaseRow): ComplaintView {
+/** `now` is the simulation clock's time, used for the age label. */
+export function toComplaintView(row: CaseRow, now: Date): ComplaintView {
   const details = row.flight_complaint ?? row.food_complaint
-  const isGuest = row.customer_id === null && row.source !== 'feature_10'
-  const fromSource: ComplaintView['fromSource'] = row.source === 'feature_10' ? 'Feature 10' : isGuest ? 'No account' : 'Customer'
+  // Complaints are account-only: a case comes from a signed-in customer or from Feature 10 (lost bag).
+  const fromSource: ComplaintView['fromSource'] = row.source === 'feature_10' ? 'Feature 10' : 'Customer'
 
   // The booking that holds the complaint's flight: one the complainant made or travels on. An employee complaint has none.
   const flightId = details?.flight_id
@@ -231,9 +227,7 @@ export function toComplaintView(row: CaseRow): ComplaintView {
   const openedLabel =
     fromSource === 'Feature 10'
       ? `Opened ${formatShortTime(row.opened_at)} by Feature 10`
-      : fromSource === 'No account'
-        ? `Opened ${formatShortTime(row.opened_at)} by a passenger without an account`
-        : `Opened ${formatShortTime(row.opened_at)} by the customer`
+      : `Opened ${formatShortTime(row.opened_at)} by the customer`
 
   const latestComp = row.case_compensation?.[0]
   const compensation: CompensationDecisionView | null = latestComp
@@ -245,7 +239,7 @@ export function toComplaintView(row: CaseRow): ComplaintView {
       }
     : null
 
-  const events = (row.case_event ?? []).map((e) => mapEventView(e, 'staff', row.contact_email, isGuest))
+  const events = (row.case_event ?? []).map((e) => mapEventView(e, 'staff', row.contact_email))
 
   return {
     id: row.id,
@@ -268,7 +262,7 @@ export function toComplaintView(row: CaseRow): ComplaintView {
     updatedAt: row.updated_at.toISOString(),
     summary: deriveSummary(row),
     fromSource,
-    age: computeAgeLabel(row.opened_at),
+    age: computeAgeLabel(row.opened_at, now),
     unread: row.status === 'with_supervisor',
     bookingRef,
     flightRoute,
@@ -283,12 +277,11 @@ export function toComplaintView(row: CaseRow): ComplaintView {
  * The full case. The customer's view drops internal events (staff notes are always internal) and staff names, as the
  * migration says the complainant only sees the events that are not internal.
  */
-export function toComplaintDetail(row: CaseRow, audience: 'staff' | 'customer'): ComplaintView {
-  const isGuest = row.customer_id === null && row.source !== 'feature_10'
+export function toComplaintDetail(row: CaseRow, audience: 'staff' | 'customer', now: Date): ComplaintView {
   const events = row.case_event
     .filter((e) => audience === 'staff' || !e.is_internal)
-    .map((e) => mapEventView(e, audience, row.contact_email, isGuest))
-  const view = toComplaintView(row)
+    .map((e) => mapEventView(e, audience, row.contact_email))
+  const view = toComplaintView(row, now)
   return audience === 'staff' ? { ...view, events } : { ...withoutStaff(view), events }
 }
 

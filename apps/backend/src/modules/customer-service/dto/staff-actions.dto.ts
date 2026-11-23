@@ -43,10 +43,6 @@ export class DecideCompensationDto {
   @IsNotEmpty()
   @MaxLength(2000)
   reason!: string
-
-  @IsOptional()
-  @IsString()
-  sentAt?: string
 }
 
 export class UpdateNotificationTemplateDto {

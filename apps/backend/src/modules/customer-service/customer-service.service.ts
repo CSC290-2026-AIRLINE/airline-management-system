@@ -234,15 +234,15 @@ export class CustomerServiceService {
     }
 
     const now = this.clock.now()
+    // The doc takes the phone from the customer's profile; an empty one is stored as none, so SMS is skipped.
+    const contactPhone = customer.phone?.trim() || null
     const { caseNumber, caseId, eventId, passengerName, contactEmail } = await this.db.$transaction(async (tx) => {
       const [{ n }] = await tx.$queryRaw<{ n: bigint }[]>`SELECT nextval('complaint_case_seq') AS n`
       const case_number = `CS-${now.getUTCFullYear()}-${String(n).padStart(6, '0')}`
-      const p = tx.passenger
-        ? await tx.passenger.findUnique({
-            where: { id: customer.passenger_id },
-            select: { first_name: true, last_name: true },
-          })
-        : null
+      const p = await tx.passenger.findUnique({
+        where: { id: customer.passenger_id },
+        select: { first_name: true, last_name: true },
+      })
       const passenger_name = p ? `${p.first_name} ${p.last_name}`.trim() : 'Customer'
 
       const row = await tx.complaint_case.create({
@@ -252,6 +252,7 @@ export class CustomerServiceService {
           passenger_id: customer.passenger_id,
           customer_id: customer.id,
           contact_email: email,
+          contact_phone: contactPhone,
           opened_at: now,
         },
         select: { id: true },
@@ -285,6 +286,7 @@ export class CustomerServiceService {
           {
             passengerName,
             email: contactEmail,
+            phone: contactPhone,
             customerId: customer.id,
           },
         ],
@@ -302,7 +304,8 @@ export class CustomerServiceService {
       orderBy: { opened_at: 'desc' },
     })
     // The same customer view as the single case: no internal events, staff names, staff ids or assignment notes.
-    return rows.map((row) => toComplaintDetail(row, 'customer'))
+    const now = this.clock.now()
+    return rows.map((row) => toComplaintDetail(row, 'customer', now))
   }
 
   async getForCustomer(userId: string, caseNumber: string): Promise<ComplaintView> {
@@ -313,7 +316,7 @@ export class CustomerServiceService {
       include: CASE_DETAIL_INCLUDE,
     })
     if (!row) throw new NotFoundException(`Case ${caseNumber} not found`)
-    return toComplaintDetail(row, 'customer')
+    return toComplaintDetail(row, 'customer', this.clock.now())
   }
 
   async reopenForCustomer(userId: string, caseNumber: string): Promise<ComplaintView> {
@@ -377,7 +380,7 @@ export class CustomerServiceService {
         eventType: 'complaint_updated',
         caseId: row.id,
         payload: {
-          case_number: caseNumber,
+          case_number: normalized,
           passenger_name: passengerName,
           status: statusLabel('reopened'),
         },
@@ -417,7 +420,8 @@ export class CustomerServiceService {
     // Open cases first, unassigned (with_supervisor) ahead of assigned; newest first within each group.
     const unassigned = open.filter((c) => c.status === 'with_supervisor')
     const assigned = open.filter((c) => c.status !== 'with_supervisor')
-    return [...unassigned, ...assigned, ...finished].map(toComplaintView)
+    const now = this.clock.now()
+    return [...unassigned, ...assigned, ...finished].map((row) => toComplaintView(row, now))
   }
 
   async getForStaff(userId: string, id: string): Promise<ComplaintView> {
@@ -444,6 +448,8 @@ export class CustomerServiceService {
     const staff = await this.db.staff.findMany({
       where: {
         deleted_at: null,
+        // A disabled or deleted login cannot work a case, so it is not offered as an owner.
+        user: { disabled_at: null, deleted_at: null },
         role: { code: { in: ['cs-agent', 'cs-supervisor'] } },
       },
       select: {
@@ -465,7 +471,7 @@ export class CustomerServiceService {
   async assignOwner(userId: string, id: string, targetStaffId: string): Promise<ComplaintView> {
     const callerStaffId = await this.staffIdFor(userId)
     const targetStaff = await this.db.staff.findFirst({
-      where: { id: targetStaffId, deleted_at: null },
+      where: { id: targetStaffId, deleted_at: null, user: { disabled_at: null, deleted_at: null } },
       select: { id: true, first_name: true, last_name: true, role: { select: { code: true } } },
     })
     if (!targetStaff) throw new NotFoundException(`Staff ${targetStaffId} not found`)
@@ -496,7 +502,8 @@ export class CustomerServiceService {
     let assignedEventId: string | undefined
     await this.db.$transaction(async (tx) => {
       const { count } = await tx.complaint_case.updateMany({
-        where: { id, status: from },
+        // owner_staff_id in the filter so two supervisors reassigning at once get a conflict, not a lost update
+        where: { id, status: from, owner_staff_id: current.owner_staff_id },
         data: { status: 'assigned', owner_staff_id: targetStaffId, updated_at: new Date() },
       })
       if (count === 0) throw new ConflictException('The case changed while you were editing it.')
@@ -765,7 +772,9 @@ export class CustomerServiceService {
 
   async getChartsForStaff(userId: string): Promise<StaffChartsResponse> {
     await this.staffIdFor(userId)
+    // A case resolved as a duplicate of another is not counted again.
     const cases = await this.db.complaint_case.findMany({
+      where: { duplicate_of_case_id: null },
       include: {
         case_compensation: true,
         flight_complaint: { include: { flight: { include: { route: true } } } },
@@ -1046,7 +1055,7 @@ export class CustomerServiceService {
 
   async updatePreferencesForCustomer(userId: string, dto: UpdateNotificationPreferencesDto): Promise<NotificationPreferenceView[]> {
     const customer = await this.customerFor(userId)
-    const list = Array.isArray(dto) ? dto : (dto?.preferences ?? [])
+    const list = dto.preferences
 
     // Only the types the GET lists may be set: an unknown code would hit the foreign key, and the security types go to
     // the authority, not the customer.
@@ -1125,13 +1134,13 @@ export class CustomerServiceService {
   private async staffDetail(id: string): Promise<ComplaintView> {
     const row = await this.db.complaint_case.findUnique({ where: { id }, include: CASE_DETAIL_INCLUDE })
     if (!row) throw new NotFoundException(`Case ${id} not found`)
-    return toComplaintDetail(row, 'staff')
+    return toComplaintDetail(row, 'staff', this.clock.now())
   }
 
   private async customerFor(userId: string) {
     const customer = await this.db.customer.findFirst({
       where: { user_id: userId, deleted_at: null },
-      select: { id: true, passenger_id: true },
+      select: { id: true, passenger_id: true, phone: true },
     })
     if (!customer) throw new ForbiddenException('Only customer accounts can use this')
     return customer

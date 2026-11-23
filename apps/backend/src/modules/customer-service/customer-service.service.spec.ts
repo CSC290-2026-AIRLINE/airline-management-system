@@ -6,7 +6,7 @@ import type { SimulationClock } from '../admin-console/simulation-clock'
 import type { AuditService } from '../admin-console/audit/audit.service'
 import { CustomerServiceService } from './customer-service.service'
 import { CreateComplaintDto } from './dto/create-complaint.dto'
-import type { NotificationService } from './notification.service'
+import { NotificationService } from './notification.service'
 
 // The real DbService loads @nestjs/config (ESM only), which Jest cannot load. The tests pass a mock `db` instead.
 jest.mock('@backend/db/db.service', () => ({ DbService: class DbService {} }))
@@ -14,7 +14,7 @@ jest.mock('@backend/db/db.service', () => ({ DbService: class DbService {} }))
 const USER_ID = '11111111-1111-1111-1111-111111111111'
 const STAFF_ID = '22222222-2222-2222-2222-222222222222'
 const CASE_ID = '33333333-3333-3333-3333-333333333333'
-const CUSTOMER = { id: '44444444-4444-4444-4444-444444444444', passenger_id: '55555555-5555-5555-5555-555555555555' }
+const CUSTOMER = { id: '44444444-4444-4444-4444-444444444444', passenger_id: '55555555-5555-5555-5555-555555555555', phone: '+66812345678' }
 const NOW = new Date('2026-11-12T08:00:00Z')
 const AGENT = { id: STAFF_ID, role: { code: 'cs-agent', is_admin: false } }
 const SUPERVISOR = { id: '66666666-6666-6666-6666-666666666666', role: { code: 'cs-supervisor', is_admin: false } }
@@ -97,16 +97,20 @@ describe('CustomerServiceService', () => {
     food_complaint: { create: jest.fn() },
     case_event: { create: jest.fn() },
     case_compensation: { findFirst: jest.fn(), create: jest.fn() },
+    passenger: { findUnique: jest.fn() },
+    notification: { findUnique: jest.fn(), update: jest.fn() },
     notification_template: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+    notification_preference: { upsert: jest.fn() },
   }
   const db = {
     customer: { findFirst: jest.fn() },
-    staff: { findFirst: jest.fn() },
+    staff: { findFirst: jest.fn(), findMany: jest.fn() },
     $queryRaw: jest.fn(),
     complaint_case: { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     case_event: { create: jest.fn() },
     booking_segment: { findFirst: jest.fn() },
     notification_type: { findUnique: jest.fn(), findMany: jest.fn() },
+    notification_preference: { findMany: jest.fn() },
     $transaction: jest.fn(),
   }
   const audit = { resolveActor: jest.fn(), write: jest.fn() }
@@ -220,6 +224,37 @@ describe('CustomerServiceService', () => {
       await expect(service.create(USER_ID, 'pax@example.com', dto)).rejects.toThrow(BadRequestException)
     })
 
+    it('stores the customer’s phone on the case and sends complaint_received to it', async () => {
+      const notifications = { handleEvent: jest.fn().mockResolvedValue({ ignored: false }) }
+      service = new CustomerServiceService(
+        db as unknown as DbService,
+        clock as unknown as SimulationClock,
+        audit as unknown as AuditService,
+        notifications as unknown as NotificationService,
+      )
+      tx.case_event.create.mockResolvedValue({ id: 'created-evt' })
+
+      await service.create(USER_ID, 'pax@example.com', { type: 'employee', location: 'gate', description: DESCRIPTION })
+
+      expect(tx.complaint_case.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ contact_phone: '+66812345678' }) }),
+      )
+      expect(notifications.handleEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'complaint_received',
+          recipients: [expect.objectContaining({ email: 'pax@example.com', phone: '+66812345678', customerId: CUSTOMER.id })],
+        }),
+      )
+    })
+
+    it('stores no phone when the customer has none', async () => {
+      db.customer.findFirst.mockResolvedValue({ ...CUSTOMER, phone: '  ' })
+      await service.create(USER_ID, 'pax@example.com', { type: 'employee', location: 'gate', description: DESCRIPTION })
+      expect(tx.complaint_case.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ contact_phone: null }) }),
+      )
+    })
+
     it('refuses a caller with no customer account', async () => {
       db.customer.findFirst.mockResolvedValue(null)
       await expect(
@@ -275,6 +310,41 @@ describe('CustomerServiceService', () => {
       expect(tx.case_event.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ event_type: 'reopened', actor_type: 'complainant' }),
       })
+    })
+
+    it('sends the stored case number in the notification, not the typed one', async () => {
+      const notifications = { handleEvent: jest.fn().mockResolvedValue({ ignored: false }) }
+      service = new CustomerServiceService(
+        db as unknown as DbService,
+        clock as unknown as SimulationClock,
+        audit as unknown as AuditService,
+        notifications as unknown as NotificationService,
+      )
+      tx.case_event.create.mockResolvedValue({ id: 'reopen-evt' })
+      db.complaint_case.findFirst.mockResolvedValueOnce({ id: CASE_ID, status: 'closed', closed_at: new Date(NOW.getTime() - DAY_MS) })
+
+      await service.reopenForCustomer(USER_ID, ' cs-2026-000001 ')
+
+      expect(notifications.handleEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ payload: expect.objectContaining({ case_number: 'CS-2026-000001' }) }),
+      )
+    })
+
+    it('labels a reopen by the complainant as Customer on the staff timeline', async () => {
+      const reopened = {
+        id: 'e9',
+        event_type: 'reopened',
+        actor_type: 'complainant',
+        staff: null,
+        from_value: 'closed',
+        to_value: 'with_supervisor',
+        note: null,
+        is_internal: false,
+        occurred_at: NOW,
+      }
+      db.complaint_case.findUnique.mockResolvedValue(caseRow({ case_event: [reopened] }))
+      const view = await service.getForStaff(USER_ID, CASE_ID)
+      expect(view.events?.[0]).toMatchObject({ type: 'reopened', actorLabel: 'Customer', title: 'Reopened case' })
     })
 
     it('refuses a resolved case that is not closed yet', async () => {
@@ -333,6 +403,7 @@ describe('CustomerServiceService', () => {
       ['resolved', 'with_supervisor'],
       ['closed', 'with_supervisor'],
       ['assigned', 'closed'],
+      ['with_supervisor', 'resolved'],
     ] as const)('refuses %s → %s even for the supervisor (assign and reopen have their own routes)', async (from, to) => {
       db.staff.findFirst.mockResolvedValue(SUPERVISOR)
       givenCase(from, STAFF_ID)
@@ -414,12 +485,128 @@ describe('CustomerServiceService', () => {
 
       await service.assignOwner(USER_ID, CASE_ID, STAFF_ID)
       expect(tx.complaint_case.updateMany).toHaveBeenCalledWith({
-        where: { id: CASE_ID, status: 'with_supervisor' },
+        where: { id: CASE_ID, status: 'with_supervisor', owner_staff_id: null },
         data: expect.objectContaining({ status: 'assigned', owner_staff_id: STAFF_ID }),
       })
       expect(tx.case_event.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ event_type: 'assigned', actor_type: 'staff', note: 'Assigned to Kenji Sato' }),
       })
+    })
+  })
+
+  describe('assignOwner (status, races and disabled staff)', () => {
+    const KENJI = { id: STAFF_ID, first_name: 'Kenji', last_name: 'Sato', role: { code: 'cs-agent' } }
+
+    it.each(['resolved', 'closed'])('refuses a %s case with 409 INVALID_STATUS', async (status) => {
+      db.staff.findFirst.mockResolvedValueOnce(SUPERVISOR).mockResolvedValueOnce(KENJI)
+      db.complaint_case.findUnique.mockResolvedValueOnce({ status, owner_staff_id: STAFF_ID, case_number: 'CS-2026-000001' })
+      await expect(service.assignOwner(USER_ID, CASE_ID, STAFF_ID)).rejects.toThrow(new ConflictException('INVALID_STATUS'))
+      expect(db.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('requires the owner it read, so a reassignment in between is a 409 instead of a lost update', async () => {
+      db.staff.findFirst.mockResolvedValueOnce(SUPERVISOR).mockResolvedValueOnce(KENJI)
+      db.complaint_case.findUnique.mockResolvedValueOnce({
+        status: 'assigned',
+        owner_staff_id: SUPERVISOR.id,
+        case_number: 'CS-2026-000001',
+      })
+      tx.complaint_case.updateMany.mockResolvedValue({ count: 0 })
+
+      await expect(service.assignOwner(USER_ID, CASE_ID, STAFF_ID)).rejects.toThrow(ConflictException)
+      expect(tx.complaint_case.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: CASE_ID, status: 'assigned', owner_staff_id: SUPERVISOR.id } }),
+      )
+      expect(tx.case_event.create).not.toHaveBeenCalled()
+    })
+
+    it('does not find a target whose login is disabled or deleted (404)', async () => {
+      db.staff.findFirst.mockResolvedValueOnce(SUPERVISOR).mockResolvedValueOnce(null)
+      await expect(service.assignOwner(USER_ID, CASE_ID, STAFF_ID)).rejects.toThrow(NotFoundException)
+      expect(db.staff.findFirst).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { id: STAFF_ID, deleted_at: null, user: { disabled_at: null, deleted_at: null } } }),
+      )
+    })
+
+    it('lists only CS staff whose login is active as possible owners', async () => {
+      db.staff.findMany.mockResolvedValue([])
+      await service.getStaffMembers()
+      expect(db.staff.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { deleted_at: null, user: { disabled_at: null, deleted_at: null }, role: { code: { in: ['cs-agent', 'cs-supervisor'] } } },
+        }),
+      )
+    })
+  })
+
+  describe('age label', () => {
+    it('is measured against the simulation clock, not the wall clock', async () => {
+      db.complaint_case.findUnique.mockResolvedValue(caseRow({ opened_at: new Date(NOW.getTime() - 3 * DAY_MS) }))
+      expect((await service.getForStaff(USER_ID, CASE_ID)).age).toBe('3 d')
+      db.complaint_case.findUnique.mockResolvedValue(caseRow({ opened_at: new Date(NOW.getTime() - 5 * 60_000) }))
+      expect((await service.getForStaff(USER_ID, CASE_ID)).age).toBe('5 min')
+    })
+  })
+
+  describe('retryNotificationForStaff', () => {
+    beforeEach(() => {
+      const notifications = new NotificationService(db as unknown as DbService, clock as unknown as SimulationClock)
+      service = new CustomerServiceService(
+        db as unknown as DbService,
+        clock as unknown as SimulationClock,
+        audit as unknown as AuditService,
+        notifications,
+      )
+    })
+
+    it('is a 404 for an unknown message, with no audit entry', async () => {
+      tx.notification.findUnique.mockResolvedValue(null)
+      await expect(service.retryNotificationForStaff(USER_ID, 'missing')).rejects.toThrow(NotFoundException)
+      expect(audit.write).not.toHaveBeenCalled()
+    })
+
+    it('is a 409 NOT_FAILED for a message that was sent, with no audit entry', async () => {
+      tx.notification.findUnique.mockResolvedValue({ id: 'n1', status: 'sent', inbound_event: { payload: {} } })
+      await expect(service.retryNotificationForStaff(USER_ID, 'n1')).rejects.toThrow(new ConflictException('NOT_FAILED'))
+      expect(tx.notification.update).not.toHaveBeenCalled()
+      expect(audit.write).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('getPreferencesForCustomer', () => {
+    it('defaults to email on, SMS and push off, and hides the security types', async () => {
+      db.notification_type.findMany.mockResolvedValue([
+        { code: 'complaint_received', name: 'Complaint received', source_feature: '13', is_mandatory: true },
+        { code: 'gate_changed', name: 'Gate changed', source_feature: '6', is_mandatory: false },
+      ])
+      db.notification_preference.findMany.mockResolvedValue([{ type_code: 'gate_changed', channel: 'sms', is_enabled: true }])
+
+      const prefs = await service.getPreferencesForCustomer(USER_ID)
+
+      expect(db.notification_type.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { code: { notIn: ['security_alert', 'security_alert_withdrawn'] } } }),
+      )
+      expect(db.notification_preference.findMany).toHaveBeenCalledWith({ where: { customer_id: CUSTOMER.id } })
+      expect(prefs).toEqual([
+        {
+          typeCode: 'complaint_received',
+          typeName: 'Complaint received',
+          sourceFeature: 'Feature 13',
+          isMandatory: true,
+          email: true,
+          sms: false,
+          push: false,
+        },
+        {
+          typeCode: 'gate_changed',
+          typeName: 'Gate changed',
+          sourceFeature: 'Feature 6',
+          isMandatory: false,
+          email: true,
+          sms: true,
+          push: false,
+        },
+      ])
     })
   })
 
@@ -470,6 +657,12 @@ describe('CustomerServiceService', () => {
       expect(charts.topFlights).toEqual([])
       expect(charts.weeklyData).toHaveLength(8)
       expect(charts.weeklyData.every((w) => w.count === 0)).toBe(true)
+    })
+
+    it('leaves cases resolved as a duplicate out of the charts', async () => {
+      db.complaint_case.findMany.mockResolvedValue([])
+      await service.getChartsForStaff(USER_ID)
+      expect(db.complaint_case.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { duplicate_of_case_id: null } }))
     })
 
     it('counts cases into Monday-start weeks by opened_at and labels flights by their own date', async () => {
@@ -647,6 +840,20 @@ describe('CustomerServiceService', () => {
         'Unknown notification type: no_such_type, security_alert',
       )
       expect(db.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('saves every channel of every type inside one transaction', async () => {
+      db.notification_type.findMany.mockResolvedValue([{ code: 'flight_delayed' }, { code: 'gate_changed' }])
+      db.notification_preference.findMany.mockResolvedValue([])
+      const preferences = [
+        { typeCode: 'flight_delayed', email: true, sms: true, push: false },
+        { typeCode: 'gate_changed', email: false, sms: false, push: true },
+      ]
+
+      await service.updatePreferencesForCustomer(USER_ID, { preferences })
+
+      expect(db.$transaction).toHaveBeenCalledTimes(1)
+      expect(tx.notification_preference.upsert).toHaveBeenCalledTimes(6)
     })
   })
 

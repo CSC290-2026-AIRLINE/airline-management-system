@@ -30,7 +30,7 @@ import { SupervisorOnly } from './decorators/supervisor-only.decorator'
 // Scoped to this module, like pricing's pipe: other teams' endpoints keep their own rules.
 const validation = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
 
-/** The customer's complaints (both signed-in account and passenger without an account). */
+/** The signed-in customer's own complaints. Complaints are account-only; there is no guest flow. */
 @Controller('complaints')
 @UsePipes(validation)
 export class CustomerComplaintsController {

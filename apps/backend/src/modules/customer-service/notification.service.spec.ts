@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common'
 import type { SimulationClock } from '../admin-console/simulation-clock'
 import { SECURITY_AUTHORITY_EMAIL } from './notification-events'
 import { NotificationService } from './notification.service'
@@ -45,6 +46,8 @@ describe('NotificationService', () => {
         findFirst: jest.fn(),
       },
     }
+    // The interactive transaction runs on the same mock client.
+    db.$transaction = jest.fn((work: (tx: unknown) => unknown) => work(db))
     service = new NotificationService(db, clock as unknown as SimulationClock)
   })
 
@@ -182,9 +185,9 @@ describe('NotificationService', () => {
       ])
       // Customer disabled all channels
       db.notification_preference.findMany.mockResolvedValue([
-        { channel: 'email', is_enabled: false },
-        { channel: 'sms', is_enabled: false },
-        { channel: 'push', is_enabled: false },
+        { customer_id: 'cust-2', channel: 'email', is_enabled: false },
+        { customer_id: 'cust-2', channel: 'sms', is_enabled: false },
+        { customer_id: 'cust-2', channel: 'push', is_enabled: false },
       ])
       db.notification.create.mockResolvedValue({ id: 'notif-1' })
 
@@ -294,9 +297,9 @@ describe('NotificationService', () => {
       ])
       // Enable all channels
       db.notification_preference.findMany.mockResolvedValue([
-        { channel: 'email', is_enabled: true },
-        { channel: 'sms', is_enabled: true },
-        { channel: 'push', is_enabled: true },
+        { customer_id: 'cust-bob', channel: 'email', is_enabled: true },
+        { customer_id: 'cust-bob', channel: 'sms', is_enabled: true },
+        { customer_id: 'cust-bob', channel: 'push', is_enabled: true },
       ])
       db.notification.create.mockResolvedValue({ id: 'notif-1' })
 
@@ -341,7 +344,7 @@ describe('NotificationService', () => {
       })
     })
 
-    it('8. skips SMS when no phone; skips push when no customer account (guest)', async () => {
+    it('8. skips SMS when no phone; skips push for a recipient without a customer account', async () => {
       db.inbound_event.findUnique.mockResolvedValue(null)
       db.inbound_event.create.mockResolvedValue({ id: 'ev-8' })
       db.inbound_event.update.mockResolvedValue({})
@@ -353,7 +356,7 @@ describe('NotificationService', () => {
       ])
       db.notification.create.mockResolvedValue({ id: 'notif-1' })
 
-      // Guest: phone is null, customerId is null
+      // A recipient without a customer account (for example a co-traveller): phone is null, customerId is null
       await service.handleEvent({
         source: '2',
         sourceEventId: 'del-3',
@@ -361,8 +364,8 @@ describe('NotificationService', () => {
         payload: { flight_number: 'FY308' },
         recipients: [
           {
-            passengerName: 'Guest Pax',
-            email: 'guest@example.com',
+            passengerName: 'Co Traveller',
+            email: 'cotraveller@example.com',
             phone: null,
             customerId: null,
           },
@@ -374,7 +377,7 @@ describe('NotificationService', () => {
       expect(db.notification.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           channel: 'email',
-          recipient: 'guest@example.com',
+          recipient: 'cotraveller@example.com',
         }),
       })
     })
@@ -419,6 +422,131 @@ describe('NotificationService', () => {
       expect(db.inbound_event.update).toHaveBeenCalledWith({
         where: { id: 'ev-10' },
         data: { processed_at: NOW },
+      })
+    })
+
+    it('11. writes nothing when an insert fails part-way, so the publisher can send the event again', async () => {
+      // A fake transaction: writes are staged and only kept when the callback finishes.
+      const committed: string[] = []
+      db.$transaction.mockImplementation(async (work: (tx: unknown) => unknown) => {
+        const staged: string[] = []
+        const tx = {
+          ...db,
+          inbound_event: {
+            create: jest.fn(() => {
+              staged.push('inbound_event')
+              return Promise.resolve({ id: 'ev-rb' })
+            }),
+            update: jest.fn(() => Promise.resolve(staged.push('processed_at'))),
+          },
+          notification: { create: jest.fn().mockRejectedValue(new Error('insert failed')) },
+        }
+        const result = await work(tx)
+        committed.push(...staged)
+        return result
+      })
+      db.inbound_event.findUnique.mockResolvedValue(null)
+      db.notification_type.findUnique.mockResolvedValue({ code: 'gate_changed', is_mandatory: true })
+      db.notification_template.findMany.mockResolvedValue([
+        { channel: 'email', is_active: true, subject_template: 'S', body_template: 'B' },
+      ])
+      const event = {
+        source: '6',
+        sourceEventId: 'gate-rb',
+        eventType: 'gate_changed',
+        payload: { flight_number: 'FY308' },
+        recipients: [{ passengerName: 'Ann', email: 'ann@example.com', phone: null, customerId: null }],
+      }
+
+      await expect(service.handleEvent(event)).rejects.toThrow('insert failed')
+      expect(committed).toEqual([])
+      expect(db.inbound_event.create).not.toHaveBeenCalled()
+      expect(db.inbound_event.update).not.toHaveBeenCalled()
+    })
+
+    it('12. loads every recipient’s preferences in one query', async () => {
+      db.inbound_event.findUnique.mockResolvedValue(null)
+      db.inbound_event.create.mockResolvedValue({ id: 'ev-12' })
+      db.notification_type.findUnique.mockResolvedValue({ code: 'flight_delayed', is_mandatory: false })
+      db.notification_template.findMany.mockResolvedValue([
+        { channel: 'email', is_active: true, subject_template: 'S', body_template: 'B' },
+        { channel: 'sms', is_active: true, subject_template: null, body_template: 'B' },
+      ])
+      db.notification_preference.findMany.mockResolvedValue([{ customer_id: 'cust-b', channel: 'sms', is_enabled: true }])
+
+      await service.handleEvent({
+        source: '2',
+        sourceEventId: 'del-12',
+        eventType: 'flight_delayed',
+        payload: {},
+        recipients: [
+          { passengerName: 'A', email: 'a@example.com', phone: '+661', customerId: 'cust-a' },
+          { passengerName: 'B', email: 'b@example.com', phone: '+662', customerId: 'cust-b' },
+          { passengerName: 'C', email: 'c@example.com', phone: '+663', customerId: 'cust-a' },
+        ],
+      })
+
+      expect(db.notification_preference.findMany).toHaveBeenCalledTimes(1)
+      expect(db.notification_preference.findMany).toHaveBeenCalledWith({
+        where: { customer_id: { in: ['cust-a', 'cust-b'] }, type_code: 'flight_delayed' },
+      })
+      // Only B switched SMS on.
+      const sent = db.notification.create.mock.calls.map(([arg]: any[]) => `${arg.data.channel}:${arg.data.recipient}`)
+      expect(sent).toEqual(['email:a@example.com', 'email:b@example.com', 'sms:+662', 'email:c@example.com'])
+    })
+
+    it('13. keeps the name of the first passenger at a shared email, the one whose message is written', async () => {
+      db.inbound_event.findUnique.mockResolvedValue(null)
+      db.inbound_event.create.mockResolvedValue({ id: 'ev-13' })
+      db.notification_type.findUnique.mockResolvedValue({ code: 'flight_delayed', is_mandatory: true })
+      db.notification_template.findMany.mockResolvedValue([
+        { channel: 'email', is_active: true, subject_template: 'S', body_template: 'Dear {{passenger_name}}' },
+      ])
+
+      await service.handleEvent({
+        source: '2',
+        sourceEventId: 'del-13',
+        eventType: 'flight_delayed',
+        payload: {},
+        recipients: [
+          { passengerName: 'Ann Lee', email: 'family@example.com', phone: null, customerId: null },
+          { passengerName: 'Ben Lee', email: 'family@example.com', phone: null, customerId: null },
+          { passengerName: 'Cat Lee', email: 'family@example.com', phone: null, customerId: null },
+        ],
+      })
+
+      expect(db.notification.create).toHaveBeenCalledTimes(1)
+      expect(db.notification.create).toHaveBeenCalledWith({ data: expect.objectContaining({ body: 'Dear Ann Lee' }) })
+      expect(db.inbound_event.update).toHaveBeenCalledWith({
+        where: { id: 'ev-13' },
+        data: expect.objectContaining({ payload: { recipient_names: { 'family@example.com': 'Ann Lee' } } }),
+      })
+    })
+
+    it('14. sends a mandatory type by email when email is off and SMS is on but there is no phone', async () => {
+      db.inbound_event.findUnique.mockResolvedValue(null)
+      db.inbound_event.create.mockResolvedValue({ id: 'ev-14' })
+      db.notification_type.findUnique.mockResolvedValue({ code: 'flight_cancelled', is_mandatory: true })
+      db.notification_template.findMany.mockResolvedValue([
+        { channel: 'email', is_active: true, subject_template: 'S', body_template: 'B' },
+        { channel: 'sms', is_active: true, subject_template: null, body_template: 'B' },
+      ])
+      db.notification_preference.findMany.mockResolvedValue([
+        { customer_id: 'cust-14', channel: 'email', is_enabled: false },
+        { customer_id: 'cust-14', channel: 'sms', is_enabled: true },
+      ])
+
+      await service.handleEvent({
+        source: '2',
+        sourceEventId: 'cxl-14',
+        eventType: 'flight_cancelled',
+        payload: {},
+        recipients: [{ passengerName: 'Dan', email: 'dan@example.com', phone: null, customerId: 'cust-14' }],
+      })
+
+      expect(db.notification.create).toHaveBeenCalledTimes(1)
+      expect(db.notification.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ channel: 'email', recipient: 'dan@example.com' }),
       })
     })
   })
@@ -516,6 +644,32 @@ describe('NotificationService', () => {
       })
 
       service.setMockFailure(false)
+    })
+
+    it('11d. refuses a message that is not failed with 409 NOT_FAILED and changes nothing', async () => {
+      db.notification.findUnique.mockResolvedValue({ id: 'notif-sent', status: 'sent', inbound_event: { payload: {} } })
+
+      await expect(service.retryFailedNotification('notif-sent')).rejects.toThrow(new ConflictException('NOT_FAILED'))
+      expect(db.notification.update).not.toHaveBeenCalled()
+    })
+
+    it('11e. reports TEMPLATE_DISABLED for a switched-off template and TEMPLATE_STILL_MISSING for none', async () => {
+      const failed = { id: 'notif-t', status: 'failed', subject: null, body: null, type_code: 'gate_changed', channel: 'sms' }
+      db.notification.findUnique.mockResolvedValue({ ...failed, inbound_event: { payload: {} } })
+
+      db.notification_template.findUnique.mockResolvedValueOnce({ is_active: false, subject_template: null, body_template: 'B' })
+      await service.retryFailedNotification('notif-t')
+      expect(db.notification.update).toHaveBeenLastCalledWith({
+        where: { id: 'notif-t' },
+        data: { attempts: { increment: 1 }, error: 'TEMPLATE_DISABLED' },
+      })
+
+      db.notification_template.findUnique.mockResolvedValueOnce(null)
+      await service.retryFailedNotification('notif-t')
+      expect(db.notification.update).toHaveBeenLastCalledWith({
+        where: { id: 'notif-t' },
+        data: { attempts: { increment: 1 }, error: 'TEMPLATE_STILL_MISSING' },
+      })
     })
   })
 
