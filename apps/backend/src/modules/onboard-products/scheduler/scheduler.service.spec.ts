@@ -15,16 +15,29 @@ jest.mock('../../../db/db.service', () => ({ DbService: class {} }))
 
 const NOW = new Date('2026-11-23T10:00:00Z')
 
-function setup(existingOrder: { id: string } | null, cutoff = new Date('2026-11-23T09:00:00Z')) {
+function setup(
+  existingOrder: { id: string } | null,
+  cutoff = new Date('2026-11-23T09:00:00Z'),
+  cancelledFlights: Array<{ id: string; catering_order: { status: string } | null }> = [],
+) {
   const db = {
-    flight: { findMany: jest.fn().mockResolvedValue([{ id: 'flight-1' }]) },
+    flight: {
+      // The cancelled-flight query asks for status 'cancelled'; the generation query does not.
+      findMany: jest.fn((args: { where: { status?: unknown } }) =>
+        Promise.resolve(args.where.status === 'cancelled' ? cancelledFlights : [{ id: 'flight-1' }]),
+      ),
+    },
     catering_order: { findUnique: jest.fn().mockResolvedValue(existingOrder) },
   }
   const cateringOrders = {
     cutoffFor: jest.fn().mockResolvedValue(cutoff),
     generate: jest.fn().mockResolvedValue({}),
+    void: jest.fn().mockResolvedValue({}),
   }
-  const productOrders = { expireUnpaidOrders: jest.fn().mockResolvedValue(0) }
+  const productOrders = {
+    expireUnpaidOrders: jest.fn().mockResolvedValue(0),
+    cancelForCancelledFlight: jest.fn().mockResolvedValue(2),
+  }
   const stockBatches = { writeOffExpired: jest.fn().mockResolvedValue([]) }
   const scheduler = new SchedulerService(
     db as unknown as DbService,
@@ -33,7 +46,7 @@ function setup(existingOrder: { id: string } | null, cutoff = new Date('2026-11-
     productOrders as unknown as ProductOrdersService,
     stockBatches as unknown as StockBatchesService,
   )
-  return { scheduler, cateringOrders }
+  return { scheduler, cateringOrders, productOrders }
 }
 
 describe('SchedulerService catering generation', () => {
@@ -78,5 +91,27 @@ describe('SchedulerService catering generation', () => {
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('NOT_FOUND: Flight not found.'))
     warn.mockRestore()
+  })
+})
+
+describe('SchedulerService cancelled flights (doc step 10)', () => {
+  it('cancels the open orders and voids a generated catering order of a flight F2 cancelled', async () => {
+    const { scheduler, cateringOrders, productOrders } = setup({ id: 'order-x' }, undefined, [
+      { id: 'flight-c', catering_order: { status: 'generated' } },
+    ])
+
+    const result = await scheduler.tick()
+
+    expect(productOrders.cancelForCancelledFlight).toHaveBeenCalledWith('flight-c', NOW)
+    expect(cateringOrders.void).toHaveBeenCalledWith('flight-c', null)
+    expect(result.cancelled).toBe(2)
+  })
+
+  it('leaves a loaded catering order alone', async () => {
+    const { scheduler, cateringOrders } = setup({ id: 'order-x' }, undefined, [{ id: 'flight-c', catering_order: { status: 'loaded' } }])
+
+    await scheduler.tick()
+
+    expect(cateringOrders.void).not.toHaveBeenCalled()
   })
 })

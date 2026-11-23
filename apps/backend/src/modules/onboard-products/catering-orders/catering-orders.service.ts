@@ -31,6 +31,8 @@ export interface CateringOrderLineDto {
   productName: string
   quantityRequired: number
   quantityShort: number
+  // On hand at the order's warehouse right now (the doc's "in warehouse" column). Sent by the single-order view.
+  quantityInWarehouse?: number
   source: 'order' | 'default'
 }
 
@@ -41,10 +43,19 @@ export interface CateringOrderDto {
   routeId: string
   route: string
   departureAirport: string
+  // IANA zone of the departure airport, so staff see flight times in local time (like F2's pages).
+  departureTimeZone?: string | null
+  // The aircraft's registration (tail number), for display instead of its id.
+  aircraftTailNumber?: string | null
+  // True once the scheduled departure has passed on F12's clock.
+  departed?: boolean
   arrivalAirport: string
   scheduledDeparture: string
   passengerCount: number
   status: 'open' | 'generated' | 'loaded' | 'closed' | 'void'
+  // False once the cutoff has passed on F12's clock. A flight still 'open' with this false never got an order
+  // (for example a flight from an airport F12 does not cater).
+  orderingOpen?: boolean
   cutoffAt: string
   generatedAt: string
   loadedAt: string | null
@@ -89,6 +100,33 @@ export class CateringOrdersService {
   // show the status of each one. The date range filters on the
   // scheduled departure.
   async listOpenAndOrdered(filter?: { from?: Date; to?: Date }): Promise<CateringOrderDto[]> {
+    return this.withDisplayFields(await this.listUnzoned(filter))
+  }
+
+  async get(flightId: string): Promise<CateringOrderDto> {
+    const [dto] = await this.withDisplayFields([await this.getUnzoned(flightId)])
+    return dto
+  }
+
+  // Fills the display fields: the departure airport's time zone, the aircraft's tail number, and whether the flight
+  // has departed on F12's clock. One query per table for the whole list.
+  private async withDisplayFields(dtos: CateringOrderDto[]): Promise<CateringOrderDto[]> {
+    const codes = [...new Set(dtos.map((d) => d.departureAirport))]
+    const aircraftIds = [...new Set(dtos.map((d) => d.aircraftId).filter((id) => id))]
+    const airports = await this.db.airport.findMany({ where: { iata_code: { in: codes } }, select: { iata_code: true, timezone: true } })
+    const aircraft = await this.db.aircraft.findMany({ where: { id: { in: aircraftIds } }, select: { id: true, tail_number: true } })
+    const zones = new Map<string, string>(airports.map((a) => [a.iata_code, a.timezone]))
+    const tails = new Map<string, string>(aircraft.map((a) => [a.id, a.tail_number]))
+    const now = this.clock.now().getTime()
+    return dtos.map((d) => ({
+      ...d,
+      departureTimeZone: zones.get(d.departureAirport) ?? null,
+      aircraftTailNumber: tails.get(d.aircraftId) ?? null,
+      departed: new Date(d.scheduledDeparture).getTime() <= now,
+    }))
+  }
+
+  private async listUnzoned(filter?: { from?: Date; to?: Date }): Promise<CateringOrderDto[]> {
     const flights = await this.db.flight.findMany({
       where: {
         status: { in: ['scheduled', 'boarding', 'departed', 'arrived', 'closed'] },
@@ -109,11 +147,17 @@ export class CateringOrdersService {
       orderBy: { scheduled_dep_at: 'asc' },
     })
     const passengers = await this.passengerSummary(flights.map((f) => f.id))
+    // A flight with no order yet needs its real cutoff (departure minus the shortest cabin window), not the departure.
+    const cutoffs = new Map<string, Date>()
+    for (const flight of flights) {
+      if (!flight.catering_order) cutoffs.set(flight.id, await this.cutoffFor(flight.id))
+    }
     return flights.map((flight) => {
       const order = flight.catering_order
       const summary = passengers.get(flight.id)
       if (!order) {
-        return this.openOrder(flight, summary?.passengers ?? 0, flight.scheduled_dep_at, flight.flight_report != null)
+        const cutoff = cutoffs.get(flight.id) ?? flight.scheduled_dep_at
+        return this.openOrder(flight, summary?.passengers ?? 0, cutoff, flight.flight_report != null)
       }
       return {
         id: order.id,
@@ -146,7 +190,7 @@ export class CateringOrdersService {
     })
   }
 
-  async get(flightId: string): Promise<CateringOrderDto> {
+  private async getUnzoned(flightId: string): Promise<CateringOrderDto> {
     const order = await this.db.catering_order.findUnique({
       where: { flight_id: flightId },
       include: {
@@ -168,6 +212,11 @@ export class CateringOrdersService {
     }
     const passengers = await this.passengerSummary([flightId])
     const summary = passengers.get(flightId)
+    const stock = await this.db.warehouse_stock.findMany({
+      where: { warehouse_id: order.warehouse_id, product_id: { in: order.catering_order_line.map((l) => l.product_id) } },
+      select: { product_id: true, quantity_on_hand: true },
+    })
+    const onHand = new Map(stock.map((s) => [s.product_id, s.quantity_on_hand]))
     return {
       id: order.id,
       flightId: order.flight_id,
@@ -192,6 +241,7 @@ export class CateringOrdersService {
         productName: l.product.name,
         quantityRequired: l.quantity_required,
         quantityShort: l.quantity_short,
+        quantityInWarehouse: onHand.get(l.product_id) ?? 0,
         source: l.source as 'order' | 'default',
       })),
       reportSubmitted: order.flight.flight_report != null,
@@ -334,17 +384,20 @@ export class CateringOrdersService {
   }
 
   // Void a catering order that has not yet been loaded.
-  async void(flightId: string, staffId: string): Promise<CateringOrderDto> {
+  // staffId is null when the scheduled job voids the order because F2
+  // cancelled the flight.
+  async void(flightId: string, staffId: string | null): Promise<CateringOrderDto> {
     const order = await this.db.catering_order.findUnique({ where: { flight_id: flightId } })
     if (!order) throw new ApiErrorException('NOT_FOUND', 'Catering order not found.', 404)
     if (order.status === 'loaded' || order.status === 'closed') {
       throw new ApiErrorException('CATERING_VOID', 'Cannot void a loaded or closed catering order.', 409)
     }
+    if (order.status === 'void') return this.get(flightId)
     await this.db.catering_order.update({ where: { id: order.id }, data: { status: 'void' } })
     await this.audit.record({
-      actorType: 'staff',
+      actorType: staffId ? 'staff' : 'system',
       actorId: staffId,
-      actorRole: 'catering',
+      actorRole: staffId ? 'catering' : null,
       sourceFeature: 'onboard-products',
       action: 'catering_order.void',
       entityType: 'catering_order',
@@ -382,6 +435,7 @@ export class CateringOrdersService {
       scheduledDeparture: flight.scheduled_dep_at.toISOString(),
       passengerCount,
       status: 'open',
+      orderingOpen: this.clock.now().getTime() < cutoffAt.getTime(),
       cutoffAt: cutoffAt.toISOString(),
       generatedAt: '',
       loadedAt: null,

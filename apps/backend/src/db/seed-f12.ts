@@ -149,6 +149,10 @@ function hoursFromNow(h: number): Date {
 // update the batch. The later stock_transfer / stock_transfer_line /
 // aircraft_stock sections of this seed recreate those rows with the
 // new product_id.
+//
+// A rerun refills a batch to its seeded quantity (handy for testing),
+// and records the difference as an adjust movement (reason
+// count_correction) so the stock_movement ledger still adds up.
 async function upsertStockBatch(
   prisma: PrismaClient,
   b: {
@@ -179,6 +183,22 @@ async function upsertStockBatch(
     await prisma.stock_movement.updateMany({
       where: { stock_batch_id: b.id, product_id: existing.product_id },
       data: { product_id: b.product_id },
+    })
+  }
+  const delta = b.quantity_remaining - (existing.product_id === b.product_id ? existing.quantity_remaining : 0)
+  if (delta !== 0) {
+    await prisma.stock_movement.create({
+      data: {
+        product_id: b.product_id,
+        warehouse_id: b.warehouse_id,
+        stock_batch_id: b.id,
+        type: 'adjust',
+        quantity: delta,
+        reason: 'count_correction',
+        note: 'seed reset of demo stock',
+        created_by_staff_id: null,
+        occurred_at: new Date(),
+      },
     })
   }
   await prisma.stock_batch.update({
@@ -912,23 +932,46 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
   })
 
   // --- Warehouse stock (one row per warehouse×product we delivered) -----
-  // Drop any legacy rows first; the compound unique key would otherwise
-  // leave orphan rows with old product_ids sitting in the table.
-  await prisma.warehouse_stock.deleteMany({ where: { warehouse_id: IDS.warehouse.WHBKK } })
-  const whStock = [
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P001, qty: 200 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P002, qty: 120 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P006, qty: 300 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P007, qty: 400 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P009, qty: 250 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P011, qty: 180 },
-    { warehouse_id: IDS.warehouse.WHBKK, product_id: IDS.product.P012, qty: 50 },
+  // On hand is the sum of the warehouse's batches (the doc's invariant),
+  // so it is recomputed, not hardcoded. Reserved is rebuilt from the
+  // ledger: the reserve minus release movements of orders still pending
+  // or confirmed, capped at on hand, so a rerun neither strands nor
+  // invents a reservation. Rows
+  // for products this warehouse no longer stocks are dropped only when
+  // nothing is reserved on them.
+  const stockedProducts = [
+    IDS.product.P001,
+    IDS.product.P002,
+    IDS.product.P006,
+    IDS.product.P007,
+    IDS.product.P009,
+    IDS.product.P011,
+    IDS.product.P012,
   ]
-  for (const ws of whStock) {
+  await prisma.warehouse_stock.deleteMany({
+    where: { warehouse_id: IDS.warehouse.WHBKK, product_id: { notIn: stockedProducts }, quantity_reserved: 0 },
+  })
+  for (const productId of stockedProducts) {
+    const sum = await prisma.stock_batch.aggregate({
+      where: { warehouse_id: IDS.warehouse.WHBKK, product_id: productId },
+      _sum: { quantity_remaining: true },
+    })
+    const onHand = sum._sum.quantity_remaining ?? 0
+    // A reserve movement is -n and a release +n, so what is still held is minus their sum.
+    const held = await prisma.stock_movement.aggregate({
+      where: {
+        warehouse_id: IDS.warehouse.WHBKK,
+        product_id: productId,
+        type: { in: ['reserve', 'release'] },
+        product_order: { is: { status: { in: ['pending_payment', 'confirmed'] } } },
+      },
+      _sum: { quantity: true },
+    })
+    const reserved = Math.min(Math.max(0, -(held._sum.quantity ?? 0)), onHand)
     await prisma.warehouse_stock.upsert({
-      where: { warehouse_id_product_id: { warehouse_id: ws.warehouse_id, product_id: ws.product_id } },
-      update: { quantity_on_hand: ws.qty },
-      create: { warehouse_id: ws.warehouse_id, product_id: ws.product_id, quantity_on_hand: ws.qty, quantity_reserved: 0 },
+      where: { warehouse_id_product_id: { warehouse_id: IDS.warehouse.WHBKK, product_id: productId } },
+      update: { quantity_on_hand: onHand, quantity_reserved: reserved },
+      create: { warehouse_id: IDS.warehouse.WHBKK, product_id: productId, quantity_on_hand: onHand, quantity_reserved: reserved },
     })
   }
 

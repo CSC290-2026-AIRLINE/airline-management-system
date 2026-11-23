@@ -1,6 +1,7 @@
 // Clock test: SIMULATION_NOW_ISO env override is honored when set and
 // parseable, otherwise the real wall clock is used.
 
+import { SimulationClock } from '../../admin-console/simulation-clock'
 import { SystemClock } from './clock'
 
 describe('SystemClock', () => {
@@ -22,5 +23,14 @@ describe('SystemClock', () => {
     const a = clock.now()
     const b = new Date()
     expect(Math.abs(a.getTime() - b.getTime())).toBeLessThan(2000)
+  })
+
+  it('follows the project simulation clock when it is shifted', () => {
+    delete process.env.SIMULATION_NOW_ISO
+    const project = new SimulationClock()
+    project.shift(3 * 24 * 60 * 60_000)
+    const clock = new SystemClock(project)
+    const expected = Date.now() + 3 * 24 * 60 * 60_000
+    expect(Math.abs(clock.now().getTime() - expected)).toBeLessThan(2000)
   })
 })

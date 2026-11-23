@@ -205,7 +205,9 @@ async function main() {
     const mealPrice = Number(meal.price_amount)
     const snackPrice = Number(snack.price_amount)
     const paidTotal = mealPrice + snackPrice
-    const orderBase = { customer_id: customer.id, booking_id: TEST.booking, flight_id: TEST.outbound, cabin: 'economy', currency: 'USD' }
+    // F12 records orders in F4's base currency, the same as checkout (CateringSettingsService.baseCurrency).
+    const currency = (await prisma.pricing_setting.findUnique({ where: { key: 'base_currency' } }))?.value?.trim().toUpperCase() || 'USD'
+    const orderBase = { customer_id: customer.id, booking_id: TEST.booking, flight_id: TEST.outbound, cabin: 'economy', currency }
 
     if (!(await prisma.product_order.findUnique({ where: { id: TEST.orderConfirmed } }))) {
       await prisma.payment.upsert({
@@ -219,7 +221,7 @@ async function main() {
           idempotency_key: `f12:${TEST.orderConfirmed}`,
           status: 'captured',
           provider: 'fake',
-          currency: 'USD',
+          currency,
           amount_total: paidTotal,
           card_amount: paidTotal,
           started_at: now,
@@ -253,7 +255,22 @@ async function main() {
         },
       })
       // A confirmed order holds its stock, so cancelling it in the shop can release it.
+      // The reserve movement is written too, the same way checkout does it, so the ledger matches.
       for (const productId of [meal.id, snack.id]) {
+        await prisma.stock_movement.create({
+          data: {
+            product_id: productId,
+            warehouse_id: warehouse.id,
+            product_order_id: TEST.orderConfirmed,
+            flight_id: TEST.outbound,
+            type: 'reserve',
+            quantity: -1,
+            reason: null,
+            note: 'reserved for customer order',
+            created_by_staff_id: null,
+            occurred_at: new Date(),
+          },
+        })
         await prisma.warehouse_stock.updateMany({
           where: { warehouse_id: warehouse.id, product_id: productId },
           data: { quantity_reserved: { increment: 1 } },

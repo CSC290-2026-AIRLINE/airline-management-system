@@ -24,7 +24,7 @@ import { SystemClock } from '../common/clock'
 import { FlightContextService } from '../common/flight-context.service'
 import { resolveOfferings, type OfferingRow } from '../common/menu'
 import { toNumber, type F12Cabin } from '../common/mapping'
-import { cutoffAt, isOrderWindowOpen, orderExpiresAt, priceOrder, type OrderLineInput } from '../common/order-pricing'
+import { cutoffAt, isOrderWindowOpen, orderExpiresAt, priceBasisFor, priceOrder, type OrderLineInput } from '../common/order-pricing'
 import { ReservationsService } from '../common/reservations.service'
 import { DbBookingsService, StubPaymentsService, DbTierService } from '../common/cross-module-ports'
 import { CabinSettingsService } from '../cabin-settings/cabin-settings.service'
@@ -81,7 +81,9 @@ export class ProductOrdersService {
   // GET /catalog: the menu for a flight and cabin, with the resolved
   // policy, the prices, the dietary badges, the stock status and the
   // order window.
-  async catalog(query: { bookingId?: string; flightId?: string; cabin?: string }): Promise<unknown> {
+  // customerId, when given, prices each product for that customer the same way checkout will (the complimentary
+  // allowance and the tier benefit), so the shop shows what the customer will actually pay.
+  async catalog(query: { bookingId?: string; flightId?: string; cabin?: string }, customerId?: string): Promise<unknown> {
     const flightId = query.flightId
     if (!flightId) throw new ApiErrorException('LINE_INVALID', 'flightId is required.', 400)
     const flight = await this.flightContext.getFlight(flightId)
@@ -108,6 +110,30 @@ export class ProductOrdersService {
       warehouseId = null
     }
     const stockRows = warehouseId ? await this.db.warehouse_stock.findMany({ where: { warehouse_id: warehouseId } }) : []
+
+    // A missing or failing tier lookup is treated as no tier and never blocks the menu (doc, F11 contract).
+    let hasTier = false
+    if (customerId) {
+      try {
+        hasTier = (await this.tiers.getTierForCustomer(customerId)) !== 'none'
+      } catch {
+        hasTier = false
+      }
+    }
+    const pricing = { mealService: settings.mealService, includedPerPassenger: settings.includedPerPassenger, hasTier }
+    const customerPrice = (p: { id: string; category: string; price_amount: unknown; is_premium: boolean }) => {
+      const basis = priceBasisFor(
+        {
+          productId: p.id,
+          category: p.category as OrderLineInput['category'],
+          quantity: 1,
+          priceAmount: toNumber(p.price_amount),
+          isPremium: p.is_premium,
+        },
+        pricing,
+      )
+      return { basis, amount: basis === 'standard' ? toNumber(p.price_amount) : 0 }
+    }
     const availableByProduct = new Map(stockRows.map((s) => [s.product_id, s.quantity_on_hand - s.quantity_reserved]))
 
     return {
@@ -122,6 +148,8 @@ export class ProductOrdersService {
       settings,
       cutoffAt: cutoff.toISOString(),
       orderWindowOpen: isOrderWindowOpen(now, cutoff),
+      // Prices are in F4's base currency (the doc: no currency column on product); the shop shows this code.
+      currency: await this.cateringSettings.baseCurrency(),
       products: products.map((p) => {
         const available = availableByProduct.get(p.id) ?? 0
         return {
@@ -131,6 +159,9 @@ export class ProductOrdersService {
           category: p.category,
           typeCode: p.type_code,
           priceAmount: toNumber(p.price_amount),
+          // What this customer pays for one unit, and why (standard, tier_benefit or included).
+          customerPriceAmount: customerPrice(p).amount,
+          priceBasis: customerPrice(p).basis,
           isPremium: p.is_premium,
           imageKey: p.image_key,
           dietaryAttributes: p.product_dietary.map((d) => d.attribute),
@@ -430,7 +461,10 @@ export class ProductOrdersService {
   }
 
   // Releases the stock an order holds. Shared with the payment-event
-  // handler and the expiry job.
+  // handler, the expiry job and the flight-cancellation step. A product
+  // already released (the stock transfer releases paid orders) is
+  // skipped: release() spots a repeat through a unique violation, which
+  // would abort the caller's transaction.
   async releaseOrderStock(
     tx: Prisma.TransactionClient,
     orderId: string,
@@ -439,8 +473,14 @@ export class ProductOrdersService {
     warehouseId: string,
     occurredAt: Date,
   ): Promise<void> {
+    const released = await tx.stock_movement.findMany({
+      where: { type: 'release', product_order_id: orderId },
+      select: { product_id: true },
+    })
+    const done = new Set(released.map((r) => r.product_id))
     const byProduct = new Map<string, number>()
     for (const line of lines) {
+      if (done.has(line.product_id)) continue
       byProduct.set(line.product_id, (byProduct.get(line.product_id) ?? 0) + line.quantity)
     }
     for (const [productId, quantity] of byProduct) {
@@ -453,6 +493,57 @@ export class ProductOrdersService {
         occurredAt,
       })
     }
+  }
+
+  // Doc, lifecycle step 10: F2 cancelled the flight, so every open order
+  // on it is cancelled, its stock released, and a paid one refunded
+  // through F5. Called by the scheduled job; returns how many orders it
+  // cancelled. Each order's move is guarded, so a run that overlaps a
+  // payment or a customer cancel does not apply twice.
+  async cancelForCancelledFlight(flightId: string, now: Date): Promise<number> {
+    const open = await this.db.product_order.findMany({
+      where: { flight_id: flightId, status: { in: ['pending_payment', 'confirmed'] } },
+      include: { product_order_line: { where: { deleted_at: null } } },
+    })
+    if (open.length === 0) return 0
+    const warehouse = await this.warehouseForFlight(flightId)
+    let cancelled = 0
+    for (const order of open) {
+      const changed = await this.db.$transaction(async (tx) => {
+        const updated = await tx.product_order.updateMany({
+          where: { id: order.id, status: order.status },
+          data: { status: 'cancelled', cancelled_at: now },
+        })
+        if (updated.count === 0) return false
+        await tx.product_order_line.updateMany({
+          where: { product_order_id: order.id, deleted_at: null },
+          data: { deleted_at: now },
+        })
+        if (warehouse) {
+          await this.releaseOrderStock(tx, order.id, order.flight_id, order.product_order_line, warehouse, now)
+        }
+        await this.audit.record(
+          {
+            actorType: 'system',
+            actorId: null,
+            actorRole: null,
+            sourceFeature: 'onboard-products',
+            action: 'product_order.cancel',
+            entityType: 'product_order',
+            entityId: order.id,
+            summary: `Flight ${flightId} was cancelled, so order ${order.id} was cancelled and its stock released.`,
+          },
+          tx,
+        )
+        return true
+      })
+      if (!changed) continue
+      cancelled += 1
+      if (order.status === 'confirmed' && order.payment_id) {
+        await this.payments.refund(order.payment_id, toNumber(order.total_amount), 'the flight was cancelled')
+      }
+    }
+    return cancelled
   }
 
   // The menu for a flight and cabin, resolved from the offering rows.
