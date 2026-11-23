@@ -265,7 +265,24 @@ export class ScreeningService {
       if ((previous?.revision ?? 0) !== input.expectedRevision) throw new ConflictException('Decision changed, please reload')
       if (now < row.occurred_at || (previous && now < previous.reviewed_at))
         throw new BadRequestException('A review cannot predate the check or previous review')
-      const notification = input.decision === 'confirmed' ? this.notifications.confirm(now) : null
+      // Feature 13 tells the authority once per confirmed match, and again only if a confirmed match is withdrawn.
+      const wasConfirmed = previous?.decision === 'confirmed'
+      const identity = snapshotIdentity(row)
+      const alert = {
+        checkId: id,
+        revision: input.expectedRevision + 1,
+        flightId: row.flight_id,
+        passengerName: `${identity.first_name} ${identity.last_name}`.trim(),
+      }
+      let notification: { mode: 'mock'; authorityNotifiedAt: Date } | null = null
+      if (input.decision === 'confirmed') {
+        notification =
+          wasConfirmed && previous.authority_notified_at
+            ? { mode: 'mock', authorityNotifiedAt: previous.authority_notified_at }
+            : await this.notifications.confirm(tx, now, alert)
+      } else if (wasConfirmed) {
+        await this.notifications.withdraw(tx, now, alert)
+      }
       const review = await tx.screening_review.create({
         data: {
           screening_check_id: id,

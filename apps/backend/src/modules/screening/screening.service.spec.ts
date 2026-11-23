@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import type { DbService } from '@backend/db/db.service'
 import { ScreeningAudit, ScreeningContext } from './screening.context'
 import { ScreeningService } from './screening.service'
-import { MockScreeningBooking, MockScreeningNotification } from './screening.ports'
+import { Feature13ScreeningNotification, MockScreeningBooking, MockScreeningNotification } from './screening.ports'
 import { QueueDto } from './dto/screening.dto'
 import { checkFixture, reviewFixture, now, checkId, staffId, userId } from './screening.test-fixtures'
 
@@ -79,6 +79,76 @@ describe('ScreeningService', () => {
     expect(result.review).toMatchObject({ revision: 4, notificationMode: 'mock' })
     expect(tx.screening_review.create.mock.calls[0][0].data).toMatchObject({ revision: 4, authority_notified_at: now })
     expect(result.integrations.checkIn).toBe('not_connected')
+  })
+  describe('Feature 13 security alerts', () => {
+    const port = { confirm: jest.fn(), withdraw: jest.fn() }
+    const earlier = new Date(now.getTime() - 60_000)
+    beforeEach(() => {
+      port.confirm.mockResolvedValue({ mode: 'mock', authorityNotifiedAt: now })
+      port.withdraw.mockResolvedValue(undefined)
+      service = new ScreeningService(
+        new ScreeningContext(db as unknown as DbService, { now: () => now }),
+        new ScreeningAudit(),
+        new MockScreeningBooking(),
+        port,
+      )
+    })
+    const alertFor = (revision: number) => ({
+      checkId,
+      revision,
+      flightId: checkFixture().flight_id,
+      passengerName: `${checkFixture().snap_first_name} ${checkFixture().snap_last_name}`,
+    })
+
+    it('queues an alert in the review transaction when a match is first confirmed', async () => {
+      await service.review(userId, checkId, { ...body, decision: 'confirmed' })
+      expect(port.confirm).toHaveBeenCalledWith(tx, now, alertFor(1))
+      expect(port.withdraw).not.toHaveBeenCalled()
+    })
+
+    it('does not alert again when a confirmed match is confirmed again, and keeps the first alert time', async () => {
+      tx.screening_check.findUnique.mockResolvedValue({
+        ...checkFixture(),
+        screening_review: [reviewFixture({ decision: 'confirmed', authority_notified_at: earlier })],
+      })
+      await service.review(userId, checkId, { ...body, expectedRevision: 1, decision: 'confirmed' })
+      expect(port.confirm).not.toHaveBeenCalled()
+      expect(tx.screening_review.create.mock.calls[0][0].data).toMatchObject({ authority_notified_at: earlier })
+    })
+
+    it('withdraws the alert when a confirmed match is reviewed as a false positive', async () => {
+      tx.screening_check.findUnique.mockResolvedValue({
+        ...checkFixture(),
+        screening_review: [reviewFixture({ decision: 'confirmed', authority_notified_at: earlier })],
+      })
+      await service.review(userId, checkId, { ...body, expectedRevision: 1 })
+      expect(port.withdraw).toHaveBeenCalledWith(tx, now, alertFor(2))
+      expect(port.confirm).not.toHaveBeenCalled()
+    })
+
+    it('sends nothing for a false positive that was never confirmed', async () => {
+      await service.review(userId, checkId, body)
+      expect(port.confirm).not.toHaveBeenCalled()
+      expect(port.withdraw).not.toHaveBeenCalled()
+    })
+
+    it('stores the alert as a Feature 13 inbound event with the flight and the check as reference', async () => {
+      const client = {
+        flight: { findUnique: jest.fn().mockResolvedValue({ flight_number: 'FD 330', service_date: new Date('2026-11-20T00:00:00Z') }) },
+        inbound_event: { create: jest.fn() },
+      }
+      const result = await new Feature13ScreeningNotification().confirm(client as never, now, alertFor(1))
+      expect(result).toEqual({ mode: 'mock', authorityNotifiedAt: now })
+      expect(client.inbound_event.create).toHaveBeenCalledWith({
+        data: {
+          source: '7',
+          source_event_id: `security_alert:${checkId}:1`,
+          event_type: 'security_alert',
+          payload: { passenger_name: alertFor(1).passengerName, flight_number: 'FD 330', service_date: '2026-11-20', reference: checkId },
+          received_at: now,
+        },
+      })
+    })
   })
   it('rejects stale revisions before writing', async () => {
     tx.screening_check.findUnique.mockResolvedValue({ ...checkFixture(), screening_review: [reviewFixture()] })

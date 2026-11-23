@@ -5,7 +5,7 @@ import { ScreeningMatcher } from './screening.matcher'
 import { ScreeningCheckService } from './screening-check.service'
 import { ScreeningService } from './screening.service'
 import { ScreeningCheckController, ScreeningController } from './screening.controller'
-import { MockScreeningBooking, MockScreeningNotification, ScreeningBookingPort, ScreeningNotificationPort } from './screening.ports'
+import { Feature13ScreeningNotification, MockScreeningBooking, ScreeningBookingPort, ScreeningNotificationPort } from './screening.ports'
 import { CheckPipe, QueuePipe, ReviewPipe } from './dto/screening.dto'
 
 @Module({
@@ -23,7 +23,8 @@ import { CheckPipe, QueuePipe, ReviewPipe } from './dto/screening.dto'
     ReviewPipe,
     { provide: ScreeningClock, useClass: SystemScreeningClock },
     { provide: ScreeningBookingPort, useClass: MockScreeningBooking },
-    { provide: ScreeningNotificationPort, useClass: MockScreeningNotification },
+    // Feature 13 sends the alert to the authority; the review queues it in its own transaction.
+    { provide: ScreeningNotificationPort, useClass: Feature13ScreeningNotification },
   ],
   exports: [ScreeningCheckService, ScreeningRescreenService],
 })
