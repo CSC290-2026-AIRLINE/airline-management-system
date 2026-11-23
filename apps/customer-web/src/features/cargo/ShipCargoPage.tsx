@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Plane, AlertCircle, Loader2, Check, ChevronLeft, ChevronRight, Info } from 'lucide-react'
-import { Button } from '@customer-web/components/ui/button'
-import { Input } from '@customer-web/components/ui/input'
+import { Plane, AlertCircle, Loader2, Check, Info } from 'lucide-react'
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
 import { Badge } from '@customer-web/components/ui/badge'
+import { Button } from '@customer-web/components/ui/button'
+import { Calendar } from '@customer-web/components/ui/calendar'
+import { Card, CardContent, CardHeader, CardTitle } from '@customer-web/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/cw-select'
+import { Field } from '@customer-web/components/ui/cw-field'
+import { Input } from '@customer-web/components/ui/input'
+import { Separator } from '@customer-web/components/ui/separator'
+import { Skeleton } from '@customer-web/components/ui/skeleton'
 import {
   useCustomerCargoApi,
   CargoApiError,
@@ -41,13 +48,8 @@ function durationText(dep: string, arr: string): string {
   return `${h} h ${m} min · direct`
 }
 
-const selectCls =
-  'flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-const inputCls =
-  'flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-
 function Req() {
-  return <span className="ml-0.5 text-red-500">*</span>
+  return <span className="ml-0.5 text-destructive">*</span>
 }
 
 /* ── Main component ────────────────────────────────────────────── */
@@ -230,6 +232,7 @@ export default function ShipCargoPage() {
         `${routeId}|${shipDate}|${commodityTypeId}|${pieces}|${weightKg}|${volumeM3}|${description}|${isDangerous ? unNumber : ''}`,
       )
     } catch (err) {
+      setQuote(null)
       setQuotedKey('')
       if (err instanceof CargoApiError) {
         const e = { code: err.code, message: err.message }
@@ -393,8 +396,9 @@ export default function ShipCargoPage() {
     return (
       <div className="text-left">
         <CargoHero subtitle="Loading…" />
-        <div className="mx-auto w-full max-w-6xl px-6 py-8">
-          <p className="text-sm text-slate-500">Loading…</p>
+        <div className="mx-auto grid w-full max-w-6xl gap-3 px-6 py-8">
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-40 w-full" />
         </div>
       </div>
     )
@@ -412,59 +416,69 @@ export default function ShipCargoPage() {
             {/* ── Left column ──────────────────────────────────── */}
             <div>
               {/* Section 1 */}
-              <div className="border-t border-slate-200 pt-6">
-                <h2 className="mb-4 text-base font-semibold text-slate-900">1. Route and ship date</h2>
+              <section>
+                <Separator className="mb-6" />
+                <h2 className="mb-4 text-base font-semibold">1. Route and ship date</h2>
 
                 <div className="grid gap-4">
                   {/* From / To */}
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="from" className="mb-1 block text-xs text-slate-600">
-                        From
-                        <Req />
-                      </label>
-                      <select
-                        id="from"
-                        value={fromAirport}
-                        onChange={(e) => setFromAirport(e.target.value)}
-                        className={`${selectCls}${flaggedField === 'from' ? ' !border-red-500' : ''}`}
-                      >
-                        <option value="">Select origin</option>
-                        {origins.map(([code, name]) => (
-                          <option key={code} value={code}>
-                            {name} ({code})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label htmlFor="to" className="mb-1 block text-xs text-slate-600">
-                        To
-                        <Req />
-                      </label>
-                      <select
-                        id="to"
-                        value={toAirport}
-                        onChange={(e) => setToAirport(e.target.value)}
-                        disabled={!fromAirport}
-                        className={`${selectCls}${flaggedField === 'to' ? ' !border-red-500' : ''}`}
-                      >
-                        <option value="">Select destination</option>
-                        {destinations.map(([code, name]) => (
-                          <option key={code} value={code}>
-                            {name} ({code})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <Field
+                      id="from"
+                      label={
+                        <>
+                          From
+                          <Req />
+                        </>
+                      }
+                    >
+                      <Select value={fromAirport} onValueChange={setFromAirport}>
+                        <SelectTrigger id="from" aria-invalid={flaggedField === 'from'}>
+                          <SelectValue placeholder="Select origin">
+                            {!fromAirport ? <span className="text-muted-foreground">Select origin</span> : undefined}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {origins.map(([code, name]) => (
+                            <SelectItem key={code} value={code}>
+                              {name} ({code})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field
+                      id="to"
+                      label={
+                        <>
+                          To
+                          <Req />
+                        </>
+                      }
+                    >
+                      <Select value={toAirport} onValueChange={setToAirport} disabled={!fromAirport}>
+                        <SelectTrigger id="to" aria-invalid={flaggedField === 'to'}>
+                          <SelectValue placeholder="Select destination">
+                            {!toAirport ? <span className="text-muted-foreground">Select destination</span> : undefined}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {destinations.map(([code, name]) => (
+                            <SelectItem key={code} value={code}>
+                              {name} ({code})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
                   </div>
 
                   {/* Ship date */}
-                  <div id="shipDateSection">
-                    <label className="mb-1 block text-xs text-slate-600">
+                  <div id="shipDateSection" className="grid gap-1">
+                    <span className="text-sm leading-none font-medium">
                       Ship date
                       <Req />
-                    </label>
+                    </span>
                     {shipDate ? (
                       (() => {
                         const di = shipDates.find((d) => d.date === shipDate)
@@ -472,19 +486,19 @@ export default function ShipCargoPage() {
                         const wt = Number(weightKg) || 0
                         return (
                           <>
-                            <p className="text-sm font-medium text-slate-900">
+                            <p className="text-sm font-medium">
                               {freeKg.toLocaleString()} kg free on {formatDateShort(shipDate)}
                             </p>
-                            {wt <= 0 && <p className="text-xs text-slate-500">Enter the weight to check it fits.</p>}
+                            {wt <= 0 && <p className="text-xs text-muted-foreground">Enter the weight to check it fits.</p>}
                             {wt > 0 && wt <= freeKg && <p className="text-xs text-emerald-600">✓ Room for your {wt.toLocaleString()} kg</p>}
                             {wt > 0 && wt > freeKg && (
-                              <p className="text-xs text-red-600">Not enough room for {wt.toLocaleString()} kg. Pick another day.</p>
+                              <p className="text-xs text-destructive">Not enough room for {wt.toLocaleString()} kg. Pick another day.</p>
                             )}
                           </>
                         )
                       })()
                     ) : (
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-muted-foreground">
                         Pick a day up to {requestWindowDays} days ahead (to {formatDate(maxDateStr)}). Your cargo goes on the earliest
                         flight that day with room.
                       </p>
@@ -507,15 +521,17 @@ export default function ShipCargoPage() {
                   {/* Flights on day */}
                   {shipDate && dayFlights.length > 0 && (
                     <div className="grid gap-2">
-                      <h3 className="text-xs font-semibold text-slate-900">Flights on {formatDate(shipDate)}</h3>
+                      <h3 className="text-xs font-semibold">Flights on {formatDate(shipDate)}</h3>
                       {quote && !quoteError && (
-                        <div className="flex items-start gap-2 rounded-md bg-blue-50 p-2.5 text-xs text-blue-700">
-                          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                          We put your cargo on the earliest flight with room. You don&apos;t need to choose.
-                        </div>
+                        <Alert>
+                          <Info />
+                          <AlertDescription>
+                            We put your cargo on the earliest flight with room. You don&apos;t need to choose.
+                          </AlertDescription>
+                        </Alert>
                       )}
                       {(quoteError || (!quote && canQuote && !quoteLoading)) && (
-                        <p className="text-xs text-slate-500">A flight is assigned once your goods pass the checks.</p>
+                        <p className="text-xs text-muted-foreground">A flight is assigned once your goods pass the checks.</p>
                       )}
                       <div className="grid gap-3 sm:grid-cols-2">
                         {dayFlights.map((f) => {
@@ -523,79 +539,93 @@ export default function ShipCargoPage() {
                           const isAssigned = !quoteError && quote?.flightId === f.id
                           const notEnough = wt > 0 && f.availableKg < wt
                           return (
-                            <div
-                              key={f.id}
-                              className={`rounded-lg border p-3 text-sm ${isAssigned ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white'}`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="font-semibold text-slate-900">{f.flightNumber}</span>
-                                {isAssigned && (
-                                  <Badge variant="default" className="gap-1 text-xs">
-                                    <Check className="h-3 w-3" /> Your flight
-                                  </Badge>
-                                )}
-                                {!isAssigned && !notEnough && <span className="text-xs text-slate-500">Later flight</span>}
-                                {!isAssigned && notEnough && <span className="text-xs text-red-600">Not enough room</span>}
-                              </div>
-                              <p className="mt-1 text-slate-600">
-                                {formatTime(f.depAt)} {f.origin} → {formatTime(f.arrAt)} {f.destination}
-                              </p>
-                              <p className="text-xs text-slate-500">{f.availableKg.toLocaleString()} kg free</p>
-                            </div>
+                            <Card key={f.id} className={`gap-1 py-3 text-sm ${isAssigned ? 'border-blue-600 bg-blue-50' : ''}`}>
+                              <CardContent className="grid gap-1 px-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold">{f.flightNumber}</span>
+                                  {isAssigned && (
+                                    <Badge className="gap-1 text-xs">
+                                      <Check className="h-3 w-3" /> Your flight
+                                    </Badge>
+                                  )}
+                                  {!isAssigned && !notEnough && <span className="text-xs text-muted-foreground">Later flight</span>}
+                                  {!isAssigned && notEnough && <span className="text-xs text-destructive">Not enough room</span>}
+                                </div>
+                                <p className="text-muted-foreground">
+                                  {formatTime(f.depAt)} {f.origin} → {formatTime(f.arrAt)} {f.destination}
+                                </p>
+                                <p className="text-xs text-muted-foreground">{f.availableKg.toLocaleString()} kg free</p>
+                              </CardContent>
+                            </Card>
                           )
                         })}
                       </div>
                     </div>
                   )}
                 </div>
-              </div>
+              </section>
 
               {/* Section 2 */}
-              <div className="mt-6 border-t border-slate-200 pt-6">
-                <h2 className="mb-4 text-base font-semibold text-slate-900">2. Describe the goods</h2>
+              <section className="mt-6">
+                <Separator className="mb-6" />
+                <h2 className="mb-4 text-base font-semibold">2. Describe the goods</h2>
 
                 <div className="grid gap-4">
                   {/* Commodity | Pieces | Weight | Volume */}
                   <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_1fr]">
-                    <div>
-                      <label htmlFor="commodityType" className="mb-1 block text-xs text-slate-600">
-                        Commodity type
-                        <Req />
-                      </label>
-                      <select
-                        id="commodityType"
-                        value={commodityTypeId}
-                        onChange={(e) => setCommodityTypeId(e.target.value)}
-                        className={`${selectCls}${flaggedField === 'commodityType' ? ' !border-red-500' : ''}`}
-                      >
-                        <option value="">Select</option>
-                        {commodityTypes.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} ({c.handlingClass})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label htmlFor="pieces" className="mb-1 block text-xs text-slate-600">
-                        Pieces
-                        <Req />
-                      </label>
+                    <Field
+                      id="commodityType"
+                      label={
+                        <>
+                          Commodity type
+                          <Req />
+                        </>
+                      }
+                    >
+                      <Select value={commodityTypeId} onValueChange={setCommodityTypeId}>
+                        <SelectTrigger id="commodityType" aria-invalid={flaggedField === 'commodityType'}>
+                          <SelectValue placeholder="Select">
+                            {!commodityTypeId ? <span className="text-muted-foreground">Select</span> : undefined}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {commodityTypes.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name} ({c.handlingClass})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field
+                      id="pieces"
+                      error={fieldErrors.pieces?.message}
+                      label={
+                        <>
+                          Pieces
+                          <Req />
+                        </>
+                      }
+                    >
                       <Input
                         id="pieces"
                         type="number"
                         min="1"
                         value={pieces}
                         onChange={(e) => setPieces(e.target.value)}
-                        className={`h-10 bg-white ${fieldErrors.pieces || flaggedField === 'pieces' ? 'border-red-500' : 'border-slate-300'}`}
+                        aria-invalid={!!fieldErrors.pieces || flaggedField === 'pieces'}
                       />
-                      {fieldErrors.pieces && <FieldError error={fieldErrors.pieces} />}
-                    </div>
-                    <div>
-                      <label htmlFor="weight" className="mb-1 block text-xs text-slate-600">
-                        Weight (kg)
-                        <Req />
-                      </label>
+                    </Field>
+                    <Field
+                      id="weight"
+                      error={fieldErrors.weightKg?.message}
+                      label={
+                        <>
+                          Weight (kg)
+                          <Req />
+                        </>
+                      }
+                    >
                       <Input
                         id="weight"
                         type="number"
@@ -603,15 +633,18 @@ export default function ShipCargoPage() {
                         step="0.1"
                         value={weightKg}
                         onChange={(e) => setWeightKg(e.target.value)}
-                        className={`h-10 bg-white ${fieldErrors.weightKg || flaggedField === 'weight' ? 'border-red-500' : 'border-slate-300'}`}
+                        aria-invalid={!!fieldErrors.weightKg || flaggedField === 'weight'}
                       />
-                      {fieldErrors.weightKg && <FieldError error={fieldErrors.weightKg} />}
-                    </div>
-                    <div>
-                      <label htmlFor="volume" className="mb-1 block text-xs text-slate-600">
-                        Volume (m³)
-                        <Req />
-                      </label>
+                    </Field>
+                    <Field
+                      id="volume"
+                      label={
+                        <>
+                          Volume (m³)
+                          <Req />
+                        </>
+                      }
+                    >
                       <Input
                         id="volume"
                         type="number"
@@ -619,27 +652,31 @@ export default function ShipCargoPage() {
                         step="0.001"
                         value={volumeM3}
                         onChange={(e) => setVolumeM3(e.target.value)}
-                        className={`h-10 bg-white ${flaggedField === 'volume' ? 'border-red-500' : 'border-slate-300'}`}
+                        aria-invalid={flaggedField === 'volume'}
                       />
-                    </div>
+                    </Field>
                   </div>
 
                   {/* Goods description — single-line input */}
-                  <div>
-                    <label htmlFor="description" className="mb-1 block text-xs text-slate-600">
-                      Goods description
-                      <Req />
-                    </label>
-                    <input
+                  <Field
+                    id="description"
+                    label={
+                      <>
+                        Goods description
+                        <Req />
+                      </>
+                    }
+                  >
+                    <Input
                       id="description"
                       type="text"
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       placeholder="Describe the goods being shipped"
-                      className={`${inputCls} ${fieldErrors.description || flaggedField === 'description' ? '!border-red-500' : ''}`}
+                      aria-invalid={!!fieldErrors.description || flaggedField === 'description'}
                     />
                     {fieldErrors.description && <FieldError error={fieldErrors.description} />}
-                  </div>
+                  </Field>
 
                   {/* Error banner for other quote errors */}
                   {quoteError &&
@@ -650,99 +687,107 @@ export default function ShipCargoPage() {
 
                   {/* UN number (dangerous goods only) */}
                   {isDangerous && (
-                    <div>
-                      <label htmlFor="unNumber" className="mb-1 block text-xs text-slate-600">
-                        UN number
-                        <Req />
-                      </label>
-                      <input
+                    <Field
+                      id="unNumber"
+                      label={
+                        <>
+                          UN number
+                          <Req />
+                        </>
+                      }
+                      hint="Needed for dangerous goods: UN and four digits."
+                    >
+                      <Input
                         id="unNumber"
                         type="text"
                         placeholder="UNxxxx"
                         value={unNumber}
                         onChange={(e) => setUnNumber(e.target.value)}
                         maxLength={6}
-                        className={`${inputCls} ${fieldErrors.unNumber || flaggedField === 'unNumber' ? '!border-red-500' : ''}`}
+                        aria-invalid={!!fieldErrors.unNumber || flaggedField === 'unNumber'}
                       />
-                      <p className="mt-1 text-xs text-slate-500">Needed for dangerous goods: UN and four digits.</p>
                       <FieldError error={fieldErrors.unNumber} />
-                    </div>
+                    </Field>
                   )}
 
                   {/* Shipper / Consignee */}
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="shipperCompany" className="mb-1 block text-xs text-slate-600">
-                        Shipper
-                        <Req />
-                      </label>
+                    <Field
+                      id="shipperCompany"
+                      label={
+                        <>
+                          Shipper
+                          <Req />
+                        </>
+                      }
+                    >
                       <Input
                         id="shipperCompany"
                         placeholder="Company"
                         value={shipperCompany}
                         onChange={(e) => setShipperCompany(e.target.value)}
-                        className={`h-10 bg-white ${flaggedField === 'shipperCompany' ? 'border-red-500' : 'border-slate-300'}`}
+                        aria-invalid={flaggedField === 'shipperCompany'}
                       />
-                    </div>
-                    <div>
-                      <label htmlFor="consigneeName" className="mb-1 block text-xs text-slate-600">
-                        Consignee name
-                        <Req />
-                      </label>
+                    </Field>
+                    <Field
+                      id="consigneeName"
+                      label={
+                        <>
+                          Consignee name
+                          <Req />
+                        </>
+                      }
+                    >
                       <Input
                         id="consigneeName"
                         placeholder="Name"
                         value={consigneeName}
                         onChange={(e) => setConsigneeName(e.target.value)}
-                        className={`h-10 bg-white ${flaggedField === 'consigneeName' ? 'border-red-500' : 'border-slate-300'}`}
+                        aria-invalid={flaggedField === 'consigneeName'}
                       />
-                    </div>
+                    </Field>
                   </div>
 
                   {/* Shipper phone / Consignee phone */}
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="shipperPhone" className="mb-1 block text-xs text-slate-600">
-                        Shipper phone
-                      </label>
+                    <Field id="shipperPhone" label="Shipper phone">
                       <Input
                         id="shipperPhone"
                         placeholder="Optional"
                         value={shipperPhone}
                         onChange={(e) => setShipperPhone(e.target.value)}
-                        className="h-10 border-slate-300 bg-white"
                       />
-                    </div>
-                    <div>
-                      <label htmlFor="consigneePhone" className="mb-1 block text-xs text-slate-600">
-                        Consignee phone
-                      </label>
+                    </Field>
+                    <Field id="consigneePhone" label="Consignee phone">
                       <Input
                         id="consigneePhone"
                         placeholder="Optional"
                         value={consigneePhone}
                         onChange={(e) => setConsigneePhone(e.target.value)}
-                        className="h-10 border-slate-300 bg-white"
                       />
-                    </div>
+                    </Field>
                   </div>
 
                   {/* Consignee address (full-width, API needs it separately) */}
-                  <div>
-                    <label htmlFor="consigneeAddress" className="mb-1 block text-xs text-slate-600">
-                      Consignee address
-                      <Req />
-                    </label>
+                  <Field
+                    id="consigneeAddress"
+                    label={
+                      <>
+                        Consignee address
+                        <Req />
+                      </>
+                    }
+                  >
                     <Input
                       id="consigneeAddress"
                       placeholder="Address"
                       value={consigneeAddress}
                       onChange={(e) => setConsigneeAddress(e.target.value)}
-                      className={`h-10 bg-white ${flaggedField === 'consigneeAddress' ? 'border-red-500' : 'border-slate-300'}`}
+                      aria-invalid={flaggedField === 'consigneeAddress'}
                     />
-                  </div>
+                  </Field>
                 </div>
-              </div>
+              </section>
             </div>
 
             {/* ── Right column ─────────────────────────────────── */}
@@ -783,8 +828,8 @@ export default function ShipCargoPage() {
 function QRow({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm text-slate-500">{label}</span>
-      <span className={`text-sm ${bold ? 'font-semibold text-slate-900' : 'font-semibold text-slate-700'}`}>{value}</span>
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className={`text-sm font-semibold ${bold ? '' : 'text-foreground/80'}`}>{value}</span>
     </div>
   )
 }
@@ -792,12 +837,14 @@ function QRow({ label, value, bold }: { label: string; value: string; bold?: boo
 function FieldError({ error }: { error?: { code: string; message: string } }) {
   if (!error) return null
   return (
-    <div className="flex items-start gap-2 rounded-md bg-red-50 p-2.5 text-xs text-red-700">
-      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-      <span>
-        <strong>{error.code}</strong> · {error.message}
-      </span>
-    </div>
+    <Alert variant="destructive">
+      <AlertCircle />
+      <AlertDescription>
+        <span>
+          <strong>{error.code}</strong> · {error.message}
+        </span>
+      </AlertDescription>
+    </Alert>
   )
 }
 
@@ -822,98 +869,112 @@ function FlightCard({
 }) {
   if (quote && !quoteLoading && !quoteError) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-5">
-        <h3 className="mb-3 text-lg font-semibold text-slate-900">Your flight</h3>
-        <div className="rounded-lg border border-slate-200 p-3">
-          <p className="mb-3 text-sm">
-            <span className="font-semibold text-blue-700">{quote.flightNumber}</span>{' '}
-            <span className="text-slate-500">{formatDate(quote.depAt.slice(0, 10))}</span>
-          </p>
-          <div className="flex items-center justify-between">
-            <div className="text-center">
-              <p className="text-2xl font-bold text-slate-900">{formatTime(quote.depAt)}</p>
-              <p className="text-xs text-slate-500">
-                {quote.origin} · {quote.originName}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Your flight</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Card className="gap-0 py-3 shadow-none">
+            <CardContent className="px-3">
+              <p className="mb-3 text-sm">
+                <span className="font-semibold text-primary">{quote.flightNumber}</span>{' '}
+                <span className="text-muted-foreground">{formatDate(quote.depAt.slice(0, 10))}</span>
               </p>
-            </div>
-            <div className="flex flex-col items-center gap-0.5">
-              <Plane className="h-4 w-4 text-slate-400" />
-              <span className="text-xs text-slate-500">{durationText(quote.depAt, quote.arrAt)}</span>
-            </div>
-            <div className="text-center">
-              <p className="text-2xl font-bold text-slate-900">{formatTime(quote.arrAt)}</p>
-              <p className="text-xs text-slate-500">
-                {quote.destination} · {quote.destinationName}
-              </p>
-            </div>
-          </div>
-          <hr className="my-2 border-slate-200" />
-          <div className="grid grid-cols-3 gap-2 text-center text-xs">
-            <div>
-              <p className="text-slate-500">Aircraft</p>
-              <p className="font-medium text-slate-700">{quote.aircraft || '—'}</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Room before you</p>
-              <p className="font-medium text-slate-700">{quote.availableKg.toLocaleString()} kg</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Distance</p>
-              <p className="font-medium text-slate-700">{quote.distanceKm.toLocaleString()} km</p>
-            </div>
-          </div>
-          {infoNote && (
-            <div className="mt-2 flex items-start gap-2 rounded-md bg-blue-50 p-2.5 text-xs text-blue-700">
-              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              {infoNote}
-            </div>
-          )}
-        </div>
-        <p className="mt-2 text-xs text-slate-500">Cargo space can still change until your cargo is loaded.</p>
-      </div>
+              <div className="flex items-center justify-between">
+                <div className="text-center">
+                  <p className="text-2xl font-bold">{formatTime(quote.depAt)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {quote.origin} · {quote.originName}
+                  </p>
+                </div>
+                <div className="flex flex-col items-center gap-0.5">
+                  <Plane className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">{durationText(quote.depAt, quote.arrAt)}</span>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold">{formatTime(quote.arrAt)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {quote.destination} · {quote.destinationName}
+                  </p>
+                </div>
+              </div>
+              <Separator className="my-2" />
+              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                <div>
+                  <p className="text-muted-foreground">Aircraft</p>
+                  <p className="font-medium">{quote.aircraft || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Room before you</p>
+                  <p className="font-medium">{quote.availableKg.toLocaleString()} kg</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Distance</p>
+                  <p className="font-medium">{quote.distanceKm.toLocaleString()} km</p>
+                </div>
+              </div>
+              {infoNote && (
+                <Alert className="mt-2">
+                  <Info />
+                  <AlertDescription>{infoNote}</AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+          <p className="mt-2 text-xs text-muted-foreground">Cargo space can still change until your cargo is loaded.</p>
+        </CardContent>
+      </Card>
     )
   }
 
   if (quoteError?.code === 'NO_FLIGHT_AVAILABLE') {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-5">
-        <h3 className="mb-3 text-lg font-semibold text-slate-900">No flight available</h3>
-        <div className="flex items-start gap-2 rounded-md bg-red-50 p-3 text-sm text-red-700">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            <strong>NO_FLIGHT_AVAILABLE</strong> · {quoteError.message}
-          </span>
-        </div>
-        {daysWithRoom.length > 0 && (
-          <div className="mt-3">
-            <p className="mb-2 text-xs font-medium text-slate-500">Days with room for {weightKg.toLocaleString()} kg</p>
-            <div className="flex flex-wrap gap-1.5">
-              {daysWithRoom.map((d) => (
-                <button
-                  key={d.date}
-                  onClick={() => onPickDate(d.date)}
-                  className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-200"
-                >
-                  {new Date(d.date + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })}
-                </button>
-              ))}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">No flight available</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertDescription>
+              <span>
+                <strong>NO_FLIGHT_AVAILABLE</strong> · {quoteError.message}
+              </span>
+            </AlertDescription>
+          </Alert>
+          {daysWithRoom.length > 0 && (
+            <div className="mt-3">
+              <p className="mb-2 text-xs font-medium text-muted-foreground">Days with room for {weightKg.toLocaleString()} kg</p>
+              <div className="flex flex-wrap gap-1.5">
+                {daysWithRoom.map((d) => (
+                  <Button key={d.date} type="button" variant="secondary" size="sm" onClick={() => onPickDate(d.date)}>
+                    {new Date(d.date + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })}
+                  </Button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </CardContent>
+      </Card>
     )
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
-      <h3 className="mb-3 text-lg font-semibold text-slate-900">Assigned flight</h3>
-      <div className="rounded-lg border border-slate-200 p-4">
-        <p className="font-semibold text-slate-900">No flight assigned</p>
-        <p className="mt-1 text-sm text-slate-500">
-          {canQuote && quoteLoading ? 'Checking…' : 'No flight is assigned until the checks pass.'}
-        </p>
-      </div>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Assigned flight</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Card className="gap-1 py-4 shadow-none">
+          <CardContent className="px-4">
+            <p className="font-semibold">No flight assigned</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {canQuote && quoteLoading ? 'Checking…' : 'No flight is assigned until the checks pass.'}
+            </p>
+          </CardContent>
+        </Card>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -945,59 +1006,70 @@ function QuoteCard({
   const rateLabel = hasQuoteValues ? `${quote.ratePerKg.toFixed(2)} / kg` : '—'
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
-      <h3 className="mb-3 text-lg font-semibold text-slate-900">Quote</h3>
-
-      {quoteLoading && (
-        <div className="mb-2 flex items-center gap-2 text-sm text-slate-500">
-          <Loader2 className="h-4 w-4 animate-spin" /> Calculating…
-        </div>
-      )}
-
-      <div className="grid gap-2">
-        <QRow label="Actual weight" value={hasQuoteValues ? `${quote.actualWeightKg.toFixed(1)} kg` : '—'} />
-        <QRow
-          label={`Volumetric (${Number(volumeM3) || 0} × ${quote?.volumetricKgPerM3 ?? 167})`}
-          value={hasQuoteValues ? `${quote.volumetricKg.toFixed(1)} kg` : '—'}
-        />
-        <QRow label="Chargeable weight" value={hasQuoteValues ? `${quote.chargeableKg.toFixed(1)} kg` : '—'} bold />
-        <QRow label={commodityBand} value={rateLabel} />
-        <hr className="border-slate-200" />
-        <div className="flex items-baseline justify-between">
-          <span className="text-sm text-slate-500">Total due</span>
-          <span className="text-3xl font-bold text-slate-900">{hasQuoteValues ? `${quote.currency} ${quote.charge.toFixed(2)}` : '—'}</span>
-        </div>
-        <p className="text-xs text-slate-500">Minimum charge USD 50. Cancel for free any time before it is loaded. Full refund.</p>
-
-        {quoteError && quoteError.code === 'NO_FLIGHT_AVAILABLE' && (
-          <p className="text-xs text-red-600">No flight available on the selected date.</p>
-        )}
-
-        {submitError && (
-          <div className="flex items-start gap-2 rounded-md bg-red-50 p-3 text-sm text-red-700">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            {submitError}
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Quote</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {quoteLoading && (
+          <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Calculating…
           </div>
         )}
 
-        {disabledReason && <p className="text-center text-xs text-slate-400">{disabledReason}</p>}
+        <div className="grid gap-2">
+          <QRow label="Actual weight" value={hasQuoteValues ? `${quote.actualWeightKg.toFixed(1)} kg` : '—'} />
+          <QRow
+            label={`Volumetric (${Number(volumeM3) || 0} × ${quote?.volumetricKgPerM3 ?? 167})`}
+            value={hasQuoteValues ? `${quote.volumetricKg.toFixed(1)} kg` : '—'}
+          />
+          <QRow label="Chargeable weight" value={hasQuoteValues ? `${quote.chargeableKg.toFixed(1)} kg` : '—'} bold />
+          <QRow label={commodityBand} value={rateLabel} />
+          <Separator />
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm text-muted-foreground">Total due</span>
+            <span className="text-3xl font-bold">{hasQuoteValues ? `${quote.currency} ${quote.charge.toFixed(2)}` : '—'}</span>
+          </div>
+          <p className="text-xs text-muted-foreground">Minimum charge USD 50. Cancel for free any time before it is loaded. Full refund.</p>
 
-        <Button
-          className={`mt-2 h-11 w-full rounded-md ${
-            canSubmit || submitting ? 'bg-blue-700 text-white hover:bg-blue-800' : 'bg-slate-200 text-slate-500 cursor-not-allowed'
-          }`}
-          onClick={canSubmit ? onSubmit : !submitting ? onDisabledClick : undefined}
-          type="button"
-        >
-          {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {submitting ? 'Booking…' : 'Book and pay'}
-        </Button>
-      </div>
-    </div>
+          {quoteError && quoteError.code === 'NO_FLIGHT_AVAILABLE' && (
+            <p className="text-xs text-destructive">No flight available on the selected date.</p>
+          )}
+
+          {submitError && (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>{submitError}</AlertDescription>
+            </Alert>
+          )}
+
+          {disabledReason && <p className="text-center text-xs text-muted-foreground">{disabledReason}</p>}
+
+          <Button
+            className="mt-2 h-11 w-full"
+            variant={canSubmit || submitting ? 'default' : 'secondary'}
+            onClick={canSubmit ? onSubmit : !submitting ? onDisabledClick : undefined}
+            type="button"
+          >
+            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {submitting ? 'Booking…' : 'Book and pay'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
 /* ── Ship date calendar ────────────────────────────────────────── */
+
+function toLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function toDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 function ShipCalendar({
   dates,
@@ -1017,86 +1089,34 @@ function ShipCalendar({
   flagged?: boolean
 }) {
   const dateMap = useMemo(() => new Map(dates.map((d) => [d.date, d])), [dates])
-  const validRange = useMemo(() => {
-    if (dates.length === 0) return { min: '', max: '' }
-    return { min: dates[0].date, max: dates[dates.length - 1].date }
-  }, [dates])
+  const range = useMemo(
+    () => (dates.length === 0 ? null : { min: toLocalDate(dates[0].date), max: toLocalDate(dates[dates.length - 1].date) }),
+    [dates],
+  )
 
-  const { year, month } = calMonth
-  const monthName = new Date(year, month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
-
-  const prevMonth = () => {
-    const d = new Date(year, month - 1)
-    onCalMonthChange({ year: d.getFullYear(), month: d.getMonth() })
-  }
-  const nextMonth = () => {
-    const d = new Date(year, month + 1)
-    onCalMonthChange({ year: d.getFullYear(), month: d.getMonth() })
-  }
-
-  const cells: (null | { day: number; dateStr: string; info: ShipDateInfo | undefined })[] = []
-  for (let i = 0; i < firstDow; i++) cells.push(null)
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-    cells.push({ day: d, dateStr, info: dateMap.get(dateStr) })
+  const isDisabled = (day: Date) => {
+    const info = dateMap.get(toDateStr(day))
+    if (!info?.hasOpenFlight) return true
+    return weightKg > 0 && info.maxAvailableKg < weightKg
   }
 
   return (
-    <div className={`overflow-hidden rounded-xl border ${flagged ? 'border-red-500' : 'border-slate-200'} bg-white`}>
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-        <button onClick={prevMonth} className="rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700">
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <span className="text-sm font-semibold text-slate-900">{monthName}</span>
-        <button onClick={nextMonth} className="rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700">
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
-
-      {/* Day grid */}
-      <div className="px-4 pb-3 pt-2">
-        <div className="grid grid-cols-7 gap-0.5 text-center text-xs">
-          {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => (
-            <div key={d} className="py-1.5 text-[11px] font-medium uppercase tracking-wider text-slate-400">
-              {d}
-            </div>
-          ))}
-          {cells.map((cell, i) => {
-            if (!cell) return <div key={`e-${i}`} />
-            const { day, dateStr, info } = cell
-            const inRange = dateStr >= validRange.min && dateStr <= validRange.max
-            const isSelected = dateStr === value
-            const noRoom = inRange && info?.hasOpenFlight && weightKg > 0 && info.maxAvailableKg < weightKg
-            const disabled = !inRange || !info?.hasOpenFlight || noRoom
-
-            const tooltip = inRange && info?.hasOpenFlight && !noRoom ? `Up to ${info.maxAvailableKg.toLocaleString()} kg free` : undefined
-
-            return (
-              <button
-                key={dateStr}
-                onClick={() => !disabled && onChange(dateStr)}
-                disabled={disabled}
-                title={tooltip}
-                className={`flex flex-col items-center rounded-md py-1.5 text-xs transition-colors ${
-                  isSelected
-                    ? 'bg-blue-700 font-semibold text-white shadow-sm'
-                    : disabled
-                      ? 'cursor-default text-slate-300'
-                      : 'text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <span>{day}</span>
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Legend */}
-        <p className="mt-2 px-1 text-[10px] text-slate-500">Grey days have no flight, or not enough room for your weight.</p>
-      </div>
-    </div>
+    <Card className={`w-fit py-0 ${flagged ? 'border-destructive' : ''}`}>
+      <CardContent className="p-0">
+        <Calendar
+          mode="single"
+          weekStartsOn={1}
+          showOutsideDays={false}
+          month={new Date(calMonth.year, calMonth.month, 1)}
+          onMonthChange={(d) => onCalMonthChange({ year: d.getFullYear(), month: d.getMonth() })}
+          selected={value ? toLocalDate(value) : undefined}
+          onSelect={(d) => d && onChange(toDateStr(d))}
+          disabled={isDisabled}
+          startMonth={range?.min}
+          endMonth={range?.max}
+        />
+        <p className="px-4 pb-3 text-[10px] text-muted-foreground">Grey days have no flight, or not enough room for your weight.</p>
+      </CardContent>
+    </Card>
   )
 }

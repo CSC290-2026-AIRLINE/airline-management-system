@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
 import { AlertCircle, Check, Loader2, Printer } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@customer-web/components/ui/alert'
+import { Badge } from '@customer-web/components/ui/badge'
 import { Button } from '@customer-web/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@customer-web/components/ui/card'
 import { Input } from '@customer-web/components/ui/input'
 import { Label } from '@customer-web/components/ui/label'
+import { Separator } from '@customer-web/components/ui/separator'
+import { Skeleton } from '@customer-web/components/ui/skeleton'
+import { Textarea } from '@customer-web/components/ui/textarea'
+import { ToggleGroup, ToggleGroupItem } from '@customer-web/components/ui/toggle-group'
 import { useCustomerCargoApi, CargoApiError, type BookingDetail } from './cargo-api'
 import CargoHero from './CargoHero'
 import { CancelDialog } from './ReviewAndPayPage'
@@ -175,7 +182,7 @@ function timelineDescription(event: BookingDetail['timeline'][number], d: Bookin
     case 'booked':
       return `${fmtMoney(d.quote.currency, d.quote.charge)} paid. Air Waybill ${fmtAwb(d.awbNumber)} issued`
     case 'accepted':
-      return `Measured ${d.goods.declaredWeightKg} kg, ${d.goods.declaredVolumeM3} m³. Your paid charge stays the same`
+      return `Measured ${event.measuredWeightKg ?? d.goods.declaredWeightKg} kg, ${event.measuredVolumeM3 ?? d.goods.declaredVolumeM3} m³. Your paid charge stays the same`
     case 'loaded':
       return `Loaded onto ${d.flight.flightNumber}`
     case 'departed':
@@ -200,36 +207,40 @@ function isNegativeEvent(eventType: string): boolean {
 }
 
 function ActivityTimeline({ detail }: { detail: BookingDetail }) {
-  const events = [...detail.timeline].reverse()
+  const events = detail.timeline
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
-      <h2 className="mb-4 text-base font-semibold text-slate-900">Activity</h2>
-      <div className="space-y-0">
-        {events.map((e, i) => {
-          const neg = isNegativeEvent(e.eventType)
-          return (
-            <div key={e.id} className="relative flex gap-4 pb-6 last:pb-0">
-              {/* Vertical line */}
-              {i < events.length - 1 && <div className="absolute left-[7px] top-4 h-full w-0.5 bg-slate-200" />}
-              {/* Dot */}
-              <div className={`relative mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full ${neg ? 'bg-red-500' : 'bg-blue-600'}`} />
-              {/* Content */}
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                  <span className="font-semibold text-slate-900">{timelineTitle(e.eventType)}</span>
-                  <span className="text-xs text-slate-400">
-                    {fmtTimeShort(e.occurredAt)} · {fmtDateShort(e.occurredAt)}
-                    {e.airportCode ? ` · ${e.airportCode}` : ''}
-                  </span>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Activity</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-0">
+          {events.map((e, i) => {
+            const neg = isNegativeEvent(e.eventType)
+            return (
+              <div key={e.id} className="relative flex gap-4 pb-6 last:pb-0">
+                {/* Vertical line */}
+                {i < events.length - 1 && <div className="absolute top-4 left-[7px] h-full w-0.5 bg-border" />}
+                {/* Dot */}
+                <div className={`relative mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full ${neg ? 'bg-destructive' : 'bg-blue-600'}`} />
+                {/* Content */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                    <span className="font-semibold">{timelineTitle(e.eventType)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {fmtTimeShort(e.occurredAt)} · {fmtDateShort(e.occurredAt)}
+                      {e.airportCode ? ` · ${e.airportCode}` : ''}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-sm text-muted-foreground">{timelineDescription(e, detail)}</p>
                 </div>
-                <p className="mt-0.5 text-sm text-slate-500">{timelineDescription(e, detail)}</p>
               </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -243,13 +254,12 @@ function AwbCard({ detail }: { detail: BookingDetail }) {
   const hasPaid = !!d.awbNumber
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
-      <div className="mb-4 flex items-start justify-between">
-        <h2 className="text-base font-semibold text-slate-900">{hasPaid ? 'Air Waybill' : 'Booking'}</h2>
-        {hasPaid && <span className="text-sm font-bold text-slate-900">{fmtAwb(d.awbNumber)}</span>}
-      </div>
-
-      <div className="space-y-3 text-sm">
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between">
+        <CardTitle className="text-base">{hasPaid ? 'Air Waybill' : 'Booking'}</CardTitle>
+        {hasPaid && <span className="text-sm font-bold">{fmtAwb(d.awbNumber)}</span>}
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
         <AwbRow label="Flight" value={`${f.flightNumber} · ${f.origin} → ${f.destination}`} />
         <AwbRow label="Departs" value={fmtDateTime(f.depAt)} />
         <AwbRow label="Shipper" value={d.shipper.name} />
@@ -258,22 +268,22 @@ function AwbCard({ detail }: { detail: BookingDetail }) {
         <AwbRow label="Chargeable weight" value={`${q.chargeableKg} kg`} />
         <AwbRow label="Rate" value={`${fmtMoney(q.currency, q.ratePerKg)} / kg`} />
 
-        <hr className="border-slate-200" />
+        <Separator />
 
         <div className="flex items-baseline justify-between">
-          <span className="text-slate-600">{hasPaid ? 'Freight charge (paid)' : 'Amount due'}</span>
-          <span className="text-xl font-bold text-slate-900">{fmtMoney(q.currency, q.charge)}</span>
+          <span className="text-muted-foreground">{hasPaid ? 'Freight charge (paid)' : 'Amount due'}</span>
+          <span className="text-xl font-bold">{fmtMoney(q.currency, q.charge)}</span>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }
 
 function AwbRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-4">
-      <span className="shrink-0 text-slate-500">{label}</span>
-      <span className="text-right font-medium text-slate-900">{value}</span>
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="text-right font-medium">{value}</span>
     </div>
   )
 }
@@ -312,10 +322,10 @@ function StatusInfoBox({ detail }: { detail: BookingDetail }) {
   if (!info) return null
 
   return (
-    <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-      <p className="text-sm font-semibold text-blue-900">{info.title}</p>
-      <p className="mt-1 text-sm text-blue-800">{info.message}</p>
-    </div>
+    <Alert className="mt-4 border-blue-200 bg-blue-50 text-blue-900">
+      <AlertTitle>{info.title}</AlertTitle>
+      <AlertDescription className="text-blue-800">{info.message}</AlertDescription>
+    </Alert>
   )
 }
 
@@ -328,21 +338,20 @@ function CancelledBox({ detail }: { detail: BookingDetail }) {
   const f = detail.flight
 
   return (
-    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-      {hadPaid ? (
-        <>
-          <p className="text-sm font-semibold text-emerald-900">Refunded {fmtMoney(detail.quote.currency, detail.quote.charge)}</p>
-          <p className="mt-1 text-sm text-emerald-800">A refund was issued. The weight on {f.flightNumber} is free again.</p>
-        </>
-      ) : (
-        <>
-          <p className="text-sm font-semibold text-emerald-900">Booking cancelled</p>
-          <p className="mt-1 text-sm text-emerald-800">
-            Nothing was charged, so there is nothing to refund. The {detail.goods.declaredWeightKg} kg on {f.flightNumber} is free again.
-          </p>
-        </>
-      )}
-    </div>
+    <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900">
+      <AlertTitle>
+        {hadPaid
+          ? `Refunded ${fmtMoney(detail.quote.currency, detail.quote.charge)}`
+          : detail.status === 'expired'
+            ? 'Hold expired'
+            : 'Booking cancelled'}
+      </AlertTitle>
+      <AlertDescription className="text-emerald-800">
+        {hadPaid
+          ? `A refund was issued. The weight on ${f.flightNumber} is free again.`
+          : `Nothing was charged, so there is nothing to refund. The ${detail.goods.declaredWeightKg} kg on ${f.flightNumber} is free again.`}
+      </AlertDescription>
+    </Alert>
   )
 }
 
@@ -390,24 +399,28 @@ function ClaimForm({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
-      <h3 className="mb-3 text-base font-semibold text-slate-900">File a Claim</h3>
-      <div className="grid gap-3">
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">File a Claim</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-3">
         <div className="grid gap-2">
-          <Label>Claim type</Label>
-          <div className="flex gap-2">
+          <Label id="claimTypeLabel">Claim type</Label>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            spacing={2}
+            value={claimType}
+            onValueChange={(v) => v && setClaimType(v)}
+            aria-labelledby="claimTypeLabel"
+          >
             {(['damage', 'loss'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setClaimType(t)}
-                className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-                  claimType === t ? 'bg-[#1e2a5a] text-white' : 'bg-slate-100 text-slate-600'
-                }`}
-              >
+              <ToggleGroupItem key={t} value={t} className="rounded-full px-3">
                 {t.charAt(0).toUpperCase() + t.slice(1)}
-              </button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-2">
@@ -435,28 +448,22 @@ function ClaimForm({
         </div>
         <div className="grid gap-2">
           <Label htmlFor="claimDesc">Description</Label>
-          <textarea
+          <Textarea
             id="claimDesc"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
-            className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             placeholder="Describe the damage or loss"
           />
         </div>
         {error && (
-          <div className="flex items-start gap-2 text-sm text-red-600">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            {error}
-          </div>
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
         <div className="flex gap-2">
-          <Button
-            size="sm"
-            className="bg-[#1e2a5a] text-white hover:bg-[#1e2a5a]/90"
-            onClick={handleSubmit}
-            disabled={!valid || submitting}
-          >
+          <Button size="sm" onClick={handleSubmit} disabled={!valid || submitting}>
             {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Submit claim
           </Button>
@@ -464,8 +471,8 @@ function ClaimForm({
             Cancel
           </Button>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -481,39 +488,38 @@ function ClaimCard({ claim }: { claim: NonNullable<BookingDetail['claim']> }) {
   const decisionLabel = claim.decision ? (claim.decision.decision === 'approved' ? 'Approved' : 'Rejected') : 'Open'
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
-      <div className="mb-4 flex items-center gap-2">
-        <h2 className="text-base font-semibold text-slate-900">Claim {claim.claimRef}</h2>
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${decisionPill}`}>{decisionLabel}</span>
-      </div>
+    <Card>
+      <CardHeader className="flex flex-row items-center gap-2">
+        <CardTitle className="text-base">Claim {claim.claimRef}</CardTitle>
+        <Badge className={decisionPill}>{decisionLabel}</Badge>
+      </CardHeader>
 
-      <div className="space-y-2 text-sm">
+      <CardContent className="space-y-2 text-sm">
         <AwbRow label="Type" value={claim.claimType.charAt(0).toUpperCase() + claim.claimType.slice(1)} />
         <AwbRow label="Pieces affected" value={String(claim.piecesAffected)} />
         <AwbRow label="Claimed amount" value={fmtMoney(claim.currency, claim.claimedAmount)} />
         <AwbRow label="Filed" value={fmtDateTime(claim.filedAt)} />
         <div className="text-sm">
-          <span className="text-slate-500">Description</span>
-          <p className="mt-0.5 text-slate-900">{claim.description}</p>
+          <span className="text-muted-foreground">Description</span>
+          <p className="mt-0.5">{claim.description}</p>
         </div>
-      </div>
 
-      {claim.decision && (
-        <div className="mt-3 border-t border-slate-200 pt-3">
-          <div className="space-y-2 text-sm">
+        {claim.decision && (
+          <>
+            <Separator className="my-3" />
             <AwbRow label="Decision" value={claim.decision.decision.charAt(0).toUpperCase() + claim.decision.decision.slice(1)} />
             {claim.decision.approvedAmount != null && (
               <AwbRow label="Approved amount" value={fmtMoney(claim.currency, claim.decision.approvedAmount)} />
             )}
             <div className="text-sm">
-              <span className="text-slate-500">Note</span>
-              <p className="mt-0.5 text-slate-900">{claim.decision.note}</p>
+              <span className="text-muted-foreground">Note</span>
+              <p className="mt-0.5">{claim.decision.note}</p>
             </div>
             <AwbRow label="Decided" value={fmtDateTime(claim.decision.decidedAt)} />
-          </div>
-        </div>
-      )}
-    </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -529,7 +535,8 @@ export default function ShipmentDetailPage() {
   const [showCancel, setShowCancel] = useState(false)
   const [showClaim, setShowClaim] = useState(false)
 
-  const confirmed = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('confirmed') === '1'
+  const confirmed =
+    typeof window !== 'undefined' && ['1', '"1"'].includes(new URLSearchParams(window.location.search).get('confirmed') ?? '')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -552,8 +559,10 @@ export default function ShipmentDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+      <div className="mx-auto grid max-w-6xl gap-4 px-6 py-8">
+        <Skeleton className="h-8 w-56" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-64 w-full" />
       </div>
     )
   }
@@ -561,13 +570,13 @@ export default function ShipmentDetailPage() {
   if (error || !detail) {
     return (
       <div className="mx-auto max-w-6xl px-6 py-8 text-left">
-        <div className="flex items-start gap-2 text-sm text-red-600">
-          <AlertCircle className="mt-0.5 h-4 w-4" />
-          {error || 'Booking not found'}
-        </div>
-        <Link to="/cargo" className="mt-4 inline-block text-sm text-blue-600 underline">
-          ← Back to My Cargo
-        </Link>
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertDescription>{error || 'Booking not found'}</AlertDescription>
+        </Alert>
+        <Button asChild variant="link" className="mt-4 px-0">
+          <Link to="/cargo">← Back to My Cargo</Link>
+        </Button>
       </div>
     )
   }
@@ -592,52 +601,52 @@ export default function ShipmentDetailPage() {
       {/* Hero */}
       <CargoHero
         title={d.bookingRef}
-        titleRight={<span className={`rounded-full px-3 py-1 text-xs font-medium ${statusPill(d.status)}`}>{statusLabel(d.status)}</span>}
+        titleRight={<Badge className={statusPill(d.status)}>{statusLabel(d.status)}</Badge>}
         subtitle={subtitle}
         activeTab="mycargo"
       />
 
-      <div className="bg-slate-50 py-8">
+      <div className="bg-muted/40 py-8">
         <div className="mx-auto w-full max-w-6xl px-6">
           {/* Confirmed banner */}
           {confirmed && d.awbNumber && (
-            <div className="mb-6 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
-                <Check className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-emerald-900">Booking confirmed</p>
-                <p className="text-sm text-emerald-800">
-                  {fmtMoney(d.quote.currency, d.quote.charge)} was paid. Your Air Waybill {fmtAwb(d.awbNumber)} is issued and you can print
-                  it now.
-                </p>
-              </div>
-            </div>
+            <Alert className="mb-6 border-emerald-200 bg-emerald-50 text-emerald-900">
+              <Check />
+              <AlertTitle>Booking confirmed</AlertTitle>
+              <AlertDescription className="text-emerald-800">
+                {fmtMoney(d.quote.currency, d.quote.charge)} was paid. Your Air Waybill {fmtAwb(d.awbNumber)} is issued and you can print it
+                now.
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Action row */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-            <Link to="/cargo" className="text-sm font-medium text-blue-600 hover:text-blue-700">
-              ← My cargo
-            </Link>
+            <Button asChild variant="link" className="px-0">
+              <Link to="/cargo">← My cargo</Link>
+            </Button>
             <div className="flex flex-wrap gap-2">
               {isHeld && (
-                <Link to="/cargo/bookings/$id/pay" params={{ id: d.id }}>
-                  <Button className="bg-[#1e2a5a] text-white hover:bg-[#1e2a5a]/90">
+                <Button asChild>
+                  <Link to="/cargo/bookings/$id/pay" params={{ id: d.id }}>
                     Pay now · {fmtMoney(d.quote.currency, d.quote.charge)}
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               )}
               {d.awbNumber && (
-                <Link to="/cargo/bookings/$id/waybill" params={{ id: d.id }}>
-                  <Button variant="outline">
+                <Button asChild variant="outline">
+                  <Link to="/cargo/bookings/$id/waybill" params={{ id: d.id }}>
                     <Printer className="mr-1.5 h-4 w-4" />
                     Print Air Waybill
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               )}
               {canCancel && (
-                <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50" onClick={() => setShowCancel(true)}>
+                <Button
+                  variant="outline"
+                  className="border-destructive/30 text-destructive hover:bg-destructive/10"
+                  onClick={() => setShowCancel(true)}
+                >
                   Cancel booking
                 </Button>
               )}
@@ -650,25 +659,27 @@ export default function ShipmentDetailPage() {
           </div>
 
           {/* Shipment status card */}
-          <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Shipment status</p>
-            <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl font-bold text-slate-900">{statusLabel(d.status)}</span>
-                  <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
-                    {f.flightNumber} · {f.origin} → {f.destination}
-                  </span>
+          <Card className="mb-6">
+            <CardContent>
+              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Shipment status</p>
+              <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl font-bold">{statusLabel(d.status)}</span>
+                    <Badge className="bg-blue-100 text-blue-800">
+                      {f.flightNumber} · {f.origin} → {f.destination}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">{statusMessage(d)}</p>
                 </div>
-                <p className="mt-1 text-sm text-slate-600">{statusMessage(d)}</p>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Departs</p>
+                  <p className="text-sm font-semibold">{fmtDateTime(f.depAt)}</p>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-xs text-slate-400">Departs</p>
-                <p className="text-sm font-semibold text-slate-900">{fmtDateTime(f.depAt)}</p>
-              </div>
-            </div>
-            {showStepper && <StatusStepper current={d.status} />}
-          </div>
+              {showStepper && <StatusStepper current={d.status} />}
+            </CardContent>
+          </Card>
 
           {/* Cancelled box */}
           {isCancelledOrExpired && (
