@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
-import { availableKg, chargeableKg, exceedsTolerance } from './cargo-calc'
+import { availableKg, chargeableKg, exceedsTolerance, formatAwb } from './cargo-calc'
 import { getAircraftCapacity, loadedBaggageKg, refundFull, seatsTakenOnFlight } from './cargo-deps'
 import { CargoEventsService } from './cargo-events.service'
 import {
@@ -19,13 +19,6 @@ import {
   latestStatus,
   sumWeightKg,
 } from './cargo-weight'
-
-/** 99900000103 -> 999-0000010-3, the way the Air Waybill is printed everywhere else. */
-function formatAwb(raw: string | null): string {
-  if (!raw) return ''
-  const digits = raw.replace(/\D/g, '')
-  return digits.length === 11 ? `${digits.slice(0, 3)}-${digits.slice(3, 10)}-${digits.slice(10)}` : raw
-}
 
 /** The payment to refund. A booking the transition table lets staff cancel or reject is always paid; refuse cleanly if not. */
 function requirePayment(paymentId: string | null, status: string | null): string {

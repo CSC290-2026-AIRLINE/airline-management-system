@@ -93,6 +93,11 @@ export class CargoClaimsService {
       })
     }
 
+    const alreadyClaimed = () => this.db.cargo_claim.findUnique({ where: { cargo_booking_id: bookingId }, select: { id: true } })
+    const claimExists = () =>
+      new ConflictException({ error: { code: 'CLAIM_NOT_ALLOWED', message: 'A claim has already been filed for this booking' } })
+    if (await alreadyClaimed()) throw claimExists()
+
     let claimRef = generateClaimRef()
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
@@ -113,12 +118,9 @@ export class CargoClaimsService {
         if (typeof err === 'object' && err !== null && 'code' in err) {
           const code = (err as { code: string }).code
           if (code === 'P2002') {
-            const meta = (err as { meta?: { target?: string[] } }).meta
-            if (meta?.target?.includes('cargo_booking_id')) {
-              throw new ConflictException({
-                error: { code: 'CLAIM_NOT_ALLOWED', message: 'A claim already exists for this booking' },
-              })
-            }
+            // Through the pg driver adapter a P2002 does not say which unique index fired (meta.target is empty), so ask the
+            // database: a claim for this booking means a second claim raced this one; otherwise the claim_ref collided, so retry.
+            if (await alreadyClaimed()) throw claimExists()
             claimRef = generateClaimRef()
             continue
           }

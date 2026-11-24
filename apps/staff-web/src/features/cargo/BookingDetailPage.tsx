@@ -383,17 +383,20 @@ function TestToolsCard({
 }) {
   const api = useCargoApi()
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
+  // Each message remembers the status it describes, so "Status → arrived" disappears once the booking moves on (e.g. delivered
+  // from the page's own action) instead of lingering until a reload.
+  const [msg, setMsg] = useState<{ text: string; status: string } | null>(null)
   const [claimLink, setClaimLink] = useState<{ id: string; ref: string } | null>(null)
 
-  const run = async (action: () => Promise<string>) => {
+  const run = async (action: () => Promise<{ text: string; status?: string }>) => {
     setBusy(true)
     setMsg(null)
     try {
-      setMsg(await action())
+      const r = await action()
+      setMsg({ text: r.text, status: r.status ?? status })
       onDone()
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Failed')
+      setMsg({ text: e instanceof Error ? e.message : 'Failed', status })
     } finally {
       setBusy(false)
     }
@@ -420,7 +423,7 @@ function TestToolsCard({
             onClick={() =>
               run(async () => {
                 const r = await api.simulateDeparture(bookingId)
-                return `Status → ${r.status}`
+                return { text: `Status → ${r.status}`, status: r.status }
               })
             }
           >
@@ -436,7 +439,7 @@ function TestToolsCard({
             onClick={() =>
               run(async () => {
                 const r = await api.simulateArrival(bookingId)
-                return `Status → ${r.status}`
+                return { text: `Status → ${r.status}`, status: r.status }
               })
             }
           >
@@ -454,9 +457,9 @@ function TestToolsCard({
                 const r = await api.fileTestClaim(bookingId)
                 if (r.claimRef && r.claimId) {
                   setClaimLink({ id: r.claimId, ref: r.claimRef })
-                  return `Claim filed: ${r.claimRef}`
+                  return { text: `Claim filed: ${r.claimRef}` }
                 }
-                return r.error?.message ?? 'Claim not allowed'
+                return { text: r.error?.message ?? 'Claim not allowed' }
               })
             }
           >
@@ -469,7 +472,7 @@ function TestToolsCard({
             View {claimLink.ref}
           </Link>
         )}
-        {msg && <span className="text-xs text-muted-foreground">{msg}</span>}
+        {msg && msg.status === status && <span className="text-xs text-muted-foreground">{msg.text}</span>}
       </CardContent>
     </Card>
   )

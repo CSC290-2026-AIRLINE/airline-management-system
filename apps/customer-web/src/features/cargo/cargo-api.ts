@@ -192,6 +192,8 @@ export interface BookingDetail {
   }
   quote: {
     distanceKm: number
+    /** maxKm is exclusive, and null when the band has no upper limit. */
+    distanceBand: { minKm: number; maxKm: number | null }
     chargeableKg: number
     ratePerKg: number
     minCharge: number

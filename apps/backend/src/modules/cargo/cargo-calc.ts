@@ -31,6 +31,13 @@ export function exceedsTolerance(measuredChargeable: number, quotedChargeable: n
   return measuredChargeable > quotedChargeable * (1 + percent / 100)
 }
 
+/** 99900000103 -> 999-0000010-3, the way the Air Waybill is printed everywhere else. */
+export function formatAwb(raw: string | null): string {
+  if (!raw) return ''
+  const digits = raw.replace(/\D/g, '')
+  return digits.length === 11 ? `${digits.slice(0, 3)}-${digits.slice(3, 10)}-${digits.slice(10)}` : raw
+}
+
 export function awbNumber(prefix: string, serial: number): string {
   const check = serial % 7
   return `${prefix}${String(serial).padStart(7, '0')}${check}`

@@ -6,6 +6,7 @@ import { CargoEventsService } from './cargo-events.service'
 import { refundFull, getAircraftCapacity, seatsTakenOnFlight } from './cargo-deps'
 import { availableKg } from './cargo-calc'
 import { committedKgOnFlight } from './cargo-weight'
+import { addDays, localDateStr } from './cargo-input'
 
 @Injectable()
 export class CargoCustomerService {
@@ -142,13 +143,11 @@ export class CargoCustomerService {
   async getShipDates(routeId: string, weightKg?: number) {
     const now = simNow()
     const settings = await this.loadSettings()
-    const today = now.toISOString().slice(0, 10)
-    const maxDate = new Date(now.getTime() + settings.requestWindowDays * 86_400_000)
+    const { today, lastDay } = await this.shipDateWindow(routeId, now, settings.requestWindowDays)
     const cutoffTime = new Date(now.getTime() + settings.cutoffHours * 3_600_000)
     const dates: { date: string; hasOpenFlight: boolean; maxAvailableKg: number; fits: boolean }[] = []
 
-    for (let d = new Date(today + 'T00:00:00Z'); d <= maxDate; d.setUTCDate(d.getUTCDate() + 1)) {
-      const dateStr = d.toISOString().slice(0, 10)
+    for (let dateStr = today; dateStr <= lastDay; dateStr = addDays(dateStr, 1)) {
       const flights = await this.db.flight.findMany({
         where: {
           route_id: routeId,
@@ -272,9 +271,7 @@ export class CargoCustomerService {
   async createBooking(customerId: string, input: BookingInput) {
     const now = simNow()
     const settings = await this.loadSettings()
-    const today = now.toISOString().slice(0, 10)
-    const maxDate = new Date(now.getTime() + settings.requestWindowDays * 86_400_000)
-    const maxDateStr = maxDate.toISOString().slice(0, 10)
+    const { today, lastDay: maxDateStr } = await this.shipDateWindow(input.routeId, now, settings.requestWindowDays)
 
     if (input.shipDate < today) {
       throw new BadRequestException({
@@ -405,6 +402,7 @@ export class CargoCustomerService {
       where: { id: bookingId },
       include: {
         cargo_commodity_type: { select: { name: true, handling_class: true } },
+        cargo_rate: { select: { min_distance_km: true, max_distance_km: true } },
         route: {
           include: {
             airport_route_originToairport: { select: { name: true } },
@@ -462,6 +460,8 @@ export class CargoCustomerService {
       },
       quote: {
         distanceKm: booking.distance_km,
+        // The band of the rate this booking was priced on: min ≤ distance < max, no upper limit when max is null.
+        distanceBand: { minKm: booking.cargo_rate.min_distance_km, maxKm: booking.cargo_rate.max_distance_km },
         chargeableKg: Number(booking.quoted_chargeable_kg),
         ratePerKg: Number(booking.rate_per_kg),
         minCharge: Number(booking.min_charge),
@@ -721,10 +721,12 @@ export class CargoCustomerService {
       throw new BadRequestException({ error: { code: 'NOT_FOUND', message: 'Provide ref or awb query parameter' } })
     }
 
+    // References are stored upper-case (CG-XXXXXX) and AWBs as 11 digits; accept what people type: cg-xxxxxx, 999-0000001-1.
+    const awbDigits = opts.awb?.replace(/\D/g, '')
     const booking = await this.db.cargo_booking.findFirst({
       where: {
         customer_id: customerId,
-        ...(opts.ref ? { booking_ref: opts.ref } : { awb_number: opts.awb }),
+        ...(opts.ref ? { booking_ref: opts.ref.trim().toUpperCase() } : { OR: [{ awb_number: opts.awb }, { awb_number: awbDigits }] }),
       },
       select: { id: true, booking_ref: true, awb_number: true },
     })
@@ -752,6 +754,17 @@ export class CargoCustomerService {
         note: e.note,
       })),
     }
+  }
+
+  /** Bookable ship dates: today to today + request_window_days, both in the route origin's local calendar (as service_date is). */
+  private async shipDateWindow(routeId: string, now: Date, windowDays: number): Promise<{ today: string; lastDay: string }> {
+    const route = await this.db.route.findUnique({
+      where: { id: routeId },
+      select: { airport_route_originToairport: { select: { timezone: true } } },
+    })
+    if (!route) throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Route not found' } })
+    const today = localDateStr(now, route.airport_route_originToairport.timezone)
+    return { today, lastDay: addDays(today, windowDays) }
   }
 
   private async loadSettings() {

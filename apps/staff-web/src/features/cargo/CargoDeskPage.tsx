@@ -85,7 +85,7 @@ function tabDescription(status: CargoDeskStatus, settings: { holdMinutes: number
     case 'delivered':
       return `Collected by the consignee. Claims can be filed for ${settings.claimWindowDays} days.`
     case 'rebook_required':
-      return 'The flight was cancelled or diverted. Move each booking to another flight or cancel it with a refund.'
+      return 'The flight was cancelled or diverted, or it left without the cargo. Move each booking to another flight or cancel it with a refund.'
     case 'closed':
       return 'Expired holds, cancelled and rejected bookings. Every paid booking here was refunded in full.'
   }

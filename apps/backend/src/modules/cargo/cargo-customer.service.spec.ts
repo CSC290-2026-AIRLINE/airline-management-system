@@ -163,3 +163,32 @@ describe('CargoCustomerService.cancelMyBooking', () => {
     await expect(service.cancelMyBooking('cust-1', 'b1')).rejects.toThrow(ConflictException)
   })
 })
+
+describe('CargoCustomerService.trackBooking', () => {
+  function setup() {
+    const db = {
+      cargo_booking: { findFirst: jest.fn().mockResolvedValue({ id: 'b1', booking_ref: 'CG-MFHYSH', awb_number: '99900000151' }) },
+      cargo_shipment_event: { findMany: jest.fn().mockResolvedValue([{ status_after: 'booked' }]) },
+    }
+    const service = new CargoCustomerService(db as never, {} as never, {} as never)
+    return { db, service }
+  }
+
+  it('finds a booking reference typed in lower case', async () => {
+    const { db, service } = setup()
+    await service.trackBooking('cust-1', { ref: ' cg-mfhysh ' })
+    expect(db.cargo_booking.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { customer_id: 'cust-1', booking_ref: 'CG-MFHYSH' } }),
+    )
+  })
+
+  it('finds an Air Waybill typed with or without dashes', async () => {
+    const { db, service } = setup()
+    await service.trackBooking('cust-1', { awb: '999-0000015-1' })
+    expect(db.cargo_booking.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { customer_id: 'cust-1', OR: [{ awb_number: '999-0000015-1' }, { awb_number: '99900000151' }] },
+      }),
+    )
+  })
+})

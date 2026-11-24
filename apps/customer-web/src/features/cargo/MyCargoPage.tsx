@@ -167,7 +167,7 @@ export default function MyCargoPage() {
 
   return (
     <div className="text-left">
-      <CargoHero subtitle="Your bookings, tracking and claims. Click a reference to open it." />
+      <CargoHero subtitle="Your bookings, tracking and claims. Click a reference to open it." unreadCount={unreadCount} />
 
       <div className="bg-muted/40 py-8">
         <div className="mx-auto w-full max-w-6xl px-6">

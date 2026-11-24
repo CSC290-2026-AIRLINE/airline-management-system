@@ -25,6 +25,12 @@ function fmtTime(iso: string) {
   return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso))
 }
 
+/** 1000–3000 (exclusive) reads "1,000–2,999 km", the way the spec writes bands; an open band reads "3,000 km and over". */
+function fmtBand({ minKm, maxKm }: { minKm: number; maxKm: number | null }) {
+  const n = (v: number) => v.toLocaleString('en-US')
+  return maxKm == null ? `${n(minKm)} km and over` : `${n(minKm)}–${n(maxKm - 1)} km`
+}
+
 function fmtMoney(currency: string, amount: number) {
   return `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
@@ -254,12 +260,13 @@ export default function ReviewAndPayPage() {
       const [d, s] = await Promise.all([api.getBookingDetail(id), api.getSettings()])
       setDetail(d)
       setSettings(s)
-      if (d.status !== 'held') {
-        if (d.status === 'booked' || d.status === 'accepted' || d.status === 'loaded') {
-          void navigate({ to: '/cargo/bookings/$id', params: { id } })
-          return
-        }
+      // Only a hold that ran out gets the "hold expired" popup. Anything else that is no longer payable (paid, or cancelled by the
+      // shipper from this page) belongs on the booking page.
+      if (d.status === 'expired') {
         setShowExpired(true)
+      } else if (d.status !== 'held') {
+        void navigate({ to: '/cargo/bookings/$id', params: { id } })
+        return
       }
     } catch (err) {
       setError(err instanceof CargoApiError ? err.message : 'Failed to load booking')
@@ -288,7 +295,7 @@ export default function ReviewAndPayPage() {
         setPayError(result.error.message)
         return
       }
-      void navigate({ to: '/cargo/bookings/$id', params: { id: detail.id }, search: { confirmed: '1' } })
+      void navigate({ to: '/cargo/bookings/$id', params: { id: detail.id }, search: { confirmed: true } })
     } catch (err) {
       if (err instanceof CargoApiError) {
         if (err.code === 'HOLD_EXPIRED') {
@@ -473,7 +480,7 @@ function PayPageContent({
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <Row label="Commodity" value={g.commodityTypeName} />
-                  <Row label={`Distance band (${q.distanceKm} km)`} value={`${q.distanceKm} km`} />
+                  <Row label={`Distance band (${q.distanceKm} km)`} value={fmtBand(q.distanceBand)} />
                   <Row label="Actual weight" value={`${g.declaredWeightKg} kg`} />
                   <Row
                     label="Volume weight"
@@ -511,9 +518,7 @@ function PayPageContent({
                     </div>
                     <div className="flex justify-between">
                       <span className="font-medium">Total to pay</span>
-                      <span className="font-bold">
-                        {fmtMoney(q.currency, q.charge)} {q.currency}
-                      </span>
+                      <span className="font-bold">{fmtMoney(q.currency, q.charge)}</span>
                     </div>
                   </div>
 

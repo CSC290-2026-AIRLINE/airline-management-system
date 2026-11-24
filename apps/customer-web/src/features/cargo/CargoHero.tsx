@@ -11,14 +11,18 @@ interface CargoHeroProps {
   titleRight?: ReactNode
   bottom?: ReactNode
   activeTab?: 'ship' | 'mycargo'
+  /** The live unread count, from a page that already tracks it (My cargo); the bell then follows "Mark all read" at once. */
+  unreadCount?: number
 }
 
-export default function CargoHero({ subtitle, title, titleRight, bottom, activeTab }: CargoHeroProps) {
+export default function CargoHero({ subtitle, title, titleRight, bottom, activeTab, unreadCount }: CargoHeroProps) {
   const matchRoute = useMatchRoute()
   const api = useCustomerCargoApi()
-  const [unread, setUnread] = useState(0)
+  const [fetchedUnread, setUnread] = useState(0)
+  const unread = unreadCount ?? fetchedUnread
 
   useEffect(() => {
+    if (unreadCount !== undefined) return
     api
       .listMyNotices({ page: 1, pageSize: 1 })
       .then((r) => setUnread(r.unreadCount))

@@ -370,3 +370,37 @@ describe('CargoDeskService CSV exports', () => {
     )
   })
 })
+
+describe('CargoEventsService confirmed notice', () => {
+  it('names the Air Waybill, the flight and the local departure time', async () => {
+    const eventsService = new CargoEventsService({} as never)
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: 'b1',
+          booking_ref: 'CG-MFHYSH',
+          flight_id: 'f1',
+          quoted_charge: '280.70',
+          currency: 'USD',
+          awb_number: '99900000151',
+          flight_number: 'FY101',
+          dep_at: new Date('2026-11-25T01:00:00Z'),
+          origin_timezone: 'Asia/Bangkok',
+        },
+      ]),
+      cargo_shipment_event: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'prev-1', status_after: 'held' }),
+        create: jest.fn().mockResolvedValue({ id: 'evt-1', status_after: 'booked' }),
+      },
+      cargo_status_transition: { findFirst: jest.fn().mockResolvedValue({ status_after: 'booked' }) },
+      cargo_notice: { create: jest.fn() },
+    }
+
+    await eventsService.appendEvent(tx as never, { bookingId: 'b1', eventType: 'confirmed', actorType: 'system' })
+
+    const { message } = tx.cargo_notice.create.mock.calls[0][0].data
+    expect(message).toContain('999-0000015-1')
+    expect(message).toContain('FY101')
+    expect(message).toContain('25 Nov 2026, 08:00') // 01:00 UTC is 08:00 in Bangkok
+  })
+})

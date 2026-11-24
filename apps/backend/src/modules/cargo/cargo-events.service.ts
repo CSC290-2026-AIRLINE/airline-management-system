@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { DbService } from '@backend/db/db.service'
 import { simNow } from '@backend/modules/pricing/fare-quote/sim-clock'
+import { formatAwb } from './cargo-calc'
 
 export interface AppendEventInput {
   bookingId: string
@@ -25,10 +26,25 @@ interface NoticeContext {
   /** Full refund text, e.g. "USD 348.40", set when the event carries a refund. */
   refund?: string
   airport?: string
+  /** Set on the confirmed notice, which the spec says shows the Air Waybill, the flight and its departure. */
+  awb?: string
+  flightNumber?: string
+  /** Departure in the origin airport's local time, e.g. "24 Nov 2026, 08:00". */
+  departure?: string
+}
+
+/** A departure in the origin airport's local time; the stored instant is UTC. */
+export function localDeparture(depAt: Date, timeZone: string): string {
+  const fmt = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-GB', { timeZone, ...opts }).format(depAt)
+  return `${fmt({ day: 'numeric', month: 'short', year: 'numeric' })}, ${fmt({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}`
 }
 
 const NOTICE_TEMPLATES: Record<string, { title: string; message: (ctx: NoticeContext) => string }> = {
-  confirmed: { title: 'Booking confirmed', message: (c) => `Your cargo booking ${c.ref} has been confirmed and an AWB issued.` },
+  confirmed: {
+    title: 'Booking confirmed',
+    message: (c) =>
+      `Your cargo booking ${c.ref} is confirmed. Air Waybill ${c.awb}. It flies on ${c.flightNumber}, departing ${c.departure} local time.`,
+  },
   expired: {
     title: 'Hold expired',
     message: (c) => `The hold on cargo booking ${c.ref} has expired. The weight was released and nothing was charged.`,
@@ -113,11 +129,27 @@ export class CargoEventsService {
   async appendEvent(tx: Prisma.TransactionClient, input: AppendEventInput) {
     const now = simNow()
 
-    const rows = await tx.$queryRaw<{ id: string; booking_ref: string; flight_id: string; quoted_charge: string; currency: string }[]>`
-      SELECT id, booking_ref, flight_id, quoted_charge::text AS quoted_charge, currency
-      FROM cargo_booking
-      WHERE id = ${input.bookingId}::uuid
-      FOR UPDATE
+    const rows = await tx.$queryRaw<
+      {
+        id: string
+        booking_ref: string
+        flight_id: string
+        quoted_charge: string
+        currency: string
+        awb_number: string | null
+        flight_number: string
+        dep_at: Date
+        origin_timezone: string
+      }[]
+    >`
+      SELECT b.id, b.booking_ref, b.flight_id, b.quoted_charge::text AS quoted_charge, b.currency, b.awb_number,
+             f.flight_number, f.dep_at, a.timezone AS origin_timezone
+      FROM cargo_booking b
+      JOIN flight f ON f.id = b.flight_id
+      JOIN route r ON r.id = b.route_id
+      JOIN airport a ON a.iata_code = r.origin
+      WHERE b.id = ${input.bookingId}::uuid
+      FOR UPDATE OF b
     `
     if (rows.length === 0) {
       throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Booking not found' } })
@@ -189,6 +221,9 @@ export class CargoEventsService {
               ref: booking.booking_ref,
               refund: input.refundId ? `${booking.currency} ${Number(booking.quoted_charge).toFixed(2)}` : undefined,
               airport: input.airportCode,
+              awb: formatAwb(booking.awb_number),
+              flightNumber: booking.flight_number,
+              departure: booking.dep_at && booking.origin_timezone ? localDeparture(booking.dep_at, booking.origin_timezone) : undefined,
             }),
             notified_at: now,
           },

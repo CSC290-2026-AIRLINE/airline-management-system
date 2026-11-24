@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
 import { AlertCircle, Check, Loader2, Printer } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@customer-web/components/ui/alert'
@@ -112,6 +112,8 @@ function statusMessage(d: BookingDetail): string {
 
 /* ── Stepper ────────────────────────────────────────────────────── */
 
+/** Bookings that ended without shipping: their Air Waybill is void, so it is not offered for printing. */
+const CLOSED_STATUSES = new Set(['cancelled', 'rejected', 'expired'])
 const STEPPER_STEPS = ['booked', 'accepted', 'loaded', 'in_transit', 'arrived', 'delivered']
 const STEPPER_LABELS = ['Booked', 'Accepted', 'Loaded', 'In transit', 'Arrived', 'Delivered']
 
@@ -306,11 +308,15 @@ function statusInfoContent(d: BookingDetail): { title: string; message: string }
         message: `The cargo is at the ${f.destinationName} (${f.destination}) cargo terminal. The consignee can collect it with Air Waybill ${fmtAwb(d.awbNumber)}.`,
       }
     case 'accepted':
+      return {
+        title: 'Cancel through the cargo desk',
+        message:
+          'This cargo is already accepted at the terminal, so only the cargo desk can cancel it now. Cancelling is still free: the full amount is refunded.',
+      }
     case 'loaded':
       return {
-        title: 'Cancelling is no longer free',
-        message:
-          'While the booking is held or booked, cancelling returns the full amount. This cargo is already accepted at the terminal, so ask the cargo desk to cancel it.',
+        title: 'Loaded on the aircraft',
+        message: `Your cargo is loaded on ${f.flightNumber}, so the booking can no longer be cancelled.`,
       }
     default:
       return null
@@ -375,6 +381,12 @@ function ClaimForm({
   const [claimedAmount, setClaimedAmount] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const formRef = useRef<HTMLDivElement>(null)
+
+  // The form opens below the timeline, often off screen: bring it into view when "File a claim" opens it.
+  useEffect(() => {
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
 
   const valid =
     claimType && Number(piecesAffected) >= 1 && Number(piecesAffected) <= pieces && description.trim() && Number(claimedAmount) > 0
@@ -399,80 +411,82 @@ function ClaimForm({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">File a Claim</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        <div className="grid gap-2">
-          <Label id="claimTypeLabel">Claim type</Label>
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            spacing={2}
-            value={claimType}
-            onValueChange={(v) => v && setClaimType(v)}
-            aria-labelledby="claimTypeLabel"
-          >
-            {(['damage', 'loss'] as const).map((t) => (
-              <ToggleGroupItem key={t} value={t} className="rounded-full px-3">
-                {t.charAt(0).toUpperCase() + t.slice(1)}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
+    <div ref={formRef} className="scroll-mt-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">File a Claim</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
           <div className="grid gap-2">
-            <Label htmlFor="piecesAffected">Pieces affected (1–{pieces})</Label>
-            <Input
-              id="piecesAffected"
-              type="number"
-              min="1"
-              max={pieces}
-              value={piecesAffected}
-              onChange={(e) => setPiecesAffected(e.target.value)}
-            />
+            <Label id="claimTypeLabel">Claim type</Label>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              spacing={2}
+              value={claimType}
+              onValueChange={(v) => v && setClaimType(v)}
+              aria-labelledby="claimTypeLabel"
+            >
+              {(['damage', 'loss'] as const).map((t) => (
+                <ToggleGroupItem key={t} value={t} className="rounded-full px-3">
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="piecesAffected">Pieces affected (1–{pieces})</Label>
+              <Input
+                id="piecesAffected"
+                type="number"
+                min="1"
+                max={pieces}
+                value={piecesAffected}
+                onChange={(e) => setPiecesAffected(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="claimedAmount">Claimed amount</Label>
+              <Input
+                id="claimedAmount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={claimedAmount}
+                onChange={(e) => setClaimedAmount(e.target.value)}
+              />
+            </div>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="claimedAmount">Claimed amount</Label>
-            <Input
-              id="claimedAmount"
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={claimedAmount}
-              onChange={(e) => setClaimedAmount(e.target.value)}
+            <Label htmlFor="claimDesc">Description</Label>
+            <Textarea
+              id="claimDesc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              placeholder="Describe the damage or loss"
             />
           </div>
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="claimDesc">Description</Label>
-          <Textarea
-            id="claimDesc"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            placeholder="Describe the damage or loss"
-          />
-        </div>
-        {error && (
-          <Alert variant="destructive">
-            <AlertCircle />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        <div className="flex gap-2">
-          <Button size="sm" onClick={handleSubmit} disabled={!valid || submitting}>
-            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Submit claim
-          </Button>
-          <Button size="sm" variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <div className="flex gap-2">
+            <Button size="sm" onClick={handleSubmit} disabled={!valid || submitting}>
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Submit claim
+            </Button>
+            <Button size="sm" variant="outline" onClick={onCancel}>
+              Cancel
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
@@ -536,7 +550,7 @@ export default function ShipmentDetailPage() {
   const [showClaim, setShowClaim] = useState(false)
 
   const confirmed =
-    typeof window !== 'undefined' && ['1', '"1"'].includes(new URLSearchParams(window.location.search).get('confirmed') ?? '')
+    typeof window !== 'undefined' && ['true', '1'].includes(new URLSearchParams(window.location.search).get('confirmed') ?? '')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -633,7 +647,7 @@ export default function ShipmentDetailPage() {
                   </Link>
                 </Button>
               )}
-              {d.awbNumber && (
+              {d.awbNumber && !CLOSED_STATUSES.has(d.status) && (
                 <Button asChild variant="outline">
                   <Link to="/cargo/bookings/$id/waybill" params={{ id: d.id }}>
                     <Printer className="mr-1.5 h-4 w-4" />
@@ -696,7 +710,17 @@ export default function ShipmentDetailPage() {
               {d.timeline.length > 0 && <ActivityTimeline detail={d} />}
 
               {/* Claim form */}
-              {showClaim && <ClaimForm bookingId={d.id} pieces={d.goods.pieces} onDone={load} onCancel={() => setShowClaim(false)} />}
+              {showClaim && canClaim && (
+                <ClaimForm
+                  bookingId={d.id}
+                  pieces={d.goods.pieces}
+                  onDone={async () => {
+                    setShowClaim(false)
+                    await load()
+                  }}
+                  onCancel={() => setShowClaim(false)}
+                />
+              )}
 
               {/* Claim card */}
               {d.claim && <ClaimCard claim={d.claim} />}

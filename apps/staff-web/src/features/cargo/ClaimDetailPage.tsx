@@ -282,7 +282,14 @@ function ApproveDialog({
   const [error, setError] = useState<string | null>(null)
 
   const parsedAmount = parseFloat(amount) || 0
-  const valid = parsedAmount > 0 && parsedAmount <= claimedAmount && note.trim().length > 0
+  // Say why Approve is disabled instead of only greying it out.
+  const amountError =
+    amount.trim() === '' || parsedAmount <= 0
+      ? 'Enter an amount above 0.'
+      : parsedAmount > claimedAmount
+        ? `You cannot approve more than the claimed ${money(claimedAmount, currency)}.`
+        : null
+  const valid = amountError == null && note.trim().length > 0
 
   const doApprove = async () => {
     setBusy(true)
@@ -326,8 +333,12 @@ function ApproveDialog({
                 max={claimedAmount}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
+                aria-invalid={amountError != null}
+                aria-describedby="approve-amount-help"
               />
-              <p className="text-xs text-muted-foreground">Max: {money(claimedAmount, currency)}</p>
+              <p id="approve-amount-help" className={`text-xs ${amountError ? 'text-destructive' : 'text-muted-foreground'}`}>
+                {amountError ?? `Max: ${money(claimedAmount, currency)}`}
+              </p>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="approve-note">Note (required)</Label>

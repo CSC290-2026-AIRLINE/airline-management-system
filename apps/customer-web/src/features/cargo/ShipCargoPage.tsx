@@ -191,11 +191,16 @@ export default function ShipCargoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId, shipDate])
 
+  // The last bookable day. Once a route is picked, the backend's calendar is the authority (it counts in the origin airport's local
+  // dates); before that, count from the browser's local date. toISOString() here would give the UTC date, a day early in Bangkok
+  // before 07:00.
   const maxDateStr = useMemo(() => {
+    const last = shipDates[shipDates.length - 1]?.date
+    if (last) return last
     const d = new Date()
     d.setDate(d.getDate() + requestWindowDays)
-    return d.toISOString().slice(0, 10)
-  }, [requestWindowDays])
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [requestWindowDays, shipDates])
 
   /* ── Quote logic ───────────────────────────────────────────── */
 
@@ -538,6 +543,9 @@ export default function ShipCargoPage() {
                           const wt = Number(weightKg) || 0
                           const isAssigned = !quoteError && quote?.flightId === f.id
                           const notEnough = wt > 0 && f.availableKg < wt
+                          // "Later" only means something once a flight is assigned: before that, no flight is earlier or later than ours.
+                          const assigned = !quoteError ? dayFlights.find((d) => d.id === quote?.flightId) : undefined
+                          const isLater = assigned != null && new Date(f.depAt) > new Date(assigned.depAt)
                           return (
                             <Card key={f.id} className={`gap-1 py-3 text-sm ${isAssigned ? 'border-blue-600 bg-blue-50' : ''}`}>
                               <CardContent className="grid gap-1 px-3">
@@ -548,7 +556,9 @@ export default function ShipCargoPage() {
                                       <Check className="h-3 w-3" /> Your flight
                                     </Badge>
                                   )}
-                                  {!isAssigned && !notEnough && <span className="text-xs text-muted-foreground">Later flight</span>}
+                                  {!isAssigned && !notEnough && isLater && (
+                                    <span className="text-xs text-muted-foreground">Later flight</span>
+                                  )}
                                   {!isAssigned && notEnough && <span className="text-xs text-destructive">Not enough room</span>}
                                 </div>
                                 <p className="text-muted-foreground">

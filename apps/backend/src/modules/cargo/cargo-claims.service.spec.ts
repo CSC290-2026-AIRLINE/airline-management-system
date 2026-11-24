@@ -99,6 +99,28 @@ describe('CargoClaimsService', () => {
       await expect(service.fileClaim('b1', 'c1', input)).rejects.toThrow(ConflictException)
     })
 
+    it('refuses a second claim up front, before trying to insert', async () => {
+      db.cargo_booking.findUnique.mockResolvedValue(deliveredBooking())
+      db.cargo_shipment_event.findFirst.mockResolvedValue({ occurred_at: new Date('2026-11-09T00:00:00Z') })
+      db.cargo_claim.findUnique.mockResolvedValue({ id: 'claim-1' })
+
+      const err = await service.fileClaim('b1', 'c1', input).catch((e) => e)
+      expect(err).toBeInstanceOf(ConflictException)
+      expect(err.response.error.message).toContain('already been filed')
+      expect(db.cargo_claim.create).not.toHaveBeenCalled()
+    })
+
+    it('reports a raced second claim as a duplicate even when P2002 carries no target (pg driver adapter)', async () => {
+      db.cargo_booking.findUnique.mockResolvedValue(deliveredBooking())
+      db.cargo_shipment_event.findFirst.mockResolvedValue({ occurred_at: new Date('2026-11-09T00:00:00Z') })
+      db.cargo_claim.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'claim-1' })
+      db.cargo_claim.create.mockRejectedValue({ code: 'P2002', meta: { modelName: 'cargo_claim' } })
+
+      const err = await service.fileClaim('b1', 'c1', input).catch((e) => e)
+      expect(err.response.error.message).toContain('already been filed')
+      expect(db.cargo_claim.create).toHaveBeenCalledTimes(1)
+    })
+
     it('rejects pieces_affected above booking pieces', async () => {
       db.cargo_booking.findUnique.mockResolvedValue(deliveredBooking())
       db.cargo_shipment_event.findFirst.mockResolvedValue({ occurred_at: new Date('2026-11-09T00:00:00Z') })
