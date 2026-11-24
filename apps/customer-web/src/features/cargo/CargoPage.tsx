@@ -54,7 +54,7 @@ export default function CargoPage({ subtitle, title, titleRight, bottom, activeT
       description={subtitle}
       actions={
         // Plain anchor: MyCargoPage reads ?tab= from the URL on mount.
-        <Button asChild variant="ghost" size="icon" className="relative text-foreground">
+        <Button asChild variant="ghost" size="icon" className="relative text-white hover:bg-white/10 hover:text-white">
           <a href="/cargo?tab=notices" aria-label={unread > 0 ? `Notices, ${unread} unread` : 'Notices'}>
             <Bell />
             {unread > 0 && (
