@@ -10,7 +10,7 @@ import { cn } from '@customer-web/lib/utils'
 import { errorMessage, useComplaintsApi } from './api'
 import { FLIGHT_ISSUES, FOOD_ISSUES, LOCATIONS, optionLabel, type CaseStatus, type Complaint } from './types'
 import { Fact, StatusBadge, StatusTracker } from './parts'
-import { AccountGate, ComplaintPage, ComplaintsNav } from './ui'
+import { AccountGate, ComplaintPage } from './ui'
 
 // Times are shown in Bangkok time, the airline's home time zone. A flight's service date is a calendar date (YYYY-MM-DD,
 // read as UTC midnight), so it is formatted in UTC to stay the same day.
@@ -82,8 +82,7 @@ function buildTimeline(complaint: Complaint): TimelineItem[] {
 
 export function CheckCasePage() {
   return (
-    <ComplaintPage title="Your complaints" subtitle="Check the status and history of your cases.">
-      <ComplaintsNav current="/complaints/check" />
+    <ComplaintPage current="/complaints/check" title="Your complaints" subtitle="Check the status and history of your cases.">
       <AccountGate signInTitle="Sign in to check your cases" redirect="/complaints/check">
         {(user) => <CaseBrowser user={user} />}
       </AccountGate>

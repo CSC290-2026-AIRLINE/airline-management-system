@@ -111,7 +111,7 @@ function BookingDetailView({ booking, onReload }: { booking: BookingDetail; onRe
 
   return (
     <>
-      <PageShell>
+      <PageShell width="standard">
         <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" asChild>
           <Link to="/bookings">
             <ArrowLeft aria-hidden="true" />
@@ -122,7 +122,7 @@ function BookingDetailView({ booking, onReload }: { booking: BookingDetail; onRe
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="m-0 text-2xl font-semibold tracking-tight">Booking {booking.reference}</h1>
+              <h1 className="m-0">Booking {booking.reference}</h1>
               <StatusChip label={chip.label} tone={chip.tone} />
             </div>
             <p className="text-muted-foreground">
@@ -304,7 +304,7 @@ function HelpCard({ title, feature, text, children }: { title: string; feature: 
 
 function LoadingState() {
   return (
-    <PageShell>
+    <PageShell width="standard">
       <MessageCard title="Loading booking…" busy>
         <p className="text-sm text-muted-foreground">Checking your itinerary, your seats and your tickets.</p>
       </MessageCard>
@@ -314,7 +314,7 @@ function LoadingState() {
 
 function NotFoundState({ reference }: { reference: string }) {
   return (
-    <PageShell>
+    <PageShell width="standard">
       <MessageCard title={`We couldn't find booking ${reference}`}>
         <p className="text-sm text-muted-foreground">Check the reference or go back to your trips.</p>
         <div className="flex flex-wrap gap-2">
@@ -332,7 +332,7 @@ function NotFoundState({ reference }: { reference: string }) {
 
 function ErrorState({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
   return (
-    <PageShell>
+    <PageShell width="standard">
       <MessageCard title="We could not load this booking">
         <ApiErrorBanner error={error} />
         <div className="flex flex-wrap gap-2">

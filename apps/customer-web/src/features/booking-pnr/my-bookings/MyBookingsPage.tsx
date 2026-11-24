@@ -33,7 +33,7 @@ export function MyBookingsPage({ tab }: { tab: TripTab }) {
   const items = tab === 'upcoming' ? trips.upcoming : trips.past
 
   return (
-    <PageShell className="max-w-3xl">
+    <PageShell width="standard">
       <PageTitle
         title="My Trips"
         subtitle="Your bookings, most recently booked first."

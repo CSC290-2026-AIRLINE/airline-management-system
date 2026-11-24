@@ -12,7 +12,8 @@ import { seatsFor, type AwardSearchParams } from '../award-search'
 import { formatMiles } from '../format'
 import { useLoad } from '../use-load'
 import { Loaded } from './parts'
-import { CONTAINER, cx, PAGE } from './ui'
+import { Page } from '@customer-web/components/Page'
+import { BODY, cx } from './ui'
 
 // C03f Flight search with miles (mobile first, also on desktop), with H2 (nothing released) and H3 (not a member).
 // The miles price beside each flight is Feature 11's; cash fares and the booking itself are features 3a and 3b, so the
@@ -63,9 +64,8 @@ export function FlightSearchPage({ search, onSearch }: { search: AwardSearchPara
   const [routes, retryRoutes] = useLoad(loadRoutes)
 
   return (
-    <div className={PAGE} data-full-bleed>
-      <main className={cx(CONTAINER, 'flex max-w-[760px] flex-1 flex-col gap-[18px] pt-4 pb-11 sm:pt-8')}>
-        <h1 className="text-2xl font-bold sm:text-[28px]">Flight search</h1>
+    <Page width="standard" title="Flight search">
+      <div className={BODY}>
         <Loaded state={routes} retry={retryRoutes}>
           {(list) => <SearchForm routes={list} search={search} onSearch={onSearch} />}
         </Loaded>
@@ -74,8 +74,8 @@ export function FlightSearchPage({ search, onSearch }: { search: AwardSearchPara
         ) : (
           <p className="text-xs text-muted-foreground">Choose a route and date to see flights and their miles prices.</p>
         )}
-      </main>
-    </div>
+      </div>
+    </Page>
   )
 }
 

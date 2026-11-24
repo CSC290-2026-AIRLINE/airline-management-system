@@ -61,6 +61,18 @@ export function ReceiptsPage() {
   return (
     <CustomerShell
       title="Receipts"
+      tabs={
+        <PageTabs
+          ariaLabel="Receipts, refunds and vouchers"
+          value="receipts"
+          onChange={(next) => void navigate({ to: next === 'vouchers' ? '/vouchers' : '/refunds' })}
+          tabs={[
+            { value: 'receipts', label: 'Receipts' },
+            { value: 'refunds', label: 'My refunds' },
+            { value: 'vouchers', label: 'My vouchers' },
+          ]}
+        />
+      }
       action={
         <Button type="button" variant="outline" onClick={() => exportReceipts(list.receipts)} disabled={list.receipts.length === 0}>
           <Download aria-hidden="true" />
@@ -68,17 +80,6 @@ export function ReceiptsPage() {
         </Button>
       }
     >
-      <PageTabs
-        ariaLabel="Receipts, refunds and vouchers"
-        value="receipts"
-        onChange={(next) => void navigate({ to: next === 'vouchers' ? '/vouchers' : '/refunds' })}
-        tabs={[
-          { value: 'receipts', label: 'Receipts' },
-          { value: 'refunds', label: 'My refunds' },
-          { value: 'vouchers', label: 'My vouchers' },
-        ]}
-      />
-
       <div className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <Input

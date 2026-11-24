@@ -25,14 +25,19 @@ export function RefundsShell({ title, subtitle, current, action, children }: Ref
   const navigate = useNavigate()
 
   return (
-    <CustomerShell title={title} action={action}>
-      {subtitle && <p className="-mt-4 text-sm text-muted-foreground">{subtitle}</p>}
-      <PageTabs
-        tabs={TABS}
-        value={current}
-        ariaLabel="Receipts, refunds and vouchers"
-        onChange={(value) => void navigate({ to: value === 'vouchers' ? '/vouchers' : value === 'receipts' ? '/receipts' : '/refunds' })}
-      />
+    <CustomerShell
+      title={title}
+      description={subtitle}
+      action={action}
+      tabs={
+        <PageTabs
+          tabs={TABS}
+          value={current}
+          ariaLabel="Receipts, refunds and vouchers"
+          onChange={(value) => void navigate({ to: value === 'vouchers' ? '/vouchers' : value === 'receipts' ? '/receipts' : '/refunds' })}
+        />
+      }
+    >
       {children}
     </CustomerShell>
   )

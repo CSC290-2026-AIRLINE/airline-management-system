@@ -10,13 +10,12 @@ import { errorMessage, useComplaintsApi } from './api'
 import { FLIGHT_ISSUES, FOOD_ISSUES, LOCATIONS, optionLabel, type Complaint } from './types'
 import { formatDateTime } from './format'
 import { StatusTracker, WhatHappensNext } from './parts'
-import { AccountGate, ComplaintPage, ComplaintsNav } from './ui'
+import { AccountGate, ComplaintPage } from './ui'
 
 export function ComplaintSentPage() {
   const { caseNumber } = useSearch({ from: '/complaints/sent' })
   return (
     <ComplaintPage title="Complaint sent" subtitle="A supervisor reads every case.">
-      <ComplaintsNav />
       <AccountGate
         signInTitle="Sign in to see your case"
         redirect={caseNumber ? `/complaints/sent?caseNumber=${encodeURIComponent(caseNumber)}` : '/complaints/check'}

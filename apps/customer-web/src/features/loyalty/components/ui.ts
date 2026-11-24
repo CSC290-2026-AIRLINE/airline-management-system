@@ -13,17 +13,12 @@ export const cx = (...classes: (string | false | null | undefined)[]) => classes
 
 export const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-link'
 
-// Page wrapper shared by every Feature 11 customer page: the F11 palette and type, light in dark mode as designed, and
-// headings reset against the app-wide h1/h2/p styles in index.css.
-export const PAGE = cx(
-  'flex min-h-svh flex-col bg-canvas text-left font-sans text-sm leading-[1.45] tracking-normal text-ink [color-scheme:light]',
-  // Preflight is off app-wide, so border-box sizing is set here: padding stays inside each element's width.
-  'box-border [&_*]:box-border',
+// Body wrapper shared by every Feature 11 customer page: the F11 type (small text, ink colour), and headings reset against the
+// app-wide h1/h2/p styles in index.css. The canvas, the container and the page title come from the shared Page.
+export const BODY = cx(
+  'flex flex-col gap-5 text-left font-sans text-sm leading-[1.45] tracking-normal text-ink sm:gap-6 [color-scheme:light]',
   '[&_:is(h1,h2,h3,p)]:m-0 [&_:is(h1,h2,h3)]:font-sans [&_:is(h1,h2,h3)]:tracking-normal [&_:is(h1,h2,h3)]:text-inherit',
 )
-
-// Content column: 1220px wide on desktop, 16px side gutter on a phone.
-export const CONTAINER = 'mx-auto w-full max-w-[1252px] px-4 sm:px-6 lg:px-8'
 
 export const TYPE_LABEL: Record<TransactionType, string> = {
   earn: 'Earned',

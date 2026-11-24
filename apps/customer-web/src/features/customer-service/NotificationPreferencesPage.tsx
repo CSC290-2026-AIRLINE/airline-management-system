@@ -8,7 +8,7 @@ import { Checkbox } from '@customer-web/components/ui/checkbox'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@customer-web/components/ui/table'
 import type { NotificationPreferenceRow } from './types'
 import { errorMessage, useComplaintsApi } from './api'
-import { AccountGate, ComplaintPage, ComplaintsNav } from './ui'
+import { AccountGate, ComplaintPage } from './ui'
 
 type Channel = 'email' | 'sms' | 'push'
 const CHANNELS: { key: Channel; label: string }[] = [
@@ -20,10 +20,10 @@ const CHANNELS: { key: Channel; label: string }[] = [
 export function NotificationPreferencesPage() {
   return (
     <ComplaintPage
+      current="/complaints/preferences"
       title="Notification preferences"
       subtitle="Choose how you receive flight alerts and customer service notices. Critical messages (flight delays, cancellations and gate changes) are always sent on at least one channel."
     >
-      <ComplaintsNav current="/complaints/preferences" />
       <AccountGate signInTitle="Sign in to manage notifications" redirect="/complaints/preferences">
         {() => <PreferencesForm />}
       </AccountGate>

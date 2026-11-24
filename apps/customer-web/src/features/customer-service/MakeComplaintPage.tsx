@@ -13,7 +13,7 @@ import { cn } from '@customer-web/lib/utils'
 import { errorMessage, useComplaintsApi } from './api'
 import { FLIGHT_ISSUES, FOOD_ISSUES, LOCATIONS, type ComplaintType, type NewComplaint } from './types'
 import { WhatHappensNext } from './parts'
-import { AccountGate, ComplaintPage, ComplaintsNav } from './ui'
+import { AccountGate, ComplaintPage } from './ui'
 
 const MIN_DESCRIPTION = 20
 
@@ -39,8 +39,7 @@ const LOST_BAG_NOTE = 'Lost bag? Report it to Lost and Found. If the bag is not 
 
 export function MakeComplaintPage() {
   return (
-    <ComplaintPage title="Make a complaint" subtitle="Tell us what went wrong. A supervisor reads every case.">
-      <ComplaintsNav current="/complaints" />
+    <ComplaintPage current="/complaints" title="Make a complaint" subtitle="Tell us what went wrong. A supervisor reads every case.">
       <AccountGate signInTitle="Sign in to make a complaint" redirect="/complaints" note={LOST_BAG_NOTE}>
         {(user) => <ComplaintForm user={user} />}
       </AccountGate>

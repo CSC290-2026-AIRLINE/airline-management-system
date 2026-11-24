@@ -1,5 +1,6 @@
 import { Component, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { BookingRouteBar } from '../../booking-pnr/components/BookingRouteBar'
+import { PageShell, PageTitle } from '../../booking-pnr/components/PageShell'
 import { FlightSearchForm } from '../components/FlightSearchForm'
 import { validateSearch } from '../components/search-validation'
 import { airportCity } from '../components/airports'
@@ -77,7 +78,7 @@ class SearchBoundary extends Component<{ children: ReactNode }, { failed: boolea
   }
   render() {
     return this.state.failed ? (
-      <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-left md:py-10 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
+      <PageShell className="[&_h1]:m-0 [&_h2]:m-0 [&_h2]:text-subheading">
         <h1>Flight search is unavailable</h1>
         <p>Refresh the page to try again.</p>
         <button
@@ -86,7 +87,7 @@ class SearchBoundary extends Component<{ children: ReactNode }, { failed: boolea
         >
           Refresh page
         </button>
-      </main>
+      </PageShell>
     ) : (
       this.props.children
     )
@@ -252,20 +253,18 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
     ['duration', 'Duration'],
   ]
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-left md:py-10 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1>Find a flight</h1>
-          <p className="text-muted-foreground">
-            Direct flights only. Seats and prices are checked live; nothing is reserved until you continue.
-          </p>
-        </div>
-        {tripLink && (
-          <a className="text-sm font-medium text-link underline-offset-4 hover:underline" href={tripLink.href}>
-            {tripLink.label}
-          </a>
-        )}
-      </div>
+    <PageShell className="[&_h1]:m-0 [&_h2]:m-0 [&_h2]:text-subheading">
+      <PageTitle
+        title="Find a flight"
+        subtitle="Direct flights only. Seats and prices are checked live; nothing is reserved until you continue."
+        actions={
+          tripLink ? (
+            <a className="text-sm font-medium text-link underline-offset-4 hover:underline" href={tripLink.href}>
+              {tripLink.label}
+            </a>
+          ) : undefined
+        }
+      />
       <div className="">
         <BookingRouteBar currentStep={1} />
       </div>
@@ -479,6 +478,6 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
           </div>
         )}
       </div>
-    </main>
+    </PageShell>
   )
 }

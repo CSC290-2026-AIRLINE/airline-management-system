@@ -6,6 +6,7 @@ import type { FlightSearchUrlState } from '../../booking-search/search-params'
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { HoldBookingRequest, HoldBookingResponse, HoldBookingSeat } from '../api/types'
 import { BookingRouteBar, type BookingStep } from '../components/BookingRouteBar'
+import { PageShell, PageTitle } from '../components/PageShell'
 import { PassengersPage } from '../passengers/PassengersPage'
 import {
   clearFlowDraft,
@@ -216,11 +217,11 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
 
   if (!itinerary)
     return (
-      <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-left md:py-10 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
+      <PageShell className="[&_h1]:m-0 [&_h2]:m-0 [&_h2]:text-subheading">
         <h1>Choose your flights first</h1>
         <p>Your itinerary is missing or unavailable.</p>
         <Link to="/search">Search flights</Link>
-      </main>
+      </PageShell>
     )
   const tripCurrency = held?.currency ?? itinerary.selections[0]?.fare.currency ?? 'USD'
   const tripSummary = (
@@ -265,15 +266,17 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
       />
     )
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-left md:py-10 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
-      <h1>{step === 2 ? 'Passengers & extras' : step === 3 ? 'Choose your seats' : 'Booking held'}</h1>
-      {step !== 3 && (
-        <p className="text-muted-foreground">
-          {step === 2
+    <PageShell className="[&_h1]:m-0 [&_h2]:m-0 [&_h2]:text-subheading">
+      <PageTitle
+        title={step === 2 ? 'Passengers & extras' : step === 3 ? 'Choose your seats' : 'Booking held'}
+        subtitle={
+          step === 2
             ? 'Enter traveller details exactly as they appear on the passport.'
-            : 'Keep your booking reference for the next step.'}
-        </p>
-      )}
+            : step === 3
+              ? undefined
+              : 'Keep your booking reference for the next step.'
+        }
+      />
       <div className="">
         <BookingRouteBar currentStep={step} onStepClick={goToStep} />
       </div>
@@ -462,6 +465,6 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
           </aside>
         )}
       </div>
-    </main>
+    </PageShell>
   )
 }

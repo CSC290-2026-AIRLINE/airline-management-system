@@ -5,6 +5,7 @@ import type { BookingDetail, BookingServiceRequest, InsuranceOffer, InsurancePol
 import { useBooking } from '../api/useBooking'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
 import { BookingRouteBar, type BookingStep } from '../components/BookingRouteBar'
+import { PageShell } from '../components/PageShell'
 import { HoldBanner } from '../components/HoldBanner'
 import { BookingSeatChangesPanel } from '../seats/BookingSeatChangesPanel'
 import { AssistanceRequestDialog } from '../assistance/AssistanceRequestDialog'
@@ -245,10 +246,10 @@ function HeldReview({
 
   return (
     <>
-      <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 text-left md:py-10">
+      <PageShell>
         <div className="space-y-6">
           <header className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight">
+            <div className="flex flex-wrap items-center gap-2 [&_h1]:m-0">
               <h1>Review &amp; pay</h1>
               <span className="rounded-md border bg-background px-2 py-0.5 font-mono text-xs text-muted-foreground">
                 Booking {booking.reference}
@@ -353,7 +354,7 @@ function HeldReview({
             </aside>
           </div>
         </div>
-      </main>
+      </PageShell>
 
       <CancelHoldDialog
         open={cancelOpen}
@@ -674,7 +675,7 @@ function PriceCard({ booking, insuranceAddOn }: { booking: BookingDetail; insura
 
 function LoadingState() {
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 text-left md:py-10">
+    <PageShell>
       <div
         className="space-y-3 rounded-xl border bg-card p-6 text-left shadow-xs [&_h1]:m-0 [&_h1]:text-lg [&_h1]:font-semibold"
         aria-busy="true"
@@ -682,13 +683,13 @@ function LoadingState() {
         <h1>Loading booking…</h1>
         <p className="text-sm text-muted-foreground">Checking your hold.</p>
       </div>
-    </main>
+    </PageShell>
   )
 }
 
 function NotFoundState({ reference }: { reference: string }) {
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 text-left md:py-10">
+    <PageShell>
       <div className="space-y-3 rounded-xl border bg-card p-6 text-left shadow-xs [&_h1]:m-0 [&_h1]:text-lg [&_h1]:font-semibold">
         <h1>We couldn&apos;t find booking {reference}</h1>
         <p className="text-sm text-muted-foreground">Check the reference or go back to your trips.</p>
@@ -701,13 +702,13 @@ function NotFoundState({ reference }: { reference: string }) {
           </Link>
         </div>
       </div>
-    </main>
+    </PageShell>
   )
 }
 
 function ErrorState({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 text-left md:py-10">
+    <PageShell>
       <div className="space-y-3 rounded-xl border bg-card p-6 text-left shadow-xs [&_h1]:m-0 [&_h1]:text-lg [&_h1]:font-semibold">
         <ApiErrorBanner error={error} />
         <div className="flex flex-wrap gap-2">
@@ -719,6 +720,6 @@ function ErrorState({ error, onRetry }: { error: ApiError; onRetry: () => void }
           </Link>
         </div>
       </div>
-    </main>
+    </PageShell>
   )
 }
