@@ -1,6 +1,16 @@
 import { useState } from 'react'
 import { useClerk } from '@clerk/clerk-react'
 import { LogOut } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@customer-web/components/ui/alert-dialog'
 import { Button } from '@customer-web/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@customer-web/components/ui/tooltip'
 
@@ -17,6 +27,7 @@ const API_URL = import.meta.env.VITE_API_URL?.replace(/\/$/, '') ?? ''
 export default function LogoutButton({ className }: { className?: string }) {
   const { signOut } = useClerk()
   const [pending, setPending] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
 
   async function logout() {
     setPending(true)
@@ -29,23 +40,37 @@ export default function LogoutButton({ className }: { className?: string }) {
   }
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Log out"
-            disabled={pending}
-            onClick={() => void logout()}
-            className={className}
-          />
-        }
-      >
-        <LogOut />
-      </TooltipTrigger>
-      <TooltipContent side="bottom">Log out</TooltipContent>
-    </Tooltip>
+    <>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Log out"
+              disabled={pending}
+              onClick={() => setConfirmOpen(true)}
+              className={className}
+            />
+          }
+        >
+          <LogOut />
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Log out</TooltipContent>
+      </Tooltip>
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Log out?</AlertDialogTitle>
+            <AlertDialogDescription>You will be signed out of your account on this device.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void logout()}>Log out</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
