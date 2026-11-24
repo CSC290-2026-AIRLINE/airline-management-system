@@ -238,6 +238,8 @@ export interface CheckoutResult {
   paymentId: string
   status: string
   checkoutUrl: string | null
+  // The travel insurance policy, when the payment was settled on the spot and the booking has one.
+  insurancePolicy: InsurancePolicySummary | null
 }
 
 // GET /bookings/:ref/insurance: what the booker's loyalty tier offers (feature 11).

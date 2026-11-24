@@ -138,6 +138,15 @@ export class StripePaymentGateway implements PaymentGateway {
     }
   }
 
+  async openCheckoutUrl(sessionId: string): Promise<string | null> {
+    try {
+      const session = await this.call('GET', `/checkout/sessions/${sessionId}`)
+      return str(session.status) === 'open' ? str(session.url) : null
+    } catch {
+      return null
+    }
+  }
+
   async cancelAuthorisation(intentId: string): Promise<void> {
     try {
       await this.call('POST', `/payment_intents/${intentId}/cancel`, {}, `cancel:${intentId}`)
@@ -148,19 +157,42 @@ export class StripePaymentGateway implements PaymentGateway {
   }
 
   async capture(request: CaptureRequest): Promise<CaptureResult> {
-    if (!request.provider_intent_id) return { ok: false, failure_code: 'no_authorisation' }
+    const intentId = request.provider_intent_id
+    if (!intentId) return { ok: false, failure_code: 'no_authorisation' }
     try {
+      // Each try gets its own key: Stripe answers a repeated key with the saved answer, errors included, so one shared
+      // key would make every retry replay the first failure. Two calls of the same try still share a key and charge once.
       const intent = await this.call(
         'POST',
-        `/payment_intents/${request.provider_intent_id}/capture`,
+        `/payment_intents/${intentId}/capture`,
         { amount_to_capture: toMinorUnits(request.amount, request.currency), expand: ['latest_charge.balance_transaction'] },
-        `capture:${request.provider_intent_id}`,
+        `capture:${intentId}:${request.attempt_no ?? 1}`,
       )
-      const fee = obj(obj(intent.latest_charge)?.balance_transaction)?.fee
-      return { ok: true, provider_fee: typeof fee === 'number' ? fromMinorUnits(fee, request.currency) : undefined }
+      return { ok: true, provider_fee: this.feeOf(intent, request.currency) }
     } catch (error) {
+      // An earlier try may have captured after all (its answer was lost). Stripe then refuses the new one as an unexpected
+      // state, so read the intent: a `succeeded` one is a capture that worked.
+      if (error instanceof StripeApiError && error.code === 'payment_intent_unexpected_state') {
+        const captured = await this.readCaptured(intentId, request.currency)
+        if (captured) return captured
+      }
       return { ok: false, failure_code: error instanceof StripeApiError ? (error.code ?? 'provider_error') : 'provider_error' }
     }
+  }
+
+  /** The capture of an intent that is already `succeeded`, or null when it is not (or cannot be read). */
+  private async readCaptured(intentId: string, currency: string): Promise<CaptureResult | null> {
+    try {
+      const intent = await this.call('GET', `/payment_intents/${intentId}?expand[]=latest_charge.balance_transaction`)
+      return str(intent.status) === 'succeeded' ? { ok: true, provider_fee: this.feeOf(intent, currency) } : null
+    } catch {
+      return null
+    }
+  }
+
+  private feeOf(intent: StripeObject, currency: string): number | undefined {
+    const fee = obj(obj(intent.latest_charge)?.balance_transaction)?.fee
+    return typeof fee === 'number' ? fromMinorUnits(fee, currency) : undefined
   }
 
   /**

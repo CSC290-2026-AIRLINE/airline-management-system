@@ -169,7 +169,7 @@ function HeldReview({
         await onReload()
         return
       }
-      onInsurancePolicy(null)
+      onInsurancePolicy(result.insurancePolicy)
       await onReload()
     } catch (error) {
       const apiError = toApiError(error)

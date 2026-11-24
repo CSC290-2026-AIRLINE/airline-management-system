@@ -220,3 +220,113 @@ describe('PaymentsCheckoutService with a held card', () => {
     expect(gateway.cancelAuthorisation).toHaveBeenCalledWith('pi_1')
   })
 })
+
+describe('PaymentsCheckoutService review fixes', () => {
+  it('hands out a session that is still open again when asked to reuse it, instead of ending it', async () => {
+    const { svc, clock, gateway } = makeService()
+    const withUrl = Object.assign(gateway, { openCheckoutUrl: jest.fn().mockResolvedValue('https://pay.test/c/cs_test_1') })
+    const payment = await startPayment(svc, clock)
+    await svc.startCheckout(DEMO_USER_ID, payment.id, URLS)
+
+    const again = await svc.startCheckout(DEMO_USER_ID, payment.id, URLS, { reuseOpen: true })
+
+    expect(again.checkout_url).toBe('https://pay.test/c/cs_test_1')
+    expect(withUrl.openCheckoutUrl).toHaveBeenCalledWith('cs_test_1')
+    expect(gateway.expireCheckout).not.toHaveBeenCalled()
+    expect(gateway.createCheckout).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts a new session when the open one can no longer be paid on', async () => {
+    const { svc, clock, gateway } = makeService()
+    Object.assign(gateway, { openCheckoutUrl: jest.fn().mockResolvedValue(null) })
+    const payment = await startPayment(svc, clock)
+    await svc.startCheckout(DEMO_USER_ID, payment.id, URLS)
+
+    const again = await svc.startCheckout(DEMO_USER_ID, payment.id, URLS, { reuseOpen: true })
+
+    expect(again.checkout_url).toBe('https://pay.test/c/cs_test_2')
+    expect(gateway.expireCheckout).toHaveBeenCalledWith('cs_test_1')
+  })
+
+  it('finishes, and never releases, the hold of an authorised payment when its webhook is delivered again', async () => {
+    const { svc, clock, gateway, repo } = makeService()
+    const confirm = jest.fn().mockRejectedValueOnce(new Error('db blip')).mockResolvedValue(true)
+    svc.registerSellerConfirmation(3, confirm)
+    const payment = await startPayment(svc, clock)
+    await svc.startCheckout(DEMO_USER_ID, payment.id, URLS)
+    const event = body({ id: 'evt_1', kind: 'authorised', payment_id: payment.id, intent_id: 'pi_1' })
+
+    await expect(svc.handleProviderWebhook(event, 'good')).rejects.toThrow('db blip')
+    expect((await repo.findById(payment.id))?.status).toBe('authorised')
+
+    await svc.handleProviderWebhook(event, 'good')
+
+    expect(gateway.cancelAuthorisation).not.toHaveBeenCalled()
+    expect(gateway.capture).toHaveBeenCalledWith(expect.objectContaining({ provider_intent_id: 'pi_1', attempt_no: 1 }))
+    expect((await repo.findById(payment.id))?.status).toBe('captured')
+  })
+
+  it('numbers each capture try, so a provider that remembers keys does not replay the first failure', async () => {
+    const { svc, clock, gateway } = makeService()
+    gateway.capture.mockResolvedValueOnce({ ok: false, failure_code: 'provider_error' })
+    const payment = await startPayment(svc, clock)
+    await svc.startCheckout(DEMO_USER_ID, payment.id, URLS)
+    await svc.handleProviderWebhook(body({ id: 'evt_1', kind: 'authorised', payment_id: payment.id, intent_id: 'pi_1' }), 'good')
+
+    await svc.retryCapture(payment.id)
+
+    expect(gateway.capture.mock.calls.map(([request]) => request.attempt_no)).toEqual([1, 2])
+  })
+
+  it('finds the fare payment of a booking for a cancel, not a newer add-on on the same booking', async () => {
+    const { svc, clock, repo } = makeService()
+    const expires_at = new Date(clock.now().getTime() + 15 * 60 * 1000)
+    const base = { source_feature: 3 as const, payer_customer_id: DEMO_CUSTOMER_ID, booking_id: 'bk_fare', expires_at }
+    const fare = await svc.createPayment({
+      ...base,
+      purchase_ref: 'booking:bk_fare',
+      idempotency_key: 'idem_fare',
+      amount_total: 500,
+      lines: [{ line_type: 'fare', description: 'Fare', amount: 500 }],
+    })
+    clock.shift(60 * 1000)
+    const seat = await svc.createPayment({
+      ...base,
+      purchase_ref: 'seat_assignment:lock_1',
+      idempotency_key: 'idem_seat',
+      amount_total: 20,
+      lines: [{ line_type: 'seat_fee', description: 'Seat', amount: 20 }],
+    })
+    for (const payment of [fare, seat]) await repo.update({ ...payment, status: 'captured', captured_at: clock.now() })
+
+    expect((await svc.findLivePaymentForBooking('bk_fare'))?.id).toBe(fare.id)
+  })
+
+  it('shows no receipts to a signed-in user with no customer row, not even ones nobody paid for', async () => {
+    const { svc, clock, repo } = makeService()
+    const sale = await svc.createPayment({
+      source_feature: 12,
+      purchase_ref: 'product_order:po_1',
+      payer_customer_id: null,
+      idempotency_key: 'idem_sale',
+      amount_total: 10,
+      lines: [{ line_type: 'onboard_product', description: 'Snack', amount: 10 }],
+      expires_at: new Date(clock.now().getTime() + 15 * 60 * 1000),
+    })
+    const receipt = await repo.insertReceipt({
+      id: 'rcpt-sale',
+      payment_id: sale.id,
+      refund_id: null,
+      document_type: 'receipt',
+      document_number: 'RCPT-SALE',
+      amount: 10,
+      billing_name: null,
+      issued_at: clock.now(),
+      created_at: clock.now(),
+    })
+    jest.spyOn(repo, 'resolveCustomerId').mockResolvedValue(undefined)
+
+    expect((await svc.listCustomerReceipts('staff-user', {})).items).toEqual([])
+    await expect(svc.getCustomerReceipt('staff-user', receipt.id)).rejects.toBeInstanceOf(NotFoundException)
+  })
+})

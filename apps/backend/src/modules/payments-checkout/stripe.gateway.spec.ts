@@ -131,6 +131,47 @@ describe('StripePaymentGateway', () => {
     })
   })
 
+  it('gives each capture try its own idempotency key, so a retry is not answered with the first failure', async () => {
+    const { calls } = mockFetch([{ body: {} }, { body: {} }])
+    const request = { payment_id: 'p', provider_session_id: 's', provider_intent_id: 'pi_1', amount: 1, currency: 'THB' }
+
+    await gateway.capture(request)
+    await gateway.capture({ ...request, attempt_no: 3 })
+
+    expect(calls.map((call) => (call.init.headers as Record<string, string>)['Idempotency-Key'])).toEqual([
+      'capture:pi_1:1',
+      'capture:pi_1:3',
+    ])
+  })
+
+  it('counts a capture refused because an earlier try already captured as a success', async () => {
+    const { calls } = mockFetch([
+      { status: 400, body: { error: { code: 'payment_intent_unexpected_state', message: 'already captured' } } },
+      { body: { status: 'succeeded', latest_charge: { balance_transaction: { fee: 100 } } } },
+    ])
+    const request = { payment_id: 'p', provider_session_id: 's', provider_intent_id: 'pi_1', amount: 1, currency: 'THB', attempt_no: 2 }
+
+    expect(await gateway.capture(request)).toEqual({ ok: true, provider_fee: 1 })
+    expect(calls[1].url).toContain('/payment_intents/pi_1?')
+  })
+
+  it('still fails a capture refused for an intent that was not captured (for example cancelled)', async () => {
+    mockFetch([
+      { status: 400, body: { error: { code: 'payment_intent_unexpected_state', message: 'canceled' } } },
+      { body: { status: 'canceled' } },
+    ])
+    const request = { payment_id: 'p', provider_session_id: 's', provider_intent_id: 'pi_1', amount: 1, currency: 'THB' }
+
+    expect(await gateway.capture(request)).toEqual({ ok: false, failure_code: 'payment_intent_unexpected_state' })
+  })
+
+  it('reads back the page of a session that is still open, and nothing for one that is not', async () => {
+    mockFetch([{ body: { status: 'open', url: 'https://checkout.stripe.com/c/cs_1' } }, { body: { status: 'complete', url: null } }])
+
+    expect(await gateway.openCheckoutUrl('cs_1')).toBe('https://checkout.stripe.com/c/cs_1')
+    expect(await gateway.openCheckoutUrl('cs_1')).toBeNull()
+  })
+
   it('treats an unreachable Stripe as a failed capture, not a crash', async () => {
     jest.spyOn(global, 'fetch').mockRejectedValue(new Error('offline'))
     const result = await gateway.capture({

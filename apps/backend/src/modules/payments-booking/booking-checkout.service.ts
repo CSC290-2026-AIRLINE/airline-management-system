@@ -5,6 +5,7 @@ import { SimulationClock } from '@backend/modules/admin-console/simulation-clock
 import { ConfirmService } from '@backend/modules/booking-pnr/confirm/confirm.service'
 import { BookingInsuranceService } from '@backend/modules/booking-pnr/insurance/insurance.service'
 import { ReleaseService } from '@backend/modules/booking-pnr/confirm/release.service'
+import type { InsurancePolicySummary } from '@backend/modules/booking-pnr/contracts'
 import { PaymentsCheckoutService, type CreatePaymentInput } from '@backend/modules/payments-checkout/payments-checkout.service'
 import type { PaymentRecord } from '@backend/modules/payments-checkout/payment.types'
 import { PaymentErrorCode, paymentFailure } from '@backend/modules/payments-crew-pay/payments.errors'
@@ -13,6 +14,21 @@ import type { CheckoutDto, CheckoutResultDto } from './dto/checkout.dto'
 
 /** Feature 3's answers that mean "not this sale": the payment is voided, nobody is charged. */
 const REFUSALS = new Set([404, 409, 422])
+
+/** True when an unpaid payment asks for exactly what a new checkout would: the same total, voucher and lines. */
+function sameOrder(payment: PaymentRecord, input: CreatePaymentInput): boolean {
+  const cents = (amount: number) => Math.round(amount * 100)
+  const lineKey = (line: { line_type: string; amount: number; booking_coupon_id?: string | null; source_ref?: string | null }) =>
+    `${line.line_type}|${cents(line.amount)}|${line.booking_coupon_id ?? ''}|${line.source_ref ?? ''}`
+  const lines = (list: { line_type: string; amount: number }[]) => list.map(lineKey).sort().join(',')
+  return (
+    cents(payment.amount_total) === cents(input.amount_total) &&
+    cents(payment.voucher_amount) === cents(input.voucher_amount ?? 0) &&
+    payment.voucher_id === (input.voucher_id ?? null) &&
+    payment.expires_at.getTime() === input.expires_at.getTime() &&
+    lines(payment.lines) === lines(input.lines)
+  )
+}
 
 function statusOf(error: unknown): number | null {
   const candidate = error as { status?: unknown; getStatus?: () => number }
@@ -42,7 +58,9 @@ export class BookingCheckoutService {
   ) {
     this.payments.registerSellerConfirmation(3, (payment) => this.sellerConfirms(payment))
     this.payments.registerSellerRelease(3, (payment) => this.sellerReleases(payment))
-    this.payments.registerSellerCaptured(3, (payment) => this.issueInsurance(payment))
+    this.payments.registerSellerCaptured(3, async (payment) => {
+      await this.issueInsurance(payment)
+    })
   }
 
   /** The signed-in customer pays for their own held booking. */
@@ -155,7 +173,7 @@ export class BookingCheckoutService {
     }
 
     const voucher = dto.voucher_code ? await this.reserveVoucher(customer.id, dto.voucher_code, total) : null
-    const payment = await this.payments.createPayment({
+    const payment = await this.openPayment({
       source_feature: 3,
       purchase_ref: `booking:${booking.id}`,
       payer_customer_id: customer.id,
@@ -171,20 +189,40 @@ export class BookingCheckoutService {
     return this.proceed(userId, payment)
   }
 
+  /**
+   * The payment for a new checkout. A customer back from the provider's page (Back, a closed tab) clicks Pay again with a
+   * new key while their earlier payment for the purchase is still `created`. That one is picked up when it asks for the
+   * same money, and ended (its page closed) when they changed the order, for example by adding insurance or a voucher.
+   * Without this the second click would be refused as a second live payment until the hold ran out.
+   */
+  private async openPayment(input: CreatePaymentInput): Promise<PaymentRecord> {
+    const live = await this.payments.findLivePaymentForPurchase(input.source_feature, input.purchase_ref)
+    if (live?.status === 'created' && live.payer_customer_id === input.payer_customer_id) {
+      if (sameOrder(live, input)) return live
+      await this.payments.cancelUnpaid(live.id, 'replaced_by_new_checkout')
+    }
+    return this.payments.createPayment(input)
+  }
+
   /** A payment that needs the customer's card goes to the hosted page; any other is settled on the spot. */
   private async proceed(userId: string, payment: PaymentRecord): Promise<CheckoutResultDto> {
-    if (payment.status !== 'created') return { payment_id: payment.id, status: payment.status, checkout_url: null }
+    if (payment.status !== 'created') {
+      return { payment_id: payment.id, status: payment.status, checkout_url: null, insurance_policy: await this.policyOf(payment) }
+    }
     if (payment.card_amount > 0 && this.payments.usesHostedCheckout()) {
       const origin = Object.entries(APP_ORIGINS).find(([, config]) => config.userType === 'customer')?.[0] ?? ''
       const result = `${origin}/payments/result?payment=${encodeURIComponent(payment.id)}`
-      const started = await this.payments.startCheckout(userId, payment.id, {
-        success_url: `${result}&outcome=paid`,
-        cancel_url: `${result}&outcome=cancelled`,
-      })
-      return { payment_id: payment.id, status: 'created', checkout_url: started.checkout_url }
+      // The same checkout asked again keeps the page it already has: ending it would strand a browser already sent there.
+      const started = await this.payments.startCheckout(
+        userId,
+        payment.id,
+        { success_url: `${result}&outcome=paid`, cancel_url: `${result}&outcome=cancelled` },
+        { reuseOpen: true },
+      )
+      return { payment_id: payment.id, status: 'created', checkout_url: started.checkout_url, insurance_policy: null }
     }
     const settled = await this.payments.settleWithSeller(payment.id)
-    return { payment_id: settled.id, status: settled.status, checkout_url: null }
+    return { payment_id: settled.id, status: settled.status, checkout_url: null, insurance_policy: await this.policyOf(settled) }
   }
 
   /**
@@ -219,7 +257,7 @@ export class BookingCheckoutService {
     }
     const total = Number(cargo.quoted_charge)
     const voucher = dto.voucher_code ? await this.reserveVoucher(customerId, dto.voucher_code, total) : null
-    const payment = await this.payments.createPayment({
+    const payment = await this.openPayment({
       source_feature: 17,
       purchase_ref: `cargo_booking:${cargo.id}`,
       payer_customer_id: customerId,
@@ -251,10 +289,23 @@ export class BookingCheckoutService {
   }
 
   /** Once a flight booking is paid, Feature 11 issues the travel insurance policy it is owed (included, or the add-on line). */
-  private async issueInsurance(payment: PaymentRecord): Promise<void> {
-    if (!payment.booking_id) return
+  private async issueInsurance(payment: PaymentRecord): Promise<InsurancePolicySummary | null> {
+    if (!payment.booking_id) return null
     const policy = await this.insurance.settleAfterConfirm(payment.booking_id, false)
     if (policy) this.logger.log(`Travel insurance ${policy.policyNumber} issued for booking ${payment.booking_id}`)
+    return policy
+  }
+
+  /**
+   * The policy of a flight booking paid on the spot, for Review & Pay to show. Issuing is safe to repeat, so this reads
+   * back the policy the capture already issued. It never fails a paid checkout: without it the page only leaves it out.
+   */
+  private async policyOf(payment: PaymentRecord): Promise<InsurancePolicySummary | null> {
+    if (payment.source_feature !== 3 || payment.status !== 'captured') return null
+    return this.issueInsurance(payment).catch((error: unknown) => {
+      this.logger.warn(`Could not read the travel insurance of ${payment.purchase_ref}: ${String(error)}`)
+      return null
+    })
   }
 
   /**

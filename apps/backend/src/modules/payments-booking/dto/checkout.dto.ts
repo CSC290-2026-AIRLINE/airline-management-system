@@ -1,3 +1,4 @@
+import type { InsurancePolicySummary } from '@backend/modules/booking-pnr/contracts'
 import { Transform } from 'class-transformer'
 import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, ValidateIf } from 'class-validator'
 
@@ -45,4 +46,6 @@ export interface CheckoutResultDto {
   status: string
   /** Stripe's hosted page. Null when the payment was settled on the spot (the fake provider, a voucher, zero cash). */
   checkout_url: string | null
+  /** The travel insurance policy of a flight booking paid on the spot. Null when it has none, or the payment went to a page. */
+  insurance_policy: InsurancePolicySummary | null
 }

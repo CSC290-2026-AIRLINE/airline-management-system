@@ -40,6 +40,11 @@ export interface CaptureRequest {
   provider_intent_id?: string
   amount: number
   currency: string
+  /**
+   * Which try this is, from 1. A provider that remembers idempotency keys (Stripe) puts it in the key, because it
+   * answers a repeated key with the first answer, so a retry with the same key could only fail the same way.
+   */
+  attempt_no?: number
 }
 
 /** What the provider says about a capture. */
@@ -128,6 +133,8 @@ export interface PaymentGateway {
   createCheckout?(request: CheckoutRequest): Promise<CheckoutSession>
   /** Ends a session nobody has paid yet, so an old page cannot take money later. */
   expireCheckout?(sessionId: string): Promise<void>
+  /** The page of a session that is still open, or null when it was paid, has expired or cannot be read. Never throws. */
+  openCheckoutUrl?(sessionId: string): Promise<string | null>
   /** Releases a held card. Safe to call when nothing is held. */
   cancelAuthorisation?(intentId: string): Promise<void>
   /** True when the signature header matches the raw bytes of the request. Never throws. */

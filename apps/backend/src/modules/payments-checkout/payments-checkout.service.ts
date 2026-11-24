@@ -392,9 +392,19 @@ export class PaymentsCheckoutService {
     this.maintenanceTasks.push(task)
   }
 
-  /** The live payment (authorised or captured) behind a booking, for the cancel flow. */
-  findLivePaymentForBooking(bookingId: string): Promise<PaymentRecord | undefined> {
-    return this.repo.findLiveByBookingId(bookingId)
+  /** The live payment (created, authorised or captured) of one purchase, so a seller can pick up a checkout it already started. */
+  findLivePaymentForPurchase(sourceFeature: PaymentSourceFeature, purchaseRef: string): Promise<PaymentRecord | undefined> {
+    return this.repo.findLiveByPurchaseRef(sourceFeature, purchaseRef)
+  }
+
+  /**
+   * The fare payment (authorised or captured) of a booking, for the cancel flow. It is the one Feature 3 checked out as
+   * `booking:<id>`. Add-ons bought later on the same booking (a seat at check-in) are their own payments with their own
+   * purchase ref, so a newer add-on never stands in for the fare.
+   */
+  async findLivePaymentForBooking(bookingId: string): Promise<PaymentRecord | undefined> {
+    const payment = await this.repo.findLiveByPurchaseRef(3, `booking:${bookingId}`)
+    return payment?.status === 'authorised' || payment?.status === 'captured' ? payment : undefined
   }
 
   /**
@@ -502,9 +512,16 @@ export class PaymentsCheckoutService {
    * Starts a card payment on the provider's hosted page and returns where to send the customer.
    *
    * Only the payer can start it, only while the payment is `created` and its hold has not run out. Asking again ends the
-   * earlier session first, so an old page cannot take money later.
+   * earlier session first, so an old page cannot take money later. With `reuseOpen` (the same checkout asked again: a
+   * retried request, or the customer back from the page) a session that is still open is handed out again instead, so
+   * the page a browser was already sent to keeps working.
    */
-  async startCheckout(userId: string, paymentId: string, urls: { success_url: string; cancel_url: string }): Promise<CheckoutStartedDto> {
+  async startCheckout(
+    userId: string,
+    paymentId: string,
+    urls: { success_url: string; cancel_url: string },
+    options: { reuseOpen?: boolean } = {},
+  ): Promise<CheckoutStartedDto> {
     if (!this.gateway.createCheckout) {
       throw new BadRequestException(
         paymentFailure(PaymentErrorCode.PROVIDER_UNAVAILABLE, 'This payment provider has no hosted checkout page'),
@@ -530,6 +547,12 @@ export class PaymentsCheckoutService {
     if (now > payment.expires_at) {
       await this.expireIfPastDeadline(paymentId)
       throw new ConflictException(paymentFailure(PaymentErrorCode.PAYMENT_NOT_PAYABLE, 'The hold on this payment has run out'))
+    }
+
+    if (options.reuseOpen) {
+      const open = payment.attempts.find((a) => a.status === 'open')
+      const url = open ? await this.gateway.openCheckoutUrl?.(open.provider_session_id) : null
+      if (url) return { payment_id: payment.id, checkout_url: url }
     }
 
     await this.endOpenSession(payment)
@@ -618,6 +641,17 @@ export class PaymentsCheckoutService {
       payment.last_error = attempt.failure_code
       payment.updated_at = now
       await this.repo.update(payment)
+      return
+    }
+
+    // A redelivery of the event that already authorised this payment: the last delivery saved the authorisation, then
+    // failed before it finished. The hold is this payment's own, so it must not be released. Pick up where it stopped,
+    // as the maintenance pass would: ask the seller if nobody has, and leave a started capture to the capture retry.
+    const sameHold = attempt?.status === 'authorised' && event.intent_id !== null && attempt.provider_intent_id === event.intent_id
+    if (sameHold) {
+      if (payment.status === 'authorised' && payment.capture_attempts === 0) {
+        await this.settleAuthorised(payment, () => this.sellerConfirms(payment))
+      }
       return
     }
 
@@ -917,6 +951,8 @@ export class PaymentsCheckoutService {
   async listCustomerReceipts(userId: string, query: ReceiptQueryDto): Promise<ReceiptListDto> {
     const customerId = await this.repo.resolveCustomerId(userId)
     const limit = query.limit ?? DEFAULT_LIMIT
+    // A user with no customer row (a staff account) owns no receipts. Without this, null would match every payer-less payment.
+    if (!customerId) return { items: [], total: 0, counts: this.countReceipts([]) }
     const receipts = await this.repo.listReceipts()
     const payments = await this.repo.listPayments()
     const paymentById = new Map(payments.map((payment) => [payment.id, payment]))
@@ -944,7 +980,7 @@ export class PaymentsCheckoutService {
     if (!receipt) throw new NotFoundException(`Receipt ${receiptId} not found`)
     const payment = await this.repo.findById(receipt.payment_id)
     if (!payment) throw new NotFoundException(`Receipt ${receiptId} has no payment`)
-    if (payment.payer_customer_id !== customerId) throw new NotFoundException(`Receipt ${receiptId} not found`)
+    if (!customerId || payment.payer_customer_id !== customerId) throw new NotFoundException(`Receipt ${receiptId} not found`)
 
     const attempt = payment.attempts[payment.attempts.length - 1]
     const creditNote = await this.repo.findCreditNoteByPaymentId(payment.id)
@@ -1194,6 +1230,7 @@ export class PaymentsCheckoutService {
       provider_intent_id: attempt?.provider_intent_id ?? undefined,
       amount: payment.card_amount,
       currency: payment.currency,
+      attempt_no: payment.capture_attempts + 1,
     })
 
     payment.capture_attempts += 1

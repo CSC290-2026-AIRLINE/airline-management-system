@@ -12,6 +12,7 @@ import type {
   HoldBookingResponse,
   ServiceCode,
   InsuranceOffer,
+  InsurancePolicySummary,
 } from './types'
 
 export class ApiError extends Error {
@@ -85,8 +86,18 @@ export function useBookingPnrApi() {
     if (!response.ok) {
       throw await readError(response)
     }
-    const body = (await response.json()) as { payment_id: string; status: string; checkout_url: string | null }
-    return { paymentId: body.payment_id, status: body.status, checkoutUrl: body.checkout_url }
+    const body = (await response.json()) as {
+      payment_id: string
+      status: string
+      checkout_url: string | null
+      insurance_policy?: InsurancePolicySummary | null
+    }
+    return {
+      paymentId: body.payment_id,
+      status: body.status,
+      checkoutUrl: body.checkout_url,
+      insurancePolicy: body.insurance_policy ?? null,
+    }
   }
 
   /** What the booker's loyalty tier offers for travel insurance on this booking. */
