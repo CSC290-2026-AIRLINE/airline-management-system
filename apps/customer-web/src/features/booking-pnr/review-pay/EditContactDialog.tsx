@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Input } from '@customer-web/components/ui/input'
-import { Field } from '@customer-web/components/ui/cw-field'
+import { Field } from '@customer-web/components/ui/field'
 import { ApiError } from '../api/client'
 import { Dialog } from '../components/Dialog'
 import controls from '../styles/controls'

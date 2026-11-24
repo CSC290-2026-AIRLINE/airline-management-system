@@ -2,9 +2,9 @@ import { GENDER_OPTIONS, fillFromSaved, type SavedTraveller } from './saved-trav
 import { Input } from '@customer-web/components/ui/input'
 import type { FormEvent, ReactNode } from 'react'
 import type { SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/cw-select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
 import { DatePicker } from '@customer-web/components/ui/date-picker'
-import { Field } from '@customer-web/components/ui/cw-field'
+import { Field } from '@customer-web/components/ui/field'
 import {
   ageAt,
   contactFieldId,

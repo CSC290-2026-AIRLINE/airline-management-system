@@ -7,7 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from '@customer-web/components/ui
 import { Badge } from '@customer-web/components/ui/badge'
 import { Button } from '@customer-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardTitle } from '@customer-web/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/cw-select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
 import { Label } from '@customer-web/components/ui/label'
 import { Skeleton } from '@customer-web/components/ui/skeleton'
 import { DESTINATIONS, formatMoney, type Destination } from './destinations'
