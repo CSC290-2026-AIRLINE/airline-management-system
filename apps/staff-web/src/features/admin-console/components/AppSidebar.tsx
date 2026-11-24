@@ -29,7 +29,7 @@ import {
   GROUPS,
   LOYALTY_ITEMS,
   PRICING_ITEMS,
-  REPORTS_ITEM,
+  BI_ITEM,
   type NavItem,
 } from '../nav-items'
 
@@ -260,13 +260,9 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
               )}
             </NavGroup>
           ))}
-          <SidebarGroup className="py-1">
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <PendingItem item={REPORTS_ITEM} />
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          <NavGroup label="Reports">
+            <LinkedItem item={BI_ITEM} pathname={pathname} indent />
+          </NavGroup>
         </ScrollArea>
       </SidebarContent>
 

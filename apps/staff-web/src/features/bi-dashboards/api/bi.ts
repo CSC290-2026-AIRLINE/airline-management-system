@@ -159,6 +159,59 @@ export function filterQuery(filters: BiFilters, options: { withRoute?: boolean }
   return params.toString()
 }
 
+export interface BiNoShowCounts {
+  booked: number
+  boarded: number
+  denied: number
+  no_show: number
+  no_show_rate: number | null
+}
+export interface BiNoShowWeek extends BiNoShowCounts {
+  period: string
+}
+export interface BiNoShowRoute extends BiNoShowCounts {
+  route_id: string
+  origin: string
+  destination: string
+}
+export interface BiNoShowFlight extends BiNoShowCounts {
+  flight_number: string
+  flight_date: string
+  route: string
+}
+export interface BiNoShows {
+  weeks: BiNoShowWeek[]
+  routes: BiNoShowRoute[]
+  flights: BiNoShowFlight[]
+}
+
+export interface BiExtraRevenuePeriod {
+  period: string
+  by_type: Record<string, number>
+  refunds_by_type: Record<string, number>
+  gross: number
+  refunds: number
+  net: number
+  passengers: number
+  per_passenger: number | null
+}
+
+export interface BiAircraftUse {
+  aircraft: {
+    aircraft_id: string
+    tail_number: string
+    type_code: string
+    in_service_from: string
+    retired_on: string | null
+    hours_flown: number
+    available_days: number
+    out_of_service_days: number
+    hours_per_day: number | null
+  }[]
+  weeks: { period: string; hours_flown: number }[]
+  downtime: { aircraft_id: string; status: string; reason: string | null; start_date: string; end_date: string }[]
+}
+
 /**
  * Calls to `/api/bi/*`. The helpers are rebuilt on every render (as `fetchWithAuth` is), so callers keep them out of
  * effect dependency lists and rely on the request key instead.
@@ -193,6 +246,12 @@ export function useBiApi() {
     getBookingsByRoute: (filters: BiFilters) => getJson<BiBookingRouteRow[]>(`/api/bi/bookings?${filterQuery(filters)}`),
     getDelayCauses: (filters: BiFilters) => getJson<BiDelayCause[]>(`/api/bi/delay-causes?${filterQuery(filters)}`),
     getFlights: (filters: BiFilters) => getJson<BiFlight[]>(`/api/bi/flights?${filterQuery(filters)}`),
+    getNoShows: (filters: BiFilters) => getJson<BiNoShows>(`/api/bi/no-shows?${filterQuery(filters)}`),
+    /* Extra revenue is always weekly, so the day/week/month choice in the page filters does not apply to it. */
+    getExtraRevenue: (filters: BiFilters) =>
+      getJson<BiExtraRevenuePeriod[]>(`/api/bi/extra-revenue?${filterQuery({ ...filters, group: 'week' })}`),
+    getAircraftUse: (filters: BiFilters) => getJson<BiAircraftUse>(`/api/bi/aircraft-use?${filterQuery(filters)}`),
+    getFinanceRange: (from: string, to: string) => getJson<BiFinanceResponse>(`/api/bi/finance/range?from=${from}&to=${to}`),
     getFinance: (month: string | null) => getJson<BiFinanceResponse>(`/api/bi/finance${month ? `?month=${month}` : ''}`),
     getFinancePayments: () => getJson<BiScheduledPayment[]>('/api/bi/finance/payments'),
     refresh: () => getJson<BiRun>('/api/bi/refresh', { method: 'POST' }),

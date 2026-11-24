@@ -82,6 +82,46 @@ export class BiFinanceService {
   }
 
   /**
+   * The months that fall inside `[from, to]` (dates), added up into one figure set. The Financial report's date filter
+   * uses this. Finance is kept by month, so a range covers whole months: any month that overlaps the range counts.
+   */
+  async forRange(from: string, to: string): Promise<{ current: BiFinanceMonth | null; previous: null; months: string[] }> {
+    const rows = (await this.summaries.findRange(FIRST_MONTH, LAST_MONTH)).map(fromSummary)
+    const months = rows.map((r) => r.month)
+    const inRange = rows.filter((r) => r.month >= from.slice(0, 7) && r.month <= to.slice(0, 7)).map(toMonth)
+    if (inRange.length === 0) return { current: null, previous: null, months }
+
+    const sum = (key: 'revenue' | 'pass_through' | 'refund' | 'maintenance' | 'staff' | 'catering' | 'other' | 'costs' | 'profit') =>
+      inRange.reduce((total, m) => total + m[key], 0)
+    const revenue = sum('revenue')
+    const profit = sum('profit')
+    const computedAt =
+      inRange
+        .map((m) => m.computed_at)
+        .sort()
+        .at(-1) ?? ''
+    return {
+      current: {
+        month: inRange.at(-1)!.month,
+        revenue,
+        pass_through: sum('pass_through'),
+        refund: sum('refund'),
+        maintenance: sum('maintenance'),
+        staff: sum('staff'),
+        catering: sum('catering'),
+        other: sum('other'),
+        costs: sum('costs'),
+        profit,
+        margin_pct: revenue > 0 ? profit / revenue : null,
+        computed_at: computedAt,
+        partial: inRange.some((m) => m.partial),
+      },
+      previous: null,
+      months,
+    }
+  }
+
+  /**
    * Every Feature 4 payment still scheduled and due from `today` (the simulation date), any category, in due-date order.
    * The date filter stays here because Feature 4's own "today" does not read the simulation clock yet.
    */

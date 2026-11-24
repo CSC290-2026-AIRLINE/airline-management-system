@@ -4,9 +4,10 @@ import { BiFilterDto, BiFinanceQueryDto } from './dto/bi-filter.dto'
 
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('./bi-query.service', () => ({ BiQueryService: class {} }))
+jest.mock('./bi-panels.service', () => ({ BiPanelsService: class {} }))
 
 function setup() {
-  const etl = { staffIdForUser: jest.fn(), refresh: jest.fn(), simulationNow: () => '2026-10-05T00:00:00Z' }
+  const etl = { staffIdForUser: jest.fn(), refresh: jest.fn(), refreshWhenFree: jest.fn(), simulationNow: () => '2026-10-05T00:00:00Z' }
   const query = {
     dailyMetrics: jest.fn().mockResolvedValue([]),
     bookingsByRoute: jest.fn().mockResolvedValue([]),
@@ -24,14 +25,14 @@ describe('BI endpoint contracts', () => {
     const { controller, etl } = setup()
     etl.staffIdForUser.mockResolvedValue(null)
     await expect(controller.refresh({ id: 'user', email: 'customer@example.test' })).rejects.toBeInstanceOf(ForbiddenException)
-    expect(etl.refresh).not.toHaveBeenCalled()
+    expect(etl.refreshWhenFree).not.toHaveBeenCalled()
   })
 
   it('refreshes as the current staff member', async () => {
     const { controller, etl } = setup()
     etl.staffIdForUser.mockResolvedValue('staff')
     await controller.refresh({ id: 'user', email: 'staff@example.test' })
-    expect(etl.refresh).toHaveBeenCalledWith('manual', 'staff')
+    expect(etl.refreshWhenFree).toHaveBeenCalledWith('manual', 'staff')
   })
 
   it('uses the simulation date for scheduled payments', async () => {

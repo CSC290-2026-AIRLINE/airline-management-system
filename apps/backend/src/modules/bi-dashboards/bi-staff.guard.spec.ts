@@ -8,6 +8,7 @@ import { BiDashboardsController } from './bi-dashboards.controller'
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
 jest.mock('@backend/modules/admin-console/admin-console.service', () => ({ AdminConsoleService: class {} }))
 jest.mock('./bi-query.service', () => ({ BiQueryService: class {} }))
+jest.mock('./bi-panels.service', () => ({ BiPanelsService: class {} }))
 
 type Route = keyof BiDashboardsController
 

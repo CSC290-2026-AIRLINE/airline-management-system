@@ -41,12 +41,15 @@ export interface NavItem {
   label: string
   icon: LucideIcon
   /** Set once the owning team has a route. Items without one stay disabled in the live sidebar. */
-  to?: '/customer-search' | '/security-screening/screening-queue' | '/aircraft' | '/aircraft-types' | '/readiness'
+  to?: '/customer-search' | '/security-screening/screening-queue' | '/aircraft' | '/aircraft-types' | '/readiness' | '/bi'
   /** Path prefix that keeps the item highlighted on the feature's other pages. */
   activePrefix?: string
 }
 
 export const REPORTS_ITEM: NavItem = { label: 'Reports & Analytics', icon: ChartColumn }
+
+/** Feature 14: the Business intelligence page (`/bi`), with its own tabs for each report. */
+export const BI_ITEM: NavItem & { to: '/bi' } = { label: 'Business intelligence', icon: ChartColumn, to: '/bi', activePrefix: '/bi' }
 
 export const GROUPS: { label: string; items: NavItem[] }[] = [
   // Groups with live links come first; the rest are disabled placeholders until their teams add routes.

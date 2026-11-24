@@ -2,19 +2,17 @@ import { useState } from 'react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
 import { Card } from '@staff-web/components/ui/card'
-import { Label } from '@staff-web/components/ui/label'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
-import { useBiApi, type BiFinanceMonth } from '../api/bi'
-import { BiExportMenu } from '../components/BiFilters'
-import { BiMonthPicker } from '../components/BiMonthPicker'
+import { useBiApi, type BiFilters as FilterState, type BiFinanceMonth } from '../api/bi'
+import { BiFilters } from '../components/BiFilters'
 import { BiPageHeader } from '../components/BiPageHeader'
 import { FinanceWaterfall, type WaterfallStep } from '../components/FinanceWaterfall'
 import { BI_COLORS } from '../chart-colors'
 import { ChartFrame } from '../components/InteractiveCharts'
 import { KpiCard } from '../components/KpiCard'
 import { useBiLoad } from '../hooks/useBiLoad'
-import { comparison, relativeChange } from '../lib-comparison'
+import { comparison, defaultFilters, relativeChange } from '../lib-comparison'
 import { formatCount, formatDateTime, formatPercent, formatThb } from '../lib-format'
 
 function monthLabel(month: string, long = false): string {
@@ -42,15 +40,16 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export function FinancePage() {
   const api = useBiApi()
-  const [chosen, setChosen] = useState<string | null>(null)
+  // The filter bar edits a draft; the report loads the applied filters, which change only when Apply is clicked.
+  const [draft, setDraft] = useState<FilterState>(defaultFilters)
+  const [filters, setFilters] = useState<FilterState>(defaultFilters)
   const [exportError, setExportError] = useState<string | null>(null)
   const [showReport, setShowReport] = useState(false)
-  const finance = useBiLoad(`finance|${chosen ?? ''}`, () => api.getFinance(chosen))
+  const finance = useBiLoad(`finance|${filters.from}|${filters.to}`, () => api.getFinanceRange(filters.from, filters.to))
   const payments = useBiLoad('finance-payments', () => api.getFinancePayments())
   const current = finance.data?.current ?? null
   const previous = finance.data?.previous ?? null
-  const months = finance.data?.months ?? finance.previousData?.months ?? []
-  const month = chosen ?? current?.month ?? finance.previousData?.current?.month ?? ''
+  const month = filters.to.slice(0, 7)
   const suffix = previous ? `vs ${monthLabel(previous.month).split(' ')[0]}` : 'vs last month'
   const delta = (key: keyof BiFinanceMonth) =>
     current ? relativeChange(current[key] as number, previous?.[key] as number | undefined) : null
@@ -119,15 +118,16 @@ export function FinancePage() {
             </AlertDescription>
           </Alert>
         )}
-        <Card className="bi-filter-card print:hidden">
-          <div className="bi-filter-fields">
-            <div className="bi-field">
-              <Label htmlFor="bi-month">Month</Label>
-              <BiMonthPicker id="bi-month" value={month} months={months} onChange={setChosen} />
-            </div>
-          </div>
-          <BiExportMenu disabled={!current} onExportCsv={() => void exportCsv()} onPrint={() => window.print()} />
-        </Card>
+        <BiFilters
+          filters={draft}
+          routes={[]}
+          onChange={setDraft}
+          onApply={() => setFilters(draft)}
+          onExportCsv={() => void exportCsv()}
+          onPrint={() => window.print()}
+          showRoute={false}
+          note="Fleet-wide, not split by route"
+        />
         {!finance.error && finance.data === null && (
           <>
             <div className="bi-kpis">
@@ -244,11 +244,7 @@ export function FinancePage() {
               </Card>
               <Card className="bi-payments">
                 <h2>Upcoming payments</h2>
-                <p className="bi-payments-description">
-                  Scheduled payments due from today.
-                  <br />
-                  Fleet-wide, not split by route.
-                </p>
+                <p className="bi-payments-description">Scheduled payments due from today.</p>
                 {payments.error ? (
                   <div role="alert" className="bi-trend-bad">
                     <p>Could not load scheduled payments.</p>
@@ -296,10 +292,6 @@ export function FinancePage() {
             </div>
           </>
         )}
-        <p className="bi-footnote">
-          Revenue here is counted by payment month (Feature 4); the operations dashboard counts by flight date, so the totals can differ.
-          Profit is Feature 4’s figure and is not recalculated here. Financial summaries are fleet-wide.
-        </p>
       </div>
     </>
   )

@@ -135,3 +135,37 @@ describe('upcoming scheduled payments through Feature 4', () => {
     expect(rows[0]).toEqual(expect.objectContaining({ amount: 1000, status: 'scheduled', description: null }))
   })
 })
+
+describe('BiFinanceService.forRange', () => {
+  it('adds up the months that fall inside the range and leaves the others out', async () => {
+    const { summaries, service } = setup()
+    summaries.findRange.mockResolvedValue([
+      summary('2026-08', 5000, '2026-09-01T02:00:00Z'),
+      summary('2026-09', 1000, '2026-10-01T02:00:00Z'),
+      summary('2026-10', 2000, '2026-11-01T02:00:00Z'),
+    ])
+    const result = await service.forRange('2026-09-01', '2026-10-31')
+    expect(result.previous).toBeNull()
+    expect(result.months).toEqual(['2026-08', '2026-09', '2026-10'])
+    expect(result.current).toMatchObject({
+      month: '2026-10',
+      revenue: 3000,
+      pass_through: 200,
+      refund: 100,
+      maintenance: 160,
+      staff: 240,
+      catering: 60,
+      other: 40,
+      costs: 500,
+      profit: 2200,
+      margin_pct: 2200 / 3000,
+    })
+  })
+
+  it('returns no figures when no computed month falls inside the range', async () => {
+    const { summaries, service } = setup()
+    summaries.findRange.mockResolvedValue([summary('2026-08', 5000, '2026-09-01T02:00:00Z')])
+    const result = await service.forRange('2026-10-01', '2026-10-31')
+    expect(result.current).toBeNull()
+  })
+})

@@ -24,12 +24,13 @@ function DateField({ id, label, value, onChange }: { id: string; label: string; 
   )
 }
 
+/** The CSV item is left out for panels that have no CSV export; print is always offered. */
 export function BiExportMenu({
   onExportCsv,
   onPrint,
   disabled = false,
 }: {
-  onExportCsv: () => void
+  onExportCsv?: () => void
   onPrint: () => void
   disabled?: boolean
 }) {
@@ -41,10 +42,12 @@ export function BiExportMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={onExportCsv}>
-          <Download />
-          Export CSV
-        </DropdownMenuItem>
+        {onExportCsv && (
+          <DropdownMenuItem onSelect={onExportCsv}>
+            <Download />
+            Export CSV
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onSelect={onPrint}>
           <Printer />
           Print PDF
@@ -60,36 +63,46 @@ export function BiFilters({
   onChange,
   onExportCsv,
   onPrint,
+  showRoute = true,
+  note,
+  onApply,
 }: {
   filters: Filters
   routes: BiRouteRow[]
   onChange: (next: Filters) => void
-  onExportCsv: () => void
+  onExportCsv?: () => void
   onPrint: () => void
+  /** Pages whose figures are not split by route (the aircraft page) hide the route list and show `note` instead. */
+  showRoute?: boolean
+  note?: string
+  /** When given, the filter values are a draft until Apply is clicked; the page loads them only then. */
+  onApply?: () => void
 }) {
   return (
     <Card className="bi-filter-card print:hidden">
       <CardContent>
         <div className="bi-filter-fields">
-          <div className="bi-field bi-route-field">
-            <Label htmlFor="bi-route">Route</Label>
-            <Select
-              value={filters.routeId || 'all'}
-              onValueChange={(value) => onChange({ ...filters, routeId: value === 'all' ? '' : value })}
-            >
-              <SelectTrigger id="bi-route">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All routes</SelectItem>
-                {routes.map((route) => (
-                  <SelectItem key={route.route_id} value={route.route_id}>
-                    {route.origin} – {route.destination}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {showRoute && (
+            <div className="bi-field bi-route-field">
+              <Label htmlFor="bi-route">Route</Label>
+              <Select
+                value={filters.routeId || 'all'}
+                onValueChange={(value) => onChange({ ...filters, routeId: value === 'all' ? '' : value })}
+              >
+                <SelectTrigger id="bi-route">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All routes</SelectItem>
+                  {routes.map((route) => (
+                    <SelectItem key={route.route_id} value={route.route_id}>
+                      {route.origin} – {route.destination}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <DateField id="bi-from" label="From" value={filters.from} onChange={(from) => onChange({ ...filters, from })} />
           <DateField id="bi-to" label="To" value={filters.to} onChange={(to) => onChange({ ...filters, to })} />
           <div className="bi-field">
@@ -102,7 +115,13 @@ export function BiFilters({
               ))}
             </div>
           </div>
+          {note && <span className="bi-filter-note">{note}</span>}
         </div>
+        {onApply && (
+          <Button type="button" className="bi-button bi-apply" onClick={onApply}>
+            Apply
+          </Button>
+        )}
         <BiExportMenu onExportCsv={onExportCsv} onPrint={onPrint} />
       </CardContent>
     </Card>

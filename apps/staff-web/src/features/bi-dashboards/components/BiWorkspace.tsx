@@ -1,34 +1,34 @@
-import { useState, type ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, Menu } from 'lucide-react'
-import { Button } from '@staff-web/components/ui/button'
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@staff-web/components/ui/sheet'
-import mark from '../assets/flython-mark.svg'
-import mobileLogo from '../assets/mobile-logo.png'
+import type { ReactNode } from 'react'
 import clockDot from '../assets/clock-dot.svg'
-import userDot from '../assets/user-dot.svg'
+import { BiTabsContext } from './BiTabsContext'
 import '../bi-dashboard.css'
+import '../bi-tabs.css'
 
-export type BiView = 'operations' | 'finance'
+export type BiView = 'operations' | 'finance' | 'no-shows' | 'extra-revenue' | 'aircraft-use'
 
 const NAV_ITEMS: { id: BiView; label: string }[] = [
-  { id: 'operations', label: 'Operations dashboard' },
+  { id: 'operations', label: 'Operations' },
   { id: 'finance', label: 'Financial report' },
+  { id: 'no-shows', label: 'No-shows' },
+  { id: 'extra-revenue', label: 'Extra revenue' },
+  { id: 'aircraft-use', label: 'Aircraft use' },
 ]
 
 interface BiWorkspaceProps {
   view: BiView
-  /** The views the signed-in role can open; the others are left out of the navigation. */
+  /** The views the signed-in role can open; the others are left out of the tabs. */
   views: BiView[]
   onViewChange: (view: BiView) => void
-  name: string
   clock: string | null
-  onSignOut: () => void
   children: ReactNode
 }
 
-export function BiWorkspace({ view, views, onViewChange, name, clock, onSignOut, children }: BiWorkspaceProps) {
-  const [collapsed, setCollapsed] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
+/**
+ * The Business intelligence pages inside the main staff sidebar (AppShell, as on every other feature). The tab row
+ * under each page's title is the BI navigation between the five views; the simulation clock sits at its right. The tabs
+ * reach the page header through BiTabsContext and BiPageHeader.
+ */
+export function BiWorkspace({ view, views, onViewChange, clock, children }: BiWorkspaceProps) {
   const clockText = clock
     ? new Intl.DateTimeFormat('en-GB', {
         weekday: 'short',
@@ -42,87 +42,33 @@ export function BiWorkspace({ view, views, onViewChange, name, clock, onSignOut,
         .replaceAll(',', '')
     : '—'
 
-  const navigation = (
-    <>
-      <div className="bi-brand">
-        <img src={mark} alt="" />
-        <div>
-          <strong>Flython</strong>
-          <span>AIRLINES</span>
-        </div>
-      </div>
-      <p className="bi-workspace-label">STAFF · REPORTS</p>
-      <nav aria-label="Business intelligence navigation" className="bi-navigation">
-        <p>BUSINESS INTELLIGENCE</p>
+  const tabs = (
+    <div className="bi-tabbar print:hidden">
+      <nav aria-label="Business intelligence views" className="bi-tabs">
         {NAV_ITEMS.filter((item) => views.includes(item.id)).map((item) => (
-          <Button
+          <button
             key={item.id}
-            variant="ghost"
-            className={view === item.id ? 'bi-nav-item is-active' : 'bi-nav-item'}
-            title={item.label}
+            type="button"
+            className={view === item.id ? 'bi-tab is-active' : 'bi-tab'}
             aria-current={view === item.id ? 'page' : undefined}
-            onClick={() => {
-              onViewChange(item.id)
-              setMenuOpen(false)
-            }}
+            onClick={() => onViewChange(item.id)}
           >
-            {collapsed ? (item.id === 'operations' ? 'BI' : '฿') : item.label}
-          </Button>
+            {item.label}
+          </button>
         ))}
       </nav>
-      <footer className="bi-sidebar-footer">
-        <div className="bi-sidebar-info">
-          <span>
-            <img src={clockDot} alt="" />
-            SIMULATION CLOCK
-          </span>
-          <strong>{clockText}</strong>
-        </div>
-        <div className="bi-sidebar-info">
-          <span>
-            <img src={userDot} alt="" />
-            SIGNED IN AS
-          </span>
-          <strong>{name}</strong>
-        </div>
-        <Button variant="ghost" onClick={onSignOut} className="bi-signout">
-          Sign out
-        </Button>
-      </footer>
-    </>
+      <span className="bi-clock">
+        <img src={clockDot} alt="" />
+        Simulation clock <strong>{clockText}</strong>
+      </span>
+    </div>
   )
 
   return (
-    <div className={`bi-workspace${collapsed ? ' bi-collapsed' : ''}`}>
-      <aside className="bi-sidebar">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="bi-collapse"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          onClick={() => setCollapsed(!collapsed)}
-        >
-          {collapsed ? <ChevronRight /> : <ChevronLeft />}
-        </Button>
-        {navigation}
-      </aside>
-      <div className="bi-main-area">
-        <header className="bi-mobile-bar">
-          <img src={mobileLogo} alt="Flython Airlines" />
-          <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
-            <SheetTrigger asChild>
-              <Button size="icon" aria-label="Open reports navigation">
-                <Menu />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="bi-mobile-navigation">
-              <SheetTitle className="sr-only">Reports navigation</SheetTitle>
-              {navigation}
-            </SheetContent>
-          </Sheet>
-        </header>
-        <main className={`bi-main bi-${view}`}>{children}</main>
-      </div>
+    <div className="bi-embedded">
+      <main className={`bi-main bi-${view}`}>
+        <BiTabsContext.Provider value={tabs}>{children}</BiTabsContext.Provider>
+      </main>
     </div>
   )
 }

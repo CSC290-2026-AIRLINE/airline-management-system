@@ -20,6 +20,7 @@ import { BiFinanceService, type BiFinanceMonth, type BiScheduledPayment } from '
 import { computeKpis, sumMetrics } from './bi-rates'
 import { BiEtlService } from './bi-etl.service'
 import { BiQueryService } from './bi-query.service'
+import { BiPanelsService, type BiPanelRange } from './bi-panels.service'
 import { toFlightDto, type FlightDto } from './bi-flight-rows'
 import { periodOf, seriesByPeriod } from './bi-period'
 import { metricsCsv, toCsv } from './bi-csv'
@@ -48,7 +49,14 @@ export class BiDashboardsController {
     private readonly etl: BiEtlService,
     private readonly query: BiQueryService,
     private readonly financeService: BiFinanceService,
+    private readonly panels: BiPanelsService,
   ) {}
+
+  /** The panel window: the filter's dates, or the simulation's current month up to today when none are given. */
+  private panelRange(filter: BiFilterDto): BiPanelRange {
+    const today = this.etl.simulationNow().slice(0, 10)
+    return { from: filter.from ?? `${today.slice(0, 7)}-01`, to: filter.to ?? today, route_id: filter.route_id }
+  }
 
   /** Latest successful run, the most recent run, and whether a refresh is in progress. */
   @Get('status')
@@ -62,13 +70,16 @@ export class BiDashboardsController {
     return { ...(await this.query.status()), simulation_now: this.etl.simulationNow() }
   }
 
-  /** Rebuilds the reporting copy now. Blocks until the run finishes; a second call while one runs gets 409. */
+  /**
+   * Rebuilds the reporting copy now. Blocks until the run finishes. If an automatic run is in progress, waits for it
+   * first; 409 only if a run is still going after a minute.
+   */
   @Post('refresh')
   @HttpCode(200)
   async refresh(@CurrentUser() user: AuthenticatedUser): Promise<BiRunSummary> {
     const staffId = await this.etl.staffIdForUser(user.id)
     if (!staffId) throw new ForbiddenException('STAFF_REQUIRED')
-    return this.etl.refresh('manual', staffId)
+    return this.etl.refreshWhenFree('manual', staffId)
   }
 
   /** Headline KPIs for the selected dates, route and revenue mode, plus the daily rows. */
@@ -169,6 +180,25 @@ export class BiDashboardsController {
     )
   }
 
+  /** No-shows by week, by route and by flight. Defaults to the simulation's current month. */
+  @Get('no-shows')
+  noShows(@Query() filter: BiFilterDto) {
+    return this.panels.noShows(filter)
+  }
+
+  /** Extra revenue (baggage, upgrades, onboard food, insurance) per week, by type, after refunds. */
+  @Get('extra-revenue')
+  @BiScreens(BI_FINANCE_SCREEN)
+  extraRevenue(@Query() filter: BiFilterDto) {
+    return this.panels.extraRevenue(this.panelRange(filter), filter.group ?? 'week')
+  }
+
+  /** Hours flown per aircraft, hours per day it could fly, days out of service, weekly hours and the downtime list. */
+  @Get('aircraft-use')
+  aircraftUse(@Query() filter: BiFilterDto) {
+    return this.panels.aircraftUse(this.panelRange(filter))
+  }
+
   /** One finance month, the month before it, and the months that exist. `month` is `YYYY-MM`; default is the latest. */
   @Get('finance')
   @BiScreens(BI_FINANCE_SCREEN)
@@ -176,6 +206,14 @@ export class BiDashboardsController {
     @Query() query: BiFinanceQueryDto,
   ): Promise<{ current: BiFinanceMonth | null; previous: BiFinanceMonth | null; months: string[] }> {
     return this.financeService.forMonth(query.month)
+  }
+
+  /** The finance figures summed over every month that overlaps `from`..`to`. The Financial report's date filter. */
+  @Get('finance/range')
+  @BiScreens(BI_FINANCE_SCREEN)
+  financeRange(@Query() filter: BiFilterDto): Promise<{ current: BiFinanceMonth | null; previous: null; months: string[] }> {
+    const today = this.etl.simulationNow().slice(0, 10)
+    return this.financeService.forRange(filter.from ?? `${today.slice(0, 7)}-01`, filter.to ?? today)
   }
 
   /** Fleet-wide scheduled payments of every category, due from the simulation's current date. */

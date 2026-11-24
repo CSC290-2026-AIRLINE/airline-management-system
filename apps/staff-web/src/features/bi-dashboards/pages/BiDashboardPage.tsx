@@ -25,6 +25,7 @@ import { periodEnd } from '../lib-period'
 import { comparison, defaultFilters, previousFilters, relativeChange } from '../lib-comparison'
 import { formatCompact, formatCount, formatDateTime, formatPercent, formatThb } from '../lib-format'
 import { FinancePage } from './FinancePage'
+import { AircraftUseView, ExtraRevenueView, NoShowsView } from './PanelPages'
 
 type Drill = { title: string; description: string; filters: BiFilters; kind: 'period' | 'cabin' | 'cause' | 'bookings' } | null
 const CAUSE_COLORS = [BI_COLORS.navy, BI_COLORS.blue, BI_COLORS.teal, '#8a94a6', BI_COLORS.yellow, '#b7bfcf', BI_COLORS.red]
@@ -44,11 +45,20 @@ function LoadFailure({ label, onRetry }: { label: string; onRetry: () => void })
   )
 }
 function currentView(): BiView {
-  return window.location.hash === '#finance' ? 'finance' : 'operations'
+  const hash = window.location.hash.slice(1)
+  return (ALL_VIEWS as string[]).includes(hash) ? (hash as BiView) : 'operations'
 }
 
-const VIEWS: BiView[] = ['operations', 'finance']
-const VIEW_SCREENS: Record<BiView, string> = { operations: 'f14.operations', finance: 'f14.finance' }
+const ALL_VIEWS: BiView[] = ['operations', 'no-shows', 'extra-revenue', 'aircraft-use', 'finance']
+const VIEWS = ALL_VIEWS
+/** Each view is gated by the screen the backend checks for its data: extra revenue is payment money, so it is finance. */
+const VIEW_SCREENS: Record<BiView, string> = {
+  operations: 'f14.operations',
+  'no-shows': 'f14.operations',
+  'aircraft-use': 'f14.operations',
+  'extra-revenue': 'f14.finance',
+  finance: 'f14.finance',
+}
 
 /**
  * The `/bi` route. Shows only the views the signed-in role holds (Feature 15 screen access); the API checks the same
@@ -93,13 +103,23 @@ export function BiDashboardPage() {
       view={shown}
       views={views}
       onViewChange={changeView}
-      name={auth.user?.email ?? 'Staff member'}
       clock={shown === 'finance' ? (financeStatus.data?.simulation_now ?? null) : operationsClock}
-      onSignOut={() => void auth.logout()}
     >
       {shown === 'finance' ? (
         <BiErrorBoundary label="Financial report">
           <FinancePage />
+        </BiErrorBoundary>
+      ) : shown === 'no-shows' ? (
+        <BiErrorBoundary label="No-shows">
+          <NoShowsView />
+        </BiErrorBoundary>
+      ) : shown === 'extra-revenue' ? (
+        <BiErrorBoundary label="Extra revenue">
+          <ExtraRevenueView />
+        </BiErrorBoundary>
+      ) : shown === 'aircraft-use' ? (
+        <BiErrorBoundary label="Aircraft use">
+          <AircraftUseView />
         </BiErrorBoundary>
       ) : (
         <OperationsView onClock={setOperationsClock} />
@@ -110,6 +130,8 @@ export function BiDashboardPage() {
 
 /** The operations dashboard. Mounted only for roles with `f14.operations`, so its requests never run for anyone else. */
 function OperationsView({ onClock }: { onClock: (clock: string | null) => void }) {
+  // The filter bar edits a draft; the dashboard loads the applied filters, which change only when Apply is clicked.
+  const [draft, setDraft] = useState<BiFilters>(defaultFilters)
   const [filters, setFilters] = useState<BiFilters>(defaultFilters)
   const [drill, setDrill] = useState<Drill>(null)
   const [exportError, setExportError] = useState<string | null>(null)
@@ -256,9 +278,10 @@ function OperationsView({ onClock }: { onClock: (clock: string | null) => void }
           </Alert>
         )}
         <FilterBar
-          filters={filters}
+          filters={draft}
           routes={data?.routes ?? previousData?.routes ?? []}
-          onChange={changeFilters}
+          onChange={setDraft}
+          onApply={() => changeFilters(draft)}
           onExportCsv={() => void exportCsv()}
           onPrint={() => window.print()}
         />
@@ -449,9 +472,8 @@ function OperationsView({ onClock }: { onClock: (clock: string | null) => void }
           </>
         )}
         <p className="bi-footnote">
-          Only flights that have departed are counted. Delay minutes are the announced delay minutes, which can differ from the departure
-          delay when time is made up. Revenue here is counted by flight date; the financial report counts by payment month (Feature 4), so
-          the totals can differ.
+          Only flights that have departed are counted. Revenue here is counted by flight date; the financial report counts by payment month
+          (Feature 4), so the totals can differ.
         </p>
         {previous.error && (
           <p className="bi-footnote" role="status">

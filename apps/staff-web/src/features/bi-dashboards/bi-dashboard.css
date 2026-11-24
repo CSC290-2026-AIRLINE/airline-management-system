@@ -638,7 +638,7 @@
   display: grid;
   grid-template-columns: minmax(0, 690fr) minmax(0, 350fr);
   gap: 17px;
-  align-items: start;
+  align-items: stretch;
 }
 .bi-report-lines,
 .bi-payments {
@@ -678,6 +678,16 @@
 }
 .bi-payments h2 {
   white-space: normal;
+}
+/* The payments card is as tall as the report card beside it; its list scrolls inside that height. */
+.bi-payments {
+  height: 100%;
+}
+.bi-payments > ul {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 .bi-payments-description {
   font-size: 12px;

@@ -6,7 +6,9 @@ import { BiDashboardsController } from './bi-dashboards.controller'
 import { BiEtlService } from './bi-etl.service'
 import { BiQueryService } from './bi-query.service'
 import { BiFinanceService } from './bi-finance.service'
+import { BiPanelsService } from './bi-panels.service'
 import { BiNightlyRefresh } from './bi-nightly-refresh'
+import { BiAutoRefresh } from './bi-auto-refresh'
 import { BI_FINANCE_SCREEN, BI_OPERATIONS_SCREEN, BiStaffGuard } from './bi-staff.guard'
 
 /**
@@ -17,7 +19,7 @@ import { BI_FINANCE_SCREEN, BI_OPERATIONS_SCREEN, BiStaffGuard } from './bi-staf
 @Module({
   imports: [AdminConsoleModule, PricingModule],
   controllers: [BiDashboardsController],
-  providers: [BiEtlService, BiQueryService, BiFinanceService, BiStaffGuard, BiNightlyRefresh],
+  providers: [BiEtlService, BiQueryService, BiFinanceService, BiPanelsService, BiStaffGuard, BiNightlyRefresh, BiAutoRefresh],
 })
 export class BiDashboardsModule implements OnModuleInit {
   constructor(private readonly admin: AdminConsoleService) {}

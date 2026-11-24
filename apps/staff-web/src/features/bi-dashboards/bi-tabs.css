@@ -1,0 +1,166 @@
+/* View tabs under the BI page title, with the simulation clock on the right. */
+.bi-embedded {
+  min-width: 0;
+}
+
+.bi-tabbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  margin: 12px 0 16px;
+}
+
+.bi-tabbar .bi-tabs {
+  border-bottom: 0;
+  margin: 0;
+  flex: 1;
+}
+
+.bi-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 10px;
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.bi-clock strong {
+  color: #102544;
+  font-weight: 600;
+}
+
+.bi-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid #e5e7eb;
+  margin: 12px 0 16px;
+}
+
+.bi-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: none;
+  border: 0;
+  color: #4b5563;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.bi-tab.is-active {
+  color: #102544;
+  font-weight: 600;
+}
+
+.bi-tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: #102544;
+}
+
+.bi-tab:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+
+.bi-chart-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 16px;
+}
+
+.bi-rank-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.bi-rank-row {
+  display: grid;
+  grid-template-columns: 24px 96px 1fr 180px;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.bi-rank-track {
+  background: #eef1f6;
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.bi-rank-bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.bi-rank-value {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.bi-rank-value small {
+  color: #6b7280;
+}
+
+/* The "Mockup only" line under the Operations page, with its two chips. */
+.bi-mockup-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.bi-mockup-chips {
+  display: inline-flex;
+  border: 1px solid #dbe2ea;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.bi-mockup-chips > span {
+  padding: 6px 12px;
+  background: white;
+}
+
+.bi-mockup-chips > span.is-active {
+  background: #f2f4f8;
+  font-weight: 600;
+  color: #102544;
+}
+
+/* The aircraft type shown after a tail number, in the ranked list and the downtime table. */
+.bi-rank-type {
+  color: #6b7280;
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+/* The note that replaces the route list on figures that are fleet-wide. */
+.bi-filter-note {
+  align-self: flex-end;
+  padding: 8px 10px;
+  border: 1px dashed #dbe2ea;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
