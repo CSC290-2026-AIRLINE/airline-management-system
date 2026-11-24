@@ -115,7 +115,7 @@ describe('F13Notify', () => {
 
     expect(notifications.publish).toHaveBeenCalledWith({
       source: '6',
-      sourceEventId: `gate_changed:${FLIGHT_ID}:A1:B7`,
+      sourceEventId: expect.stringMatching(new RegExp(`^gate_changed:${FLIGHT_ID}:A1:B7:\\d+$`)),
       eventType: 'gate_changed',
       flightId: FLIGHT_ID,
       flightNumber: 'AM101',
@@ -132,7 +132,9 @@ describe('F13Notify', () => {
 
     await notify.send('gate_changed', { flightId: FLIGHT_ID, from: null, to: 'B7' })
 
-    expect(notifications.publish).toHaveBeenCalledWith(expect.objectContaining({ sourceEventId: `gate_changed:${FLIGHT_ID}:none:B7` }))
+    expect(notifications.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceEventId: expect.stringMatching(new RegExp(`^gate_changed:${FLIGHT_ID}:none:B7:\\d+$`)) }),
+    )
   })
 
   it.each(['boarding_call', 'check_in_cancelled'] as const)('does not forward %s', async (event) => {

@@ -126,8 +126,9 @@ export class F13Notify implements NotifyProvider {
     }
     await this.notifications.publish({
       source: '6',
-      // A retry of the same move is deduplicated; a later move to another gate is a new message.
-      sourceEventId: `gate_changed:${flightId}:${from ?? 'none'}:${to}`,
+      // Every move is its own message, even back to a gate used before (A to B, B to A, A to B again). The time keeps
+      // those apart; the send is not retried, so there is no repeat of one move to deduplicate.
+      sourceEventId: `gate_changed:${flightId}:${from ?? 'none'}:${to}:${Date.now()}`,
       eventType: 'gate_changed',
       flightId,
       flightNumber: flight.flight_number,
