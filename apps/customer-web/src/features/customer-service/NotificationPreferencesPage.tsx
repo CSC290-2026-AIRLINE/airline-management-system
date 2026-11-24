@@ -1,8 +1,14 @@
 import { useEffect, useEffectEvent, useState } from 'react'
+import { CheckCircle2, X } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@customer-web/components/ui/alert'
+import { Badge } from '@customer-web/components/ui/badge'
+import { Button } from '@customer-web/components/ui/button'
+import { Card, CardContent, CardFooter } from '@customer-web/components/ui/card'
+import { Checkbox } from '@customer-web/components/ui/checkbox'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@customer-web/components/ui/table'
 import type { NotificationPreferenceRow } from './types'
 import { errorMessage, useComplaintsApi } from './api'
-import { alertStyle, btnSecondary, focusRing } from './styles'
-import { AccountGate, ComplaintsNav } from './ui'
+import { AccountGate, ComplaintPage, ComplaintsNav } from './ui'
 
 type Channel = 'email' | 'sms' | 'push'
 const CHANNELS: { key: Channel; label: string }[] = [
@@ -13,23 +19,15 @@ const CHANNELS: { key: Channel; label: string }[] = [
 
 export function NotificationPreferencesPage() {
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        backgroundColor: '#F7F9FC',
-        fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        color: '#0A1424',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
+    <ComplaintPage
+      title="Notification preferences"
+      subtitle="Choose how you receive flight alerts and customer service notices. Critical messages (flight delays, cancellations and gate changes) are always sent on at least one channel."
     >
-      <main style={{ maxWidth: '1000px', width: '100%', margin: '32px auto', padding: '0 24px 80px', boxSizing: 'border-box' }}>
-        <ComplaintsNav current="/complaints/preferences" />
-        <AccountGate signInTitle="Sign in to manage notifications" redirect="/complaints/preferences">
-          {() => <PreferencesForm />}
-        </AccountGate>
-      </main>
-    </div>
+      <ComplaintsNav current="/complaints/preferences" />
+      <AccountGate signInTitle="Sign in to manage notifications" redirect="/complaints/preferences">
+        {() => <PreferencesForm />}
+      </AccountGate>
+    </ComplaintPage>
   )
 }
 
@@ -110,243 +108,142 @@ function PreferencesForm() {
   }
 
   const canSave = !isSaving && !isLoading && !loadError && preferences.length > 0
+  const columns = CHANNELS.length + 2
 
   return (
-    <>
-      {/* Saved Banner (Figma 10) */}
+    <div className="flex flex-col gap-4">
       {isSaved && (
-        <div
-          role="status"
-          style={{
-            backgroundColor: '#DCFCE7',
-            border: '1px solid #86EFAC',
-            borderRadius: '12px',
-            padding: '16px 20px',
-            marginBottom: '24px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span aria-hidden="true" style={{ fontSize: '20px', color: '#16A34A', fontWeight: 700 }}>
-              ✓
-            </span>
-            <div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#14532D' }}>Preferences saved</div>
-              <div style={{ fontSize: '13px', color: '#166534', marginTop: '2px' }}>
-                Your notification settings have been updated across email, SMS and push.
-              </div>
-            </div>
-          </div>
-          <button
-            type="button"
-            aria-label="Dismiss saved message"
-            onClick={() => setIsSaved(false)}
-            className={focusRing}
-            style={{ background: 'none', border: 'none', color: '#166534', cursor: 'pointer', fontSize: '16px' }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Save Error Banner */}
-      {error && (
-        <div
-          role="alert"
-          style={{
-            backgroundColor: '#FEF2F2',
-            border: '1px solid #FECACA',
-            borderRadius: '12px',
-            padding: '16px 20px',
-            marginBottom: '24px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            color: '#991B1B',
-            fontSize: '14px',
-          }}
-        >
-          <div>{error}</div>
-          <button
-            type="button"
-            aria-label="Dismiss error"
-            onClick={() => setError(null)}
-            className={focusRing}
-            style={{ background: 'none', border: 'none', color: '#991B1B', cursor: 'pointer', fontSize: '16px' }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Card Container (Figma 09) */}
-      <div
-        style={{
-          backgroundColor: '#FFFFFF',
-          borderRadius: '16px',
-          border: '1px solid #DBE2EA',
-          padding: '32px',
-          boxShadow: '0 2px 8px rgba(10, 20, 36, 0.04)',
-        }}
-      >
-        {/* Header */}
-        <div style={{ marginBottom: '28px', borderBottom: '1px solid #F1F5F9', paddingBottom: '20px' }}>
-          <h1 style={{ margin: '0 0 8px', fontSize: '26px', fontWeight: 700, color: '#0A1424', letterSpacing: '-0.02em' }}>
-            Notification preferences
-          </h1>
-          <p style={{ margin: 0, fontSize: '14px', color: '#677287', lineHeight: 1.5 }}>
-            Choose how you receive flight alerts and customer service notices. Critical messages (flight delays, cancellations and gate
-            changes) are always sent on at least one channel.
-          </p>
-        </div>
-
-        {notice && (
-          <div role="alert" style={{ ...alertStyle, marginBottom: '16px' }}>
-            {notice}
-          </div>
-        )}
-
-        {!isLoading && !loadError && preferences.length > 0 && !smsAvailable && (
-          <div role="note" style={{ fontSize: '13px', color: '#677287', marginBottom: '16px' }}>
-            SMS is off because your account has no phone number. Add one to your profile to receive text messages.
-          </div>
-        )}
-
-        {/* Preferences Matrix Table */}
-        <div style={{ overflowX: 'auto', marginBottom: '32px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13.5px' }}>
-            <thead>
-              <tr
-                style={{
-                  borderBottom: '2px solid #E2E8F0',
-                  color: '#677287',
-                  fontSize: '11px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                }}
+        <Alert role="status">
+          <CheckCircle2 className="text-success" />
+          <AlertTitle>Preferences saved</AlertTitle>
+          <AlertDescription>
+            <div className="flex items-start justify-between gap-3">
+              <p>Your notification settings have been updated across email, SMS and push.</p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="-my-2 size-7"
+                aria-label="Dismiss saved message"
+                onClick={() => setIsSaved(false)}
               >
-                <th style={{ padding: '12px 14px' }}>EVENT TYPE</th>
-                <th style={{ padding: '12px 14px' }}>SERVICE</th>
+                <X />
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            <div className="flex items-start justify-between gap-3">
+              <p>{error}</p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="-my-2 size-7"
+                aria-label="Dismiss error"
+                onClick={() => setError(null)}
+              >
+                <X />
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {notice && (
+        <Alert variant="destructive">
+          <AlertDescription>{notice}</AlertDescription>
+        </Alert>
+      )}
+
+      {!isLoading && !loadError && preferences.length > 0 && !smsAvailable && (
+        <p role="note" className="text-sm text-muted-foreground">
+          SMS is off because your account has no phone number. Add one to your profile to receive text messages.
+        </p>
+      )}
+
+      <Card>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Event type</TableHead>
+                <TableHead>Service</TableHead>
                 {CHANNELS.map(({ key, label }) => (
-                  <th key={key} style={{ padding: '12px 14px', textAlign: 'center', width: '90px' }}>
+                  <TableHead key={key} className="w-24 text-center">
                     {label}
-                  </th>
+                  </TableHead>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {isLoading ? (
-                <tr>
-                  <td colSpan={5} role="status" style={{ padding: '14px', color: '#677287' }}>
+                <TableRow>
+                  <TableCell colSpan={columns} role="status" className="text-muted-foreground">
                     Loading your preferences…
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : loadError ? (
-                <tr>
-                  <td colSpan={5} style={{ padding: '14px' }}>
-                    <div
-                      role="alert"
-                      style={{ ...alertStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}
-                    >
-                      <span>We couldn't load your preferences. {loadError}</span>
-                      <button type="button" onClick={retryLoad} className={focusRing} style={btnSecondary}>
-                        Try again
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                <TableRow>
+                  <TableCell colSpan={columns}>
+                    <Alert variant="destructive">
+                      <AlertDescription>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <p>We couldn't load your preferences. {loadError}</p>
+                          <Button type="button" variant="outline" size="sm" onClick={retryLoad}>
+                            Try again
+                          </Button>
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  </TableCell>
+                </TableRow>
               ) : preferences.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ padding: '14px', color: '#677287' }}>
+                <TableRow>
+                  <TableCell colSpan={columns} className="text-muted-foreground">
                     There are no notifications to set up yet.
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : (
                 preferences.map((row) => (
-                  <tr key={row.typeCode} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                    <td style={{ padding: '14px' }}>
-                      <div style={{ fontWeight: 600, color: '#0A1424' }}>
-                        {row.typeName}
-                        {row.isMandatory && (
-                          <span
-                            style={{
-                              marginLeft: '8px',
-                              fontSize: '10px',
-                              fontWeight: 700,
-                              color: '#B45309',
-                              backgroundColor: '#FEF3C7',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              verticalAlign: 'middle',
-                            }}
-                          >
-                            ALWAYS ON
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{ padding: '14px', color: '#677287', fontSize: '13px' }}>{row.service}</td>
+                  <TableRow key={row.typeCode}>
+                    <TableCell className="font-medium whitespace-normal">
+                      {row.typeName}
+                      {row.isMandatory && (
+                        <Badge variant="warning" className="ml-2 align-middle">
+                          Always on
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{row.service}</TableCell>
                     {CHANNELS.map(({ key, label }) => (
-                      <td key={key} style={{ padding: '14px', textAlign: 'center' }}>
-                        <input
-                          type="checkbox"
+                      <TableCell key={key} className="text-center">
+                        <Checkbox
                           aria-label={`${label} for ${row.typeName}`}
                           checked={row[key]}
                           disabled={key === 'sms' && !row.smsAvailable}
                           title={key === 'sms' && !row.smsAvailable ? 'Add a phone number to your profile to get SMS' : undefined}
-                          onChange={() => handleToggle(row, key)}
-                          className={focusRing}
-                          style={{
-                            width: '18px',
-                            height: '18px',
-                            cursor: key === 'sms' && !row.smsAvailable ? 'not-allowed' : 'pointer',
-                            accentColor: '#2563EB',
-                          }}
+                          onCheckedChange={() => handleToggle(row, key)}
                         />
-                      </td>
+                      </TableCell>
                     ))}
-                  </tr>
+                  </TableRow>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Action Row */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingTop: '20px',
-            borderTop: '1px solid #F1F5F9',
-          }}
-        >
-          <div style={{ fontSize: '13px', color: '#677287' }}>All notifications are delivered via mocked channels in real time.</div>
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={!canSave}
-            className={focusRing}
-            style={{
-              backgroundColor: canSave ? '#102544' : '#94A3B8',
-              color: '#FFFFFF',
-              padding: '11px 24px',
-              borderRadius: '8px',
-              border: 'none',
-              fontSize: '14px',
-              fontWeight: 600,
-              cursor: canSave ? 'pointer' : 'not-allowed',
-              boxShadow: '0 2px 4px rgba(10, 20, 36, 0.08)',
-            }}
-          >
-            {isSaving ? 'Saving...' : 'Save preferences'}
-          </button>
-        </div>
-      </div>
-    </>
+            </TableBody>
+          </Table>
+        </CardContent>
+        <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t">
+          <p className="text-sm text-muted-foreground">All notifications are delivered via mocked channels in real time.</p>
+          <Button type="button" onClick={() => void handleSave()} disabled={!canSave}>
+            {isSaving ? 'Saving…' : 'Save preferences'}
+          </Button>
+        </CardFooter>
+      </Card>
+    </div>
   )
 }

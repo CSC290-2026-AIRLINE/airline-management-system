@@ -1,17 +1,16 @@
 import { useEffect, useEffectEvent, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { Info } from 'lucide-react'
 import type { AppUser } from '@customer-web/auth/AuthProvider'
+import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
+import { Badge } from '@customer-web/components/ui/badge'
+import { Button } from '@customer-web/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@customer-web/components/ui/card'
+import { cn } from '@customer-web/lib/utils'
 import { errorMessage, useComplaintsApi } from './api'
-import { alertStyle, btnPrimary, btnSecondary, focusRing, focusRingInset, mutedStyle } from './styles'
-import { FLIGHT_ISSUES, FOOD_ISSUES, LOCATIONS, STATUS_LABEL, optionLabel, type CaseStatus, type Complaint } from './types'
+import { FLIGHT_ISSUES, FOOD_ISSUES, LOCATIONS, optionLabel, type CaseStatus, type Complaint } from './types'
+import { Fact, StatusBadge, StatusTracker } from './parts'
 import { AccountGate, ComplaintPage, ComplaintsNav } from './ui'
-
-const TRACKER_STEPS: { status: CaseStatus; label: string }[] = [
-  { status: 'with_supervisor', label: 'With supervisor' },
-  { status: 'assigned', label: 'Assigned' },
-  { status: 'resolved', label: 'Resolved' },
-  { status: 'closed', label: 'Closed' },
-]
 
 // Times are shown in Bangkok time, the airline's home time zone. A flight's service date is a calendar date (YYYY-MM-DD,
 // read as UTC midnight), so it is formatted in UTC to stay the same day.
@@ -40,49 +39,6 @@ function caseDate(options: Intl.DateTimeFormatOptions, serviceDate: string | nul
   return formatTime(new Intl.DateTimeFormat('en-GB', { ...options, timeZone }), serviceDate ?? openedAt)
 }
 
-function StatusPill({ status }: { status: CaseStatus }) {
-  const palette: Record<CaseStatus, { bg: string; text: string; dot: string }> = {
-    with_supervisor: { bg: '#FFF5E0', text: '#855705', dot: '#D97706' },
-    assigned: { bg: '#E8F1FF', text: '#1D4ED8', dot: '#2563EB' },
-    resolved: { bg: '#E0FAEB', text: '#087338', dot: '#16A34A' },
-    closed: { bg: '#F2F5F7', text: '#545E70', dot: '#64748B' },
-  }
-  const style = palette[status] ?? palette.with_supervisor
-  return (
-    <div
-      style={{
-        backgroundColor: style.bg,
-        borderRadius: '6px',
-        padding: '3px 9px 3px 8px',
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '6px',
-        flexShrink: 0,
-      }}
-    >
-      <span
-        style={{
-          width: '6px',
-          height: '6px',
-          borderRadius: '999px',
-          backgroundColor: style.dot,
-          display: 'inline-block',
-        }}
-      />
-      <span
-        style={{
-          fontSize: '12px',
-          fontWeight: 600,
-          color: style.text,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {STATUS_LABEL[status]}
-      </span>
-    </div>
-  )
-}
-
 /** What happens next, for the case's current status. */
 const NEXT_STEP: Record<CaseStatus, string> = {
   with_supervisor: 'What happens next: a Customer Service supervisor reviews new cases, usually within 2 days.',
@@ -96,12 +52,13 @@ interface TimelineItem {
   time: string
   title: string
   subtext?: string
-  dotColor: 'green' | 'blue'
+  /** The latest step is marked with the primary colour. */
+  latest: boolean
 }
 
 /** The customer's history, built only from the case's own (non-internal) events. */
 function buildTimeline(complaint: Complaint): TimelineItem[] {
-  const items: Omit<TimelineItem, 'dotColor'>[] = []
+  const items: Omit<TimelineItem, 'latest'>[] = []
   for (const ev of complaint.events ?? []) {
     const time = formatTime(SHORT_TIMESTAMP, ev.occurredAt)
     if (ev.type === 'created') {
@@ -120,27 +77,13 @@ function buildTimeline(complaint: Complaint): TimelineItem[] {
       items.push({ id: ev.id, time, title: 'Case reopened and sent to supervisor' })
     }
   }
-  return items.map((item, idx) => ({ ...item, dotColor: idx === items.length - 1 ? 'blue' : 'green' }))
+  return items.map((item, idx) => ({ ...item, latest: idx === items.length - 1 }))
 }
 
 export function CheckCasePage() {
   return (
-    <ComplaintPage>
+    <ComplaintPage title="Your complaints" subtitle="Check the status and history of your cases.">
       <ComplaintsNav current="/complaints/check" />
-      <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left' }}>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: '26px',
-            fontWeight: 700,
-            color: '#0A1424',
-            letterSpacing: '-0.02em',
-          }}
-        >
-          Your complaints
-        </h1>
-        <p style={{ margin: 0, fontSize: '14px', color: '#677287' }}>Check the status and history of your cases.</p>
-      </div>
       <AccountGate signInTitle="Sign in to check your cases" redirect="/complaints/check">
         {(user) => <CaseBrowser user={user} />}
       </AccountGate>
@@ -154,26 +97,14 @@ type ListState = { status: 'loading' } | { status: 'error'; message: string } | 
 type DetailState =
   { caseNumber: string; complaint: Complaint; error?: undefined } | { caseNumber: string; complaint?: undefined; error: string }
 
-const panelStyle = {
-  backgroundColor: '#FFFFFF',
-  borderRadius: '16px',
-  border: '1px solid #DBE2EA',
-  padding: '28px',
-  minHeight: '360px',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '8px',
-  textAlign: 'center',
-} as const
-
 function DetailPlaceholder({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div style={panelStyle}>
-      <div style={{ fontSize: '18px', fontWeight: 700, color: '#0A1424' }}>{title}</div>
-      {children && <div style={{ fontSize: '14px', color: '#677287', maxWidth: '420px', lineHeight: 1.5 }}>{children}</div>}
-    </div>
+    <Card className="min-h-80 justify-center text-center">
+      <CardHeader className="items-center">
+        <CardTitle>{title}</CardTitle>
+        {children && <p className="max-w-md text-sm text-muted-foreground">{children}</p>}
+      </CardHeader>
+    </Card>
   )
 }
 
@@ -252,7 +183,7 @@ function CaseBrowser({ user }: { user: AppUser }) {
       list.status === 'ready' && list.cases.length === 0 ? (
         <DetailPlaceholder title="No complaints yet">
           When you make a complaint, its status and history show here.{' '}
-          <Link to="/complaints" className={focusRing} style={{ color: '#2563EB', fontWeight: 600 }}>
+          <Link to="/complaints" className="font-medium text-foreground underline underline-offset-4">
             Make a complaint
           </Link>
         </DetailPlaceholder>
@@ -263,62 +194,45 @@ function CaseBrowser({ user }: { user: AppUser }) {
       )
   } else if (!current) {
     detailPane = (
-      <div role="status" style={panelStyle}>
-        <span style={mutedStyle}>Loading case {selected}…</span>
-      </div>
+      <Card role="status" className="min-h-80 items-center justify-center text-sm text-muted-foreground">
+        Loading case {selected}…
+      </Card>
     )
   } else if (current.error !== undefined) {
     detailPane = (
-      <div role="alert" style={alertStyle}>
-        {current.error}
-      </div>
+      <Alert variant="destructive">
+        <AlertDescription>{current.error}</AlertDescription>
+      </Alert>
     )
   } else {
     detailPane = <CaseDetail key={current.caseNumber} complaint={current.complaint} user={user} onReopened={onReopened} />
   }
 
   return (
-    /* Two Column Layout matching Figma (Left 392px, gap 24px, Right 784px) */
-    <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
-      {/* Left Column (392px): Card / Your complaints */}
-      <div
-        style={{
-          width: '392px',
-          flexShrink: 0,
-          backgroundColor: '#FFFFFF',
-          borderRadius: '16px',
-          border: '1px solid #DBE2EA',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          boxSizing: 'border-box',
-          textAlign: 'left',
-        }}
-      >
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0A1424' }}>Your complaints</h2>
-          <p style={{ margin: 0, fontSize: '13px', color: '#677287' }}>Only you can see these.</p>
-        </div>
+    <div className="grid items-start gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]">
+      <Card className="gap-0 overflow-hidden py-0">
+        <CardHeader className="py-5">
+          <CardTitle>Your complaints</CardTitle>
+          <CardDescription>Only you can see these.</CardDescription>
+        </CardHeader>
 
         {list.status === 'loading' ? (
-          <div role="status" style={{ padding: '16px 24px', borderTop: '1px solid #E8EDF3', fontSize: '13px', color: '#677287' }}>
+          <p role="status" className="border-t px-6 py-4 text-sm text-muted-foreground">
             Loading your complaints…
-          </div>
+          </p>
         ) : list.status === 'error' ? (
-          <div style={{ padding: '0 24px 16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div role="alert" style={alertStyle}>
-              We couldn't load your complaints. {list.message}
-            </div>
-            <button type="button" onClick={retryList} className={focusRing} style={{ ...btnSecondary, alignSelf: 'flex-start' }}>
+          <div className="flex flex-col gap-3 px-6 pb-4">
+            <Alert variant="destructive">
+              <AlertDescription>We couldn't load your complaints. {list.message}</AlertDescription>
+            </Alert>
+            <Button type="button" variant="outline" size="sm" className="self-start" onClick={retryList}>
               Try again
-            </button>
+            </Button>
           </div>
         ) : list.cases.length === 0 ? (
-          <div style={{ padding: '16px 24px', borderTop: '1px solid #E8EDF3', fontSize: '13px', color: '#677287' }}>
-            You have not filed any complaints with this account yet.
-          </div>
+          <p className="border-t px-6 py-4 text-sm text-muted-foreground">You have not filed any complaints with this account yet.</p>
         ) : (
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          <ul className="m-0 list-none p-0">
             {list.cases.map((c) => {
               const isSelected = c.caseNumber === selected
               const date = caseDate(DAY_MONTH, c.serviceDate, c.openedAt)
@@ -330,37 +244,30 @@ function CaseBrowser({ user }: { user: AppUser }) {
                 .filter(Boolean)
                 .join(' · ')
               return (
-                <li key={c.id} style={{ borderTop: '1px solid #E8EDF3' }}>
+                <li key={c.id} className="border-t">
                   <Link
                     to="/complaints/check"
                     search={{ caseNumber: c.caseNumber }}
                     aria-current={isSelected ? 'true' : undefined}
-                    className={focusRingInset}
-                    style={{
-                      padding: '12px 24px',
-                      backgroundColor: isSelected ? '#E8EEF7' : '#FFFFFF',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '12px',
-                      textDecoration: 'none',
-                    }}
+                    className={cn(
+                      'flex items-center justify-between gap-3 px-6 py-3 no-underline outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset',
+                      isSelected ? 'bg-accent' : 'hover:bg-accent/50',
+                    )}
                   >
-                    <span style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <span style={{ fontSize: '14px', fontWeight: 600, color: '#0A1424' }}>{c.caseNumber}</span>
-                      <span style={{ fontSize: '12px', color: '#677287' }}>{subLabel}</span>
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <span className="text-sm font-medium text-foreground">{c.caseNumber}</span>
+                      <span className="text-xs text-muted-foreground">{subLabel}</span>
                     </span>
-                    <StatusPill status={c.status} />
+                    <StatusBadge status={c.status} />
                   </Link>
                 </li>
               )
             })}
           </ul>
         )}
-      </div>
+      </Card>
 
-      {/* Right Column (784px): Card / Case detail */}
-      <div style={{ flex: '1', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '16px' }}>{detailPane}</div>
+      <div className="flex min-w-0 flex-col gap-4">{detailPane}</div>
     </div>
   )
 }
@@ -383,10 +290,6 @@ function CaseDetail({ complaint, user, onReopened }: { complaint: Complaint; use
   }
 
   const activeBookingRef = complaint.bookingRef || ''
-  const currentStepIdx = Math.max(
-    0,
-    TRACKER_STEPS.findIndex((s) => s.status === complaint.status),
-  )
   const timelineItems = buildTimeline(complaint)
 
   // flightRoute is "FY402 · BKK → CNX · Mon 23 Nov", or '—' when the case has no flight.
@@ -398,305 +301,100 @@ function CaseDetail({ complaint, user, onReopened }: { complaint: Complaint; use
   const issueFactValue = optionLabel(complaint.type === 'food' ? FOOD_ISSUES : FLIGHT_ISSUES, complaint.issue) || '—'
 
   return (
-    <div
-      style={{
-        backgroundColor: '#FFFFFF',
-        borderRadius: '16px',
-        border: '1px solid #DBE2EA',
-        padding: '28px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '18px',
-        textAlign: 'left',
-      }}
-    >
-      {/* Top Row: Case Number + Type Pill & Status Pill */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-        <div style={{ fontSize: '24px', fontWeight: 700, color: '#0A1424' }}>{complaint.caseNumber}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div
-            style={{
-              border: '1px solid #D1D9E3',
-              borderRadius: '6px',
-              padding: '2px 8px',
-              fontSize: '12px',
-              fontWeight: 500,
-              color: '#454F61',
-              textTransform: 'capitalize',
-            }}
-          >
-            {complaint.type}
+    <Card>
+      <CardContent className="flex flex-col gap-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="m-0 text-2xl font-semibold tracking-tight">{complaint.caseNumber}</h2>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="capitalize">
+              {complaint.type}
+            </Badge>
+            <StatusBadge status={complaint.status} />
           </div>
-          <StatusPill status={complaint.status} />
         </div>
-      </div>
 
-      {/* Horizontal Status Tracker */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-        {TRACKER_STEPS.map((step, idx) => {
-          const isReached = idx <= currentStepIdx
-          const isCurrent = idx === currentStepIdx
-          return (
-            <div key={step.status} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {idx > 0 && (
-                <div
-                  style={{
-                    width: '28px',
-                    height: '2px',
-                    backgroundColor: isReached ? '#102544' : '#E8EDF3',
-                  }}
-                />
-              )}
-              <div
-                style={{
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '999px',
-                  backgroundColor: isReached ? '#102544' : '#E8EDF3',
-                  color: isReached ? '#FFFFFF' : '#677287',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                {idx + 1}
-              </div>
-              <span
-                style={{
-                  fontSize: '13px',
-                  fontWeight: isCurrent ? 600 : 500,
-                  color: isCurrent ? '#0A1424' : '#677287',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {step.label}
-              </span>
-            </div>
-          )
-        })}
-      </div>
+        <StatusTracker status={complaint.status} />
 
-      {/* Facts Box */}
-      <div
-        style={{
-          backgroundColor: '#F8FAFC',
-          border: '1px solid #E8EDF3',
-          borderRadius: '12px',
-          padding: '16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-        }}
-      >
-        {complaint.type === 'employee' ? (
-          <>
-            <div style={{ display: 'flex', gap: '16px' }}>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>WHERE</span>
-                <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{optionLabel(LOCATIONS, complaint.location)}</span>
-              </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>DATE</span>
-                <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{dateFactValue}</span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '16px' }}>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>STAFF MEMBER</span>
-                <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{complaint.staffName || '—'}</span>
-              </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>BOOKING</span>
-                <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{activeBookingRef || '—'}</span>
-              </div>
-            </div>
-          </>
-        ) : complaint.type === 'food' ? (
-          <>
-            <div style={{ display: 'flex', gap: '16px' }}>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>FLIGHT</span>
-                <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{flightFactValue}</span>
-              </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>DATE</span>
-                <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{dateFactValue}</span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '16px' }}>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>MEAL</span>
-                <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{complaint.mealDetail || '—'}</span>
-              </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>ISSUE</span>
-                <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{issueFactValue}</span>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ display: 'flex', gap: '16px' }}>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>FLIGHT</span>
-                <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{flightFactValue}</span>
-              </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>DATE</span>
-                <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{dateFactValue}</span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '16px' }}>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>ISSUE</span>
-                <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{issueFactValue}</span>
-              </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>BOOKING</span>
-                <span style={{ fontSize: '14px', fontWeight: 500, color: '#0A1424' }}>{activeBookingRef || '—'}</span>
-              </div>
-            </div>
-          </>
+        <div className="flex flex-col gap-4 rounded-lg border bg-muted/40 p-4">
+          <dl className="m-0 grid gap-4 sm:grid-cols-2">
+            {complaint.type === 'employee' ? (
+              <>
+                <Fact label="Where">{optionLabel(LOCATIONS, complaint.location)}</Fact>
+                <Fact label="Date">{dateFactValue}</Fact>
+                <Fact label="Staff member">{complaint.staffName || '—'}</Fact>
+                <Fact label="Booking">{activeBookingRef || '—'}</Fact>
+              </>
+            ) : (
+              <>
+                <Fact label="Flight">{flightFactValue}</Fact>
+                <Fact label="Date">{dateFactValue}</Fact>
+                {complaint.type === 'food' ? (
+                  <>
+                    <Fact label="Meal">{complaint.mealDetail || '—'}</Fact>
+                    <Fact label="Issue">{issueFactValue}</Fact>
+                  </>
+                ) : (
+                  <>
+                    <Fact label="Issue">{issueFactValue}</Fact>
+                    <Fact label="Booking">{activeBookingRef || '—'}</Fact>
+                  </>
+                )}
+              </>
+            )}
+          </dl>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground uppercase">What you told us</span>
+            <p className="text-sm">“{complaint.description}”</p>
+          </div>
+        </div>
+
+        <Alert>
+          <Info />
+          <AlertDescription>
+            {NEXT_STEP[complaint.status]} We email you at {complaint.contactEmail || user.email} each time the status changes.
+          </AlertDescription>
+        </Alert>
+
+        <div className="flex flex-col gap-3">
+          <h3 className="m-0 text-base font-semibold">History</h3>
+          <ol className="m-0 flex list-none flex-col p-0">
+            {timelineItems.map((item, idx) => (
+              <li key={item.id} className="flex items-stretch gap-3.5">
+                <div className="flex shrink-0 flex-col items-center gap-1 pt-1">
+                  <span className={cn('size-3 shrink-0 rounded-full', item.latest ? 'bg-primary' : 'bg-success')} />
+                  {idx < timelineItems.length - 1 && <span className="min-h-4 w-0.5 flex-1 bg-border" />}
+                </div>
+                <div className="flex flex-1 flex-col gap-0.5 pb-3.5">
+                  <span className="text-xs text-muted-foreground">{item.time}</span>
+                  <span className="text-sm">{item.title}</span>
+                  {item.subtext && <span className="text-sm text-muted-foreground">{item.subtext}</span>}
+                </div>
+              </li>
+            ))}
+          </ol>
+          <p className="text-xs text-muted-foreground">Notes the team writes for each other are not shown here.</p>
+        </div>
+
+        {complaint.status === 'closed' && (
+          <div className="flex flex-col gap-3 rounded-lg border p-4">
+            <p className="text-sm">Not happy with the result? You can reopen within 7 days of closing.</p>
+            {reopenError && (
+              <Alert variant="destructive">
+                <AlertDescription>{reopenError}</AlertDescription>
+              </Alert>
+            )}
+            <Button type="button" className="self-start" disabled={reopening} onClick={() => void reopen()}>
+              {reopening ? 'Reopening…' : 'Reopen case'}
+            </Button>
+          </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          <span style={{ fontSize: '10px', fontWeight: 600, color: '#677287', letterSpacing: '0.6px' }}>WHAT YOU TOLD US</span>
-          <span style={{ fontSize: '14px', color: '#0A1424', lineHeight: 1.5 }}>“{complaint.description}”</span>
+        <div>
+          <Button asChild variant="outline">
+            <Link to="/complaints">Make another complaint</Link>
+          </Button>
         </div>
-      </div>
-
-      {/* Next Step Info Box */}
-      <div
-        style={{
-          backgroundColor: '#EFF4FF',
-          borderRadius: '10px',
-          padding: '12px 14px',
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: '10px',
-        }}
-      >
-        <span style={{ fontSize: '15px', fontWeight: 600, color: '#1F408C', lineHeight: 1.2 }}>ⓘ</span>
-        <span style={{ fontSize: '13px', color: '#29427A', lineHeight: 1.45 }}>
-          {NEXT_STEP[complaint.status]} We email you at {complaint.contactEmail || user.email} each time the status changes.
-        </span>
-      </div>
-
-      {/* History Section */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0A1424' }}>History</h3>
-
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {timelineItems.map((item, idx) => {
-            const isLast = idx === timelineItems.length - 1
-            return (
-              <div key={item.id} style={{ display: 'flex', gap: '14px', alignItems: 'stretch' }}>
-                {/* Rail */}
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    paddingTop: '4px',
-                    gap: '4px',
-                    flexShrink: 0,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: '12px',
-                      height: '12px',
-                      borderRadius: '999px',
-                      backgroundColor: item.dotColor === 'blue' ? '#2563EB' : '#16A34A',
-                      flexShrink: 0,
-                    }}
-                  />
-                  {!isLast && (
-                    <div
-                      style={{
-                        width: '2px',
-                        flex: 1,
-                        minHeight: '16px',
-                        backgroundColor: '#E1E6ED',
-                      }}
-                    />
-                  )}
-                </div>
-
-                {/* Text */}
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '2px',
-                    paddingBottom: '14px',
-                    flex: 1,
-                  }}
-                >
-                  <span style={{ fontSize: '12px', color: '#677287' }}>{item.time}</span>
-                  <span style={{ fontSize: '14px', color: '#0A1424' }}>{item.title}</span>
-                  {item.subtext && <span style={{ fontSize: '13px', color: '#677287' }}>{item.subtext}</span>}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        <p style={{ margin: 0, fontSize: '12px', color: '#677287' }}>Notes the team writes for each other are not shown here.</p>
-      </div>
-
-      {complaint.status === 'closed' && (
-        <div
-          style={{
-            border: '1px solid #E8EDF3',
-            borderRadius: '10px',
-            padding: '14px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '10px',
-          }}
-        >
-          <span style={{ fontSize: '14px', color: '#0A1424' }}>Not happy with the result? You can reopen within 7 days of closing.</span>
-          {reopenError && (
-            <div role="alert" style={alertStyle}>
-              {reopenError}
-            </div>
-          )}
-          <button
-            type="button"
-            disabled={reopening}
-            onClick={() => void reopen()}
-            className={focusRing}
-            style={{ ...btnPrimary, alignSelf: 'flex-start', opacity: reopening ? 0.7 : 1, cursor: reopening ? 'not-allowed' : 'pointer' }}
-          >
-            {reopening ? 'Reopening…' : 'Reopen case'}
-          </button>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-        <Link
-          to="/complaints"
-          className={focusRing}
-          style={{
-            textDecoration: 'none',
-            backgroundColor: '#FFFFFF',
-            border: '1px solid #C7CFDB',
-            borderRadius: '10px',
-            padding: '11px 18px',
-            fontSize: '14px',
-            fontWeight: 600,
-            color: '#0A1424',
-            cursor: 'pointer',
-          }}
-        >
-          Make another complaint
-        </Link>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   )
 }
