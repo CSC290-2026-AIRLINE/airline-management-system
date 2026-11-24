@@ -296,6 +296,105 @@ export class CustomerServiceService {
     return this.getForCustomer(userId, caseNumber)
   }
 
+  // ── Feature 10 (Lost and Found Baggage) ──────────────────────────────────
+
+  /**
+   * Opens the compensation case for a lost bag report that Feature 10 has set to lost: a flight case with issue `lost_bag`,
+   * waiting for the supervisor. One case per report (`lost_bag_report_id` is unique), so a second call returns the case
+   * already opened and sends nothing. `customer_id` is the passenger's own account, or empty when they have none.
+   * Called in-process by Feature 10 after its change has committed.
+   */
+  async openLostBagCase(reportId: string): Promise<{ caseId: string; caseNumber: string; created: boolean }> {
+    const existing = await this.db.complaint_case.findUnique({
+      where: { lost_bag_report_id: reportId },
+      select: { id: true, case_number: true },
+    })
+    if (existing) return { caseId: existing.id, caseNumber: existing.case_number, created: false }
+
+    const report = await this.db.lost_bag_report.findUnique({
+      where: { id: reportId },
+      select: {
+        case_number: true,
+        status: true,
+        passenger_id: true,
+        booking_passenger_id: true,
+        flight_id: true,
+        bag_type: true,
+        colour: true,
+        brand: true,
+        contact_email: true,
+        contact_phone: true,
+        passenger: { select: { first_name: true, last_name: true, customer: { select: { id: true, phone: true } } } },
+      },
+    })
+    if (!report) throw new NotFoundException(`Lost bag report ${reportId} not found`)
+    if (report.status !== 'lost') throw new ConflictException('REPORT_NOT_LOST')
+
+    const now = this.clock.now()
+    const passengerName = `${report.passenger.first_name} ${report.passenger.last_name}`.trim()
+    const customerId = report.passenger.customer?.id ?? null
+    const contactEmail = report.contact_email?.trim() || null
+    const contactPhone = report.contact_phone?.trim() || report.passenger.customer?.phone?.trim() || null
+    const bag = [report.colour, report.brand, report.bag_type].filter(Boolean).join(' ')
+
+    let saved: { caseId: string; caseNumber: string; eventId: string }
+    try {
+      saved = await this.db.$transaction(async (tx) => {
+        const [{ n }] = await tx.$queryRaw<{ n: bigint }[]>`SELECT nextval('complaint_case_seq') AS n`
+        const case_number = `CS-${now.getUTCFullYear()}-${String(n).padStart(6, '0')}`
+        const row = await tx.complaint_case.create({
+          data: {
+            case_number,
+            type: 'flight',
+            passenger_id: report.passenger_id,
+            customer_id: customerId,
+            booking_passenger_id: report.booking_passenger_id,
+            contact_email: contactEmail,
+            contact_phone: contactPhone,
+            source: 'feature_10',
+            lost_bag_report_id: reportId,
+            opened_at: now,
+          },
+          select: { id: true },
+        })
+        await tx.flight_complaint.create({
+          data: {
+            case_id: row.id,
+            flight_id: report.flight_id,
+            issue: 'lost_bag',
+            details: `Lost bag report ${report.case_number} (${bag}) was not found in time.`,
+          },
+        })
+        const event = await tx.case_event.create({
+          data: { case_id: row.id, event_type: 'created', actor_type: 'system', occurred_at: now },
+          select: { id: true },
+        })
+        return { caseId: row.id, caseNumber: case_number, eventId: event.id }
+      })
+    } catch (e: any) {
+      // Another call opened the case for this report between the check above and this insert.
+      if (e?.code === 'P2002') {
+        const raced = await this.db.complaint_case.findUnique({
+          where: { lost_bag_report_id: reportId },
+          select: { id: true, case_number: true },
+        })
+        if (raced) return { caseId: raced.id, caseNumber: raced.case_number, created: false }
+      }
+      throw e
+    }
+
+    await this.notify({
+      source: '13',
+      sourceEventId: saved.eventId,
+      eventType: 'complaint_received',
+      caseId: saved.caseId,
+      payload: { case_number: saved.caseNumber, passenger_name: passengerName },
+      recipients: [{ passengerName, email: contactEmail, phone: contactPhone, customerId }],
+    })
+
+    return { caseId: saved.caseId, caseNumber: saved.caseNumber, created: true }
+  }
+
   async listForCustomer(userId: string): Promise<ComplaintView[]> {
     const customer = await this.customerFor(userId)
     const rows = await this.db.complaint_case.findMany({

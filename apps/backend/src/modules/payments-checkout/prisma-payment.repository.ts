@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { messageAmount, purchaseReferenceOf, queueCustomerMessage, receiptNumberOf } from './customer-messages'
 import { capturedPostings, writePostings } from './finance-journal'
 import { DbService } from '@backend/db/db.service'
 import type { Prisma } from '@backend/db/generated/prisma/client'
@@ -136,6 +137,18 @@ export class PrismaPaymentRepository implements PaymentRepository {
       // The capture and its journal rows commit together, so a movement is never missed or half-written.
       if (payment.status === 'captured') {
         await writePostings(tx, capturedPostings(payment))
+        // The customer's payment message commits with the capture; a repeated update finds it already stored.
+        await queueCustomerMessage(tx, {
+          type: 'payment_received',
+          sourceId: payment.id,
+          customerId: payment.payer_customer_id,
+          at: payment.captured_at ?? payment.updated_at,
+          placeholders: {
+            reference: await purchaseReferenceOf(tx, payment.id),
+            amount: messageAmount(payment.amount_total, payment.currency),
+            document_number: receiptNumberOf(payment),
+          },
+        })
         // The voucher was reserved by naming it on the payment; a captured payment uses it up, whole.
         if (payment.voucher_id) {
           await tx.compensation_voucher.updateMany({

@@ -9,6 +9,12 @@ export const NOTIFICATION_PLACEHOLDERS: Record<string, readonly string[]> = {
   flight_rescheduled: ['passenger_name', 'flight_number', 'service_date', 'new_departure'],
   flight_diverted: ['passenger_name', 'flight_number', 'service_date', 'diverted_to'],
   flight_cancelled: ['passenger_name', 'flight_number', 'service_date'],
+  // Feature 3
+  booking_confirmed: ['passenger_name', 'reference', 'flight_number', 'service_date'],
+  booking_cancelled: ['passenger_name', 'reference', 'flight_number', 'service_date'],
+  booking_partner_rebooked: ['passenger_name', 'reference', 'flight_number', 'service_date'],
+  booking_seat_changed: ['passenger_name', 'reference', 'flight_number', 'service_date'],
+  service_request_updated: ['passenger_name', 'reference', 'flight_number', 'service_date', 'status'],
   // Feature 5
   payment_received: ['passenger_name', 'reference', 'amount', 'document_number'],
   refund_issued: ['passenger_name', 'reference', 'amount'],

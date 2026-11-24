@@ -13,7 +13,8 @@ export interface StaffPrincipal {
   isSupervisor: boolean
 }
 
-type StaffRequest = Request & { user?: AuthenticatedUser; staff?: StaffPrincipal }
+// Feature 12 declares its own `staff` on every express Request; this guard sets ours, so drop theirs from the type.
+type StaffRequest = Omit<Request, 'staff'> & { user?: AuthenticatedUser; staff?: StaffPrincipal }
 
 @Injectable()
 export class CustomerServiceStaffGuard implements CanActivate {

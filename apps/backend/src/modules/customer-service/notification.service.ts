@@ -8,10 +8,12 @@ import {
   OnModuleInit,
   Optional,
 } from '@nestjs/common'
+import { ModuleRef } from '@nestjs/core'
 import { DbService } from '@backend/db/db.service'
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import { SimulationClock } from '../admin-console/simulation-clock'
 import { FlightEventBus, type FlightStatusEvent } from '../flight-scheduling/operations/flight-event-bus'
+import { BOOKING_EVENT_BUS, type BookingEvent, type BookingEventBus } from '../booking-pnr/contracts'
 import {
   SECURITY_AUTHORITY_EMAIL,
   type EventRecipient,
@@ -41,6 +43,21 @@ function formatTime(isoStr: string | null | undefined): string {
   }
 }
 
+/** Feature 3's booking events and the notification type each one sends. */
+const BOOKING_EVENT_TYPES: Record<BookingEvent['type'], string> = {
+  'booking.confirmed': 'booking_confirmed',
+  'booking.cancelled': 'booking_cancelled',
+  'booking.partner_rebooked': 'booking_partner_rebooked',
+  'booking.seat_changed': 'booking_seat_changed',
+  'service_request.updated': 'service_request_updated',
+}
+
+/** `in_progress` -> `In progress`. */
+function statusText(status: string): string {
+  const words = status.replace(/_/g, ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 /** How often (real time) stored events from other features are picked up and sent. */
 export const STORED_EVENT_TICK_MS = 15_000
 
@@ -55,6 +72,7 @@ export class NotificationService implements OnModuleInit, OnApplicationBootstrap
     private readonly db: DbService,
     private readonly clock: SimulationClock,
     @Optional() private readonly flightEventBus?: FlightEventBus,
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
 
   onModuleInit() {
@@ -62,6 +80,16 @@ export class NotificationService implements OnModuleInit, OnApplicationBootstrap
       this.flightEventBus.subscribe(async (event) => {
         await this.handleFlightStatusEvent(event)
       })
+    }
+    this.bookingEventBus()?.subscribe((event) => this.handleBookingEvent(event))
+  }
+
+  /** Feature 3's booking event bus, from whichever module provides it; none when Feature 3 is not loaded (unit tests). */
+  private bookingEventBus(): BookingEventBus | null {
+    try {
+      return this.moduleRef?.get<BookingEventBus>(BOOKING_EVENT_BUS, { strict: false }) ?? null
+    } catch {
+      return null
     }
   }
 
@@ -190,6 +218,51 @@ export class NotificationService implements OnModuleInit, OnApplicationBootstrap
       payload,
       recipients,
     })
+  }
+
+  /**
+   * Feature 3's booking events, published after their change has committed. The message goes to the booking's customer
+   * (their own contact and preferences). A booking cancelled because its flight was cancelled sends nothing here: every
+   * passenger already gets `flight_cancelled` from Feature 2's event. Never throws: Feature 3 awaits its subscribers, and a
+   * failed message must not fail a booking change that already happened. Public for tests.
+   */
+  async handleBookingEvent(event: BookingEvent): Promise<void> {
+    const eventType = BOOKING_EVENT_TYPES[event.type]
+    if (!eventType) return
+    if (event.type === 'booking.cancelled' && event.cancelReason === 'flight_cancelled') return
+    try {
+      // The first flight of the booking (or the one the event is about) names the trip in the message.
+      const flight = event.flightIds.length
+        ? await this.db.flight.findFirst({
+            where: { id: { in: event.flightIds } },
+            orderBy: { scheduled_dep_at: 'asc' },
+            select: { flight_number: true, service_date: true },
+          })
+        : null
+      const payload: Record<string, any> = {
+        customer_id: event.customerId,
+        reference: event.reference,
+        flight_number: flight?.flight_number ?? '',
+        service_date: flight ? flight.service_date.toISOString().slice(0, 10) : '',
+      }
+      if (event.type === 'service_request.updated') {
+        const request = await this.db.booking_service_request.findFirst({
+          where: { booking_id: event.bookingId },
+          orderBy: { updated_at: 'desc' },
+          select: { status: true },
+        })
+        payload.status = statusText(request?.status ?? 'requested')
+      }
+      await this.handleEvent({
+        source: '3',
+        // The bus carries no event id; the booking, the flights it is about and the time make one per change.
+        sourceEventId: `${event.type}:${event.bookingId}:${event.flightIds.join(',')}:${event.occurredAt.toISOString()}`,
+        eventType,
+        payload,
+      })
+    } catch (e) {
+      this.logger.error(`Booking event ${event.type} for ${event.reference} failed`, e instanceof Error ? e.stack : String(e))
+    }
   }
 
   /**

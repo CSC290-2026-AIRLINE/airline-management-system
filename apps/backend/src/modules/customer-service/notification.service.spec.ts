@@ -1,4 +1,8 @@
-import { ConflictException } from '@nestjs/common'
+import { ConflictException, Module } from '@nestjs/common'
+import { Test } from '@nestjs/testing'
+import { DbService } from '@backend/db/db.service'
+import { SimulationClock as Clock } from '../admin-console/simulation-clock'
+import { BOOKING_EVENT_BUS } from '../booking-pnr/contracts'
 import type { SimulationClock } from '../admin-console/simulation-clock'
 import { SECURITY_AUTHORITY_EMAIL } from './notification-events'
 import { NotificationService } from './notification.service'
@@ -997,5 +1001,75 @@ describe('NotificationService', () => {
         ['Cat Lee', 'cust-cat'],
       ])
     })
+  })
+  describe("Feature 3's booking events (handleBookingEvent)", () => {
+    const AT = new Date('2026-11-12T07:00:00Z')
+    const event = (overrides: Record<string, unknown> = {}) => ({
+      type: 'booking.confirmed' as const,
+      bookingId: 'b-1',
+      reference: 'PNR123',
+      customerId: 'cust-1',
+      flightIds: ['f-1', 'f-2'],
+      occurredAt: AT,
+      ...overrides,
+    })
+    let handleEvent: jest.SpyInstance
+
+    beforeEach(() => {
+      db.flight = { findFirst: jest.fn().mockResolvedValue({ flight_number: 'FY204', service_date: new Date('2026-11-20T00:00:00Z') }) }
+      db.booking_service_request = { findFirst: jest.fn().mockResolvedValue({ status: 'accepted' }) }
+      handleEvent = jest.spyOn(service, 'handleEvent').mockResolvedValue({ ignored: false })
+    })
+
+    it('sends booking_confirmed to the booking customer, named by the first flight', async () => {
+      await service.handleBookingEvent(event())
+
+      expect(db.flight.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['f-1', 'f-2'] } } }))
+      expect(handleEvent).toHaveBeenCalledWith({
+        source: '3',
+        sourceEventId: `booking.confirmed:b-1:f-1,f-2:${AT.toISOString()}`,
+        eventType: 'booking_confirmed',
+        payload: { customer_id: 'cust-1', reference: 'PNR123', flight_number: 'FY204', service_date: '2026-11-20' },
+      })
+    })
+
+    it('sends nothing for a booking cancelled with its flight, which flight_cancelled already covers', async () => {
+      await service.handleBookingEvent(event({ type: 'booking.cancelled', cancelReason: 'flight_cancelled' }))
+      expect(handleEvent).not.toHaveBeenCalled()
+    })
+
+    it('sends booking_cancelled for a cancellation the customer or staff made', async () => {
+      await service.handleBookingEvent(event({ type: 'booking.cancelled', cancelReason: 'customer_cancel' }))
+      expect(handleEvent).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'booking_cancelled' }))
+    })
+
+    it('adds the latest assistance request status to service_request_updated', async () => {
+      await service.handleBookingEvent(event({ type: 'service_request.updated', flightIds: ['f-1'] }))
+      expect(handleEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: 'service_request_updated', payload: expect.objectContaining({ status: 'Accepted' }) }),
+      )
+    })
+
+    it('logs a failure instead of throwing back into Feature 3', async () => {
+      const error = jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined)
+      handleEvent.mockRejectedValue(new Error('db down'))
+
+      await expect(service.handleBookingEvent(event())).resolves.toBeUndefined()
+      expect(error).toHaveBeenCalled()
+    })
+  })
+  it("subscribes to Feature 3's booking bus from another module at startup", async () => {
+    const bus = { subscribe: jest.fn(), publish: jest.fn() }
+    @Module({ providers: [{ provide: BOOKING_EVENT_BUS, useValue: bus }], exports: [BOOKING_EVENT_BUS] })
+    class FakeBookingModule {}
+    @Module({
+      providers: [NotificationService, { provide: DbService, useValue: {} }, { provide: Clock, useValue: { now: () => NOW } }],
+    })
+    class FakeNotificationModule {}
+
+    const app = await Test.createTestingModule({ imports: [FakeBookingModule, FakeNotificationModule] }).compile()
+    await app.init()
+    expect(bus.subscribe).toHaveBeenCalledTimes(1)
+    await app.close()
   })
 })

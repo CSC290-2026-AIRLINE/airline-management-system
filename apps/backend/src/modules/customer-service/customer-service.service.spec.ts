@@ -109,6 +109,7 @@ describe('CustomerServiceService', () => {
     complaint_case: { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     case_event: { create: jest.fn() },
     booking_segment: { findFirst: jest.fn() },
+    lost_bag_report: { findUnique: jest.fn() },
     notification_type: { findUnique: jest.fn(), findMany: jest.fn() },
     notification_preference: { findMany: jest.fn() },
     $transaction: jest.fn(),
@@ -922,6 +923,106 @@ describe('CustomerServiceService', () => {
 
       expect(await service.getForStaff(USER_ID, CASE_ID)).toMatchObject({ bookingRef: 'TRAVEL', mealDetail: 'Vegetarian meal' })
       expect((await service.getForStaff(USER_ID, CASE_ID)).bookingRef).toBeNull()
+    })
+  })
+  describe('openLostBagCase', () => {
+    const REPORT_ID = '77777777-7777-7777-7777-777777777777'
+    const report = (overrides: Record<string, unknown> = {}) => ({
+      case_number: 'LB-2026-000009',
+      status: 'lost',
+      passenger_id: CUSTOMER.passenger_id,
+      booking_passenger_id: 'bp-1',
+      flight_id: 'flight-1',
+      bag_type: 'suitcase',
+      colour: 'black',
+      brand: null,
+      contact_email: 'pax@example.com',
+      contact_phone: null,
+      passenger: { first_name: 'Ann', last_name: 'Lee', customer: { id: CUSTOMER.id, phone: CUSTOMER.phone } },
+      ...overrides,
+    })
+    let notifications: { handleEvent: jest.Mock }
+
+    beforeEach(() => {
+      notifications = { handleEvent: jest.fn().mockResolvedValue({ ignored: false }) }
+      service = new CustomerServiceService(
+        db as unknown as DbService,
+        clock as unknown as SimulationClock,
+        audit as unknown as AuditService,
+        notifications as unknown as NotificationService,
+      )
+      tx.$queryRaw.mockResolvedValue([{ n: 7n }])
+      tx.complaint_case.create.mockResolvedValue({ id: CASE_ID })
+      tx.case_event.create.mockResolvedValue({ id: 'ev-lost' })
+    })
+
+    it('opens a lost_bag flight case from Feature 10 and tells the passenger', async () => {
+      db.complaint_case.findUnique.mockResolvedValue(null)
+      db.lost_bag_report.findUnique.mockResolvedValue(report())
+
+      await expect(service.openLostBagCase(REPORT_ID)).resolves.toEqual({
+        caseId: CASE_ID,
+        caseNumber: 'CS-2026-000007',
+        created: true,
+      })
+      expect(tx.complaint_case.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'flight',
+            source: 'feature_10',
+            lost_bag_report_id: REPORT_ID,
+            customer_id: CUSTOMER.id,
+            contact_phone: CUSTOMER.phone,
+          }),
+        }),
+      )
+      expect(tx.flight_complaint.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ issue: 'lost_bag', flight_id: 'flight-1' }) }),
+      )
+      expect(tx.case_event.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ actor_type: 'system' }) }),
+      )
+      expect(notifications.handleEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'complaint_received',
+          caseId: CASE_ID,
+          payload: expect.objectContaining({ case_number: 'CS-2026-000007' }),
+        }),
+      )
+    })
+
+    it('returns the case already opened for the report without sending again', async () => {
+      db.complaint_case.findUnique.mockResolvedValue({ id: CASE_ID, case_number: 'CS-2026-000003' })
+
+      await expect(service.openLostBagCase(REPORT_ID)).resolves.toEqual({ caseId: CASE_ID, caseNumber: 'CS-2026-000003', created: false })
+      expect(db.$transaction).not.toHaveBeenCalled()
+      expect(notifications.handleEvent).not.toHaveBeenCalled()
+    })
+
+    it('leaves customer_id empty when the passenger has no account', async () => {
+      db.complaint_case.findUnique.mockResolvedValue(null)
+      db.lost_bag_report.findUnique.mockResolvedValue(report({ passenger: { first_name: 'Ann', last_name: 'Lee', customer: null } }))
+
+      await service.openLostBagCase(REPORT_ID)
+      expect(tx.complaint_case.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ customer_id: null, booking_passenger_id: 'bp-1' }) }),
+      )
+    })
+
+    it('refuses a report that is not lost', async () => {
+      db.complaint_case.findUnique.mockResolvedValue(null)
+      db.lost_bag_report.findUnique.mockResolvedValue(report({ status: 'open' }))
+
+      await expect(service.openLostBagCase(REPORT_ID)).rejects.toBeInstanceOf(ConflictException)
+    })
+
+    it("returns the other call's case when two calls race on the same report", async () => {
+      db.complaint_case.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'other', case_number: 'CS-2026-000008' })
+      db.lost_bag_report.findUnique.mockResolvedValue(report())
+      db.$transaction.mockRejectedValue(Object.assign(new Error('unique'), { code: 'P2002' }))
+
+      await expect(service.openLostBagCase(REPORT_ID)).resolves.toEqual({ caseId: 'other', caseNumber: 'CS-2026-000008', created: false })
+      expect(notifications.handleEvent).not.toHaveBeenCalled()
     })
   })
 })
