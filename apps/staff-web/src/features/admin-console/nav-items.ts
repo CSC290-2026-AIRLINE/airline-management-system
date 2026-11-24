@@ -1,36 +1,38 @@
 import {
   Accessibility,
-  Calendar,
   CalendarClock,
+  ChartColumn,
   Globe,
   Gauge,
-  ChartColumn,
   ClipboardCheck,
-  CreditCard,
   DoorOpen,
   FileText,
+  GitCompareArrows,
   IdCard,
   Inbox,
   KeyRound,
   ListChecks,
   Luggage,
   MailCheck,
-  Monitor,
   Package,
+  PackageSearch,
   Percent,
+  Plane,
   PlaneLanding,
   PlaneTakeoff,
   Receipt,
   Route,
   ScrollText,
   Search,
+  Settings,
+  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   Sofa,
   Star,
   Tag,
   Ticket,
-  User,
+  Truck,
   UserCheck,
   UserPlus,
   Users,
@@ -48,21 +50,25 @@ export type NavRoute =
   | '/booking-lookup'
   | '/book-for-customer'
   | '/assistance'
+  // Feature 5 (Payments & Refunds), a top-level group in the sidebar.
+  | '/payments/lookup'
+  | '/payments/refunds'
+  | '/payments/compensation'
+  | '/payments/exceptions'
+  | '/payments/pay-runs'
+  | '/payments/my-pay'
 
 /** Sidebar contents, shared by the live sidebar and the Role access "Preview as user". `code` is the registered screen code. */
 export interface NavItem {
   label: string
   icon: LucideIcon
-  /** Set once the owning team has a route. Items without one stay disabled in the live sidebar. */
-  to?: NavRoute
+  to: NavRoute
   /** Path prefix that keeps the item highlighted on the feature's other pages. */
   activePrefix?: string
 }
 
-export const REPORTS_ITEM: NavItem = { label: 'Reports & Analytics', icon: ChartColumn }
-
 export const GROUPS: { label: string; items: NavItem[] }[] = [
-  // Groups with live links come first; the rest are disabled placeholders until their teams add routes.
+  // Only screens with a page behind them are listed. A team adds its group here when its routes exist.
   {
     label: 'Customer Management',
     items: [
@@ -79,24 +85,6 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
       { label: 'Fleet & Aircraft', icon: PlaneLanding, to: '/aircraft', activePrefix: '/aircraft' },
       { label: 'Aircraft Types', icon: PlaneTakeoff, to: '/aircraft-types', activePrefix: '/aircraft-types' },
       { label: 'Aircraft Readiness', icon: ClipboardCheck, to: '/readiness' },
-      { label: 'Crew Scheduling', icon: Calendar },
-      { label: 'My Roster', icon: User },
-    ],
-  },
-  {
-    label: 'Commercial',
-    items: [
-      { label: 'Bookings & Inventory', icon: Ticket },
-      { label: 'Payments & Refunds', icon: CreditCard },
-      { label: 'Cargo & Air Freight', icon: Package },
-    ],
-  },
-  {
-    label: 'Airport & Onboard',
-    items: [
-      { label: 'Gate Counter & Devices', icon: Monitor },
-      { label: 'Baggage Tracking', icon: Luggage },
-      { label: 'Onboard Products', icon: Utensils },
     ],
   },
 ]
@@ -161,10 +149,35 @@ export const FLIGHT_SCHEDULING_ITEMS: readonly {
   { to: '/congestion', label: 'Congestion', icon: Gauge },
 ]
 
+/** The Feature 10 (lost and found baggage) staff pages. */
+export const BAGGAGE_ITEMS = [
+  { to: '/baggage/lost-bag-cases', label: 'Lost bag cases', icon: Luggage },
+  { to: '/baggage/found-bags', label: 'Found bags', icon: PackageSearch },
+  { to: '/baggage/match-review', label: 'Match review', icon: GitCompareArrows },
+  { to: '/baggage/deliveries', label: 'Deliveries', icon: Truck },
+] as const
+
 /** The Feature 11 (loyalty programme) staff pages. */
 export const LOYALTY_ITEMS = [
   { to: '/loyalty/members', label: 'Member Lookup', icon: Search },
   { to: '/loyalty/rules', label: 'Loyalty Rules', icon: SlidersHorizontal },
   { to: '/loyalty/award-release', label: 'Award Release', icon: Star },
   { to: '/loyalty/lounge', label: 'Lounge Desk', icon: Sofa },
+] as const
+
+/** The Feature 17 (cargo and air freight) staff pages. */
+export const CARGO_ITEMS = [
+  { to: '/cargo/bookings', label: 'Cargo desk', icon: Package },
+  { to: '/cargo/flights', label: 'Flight cargo', icon: Plane },
+  { to: '/cargo/claims', label: 'Claims', icon: ShieldAlert },
+  { to: '/cargo/settings', label: 'Rates and settings', icon: Settings },
+] as const
+
+/** The Feature 12 (onboard products) staff pages: catalog, menus, catering orders, warehouse stock and the flight report. */
+export const CATERING_ITEMS = [
+  { to: '/catering/catalog', label: 'Product Catalog', icon: Utensils },
+  { to: '/catering/offered-menu', label: 'Offered Menu', icon: ListChecks },
+  { to: '/catering/orders', label: 'Catering Orders', icon: ClipboardCheck },
+  { to: '/catering/stock', label: 'Stock', icon: Package },
+  { to: '/catering/flight-report', label: 'Flight Report', icon: FileText },
 ] as const

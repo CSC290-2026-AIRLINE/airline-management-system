@@ -3,6 +3,7 @@ import { faker } from '@faker-js/faker'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/prisma/client'
 import { seedFeature6 } from './seed-f6'
+import { seedF12 } from './seed-f12'
 
 try {
   process.loadEnvFile(path.join(__dirname, '..', '..', '.env'))
@@ -631,6 +632,7 @@ async function main() {
 
   await seedCustomerService()
   await seedCurrencyRates()
+  await seedF12(prisma)
 
   console.log('Seeding complete.')
 }

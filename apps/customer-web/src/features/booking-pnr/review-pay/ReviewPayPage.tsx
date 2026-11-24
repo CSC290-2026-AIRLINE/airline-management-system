@@ -1,6 +1,6 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
-import { useBookingPnrApi, type ApiError } from '../api/client'
+import { useEffect, useRef, useState } from 'react'
+import { ApiError, useBookingPnrApi } from '../api/client'
 import type { BookingDetail, BookingServiceRequest, InsuranceOffer, InsurancePolicySummary } from '../api/types'
 import { useBooking } from '../api/useBooking'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
@@ -109,6 +109,8 @@ function HeldReview({
   const [passengersOpen, setPassengersOpen] = useState(false)
   const [insuranceOffer, setInsuranceOffer] = useState<InsuranceOffer>({ kind: 'none' })
   const [addInsurance, setAddInsurance] = useState(false)
+  // One key for this booking's checkout, so a double click or a second tab is the same payment.
+  const checkoutKey = useRef(crypto.randomUUID())
 
   const countdownPaused = isConfirming || isCancelling || cancelOpen || confirmError !== null || cancelError !== null
 
@@ -146,13 +148,28 @@ function HeldReview({
     })
   }
 
+  /**
+   * Pay now: Feature 5a starts the payment. A card goes to the provider's hosted page and comes back to the payment result,
+   * which shows the booking once the payment is captured; a payment that needs no page is settled here and the booking is
+   * reloaded as confirmed. The same key for every click on this booking makes a double click one payment.
+   */
   async function handleConfirm() {
     setIsConfirming(true)
     setConfirmError(null)
 
     try {
-      const result = await api.devConfirmBooking(booking.reference, { addInsurance: insuranceAddOn !== null })
-      onInsurancePolicy(result.insurancePolicy ?? null)
+      const result = await api.checkoutBooking(booking.reference, { addInsurance: insuranceAddOn !== null }, checkoutKey.current)
+      if (result.checkoutUrl) {
+        window.location.assign(result.checkoutUrl)
+        return
+      }
+      if (result.status !== 'captured') {
+        // The seller refused (the seats are gone, the hold ran out): nobody was charged, and the booking says why on reload.
+        setConfirmError(new ApiError('PAYMENT_NOT_COMPLETED', 'The payment could not be completed, and you were not charged.', 409))
+        await onReload()
+        return
+      }
+      onInsurancePolicy(result.insurancePolicy)
       await onReload()
     } catch (error) {
       const apiError = toApiError(error)
@@ -165,7 +182,7 @@ function HeldReview({
         })
         return
       }
-      if (apiError.code === 'INVALID_BOOKING_STATE') {
+      if (apiError.code === 'INVALID_BOOKING_STATE' || apiError.code === 'PAYMENT_NOT_PAYABLE') {
         await onReload()
         return
       }
@@ -220,13 +237,9 @@ function HeldReview({
   }
 
   /** The pay action belongs to the review & pay step. The other steps send the customer back to it. */
-  const payAction = import.meta.env.DEV ? (
+  const payAction = (
     <button type="button" className={controls.primary} onClick={() => void handleConfirm()} disabled={isConfirming || isCancelling}>
-      {isConfirming ? 'Confirming…' : 'Confirm booking (dev)'}
-    </button>
-  ) : (
-    <button type="button" className={controls.primary} disabled title="Checkout (feature 5a) is not connected yet.">
-      Pay now
+      {isConfirming ? 'Processing payment…' : 'Pay now'}
     </button>
   )
 
@@ -292,6 +305,7 @@ function HeldReview({
 
             <aside className="space-y-4 lg:sticky lg:top-16">
               <PriceCard booking={booking} insuranceAddOn={insuranceAddOn} />
+              {isPayStep ? <ExtrasNote /> : null}
               {isPayStep ? (
                 <InsuranceCard offer={insuranceOffer} checked={addInsurance} onChange={setAddInsurance} disabled={isConfirming} />
               ) : null}
@@ -332,9 +346,6 @@ function HeldReview({
                 ) : null}
               </div>
 
-              {isPayStep && !import.meta.env.DEV ? (
-                <p className="text-xs text-muted-foreground">Pay now will open checkout when it is connected.</p>
-              ) : null}
               <p className="text-xs text-muted-foreground">{copy.note}</p>
               {isPayStep ? (
                 <p className="text-xs text-muted-foreground">Want a meal on board? You can add meals from your booking once it is paid.</p>
@@ -570,6 +581,21 @@ function PassengersCard({
           Change contact details
         </button>
       </div>
+    </section>
+  )
+}
+
+/** Onboard meals and shop products (feature 12) are optional. They are ordered once the booking is confirmed. */
+function ExtrasNote() {
+  return (
+    <section
+      className="flex flex-col gap-2 rounded-xl border bg-card p-6 text-card-foreground shadow-sm [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold"
+      aria-labelledby="rp-extras-title"
+    >
+      <h2 id="rp-extras-title">Meals &amp; extras (optional)</h2>
+      <p className="m-0 text-sm text-muted-foreground">
+        After you pay, you can add meals, snacks and duty-free to this booking. Ordering stays open until 48 hours before departure.
+      </p>
     </section>
   )
 }

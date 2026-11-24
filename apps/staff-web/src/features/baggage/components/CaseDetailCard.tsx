@@ -1,0 +1,106 @@
+import { Separator } from '@staff-web/components/ui/separator'
+import type { BagMatch } from '../api/bag-matches'
+import type { FoundBag } from '../api/found-bags'
+import type { AddBagCostBody, BagCostSummary, LostReportCase } from '../api/lost-reports'
+import { REPORT_STATUS_LABELS, REPORT_STATUS_TONES, bagSummary, formatEventTime, formatFlightDate } from '../constants'
+import { displayPhone } from '../phone-number'
+import { CaseCancel } from './CaseCancel'
+import { CaseCosts } from './CaseCosts'
+import { CasePhoto } from './CasePhoto'
+import { CaseMatches } from './CaseMatches'
+import { F10Card, Pill } from './primitives'
+
+function Fact({ label, children }: { label: string; children: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <dt className="shrink-0 text-sm font-medium whitespace-nowrap text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 flex-1 text-right text-base break-words text-foreground">{children}</dd>
+    </div>
+  )
+}
+
+/**
+ * "Card / Case detail" (frame 01b), with the case's matches and the "Link a found bag by hand" picker. The costs
+ * section is frame 06's, shown here as well as on Deliveries so a case's costs can be entered before it has a delivery.
+ */
+export function CaseDetailCard({
+  report,
+  matches,
+  heldBags,
+  onLink,
+  onCancel,
+  costs,
+}: {
+  report: LostReportCase
+  matches: BagMatch[]
+  heldBags: FoundBag[]
+  onLink: (foundBagId: string) => Promise<unknown>
+  onCancel: (reason: string) => Promise<unknown>
+  costs: {
+    summary: BagCostSummary | null
+    loading: boolean
+    error: string | null
+    add: (body: AddBagCostBody) => Promise<void>
+    remove: (costId: string) => Promise<void>
+  }
+}) {
+  // Same rule as the backend: open or lost, and no bag confirmed as the owner's yet.
+  const canCancel = (report.status === 'open' || report.status === 'lost') && !matches.some((m) => m.status === 'confirmed')
+  const contact = (report.contactPhone && displayPhone(report.contactPhone)) ?? report.contactEmail ?? 'Not given'
+
+  return (
+    <F10Card aria-labelledby="case-detail-title">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 id="case-detail-title" className="m-0 font-sans text-2xl font-semibold tracking-tight text-foreground max-md:text-xl">
+          {report.caseNumber}
+        </h2>
+        <Pill tone={REPORT_STATUS_TONES[report.status]}>{REPORT_STATUS_LABELS[report.status]}</Pill>
+      </div>
+
+      <dl className="flex flex-col gap-2.5">
+        <Fact label="Passenger">{`${report.passengerFirstName} ${report.passengerLastName}`}</Fact>
+        <Fact label="Contact">{contact}</Fact>
+        <Fact label="Flight">{`${report.flightNumber} · ${report.flightOrigin} to ${report.flightDestination} · ${formatFlightDate(report.flightDate)}`}</Fact>
+        <Fact label="Bag">{bagSummary(report)}</Fact>
+        <Fact label="Tag">{report.tagNumber ?? 'No tag'}</Fact>
+        <Fact label="Reported">{`${formatEventTime(report.reportedAt)} · by ${report.reportedByStaffId ? 'staff' : 'customer'}`}</Fact>
+        {report.status === 'cancelled' && (
+          <Fact label="Cancelled">{report.cancelReason ? `by staff · “${report.cancelReason}”` : 'by the passenger'}</Fact>
+        )}
+      </dl>
+
+      {report.description && (
+        <p className="rounded-lg bg-muted px-3.5 py-3 text-base break-words text-foreground">“{report.description}”</p>
+      )}
+
+      <CasePhoto key={`photo-${report.id}`} reportId={report.id} hasPhoto={report.photoUrl !== null} caseNumber={report.caseNumber} />
+
+      <CaseMatches
+        key={`matches-${report.id}`}
+        matches={matches}
+        heldBags={heldBags}
+        canLink={report.status === 'open' || report.status === 'lost'}
+        onLink={onLink}
+      />
+
+      <Separator className="bg-border" />
+
+      <CaseCosts
+        key={report.id}
+        cancelled={report.status === 'cancelled'}
+        summary={costs.summary}
+        loading={costs.loading}
+        error={costs.error}
+        onAdd={costs.add}
+        onRemove={costs.remove}
+      />
+
+      {canCancel && (
+        <>
+          <Separator className="bg-border" />
+          <CaseCancel key={`cancel-${report.id}`} caseNumber={report.caseNumber} onCancel={onCancel} />
+        </>
+      )}
+    </F10Card>
+  )
+}

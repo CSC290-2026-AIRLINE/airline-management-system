@@ -16,8 +16,17 @@ const buttonVariants = cva(
         secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
         ghost: 'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
         link: 'text-primary underline-offset-4 hover:underline',
+        // F12 variants
+        primary: 'bg-primary text-primary-foreground hover:bg-[#1c3556]',
+        tertiary: 'border border-border bg-white text-foreground hover:bg-[#f5f5f7]',
+        'ghost-danger': 'border border-destructive bg-transparent text-destructive hover:bg-destructive/10',
+        danger: 'border border-destructive bg-destructive text-white hover:border-[#9a1f10] hover:bg-[#9a1f10]',
       },
       size: {
+        // F12 sizes
+        f12: 'h-10 gap-1.5 px-[18px] text-sm font-semibold',
+        pill: 'h-auto gap-1.5 rounded-full px-[18px] py-2 text-sm font-semibold',
+        block: 'h-10 w-full gap-1.5 px-[22px] text-sm font-semibold',
         default: 'h-9 px-4 py-2 has-[>svg]:px-3',
         xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: 'h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5',

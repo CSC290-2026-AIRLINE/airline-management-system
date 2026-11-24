@@ -1,0 +1,1668 @@
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { randomUUID } from 'node:crypto'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
+import { AuditService } from '@backend/modules/admin-console/audit/audit.service'
+import { PAYMENT_REPOSITORY, type PaymentRepository } from './payment.repository'
+import { PAYMENT_GATEWAY, type PaymentGateway, type ProviderEvent } from './payment.gateway'
+import {
+  matchesStaffFilter,
+  paymentReference,
+  RECEIPT_FILTERS,
+  SOURCE_FEATURE_LABELS,
+  STAFF_PAYMENT_FILTERS,
+  stateHistoryFor,
+  STATUS_LABELS,
+  toCustomerState,
+} from './payment-status'
+import type { ReceiptFilter } from './payment-status'
+import {
+  bookingFlight,
+  customerEmail,
+  customerName,
+  MOCK_BOOKING_FLOWN,
+  MOCK_BOOKING_REFERENCE,
+  MOCK_CARGO_REFERENCE,
+  MOCK_BOOKING_REFUND_STATE,
+} from './mock-booking-state'
+import type {
+  PaymentAttemptRecord,
+  PaymentExceptionResolution,
+  PaymentExceptionState,
+  PaymentLineRecord,
+  PaymentRecord,
+  PaymentSourceFeature,
+  PaymentStatus,
+  ReceiptRecord,
+} from './payment.types'
+import { isUniqueViolation, PaymentErrorCode, paymentFailure } from '@backend/modules/payments-crew-pay/payments.errors'
+import type { CardRefundOutcome, CardRefundRequest, RefundSettler, RefundSucceededRequest } from './card-refund.types'
+import type { ReceiptQueryDto } from './dto/receipt-query.dto'
+import type { StaffPaymentQueryDto } from './dto/staff-payment-query.dto'
+import type { PaymentExceptionTab } from './dto/payment-exceptions-query.dto'
+import type {
+  CheckoutStartedDto,
+  PaymentLineDto,
+  PaymentProblemDto,
+  PaymentProblemListDto,
+  PaymentStatusDto,
+  ReceiptDetailDto,
+  ReceiptListDto,
+  ReceiptStatus,
+  ReceiptSummaryDto,
+  RefundState,
+  StaffPaymentDetailDto,
+  StaffPaymentListDto,
+  StaffPaymentSummaryDto,
+} from './dto/payments-checkout.types'
+
+/**
+ * Mirrors `payment_setting.capture_retry_limit` (5).
+ *
+ * TODO(F5a): read it from the `payment_setting` table once the database is live.
+ */
+const CAPTURE_RETRY_LIMIT = 5
+
+/** `payment_setting.min_hold_minutes`: the least hold a payment can start with. */
+const MIN_HOLD_MINUTES = 3
+
+/** A payment (or refund) this old with no word from the provider is re-read from it: 2 minutes, as the spec says. */
+export const RECONCILE_AFTER_MS = 2 * 60 * 1000
+
+/** The base currency every payment is started in. TODO(F5a): read it from a `payment_setting` row. */
+const BASE_CURRENCY = 'USD'
+
+/** The default number of rows a list endpoint returns. */
+const DEFAULT_LIMIT = 50
+
+/** How many rows the staff lookup shows on a page, as the frames show. */
+const DEFAULT_PAGE_SIZE = 10
+
+/**
+ * How long a payment may sit without a provider event before the staff list calls it a problem.
+ *
+ * The frames say 30 minutes.
+ */
+const PROVIDER_EVENT_TIMEOUT_MS = 30 * 60 * 1000
+
+/** Money is a JS number rounded to two decimals in the mock; the real implementation uses Prisma `Decimal`. */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+/** `40000` → `40,000`, the way the frames write miles. */
+function formatMiles(miles: number): string {
+  return new Intl.NumberFormat('en-US').format(miles)
+}
+
+/** What a selling feature hands to 5a when it starts a payment. */
+export interface CreatePaymentInput {
+  /** The selling feature that owns the purchase: 3 (booking), 6 (excess baggage), 12 (onboard) or 17 (cargo). */
+  source_feature: PaymentSourceFeature
+  /** The selling feature's own key for what is bought, e.g. `booking:<id>`. */
+  purchase_ref: string
+  payer_customer_id: string | null
+  booking_id?: string | null
+  cargo_booking_id?: string | null
+  voucher_id?: string | null
+  /** The key the caller retries with. Replaying it returns the payment that already exists. */
+  idempotency_key: string
+  currency?: string
+  /** The total the customer owes. 5a never prices — the selling feature passes the number in. */
+  amount_total: number
+  /** The share covered by a compensation voucher (Feature 5b). Miles are not money and are not stored here. */
+  voucher_amount?: number
+  lines: {
+    line_type: PaymentLineRecord['line_type']
+    description: string
+    amount: number
+    source_ref?: string | null
+    booking_coupon_id?: string | null
+  }[]
+  started_at?: Date
+  /** The deadline: the booking's hold end, or the selling feature's own deadline. */
+  expires_at: Date
+}
+
+/**
+ * Feature 5a's service.
+ *
+ * Two audiences:
+ *
+ * 1. **The selling features (3b, 6, 12, 17) call this in process** — they never talk to it over HTTP and 5a never
+ *    imports them. They create a payment, then hand the seller's own confirmation back so 5a can settle it.
+ * 2. **The frontends read it over HTTP** — the customer's receipts and the staff payment lookup and exceptions.
+ *
+ * The invariants the schema enforces with CHECK constraints are enforced here instead, because the mock has no
+ * database to enforce them:
+ *
+ * - `amount_total = voucher_amount + card_amount`, and the provider is `none` exactly when `card_amount` is 0.
+ * - `amount_total > 0` unless the source feature is 3 (the zero-cash award booking).
+ * - The source feature's booking: 3 and 6 need a `booking_id`, 17 needs a `cargo_booking_id`, and never both.
+ * - `expires_at > started_at`.
+ * - The lines add up to `amount_total`.
+ * - One live payment per purchase, and one payment per idempotency key.
+ * - `authorised_at` is set exactly for `authorised | captured | voided | reversed`; `voided_at` exactly for `voided`;
+ *   `capture_stalled_at` only while the payment is `authorised`.
+ */
+@Injectable()
+export class PaymentsCheckoutService {
+  private readonly logger = new Logger(PaymentsCheckoutService.name)
+  private readonly sellerConfirmations = new Map<PaymentSourceFeature, (payment: PaymentRecord) => Promise<boolean>>()
+  private refundSettler: RefundSettler | null = null
+
+  /** Creates in flight, by purchase, so a second call for the same purchase waits for the first. */
+  private readonly creating = new Map<string, Promise<unknown>>()
+  private readonly sellerCaptured = new Map<PaymentSourceFeature, (payment: PaymentRecord) => Promise<void>>()
+  private readonly maintenanceTasks: (() => Promise<number>)[] = []
+  private readonly sellerReleases = new Map<PaymentSourceFeature, (payment: PaymentRecord) => Promise<void>>()
+
+  constructor(
+    @Inject(PAYMENT_REPOSITORY) private readonly repo: PaymentRepository,
+    @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
+    private readonly clock: SimulationClock,
+    private readonly audit: AuditService,
+  ) {}
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /*  The in-process API the selling features call                              */
+  /* ──────────────────────────────────────────────────────────────────────────── */
+
+  /**
+   * Starts a payment for a purchase. The selling feature owns the price and the deadline; 5a only records them.
+   *
+   * Replaying an idempotency key returns the payment that already exists, so a double click or a retried request
+   * cannot pay twice. A second *live* payment for the same purchase is refused.
+   */
+  async createPayment(input: CreatePaymentInput): Promise<PaymentRecord> {
+    // One create at a time per purchase in this process, so a double click or two tabs read the first one's row instead
+    // of racing it. Another process is stopped by the database's unique indexes, which `insertOnce` maps below.
+    const key = `${input.source_feature}:${input.purchase_ref}`
+    const turn = (this.creating.get(key) ?? Promise.resolve()).catch(() => undefined).then(() => this.createPaymentOnce(input))
+    this.creating.set(key, turn)
+    try {
+      return await turn
+    } finally {
+      if (this.creating.get(key) === turn) this.creating.delete(key)
+    }
+  }
+
+  private async createPaymentOnce(input: CreatePaymentInput): Promise<PaymentRecord> {
+    const now = this.clock.now()
+    const amountTotal = round2(input.amount_total)
+    const voucherAmount = round2(input.voucher_amount ?? 0)
+    const cardAmount = round2(amountTotal - voucherAmount)
+    const startedAt = input.started_at ?? now
+
+    if (amountTotal < 0 || voucherAmount < 0 || cardAmount < 0) {
+      throw new BadRequestException('Payment amounts must not be negative')
+    }
+    if (amountTotal === 0 && input.source_feature !== 3) {
+      throw new BadRequestException('Only a flight booking (source feature 3) may be a zero-cash payment')
+    }
+    if ((input.source_feature === 3 || input.source_feature === 6) && !input.booking_id) {
+      throw new BadRequestException(`A payment from source feature ${input.source_feature} needs a booking_id`)
+    }
+    if (input.source_feature === 17 && !input.cargo_booking_id) {
+      throw new BadRequestException('A cargo payment needs a cargo_booking_id')
+    }
+    if (input.booking_id && input.cargo_booking_id) {
+      throw new BadRequestException('A payment belongs to a booking or a cargo booking, not both')
+    }
+    if (input.expires_at <= startedAt) {
+      throw new BadRequestException('expires_at must be after started_at')
+    }
+    // A card needs time to be entered: a payment is only started with at least `min_hold_minutes` of the hold left.
+    // A zero-cash payment takes no card, so it has no page to wait for.
+    const minHoldMinutes = (await this.repo.readSetting('min_hold_minutes')) ?? MIN_HOLD_MINUTES
+    if (
+      input.amount_total - (input.voucher_amount ?? 0) > 0 &&
+      input.expires_at.getTime() - startedAt.getTime() < minHoldMinutes * 60 * 1000
+    ) {
+      throw new ConflictException(
+        paymentFailure(PaymentErrorCode.HOLD_TOO_SHORT, `The hold has less than ${minHoldMinutes} minutes left, too little to pay`, {
+          min_hold_minutes: minHoldMinutes,
+        }),
+      )
+    }
+    const linesTotal = round2(input.lines.reduce((sum, line) => sum + line.amount, 0))
+    if (linesTotal !== amountTotal) {
+      throw new BadRequestException(`Payment lines add up to ${linesTotal}, not ${amountTotal}`)
+    }
+
+    const replay = await this.repo.findByIdempotencyKey(input.payer_customer_id, input.idempotency_key)
+    if (replay) return replay
+
+    const live = await this.repo.findLiveByPurchaseRef(input.source_feature, input.purchase_ref)
+    if (live) {
+      throw new ConflictException(`Purchase ${input.purchase_ref} already has a live payment (${live.id})`)
+    }
+
+    const payment: PaymentRecord = {
+      id: randomUUID(),
+      source_feature: input.source_feature,
+      purchase_ref: input.purchase_ref,
+      payer_customer_id: input.payer_customer_id,
+      booking_id: input.booking_id ?? null,
+      cargo_booking_id: input.cargo_booking_id ?? null,
+      voucher_id: input.voucher_id ?? null,
+      idempotency_key: input.idempotency_key,
+      status: 'created',
+      provider: cardAmount === 0 ? 'none' : this.gateway.name,
+      currency: input.currency ?? BASE_CURRENCY,
+      amount_total: amountTotal,
+      voucher_amount: voucherAmount,
+      card_amount: cardAmount,
+      provider_fee: null,
+      capture_attempts: 0,
+      last_error: null,
+      started_at: startedAt,
+      expires_at: input.expires_at,
+      authorised_at: null,
+      confirmed_at: null,
+      captured_at: null,
+      voided_at: null,
+      capture_stalled_at: null,
+      created_at: now,
+      updated_at: now,
+      lines: input.lines.map((line) => ({
+        id: randomUUID(),
+        payment_id: '',
+        booking_id: input.booking_id ?? null,
+        booking_coupon_id: line.booking_coupon_id ?? null,
+        line_type: line.line_type,
+        source_ref: line.source_ref ?? null,
+        description: line.description,
+        amount: round2(line.amount),
+        refunded_amount: 0,
+        created_at: now,
+      })),
+      attempts: [],
+    }
+    payment.lines = payment.lines.map((line) => ({ ...line, payment_id: payment.id }))
+
+    try {
+      return await this.repo.insert(payment)
+    } catch (error) {
+      // Another process won the race: the idempotency key or the one-live-payment index said no. Answer as the replay would.
+      if (!isUniqueViolation(error)) throw error
+      const replay = await this.repo.findByIdempotencyKey(input.payer_customer_id, input.idempotency_key)
+      if (replay) return replay
+      const live = await this.repo.findLiveByPurchaseRef(input.source_feature, input.purchase_ref)
+      throw new ConflictException(`Purchase ${input.purchase_ref} already has a live payment${live ? ` (${live.id})` : ''}`)
+    }
+  }
+
+  /**
+   * The 5a flow: authorise → call the selling feature's confirm → capture on yes, void on no.
+   *
+   * `confirm` is the selling feature's own confirmation, passed in as a callback so that 5a never imports another
+   * team's internals: 3b confirms the booking, 6 confirms the bags are tagged, 12 confirms the onboard order, 17
+   * confirms the cargo. A `false` from it means the sale did not happen.
+   */
+  async confirmAndSettle(paymentId: string, confirm: () => Promise<boolean>): Promise<PaymentRecord> {
+    const payment = await this.requirePayment(paymentId)
+    if (payment.status !== 'created') {
+      throw new ConflictException(`Payment ${paymentId} is ${payment.status}; it is not waiting for confirmation`)
+    }
+    const now = this.clock.now()
+
+    // A zero-cash award booking: there is no card, so there is nothing to authorise and nothing to void. The seller's
+    // confirmation is all there is, and the payment goes straight from `created` to `captured`.
+    if (payment.provider === 'none') {
+      const confirmed = await confirm()
+      if (!confirmed) {
+        payment.status = 'failed'
+        payment.last_error = 'seller_declined'
+        payment.updated_at = now
+        return this.repo.update(payment)
+      }
+      payment.status = 'captured'
+      payment.authorised_at = now
+      payment.confirmed_at = now
+      payment.captured_at = now
+      payment.updated_at = now
+      await this.issueReceipt(payment)
+      return this.repo.update(payment)
+    }
+
+    const authorisation = await this.gateway.authorise({
+      payment_id: payment.id,
+      amount: payment.card_amount,
+      currency: payment.currency,
+      idempotency_key: payment.idempotency_key,
+    })
+    payment.attempts.push(this.buildAttempt(payment, authorisation))
+    payment.updated_at = now
+
+    if (!authorisation.ok) {
+      payment.status = 'failed'
+      payment.last_error = authorisation.failure_code ?? 'authorisation_failed'
+      return this.repo.update(payment)
+    }
+
+    payment.status = 'authorised'
+    payment.authorised_at = now
+    await this.repo.update(payment)
+    return this.settleAuthorised(payment, confirm)
+  }
+
+  /** An authorised payment: ask the selling feature, then capture on yes or release the card on no. */
+  private async settleAuthorised(payment: PaymentRecord, confirm: () => Promise<boolean>): Promise<PaymentRecord> {
+    const confirmed = await confirm()
+    if (!confirmed) {
+      return this.voidPayment(payment.id, 'seller_declined')
+    }
+    payment.confirmed_at = this.clock.now()
+    return this.capturePayment(payment)
+  }
+
+  /**
+   * How a selling feature confirms a card payment that a hosted provider authorised in the background (Stripe's
+   * webhook): there is no caller to hand `confirmAndSettle` a callback, so the feature registers one for its source.
+   * TODO(F5a): Features 3b, 6, 12 and 17 register theirs. Until one does, an authorised card payment counts as confirmed.
+   */
+  registerSellerConfirmation(sourceFeature: PaymentSourceFeature, confirm: (payment: PaymentRecord) => Promise<boolean>): void {
+    this.sellerConfirmations.set(sourceFeature, confirm)
+  }
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /*  Refunds to the card: what Feature 5b calls                                 */
+  /* ──────────────────────────────────────────────────────────────────────────── */
+
+  /**
+   * How Feature 5b hears a card refund ended later: Stripe's `refund.updated` / `refund.failed` webhook lands here, and 5a
+   * hands it on. The webhook names the refund by the id 5b gave Stripe, so 5a needs to know nothing about refunds.
+   */
+  /** The live payment (authorised or captured) behind a cargo booking, for Feature 17's cancel flow. */
+  findLivePaymentForCargoBooking(cargoBookingId: string): Promise<PaymentRecord | undefined> {
+    return this.repo.findLiveByCargoBookingId(cargoBookingId)
+  }
+
+  /**
+   * How a selling feature hears that its payment was captured, so it can finish its side (Feature 17 issues the Air
+   * Waybill at capture). It runs after the capture is saved and must be safe to repeat: a failure is logged, and the
+   * maintenance pass calls it again for a captured payment the seller has not finished.
+   */
+  registerSellerCaptured(sourceFeature: PaymentSourceFeature, onCaptured: (payment: PaymentRecord) => Promise<void>): void {
+    this.sellerCaptured.set(sourceFeature, onCaptured)
+  }
+
+  /** Extra work for the maintenance pass that belongs to a seller (for example Feature 17's Air Waybills still to issue). */
+  registerMaintenanceTask(task: () => Promise<number>): void {
+    this.maintenanceTasks.push(task)
+  }
+
+  /** The live payment (created, authorised or captured) of one purchase, so a seller can pick up a checkout it already started. */
+  findLivePaymentForPurchase(sourceFeature: PaymentSourceFeature, purchaseRef: string): Promise<PaymentRecord | undefined> {
+    return this.repo.findLiveByPurchaseRef(sourceFeature, purchaseRef)
+  }
+
+  /**
+   * The fare payment (authorised or captured) of a booking, for the cancel flow. It is the one Feature 3 checked out as
+   * `booking:<id>`. Add-ons bought later on the same booking (a seat at check-in) are their own payments with their own
+   * purchase ref, so a newer add-on never stands in for the fare.
+   */
+  async findLivePaymentForBooking(bookingId: string): Promise<PaymentRecord | undefined> {
+    const payment = await this.repo.findLiveByPurchaseRef(3, `booking:${bookingId}`)
+    return payment?.status === 'authorised' || payment?.status === 'captured' ? payment : undefined
+  }
+
+  /**
+   * How a selling feature hears that a payment ended `expired` before it was ever paid, so it can end its hold early
+   * instead of waiting for its own job. A payment the seller refused is not reported: there is nothing to release.
+   */
+  registerSellerRelease(sourceFeature: PaymentSourceFeature, release: (payment: PaymentRecord) => Promise<void>): void {
+    this.sellerReleases.set(sourceFeature, release)
+  }
+
+  registerRefundSettler(settle: RefundSettler): void {
+    this.refundSettler = settle
+  }
+
+  /**
+   * Sends money back to the card that paid. It never throws: whatever goes wrong is a `failed` outcome with a code, so the
+   * refund can say why it failed.
+   *
+   * Only a captured payment has money to give back, and never more than its card share: a voucher part of the payment is
+   * not on the card.
+   */
+  async refundToCard(request: CardRefundRequest): Promise<CardRefundOutcome> {
+    const failed = (failure_code: string): CardRefundOutcome => ({ status: 'failed', provider_refund_id: null, failure_code })
+    const payment = await this.repo.findById(request.payment_id)
+    if (!payment) return failed('payment_not_found')
+    if (!this.gateway.refund) return failed('provider_cannot_refund')
+    // Money goes back through the provider that took it. A payment taken by the other one (the fake provider, then Stripe,
+    // or the other way round) is never sent across: a fake "refund" of a Stripe payment would be a refund that never happened.
+    if (payment.provider !== this.gateway.name) return failed('wrong_provider')
+    if (payment.status !== 'captured') return failed('payment_not_captured')
+    if (request.amount > payment.card_amount + 0.005) return failed('exceeds_card_amount')
+
+    const held = payment.attempts.find((a) => a.status === 'authorised')
+    try {
+      const result = await this.gateway.refund({
+        payment_id: payment.id,
+        refund_id: request.refund_id,
+        provider_intent_id: held?.provider_intent_id ?? '',
+        amount: request.amount,
+        currency: payment.currency,
+      })
+      return { status: result.status, provider_refund_id: result.provider_refund_id ?? null, failure_code: result.failure_code ?? null }
+    } catch {
+      this.logger.warn(`The provider refund for payment ${payment.id} threw; it is recorded as failed`)
+      return failed('provider_error')
+    }
+  }
+
+  /**
+   * A card refund went through: issues its credit note, once, and reverses the payment when 5b says nothing is left on it.
+   * Safe to repeat (a webhook can arrive after the answer to the request): the credit note is found by the refund's id.
+   */
+  async recordRefundSucceeded(request: RefundSucceededRequest): Promise<{ credit_note_number: string }> {
+    const payment = await this.requirePayment(request.payment_id)
+    const now = this.clock.now()
+    const note =
+      (await this.repo.findCreditNoteByRefundId(request.refund_id)) ??
+      (await this.repo.insertReceipt({
+        id: randomUUID(),
+        payment_id: payment.id,
+        refund_id: request.refund_id,
+        document_type: 'credit_note',
+        document_number: `CN-${request.refund_id.replace(/-/g, '').slice(0, 8).toUpperCase()}`,
+        amount: request.amount,
+        billing_name: this.customerNameOf(payment),
+        issued_at: now,
+        created_at: now,
+      }))
+    if (request.fully_refunded && payment.status === 'captured') {
+      payment.status = 'reversed'
+      payment.updated_at = now
+      await this.repo.update(payment)
+    }
+    return { credit_note_number: note.document_number }
+  }
+
+  /** A card refund failed. The schema's only way back from `reversed` is a late failure, so the payment is captured again. */
+  async recordRefundFailed(paymentId: string): Promise<void> {
+    const payment = await this.repo.findById(paymentId)
+    if (!payment || payment.status !== 'reversed') return
+    payment.status = 'captured'
+    payment.updated_at = this.clock.now()
+    await this.repo.update(payment)
+  }
+
+  /** The provider's late word on a refund, handed to 5b. Without a settler nothing is lost: the refund stays as it was. */
+  private async applyRefundEvent(event: ProviderEvent): Promise<void> {
+    if (!event.refund_id) {
+      this.logger.warn(`Webhook ${event.type} carries no refund id; it was not made by 5b`)
+      return
+    }
+    if (!this.refundSettler) {
+      this.logger.warn(`Webhook ${event.type} arrived and nothing is registered to settle refunds`)
+      return
+    }
+    await this.refundSettler({
+      refund_id: event.refund_id,
+      provider_refund_id: event.provider_refund_id ?? null,
+      outcome: event.kind === 'refund_succeeded' ? 'succeeded' : 'failed',
+      failure_code: event.failure_code ?? null,
+    })
+  }
+
+  /**
+   * Starts a card payment on the provider's hosted page and returns where to send the customer.
+   *
+   * Only the payer can start it, only while the payment is `created` and its hold has not run out. Asking again ends the
+   * earlier session first, so an old page cannot take money later. With `reuseOpen` (the same checkout asked again: a
+   * retried request, or the customer back from the page) a session that is still open is handed out again instead, so
+   * the page a browser was already sent to keeps working.
+   */
+  async startCheckout(
+    userId: string,
+    paymentId: string,
+    urls: { success_url: string; cancel_url: string },
+    options: { reuseOpen?: boolean } = {},
+  ): Promise<CheckoutStartedDto> {
+    if (!this.gateway.createCheckout) {
+      throw new BadRequestException(
+        paymentFailure(PaymentErrorCode.PROVIDER_UNAVAILABLE, 'This payment provider has no hosted checkout page'),
+      )
+    }
+    const payment = await this.requirePayment(paymentId)
+    const customerId = await this.repo.resolveCustomerId(userId)
+    if (!customerId || payment.payer_customer_id !== customerId) {
+      throw new NotFoundException(`Payment ${paymentId} not found`)
+    }
+    if (payment.status !== 'created' || payment.provider !== this.gateway.name) {
+      throw new ConflictException(
+        paymentFailure(
+          PaymentErrorCode.PAYMENT_NOT_PAYABLE,
+          `Payment ${paymentId} is ${payment.status}; there is nothing to pay on a page`,
+          {
+            status: payment.status,
+          },
+        ),
+      )
+    }
+    const now = this.clock.now()
+    if (now > payment.expires_at) {
+      await this.expireIfPastDeadline(paymentId)
+      throw new ConflictException(paymentFailure(PaymentErrorCode.PAYMENT_NOT_PAYABLE, 'The hold on this payment has run out'))
+    }
+
+    if (options.reuseOpen) {
+      const open = payment.attempts.find((a) => a.status === 'open')
+      const url = open ? await this.gateway.openCheckoutUrl?.(open.provider_session_id) : null
+      if (url) return { payment_id: payment.id, checkout_url: url }
+    }
+
+    await this.endOpenSession(payment)
+    const session = await this.gateway.createCheckout({
+      payment_id: payment.id,
+      amount: payment.card_amount,
+      currency: payment.currency,
+      description: `Booking ${payment.purchase_ref}`,
+      success_url: urls.success_url,
+      cancel_url: urls.cancel_url,
+      attempt_no: payment.attempts.length + 1,
+    })
+    payment.attempts.push({
+      id: randomUUID(),
+      payment_id: payment.id,
+      provider_session_id: session.session_id,
+      provider_intent_id: session.intent_id,
+      status: 'open',
+      failure_code: null,
+      card_brand: null,
+      card_last4: null,
+      created_at: now,
+      updated_at: now,
+    })
+    payment.updated_at = now
+    await this.repo.update(payment)
+    return { payment_id: payment.id, checkout_url: session.url }
+  }
+
+  /**
+   * A provider's webhook. The signature is checked against the raw bytes first; an event is acted on once (the receipt
+   * table remembers its id), so the provider retrying a delivery never captures twice.
+   */
+  async handleProviderWebhook(rawBody: Buffer | undefined, signature: string | undefined): Promise<{ received: true }> {
+    if (!this.gateway.verifyWebhook || !this.gateway.parseEvent) {
+      throw new BadRequestException('This payment provider sends no webhooks')
+    }
+    // A rejection used to be silent, which made a wrong secret hard to find. Say why, never what the secret is.
+    if (!rawBody) {
+      this.logger.warn('Webhook rejected: the request carries no raw body (`rawBody: true` must be set in main.ts)')
+      throw new BadRequestException(paymentFailure(PaymentErrorCode.WEBHOOK_SIGNATURE_INVALID, 'The webhook signature is not valid'))
+    }
+    if (!this.gateway.verifyWebhook(rawBody, signature)) {
+      this.logger.warn(
+        'Webhook rejected: its signature does not match STRIPE_WEBHOOK_SECRET. Use the whsec_ that this run of `stripe listen` printed, ' +
+          'check the line in apps/backend/.env has nothing else on it, and restart the backend.',
+      )
+      throw new BadRequestException(paymentFailure(PaymentErrorCode.WEBHOOK_SIGNATURE_INVALID, 'The webhook signature is not valid'))
+    }
+    const event = await this.gateway.parseEvent(rawBody)
+    if (!(await this.repo.recordProviderEvent(event.id, event.type, event.payment_id))) return { received: true }
+    await this.applyProviderEvent(event)
+    await this.repo.markProviderEventProcessed(event.id)
+    return { received: true }
+  }
+
+  private async applyProviderEvent(event: ProviderEvent): Promise<void> {
+    if (event.kind === 'ignored') return
+    if (event.kind === 'refund_succeeded' || event.kind === 'refund_failed') return this.applyRefundEvent(event)
+    if (!event.payment_id) return
+    const payment = await this.repo.findById(event.payment_id)
+    if (!payment) {
+      this.logger.warn(`Webhook ${event.type} names a payment that does not exist`)
+      return
+    }
+    const now = this.clock.now()
+    const attempt =
+      payment.attempts.find((a) => event.intent_id !== null && a.provider_intent_id === event.intent_id) ??
+      payment.attempts.find((a) => event.session_id !== null && a.provider_session_id === event.session_id) ??
+      payment.attempts.find((a) => a.status === 'open')
+
+    if (event.kind === 'session_expired') {
+      if (attempt?.status === 'open') {
+        attempt.status = 'expired'
+        attempt.updated_at = now
+        await this.repo.update(payment)
+      }
+      return
+    }
+
+    if (event.kind === 'failed') {
+      // The customer can try another card on the same page until the hold ends, so the payment stays `created`.
+      if (payment.status !== 'created' || !attempt) return
+      attempt.failure_code = event.failure_code ?? 'card_declined'
+      attempt.updated_at = now
+      payment.last_error = attempt.failure_code
+      payment.updated_at = now
+      await this.repo.update(payment)
+      return
+    }
+
+    // A redelivery of the event that already authorised this payment: the last delivery saved the authorisation, then
+    // failed before it finished. The hold is this payment's own, so it must not be released. Pick up where it stopped,
+    // as the maintenance pass would: ask the seller if nobody has, and leave a started capture to the capture retry.
+    const sameHold = attempt?.status === 'authorised' && event.intent_id !== null && attempt.provider_intent_id === event.intent_id
+    if (sameHold) {
+      if (payment.status === 'authorised' && payment.capture_attempts === 0) {
+        await this.settleAuthorised(payment, () => this.sellerConfirms(payment))
+      }
+      return
+    }
+
+    // The card is held. A payment that is no longer waiting (paid on an old page, or the hold ran out) gets it released.
+    const late = payment.status === 'created' && now > payment.expires_at
+    if (payment.status !== 'created' || late || !attempt) {
+      if (late) await this.expireIfPastDeadline(payment.id)
+      if (event.intent_id) await this.gateway.cancelAuthorisation?.(event.intent_id)
+      return
+    }
+    attempt.status = 'authorised'
+    attempt.provider_intent_id = event.intent_id ?? attempt.provider_intent_id
+    attempt.card_brand = event.card_brand ?? null
+    attempt.card_last4 = event.card_last4 ?? null
+    attempt.updated_at = now
+    payment.status = 'authorised'
+    payment.authorised_at = now
+    payment.last_error = null
+    payment.updated_at = now
+    await this.repo.update(payment)
+    await this.settleAuthorised(payment, () => this.sellerConfirms(payment))
+  }
+
+  private async sellerConfirms(payment: PaymentRecord): Promise<boolean> {
+    const confirm = this.sellerConfirmations.get(payment.source_feature)
+    return confirm ? confirm(payment) : true
+  }
+
+  /** Ends a page nobody has paid on, so it cannot take money after the payment moved on. */
+  private async endOpenSession(payment: PaymentRecord): Promise<void> {
+    const open = payment.attempts.find((a) => a.status === 'open')
+    if (!open) return
+    await this.gateway.expireCheckout?.(open.provider_session_id)
+    open.status = 'cancelled'
+    open.updated_at = this.clock.now()
+  }
+
+  /** Releases the card hold on the provider's side. The fake provider holds nothing, so it does nothing there. */
+  private async releaseCard(payment: PaymentRecord): Promise<void> {
+    const held = payment.attempts.find((a) => a.status === 'authorised')
+    if (held?.provider_intent_id) await this.gateway.cancelAuthorisation?.(held.provider_intent_id)
+  }
+
+  /**
+   * Captures an authorised payment. Staff call this to retry a capture that stalled, from the exception list.
+   *
+   * The payment stays `authorised` when the capture fails. Once it has failed `capture_retry_limit` times the payment
+   * is capture-stalled: it stays `authorised`, gets a `capture_stalled_at`, and lands on the staff exception list.
+   */
+  async retryCapture(paymentId: string, actor?: string | null, note?: string | null): Promise<PaymentRecord> {
+    const payment = await this.requirePayment(paymentId)
+    if (payment.status !== 'authorised') {
+      throw new ConflictException(`Only an authorised payment can be captured; ${paymentId} is ${payment.status}`)
+    }
+    const before = payment.status
+    const result = await this.capturePayment(payment, actor, note)
+    await this.recordStatusChange(result, before, `Capture retried for ${result.purchase_ref}`, note, actor)
+    return result
+  }
+
+  /**
+   * Releases an authorisation without charging.
+   *
+   * Feature 3b calls this in process when it cancels a booking. The staff screens do not offer it: the frames say
+   * staff cannot edit a payment's state by hand, and the "authorisation voided" problem is one the system reaches on
+   * its own.
+   */
+  async voidPayment(paymentId: string, reason: string, actor?: string | null): Promise<PaymentRecord> {
+    const payment = await this.requirePayment(paymentId)
+    if (payment.status === 'voided' || payment.status === 'expired') return payment
+    if (payment.status !== 'authorised') {
+      throw new ConflictException(`Only an authorised payment can be voided; ${paymentId} is ${payment.status}`)
+    }
+    await this.releaseCard(payment)
+    const now = this.clock.now()
+    const before = payment.status
+    payment.status = 'voided'
+    payment.voided_at = now
+    payment.last_error = reason
+    payment.updated_at = now
+    await this.closeException(payment, 'voided', actor, reason)
+    const updated = await this.repo.update(payment)
+    await this.recordStatusChange(updated, before, `Payment ${payment.purchase_ref} voided`, reason, actor)
+    return updated
+  }
+
+  /**
+   * Ends a payment whose deadline has passed.
+   *
+   * Before the authorisation there is nothing to release, so the payment goes to `expired` — the frame's "your
+   * 15-minute seat hold ran out" state. After the authorisation the card has to be released, so the payment is
+   * `voided` and the customer was never charged.
+   */
+  async expireIfPastDeadline(paymentId: string): Promise<PaymentRecord> {
+    const payment = await this.requirePayment(paymentId)
+    const now = this.clock.now()
+    if (now <= payment.expires_at) return payment
+
+    if (payment.status === 'created') {
+      await this.endOpenSession(payment)
+      payment.status = 'expired'
+      payment.last_error = 'hold_expired'
+      payment.updated_at = now
+      await this.closeException(payment, 'expired')
+      const expired = await this.repo.update(payment)
+      await this.sellerReleases
+        .get(payment.source_feature)?.(expired)
+        .catch((error: unknown) => this.logger.warn(`Releasing ${payment.purchase_ref} after its payment expired failed: ${String(error)}`))
+      return expired
+    }
+    if (payment.status === 'authorised') {
+      // A payment whose capture has been tried was confirmed by the seller: the ticket exists, so the hold running out
+      // changes nothing. It is retried (or stalls), never voided. Only an authorisation nobody confirmed ends with the hold.
+      if (payment.capture_attempts > 0) return payment
+      await this.releaseCard(payment)
+      payment.status = 'voided'
+      payment.voided_at = now
+      payment.last_error = 'hold_expired'
+      await this.closeException(payment, 'voided', null, 'The booking hold expired before the capture.')
+      return this.repo.update(payment)
+    }
+    return payment
+  }
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /*  Background jobs                                                            */
+  /* ──────────────────────────────────────────────────────────────────────────── */
+
+  /**
+   * One pass of the jobs the spec asks for. Each step is safe to repeat and a failure in one payment never stops the rest:
+   *
+   * 1. **Hold end.** A `created` or unconfirmed `authorised` payment past its deadline is expired or voided, and its Stripe
+   *    session is ended so the page cannot take money later (problem 2).
+   * 2. **Capture retry.** An authorised payment the seller confirmed whose capture failed is tried again, until
+   *    `capture_retry_limit` stalls it onto the staff exception list (problem 4).
+   * 3. **Reconcile.** A `created` payment with an open session, and an `authorised` one nobody confirmed, that are more
+   *    than 2 minutes old are mended from the provider's own record, so a lost webhook is not lost money (problems 6, 36).
+   */
+  async runMaintenancePass(): Promise<{ expired: number; retried: number; reconciled: number }> {
+    const counts = { expired: 0, retried: 0, reconciled: 0 }
+    const open = await this.repo.listByStatus(['created', 'authorised'])
+    const now = this.clock.now()
+    const stale = (payment: PaymentRecord) => now.getTime() - payment.updated_at.getTime() > RECONCILE_AFTER_MS
+
+    for (const listed of open) {
+      try {
+        if (now > listed.expires_at) {
+          const statusBefore = listed.status
+          const after = await this.expireIfPastDeadline(listed.id)
+          if (after.status !== statusBefore) counts.expired += 1
+        }
+        const payment = await this.repo.findById(listed.id)
+        if (!payment) continue
+
+        if (payment.status === 'authorised' && payment.capture_attempts > 0 && !payment.capture_stalled_at) {
+          await this.capturePayment(payment)
+          counts.retried += 1
+        } else if (payment.status === 'authorised' && payment.capture_attempts === 0 && stale(payment)) {
+          // The authorisation landed but the app stopped before the seller was asked: ask now.
+          await this.settleAuthorised(payment, () => this.sellerConfirms(payment))
+          counts.reconciled += 1
+        } else if (payment.status === 'created' && stale(payment) && (await this.reconcileCreated(payment))) {
+          counts.reconciled += 1
+        }
+      } catch (error) {
+        this.logger.error(`Maintenance of payment ${listed.id} failed; the next pass tries again: ${String(error)}`)
+      }
+    }
+    for (const task of this.maintenanceTasks) {
+      try {
+        counts.reconciled += await task()
+      } catch (error) {
+        this.logger.error(`A seller's maintenance task failed; the next pass tries again: ${String(error)}`)
+      }
+    }
+    return counts
+  }
+
+  /** Re-reads the open session of a `created` payment from the provider and applies what the webhook would have said. */
+  private async reconcileCreated(payment: PaymentRecord): Promise<boolean> {
+    const open = payment.attempts.find((a) => a.status === 'open')
+    if (!open || !this.gateway.readCheckout) return false
+    const event = await this.gateway.readCheckout(open.provider_session_id)
+    if (!event || event.kind === 'ignored') return false
+    // The same receipt table keeps it once: a webhook that arrives later finds the event already applied.
+    if (!(await this.repo.recordProviderEvent(event.id, event.type, payment.id))) return false
+    await this.applyProviderEvent({ ...event, payment_id: payment.id })
+    await this.repo.markProviderEventProcessed(event.id)
+    return true
+  }
+
+  /** How a refund `processing` for a while ended at the provider, or null while it is still pending (5b's reconcile job). */
+  async readRefundOutcome(providerRefundId: string): Promise<CardRefundOutcome | null> {
+    if (!this.gateway.readRefund) return null
+    const result = await this.gateway.readRefund(providerRefundId)
+    if (!result) return null
+    return {
+      status: result.status,
+      provider_refund_id: result.provider_refund_id ?? providerRefundId,
+      failure_code: result.failure_code ?? null,
+    }
+  }
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /*  The HTTP surface                                                           */
+  /* ──────────────────────────────────────────────────────────────────────────── */
+
+  /** The payment status a selling feature's confirmation page polls. */
+  async getPaymentStatus(userId: string, paymentId: string): Promise<PaymentStatusDto> {
+    const payment = await this.requirePayment(paymentId)
+    // A payment with no payer (an onboard sale) can be read by whoever holds the link; one with a payer can only be
+    // read by that payer. TODO(F5a): the real check is "the signed-in customer owns this payment".
+    if (payment.payer_customer_id && payment.payer_customer_id !== (await this.repo.resolveCustomerId(userId))) {
+      throw new NotFoundException(`Payment ${paymentId} not found`)
+    }
+    const receipt = await this.repo.findReceiptByPaymentId(payment.id)
+    return {
+      id: payment.id,
+      status: payment.status,
+      state: toCustomerState(payment),
+      amount_total: payment.amount_total,
+      voucher_amount: payment.voucher_amount,
+      card_amount: payment.card_amount,
+      currency: payment.currency,
+      capture_stalled: payment.capture_stalled_at !== null,
+      expires_at: payment.expires_at.toISOString(),
+      receipt_id: receipt?.id ?? null,
+      updated_at: payment.updated_at.toISOString(),
+    }
+  }
+
+  /** A payment by id, for a selling feature that holds its id (Feature 12 keeps it on the order). */
+  findPaymentById(paymentId: string): Promise<PaymentRecord | undefined> {
+    return this.repo.findById(paymentId)
+  }
+
+  /** A payment, only when this customer is the one who pays it. Anyone else's answers undefined. */
+  async findPaymentForPayer(paymentId: string, customerId: string): Promise<PaymentRecord | undefined> {
+    const payment = await this.repo.findById(paymentId)
+    return payment && payment.payer_customer_id === customerId ? payment : undefined
+  }
+
+  /**
+   * Ends a payment nobody has paid because the purchase behind it was cancelled (a customer cancels an onboard order
+   * before paying). Its open provider page is closed so it cannot take money later. Nothing was charged, so nothing is
+   * refunded. A payment that is already past `created` is left as it is.
+   */
+  async cancelUnpaid(paymentId: string, reason: string): Promise<PaymentRecord | undefined> {
+    const payment = await this.repo.findById(paymentId)
+    if (!payment) return undefined
+    if (payment.status !== 'created') return payment
+    await this.endOpenSession(payment)
+    const now = this.clock.now()
+    payment.status = 'failed'
+    payment.last_error = reason
+    payment.updated_at = now
+    return this.repo.update(payment)
+  }
+
+  /** True when the provider serves its own payment page (Stripe), false when it approves on the spot (the fake one). */
+  usesHostedCheckout(): boolean {
+    return typeof this.gateway.createCheckout === 'function'
+  }
+
+  /** The payment a customer already made with this key, so a repeated request answers with it instead of starting another. */
+  findPaymentByKey(customerId: string, idempotencyKey: string): Promise<PaymentRecord | undefined> {
+    return this.repo.findByIdempotencyKey(customerId, idempotencyKey)
+  }
+
+  /**
+   * Settles a payment that needs no hosted page (the fake provider, a voucher that covers the whole total, a zero-cash award
+   * booking) by asking the selling feature to confirm and capturing on a yes.
+   */
+  async settleWithSeller(paymentId: string): Promise<PaymentRecord> {
+    const payment = await this.requirePayment(paymentId)
+    return this.confirmAndSettle(payment.id, () => this.sellerConfirms(payment))
+  }
+
+  /** The signed-in customer's payments, newest first. */
+  async listCustomerPayments(userId: string): Promise<PaymentStatusDto[]> {
+    const customerId = await this.repo.resolveCustomerId(userId)
+    if (!customerId) return []
+    const mine = (await this.repo.listPayments()).filter((payment) => payment.payer_customer_id === customerId)
+    return Promise.all(
+      mine.sort((a, b) => b.started_at.getTime() - a.started_at.getTime()).map((payment) => this.getPaymentStatus(userId, payment.id)),
+    )
+  }
+
+  /** The receipt (or invoice) of a payment, for its payer. */
+  async getCustomerReceiptForPayment(userId: string, paymentId: string): Promise<ReceiptDetailDto> {
+    const receipt = await this.repo.findReceiptByPaymentId(paymentId)
+    if (!receipt) throw new NotFoundException(paymentFailure(PaymentErrorCode.PAYMENT_NOT_FOUND, `Payment ${paymentId} has no receipt`))
+    return this.getCustomerReceipt(userId, receipt.id)
+  }
+
+  /** The signed-in customer's receipts, newest first. */
+  async listCustomerReceipts(userId: string, query: ReceiptQueryDto): Promise<ReceiptListDto> {
+    const customerId = await this.repo.resolveCustomerId(userId)
+    const limit = query.limit ?? DEFAULT_LIMIT
+    // A user with no customer row (a staff account) owns no receipts. Without this, null would match every payer-less payment.
+    if (!customerId) return { items: [], total: 0, counts: this.countReceipts([]) }
+    const receipts = await this.repo.listReceipts()
+    const payments = await this.repo.listPayments()
+    const paymentById = new Map(payments.map((payment) => [payment.id, payment]))
+
+    const rows = receipts
+      .filter((receipt) => receipt.refund_id === null && receipt.document_type !== 'credit_note')
+      .map((receipt) => ({ receipt, payment: paymentById.get(receipt.payment_id) }))
+      .filter((row): row is { receipt: ReceiptRecord; payment: PaymentRecord } => row.payment !== undefined)
+      .filter((row) => row.payment.payer_customer_id === customerId)
+      .sort((a, b) => b.receipt.issued_at.getTime() - a.receipt.issued_at.getTime())
+
+    const summaries = await Promise.all(rows.map((row) => this.toReceiptSummary(row.receipt, row.payment)))
+
+    const counts = this.countReceipts(summaries)
+    const searched = summaries.filter((summary) => this.matchesReceiptSearch(summary, query.search))
+    const filtered = searched.filter((summary) => query.filter === undefined || this.matchesReceiptFilter(summary, query.filter))
+
+    return { items: filtered.slice(0, limit), total: filtered.length, counts }
+  }
+
+  /** One of the signed-in customer's receipts. 404 when the receipt is not theirs. */
+  async getCustomerReceipt(userId: string, receiptId: string): Promise<ReceiptDetailDto> {
+    const customerId = await this.repo.resolveCustomerId(userId)
+    const receipt = await this.repo.findReceiptById(receiptId)
+    if (!receipt) throw new NotFoundException(`Receipt ${receiptId} not found`)
+    const payment = await this.repo.findById(receipt.payment_id)
+    if (!payment) throw new NotFoundException(`Receipt ${receiptId} has no payment`)
+    if (!customerId || payment.payer_customer_id !== customerId) throw new NotFoundException(`Receipt ${receiptId} not found`)
+
+    const attempt = payment.attempts[payment.attempts.length - 1]
+    const creditNote = await this.repo.findCreditNoteByPaymentId(payment.id)
+    return {
+      ...(await this.toReceiptSummary(receipt, payment)),
+      billing_name: receipt.billing_name,
+      card_brand: attempt?.card_brand ?? null,
+      card_last4: attempt?.card_last4 ?? null,
+      lines: payment.lines.map((line) => this.toLineDto(line)),
+      credit_note: creditNote
+        ? {
+            document_number: creditNote.document_number,
+            amount: creditNote.amount,
+            issued_at: creditNote.issued_at.toISOString(),
+            description: null,
+          }
+        : null,
+      refund_note: null,
+    }
+  }
+
+  /** The staff payment lookup, with the frames' status filters, search box and filter counts. */
+  async listStaffPayments(query: StaffPaymentQueryDto): Promise<StaffPaymentListDto> {
+    const payments = await this.repo.listPayments()
+    const searched = payments.filter((payment) => this.matchesPaymentSearch(payment, query.search))
+
+    const counts: Record<'all' | StaffPaymentFilterKey, number> = {
+      all: searched.length,
+      captured: 0,
+      failed: 0,
+      capture_stalled: 0,
+      voided: 0,
+      refunded: 0,
+    }
+    for (const payment of searched) {
+      for (const filter of STAFF_PAYMENT_FILTERS) {
+        if (matchesStaffFilter(payment, filter)) counts[filter] += 1
+      }
+    }
+
+    const filtered = searched
+      .filter((payment) => query.status === undefined || matchesStaffFilter(payment, query.status))
+      .filter((payment) => query.source_feature === undefined || payment.source_feature === query.source_feature)
+      .sort((a, b) => b.started_at.getTime() - a.started_at.getTime())
+
+    const pageSize = query.limit ?? DEFAULT_PAGE_SIZE
+    const page = query.page ?? 1
+    const items = await Promise.all(
+      filtered.slice((page - 1) * pageSize, page * pageSize).map((payment) => this.toStaffPaymentSummary(payment)),
+    )
+    return { items, total: filtered.length, counts }
+  }
+
+  /**
+   * One payment, with the capture-stalled panel and the state history the frames show.
+   *
+   * `actorId` is the staff member who opened it. A payment record carries a customer's name, email and the last four
+   * digits of their card, so opening one is written to `audit_log` as `view_sensitive`.
+   *
+   * The action endpoints read the payment back after a change; they call this without an actor, so a retry is not
+   * counted as a view on top of the status change it already recorded.
+   */
+  async getStaffPayment(paymentId: string, actorId?: string | null): Promise<StaffPaymentDetailDto> {
+    const payment = await this.requirePayment(paymentId)
+    if (actorId) {
+      await this.recordPaymentView(payment, actorId)
+    }
+    return this.toStaffPaymentDetail(payment)
+  }
+
+  /**
+   * The staff exception list — a list of *problems*, as the frames show it.
+   *
+   * Each row says what went wrong, which reference it belongs to, when it started and what a staff member can do about
+   * it. A payment that is simply in flight is not a problem, so it is not on this list.
+   *
+   * - `needs_action` — a person has to decide now.
+   * - `queued` — a job or a retry is already running; nothing to do yet.
+   * - `resolved` — it is closed, and stays on the record.
+   * - `all` — every one of those.
+   */
+  async listPaymentProblems(tab: PaymentExceptionTab): Promise<PaymentProblemListDto> {
+    const now = this.clock.now()
+    const payments = await this.repo.listPayments()
+    const rows: PaymentProblemDto[] = []
+    for (const payment of payments) {
+      const problem = await this.problemFor(payment, now)
+      if (problem) rows.push(problem)
+    }
+
+    const counts: Record<PaymentExceptionState | 'all', number> = { all: rows.length, needs_action: 0, queued: 0, resolved: 0 }
+    for (const row of rows) counts[row.state] += 1
+
+    const filtered = rows.filter((row) => tab === 'all' || row.state === tab).sort((a, b) => Date.parse(b.since) - Date.parse(a.since))
+
+    return { items: filtered, total: filtered.length, counts }
+  }
+
+  /**
+   * Sends a payment to the finance ledger, for a payment whose posting did not go through.
+   *
+   * The frames' button is "Send now". In the mock the ledger answers straight away, so the problem is closed; the real
+   * implementation moves the row to "Queued" until the ledger answers.
+   *
+   * The note the staff member typed is kept on the exception row and on the audit trail.
+   */
+  async sendFinancePosting(paymentId: string, actor?: string | null, note?: string | null): Promise<PaymentRecord> {
+    const payment = await this.requirePayment(paymentId)
+    if (payment.last_error !== 'finance_posting_failed') {
+      throw new ConflictException(`Payment ${paymentId} is not waiting on the finance ledger`)
+    }
+    const now = this.clock.now()
+    payment.last_error = null
+    payment.updated_at = now
+    await this.repo.saveException({
+      payment_id: payment.id,
+      state: 'resolved',
+      detected_at: now,
+      resolved_at: now,
+      resolved_by: actor ?? null,
+      resolution: 'posted',
+      note: note ?? 'The payment was sent to the finance ledger.',
+    })
+    await this.recordStatusChange(payment, 'captured', `Payment ${payment.purchase_ref} posted to the finance ledger`, note ?? null, actor)
+    return this.repo.update(payment)
+  }
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /*  Internals                                                                  */
+  /* ──────────────────────────────────────────────────────────────────────────── */
+
+  private async requirePayment(paymentId: string): Promise<PaymentRecord> {
+    const payment = (await this.repo.findById(paymentId)) ?? (await this.findPaymentByReference(paymentId))
+    if (!payment) throw new NotFoundException(paymentFailure(PaymentErrorCode.PAYMENT_NOT_FOUND, `Payment ${paymentId} not found`))
+    return payment
+  }
+
+  /**
+   * Finds a payment by the reference the staff read out loud, e.g. `PAY-20261104-0042`.
+   *
+   * The reference is derived rather than stored, so the mock looks a payment up the same way it builds the reference.
+   * It lets the staff screens link to a payment by the number on the screen instead of by its internal id.
+   */
+  private async findPaymentByReference(reference: string): Promise<PaymentRecord | undefined> {
+    const needle = reference.trim().toUpperCase()
+    if (!needle.startsWith('PAY-')) return undefined
+    const payments = await this.repo.listPayments()
+    return payments.find((payment) => paymentReference(payment) === needle)
+  }
+
+  /** The staff detail page's body: the summary plus everything only the detail page shows. */
+  private async toStaffPaymentDetail(payment: PaymentRecord): Promise<StaffPaymentDetailDto> {
+    const exception = await this.repo.findException(payment.id)
+    return {
+      ...(await this.toStaffPaymentSummary(payment)),
+      idempotency_key: payment.idempotency_key,
+      provider: payment.provider,
+      provider_fee: payment.provider_fee,
+      capture_attempts: payment.capture_attempts,
+      authorised_at: payment.authorised_at?.toISOString() ?? null,
+      voided_at: payment.voided_at?.toISOString() ?? null,
+      /* TODO(F5a): the provider's payment id and the flight come with the real provider and Feature 3b. */
+      provider_reference: null,
+      trip: null,
+      refund_reference: payment.context?.refund_reference ?? null,
+      lines: payment.lines.map((line) => this.toLineDto(line)),
+      state_history: stateHistoryFor(payment).map((step) => ({
+        key: step.key,
+        label: step.label,
+        at: step.at?.toISOString() ?? null,
+      })),
+      exception: exception
+        ? {
+            state: exception.state,
+            detected_at: exception.detected_at.toISOString(),
+            resolved_at: exception.resolved_at?.toISOString() ?? null,
+            resolved_by: exception.resolved_by,
+            resolution: exception.resolution,
+            note: exception.note,
+          }
+        : null,
+    }
+  }
+
+  /**
+   * Writes the `view_sensitive` row for a staff member opening a payment.
+   *
+   * The row carries no before/after, so it is not itself a sensitive row. A failure is only logged: refusing to show
+   * a payment because the audit table was briefly unavailable would be worse than the missing row.
+   *
+   * TODO(F5a): the real implementation writes this row in the same transaction as the read, so the view and its row
+   * commit together.
+   */
+  private async recordPaymentView(payment: PaymentRecord, actorId: string): Promise<void> {
+    try {
+      const actor = await this.audit.resolveActor(actorId).catch(() => AuditService.systemActor())
+      await this.audit.recordSensitiveView(actor, {
+        sourceFeature: '5',
+        entityType: 'payment',
+        entityId: payment.id,
+        summary: `Opened payment ${paymentReference(payment)}`,
+        reason: 'A staff member opened the payment record from the payment lookup.',
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.logger.warn(`Audit view_sensitive write failed (payment ${payment.id}): ${message}`)
+    }
+  }
+
+  /**
+   * Writes the `status_change` row for a staff action.
+   *
+   * The row goes through `tryWrite`, so a failure never changes the outcome of the action itself: the payment has
+   * already moved, and losing the audit row is bad but losing the capture is worse.
+   *
+   * TODO(F5a): the real implementation writes this row in the same transaction as the payment update, so the status
+   * change and its audit row commit together or not at all.
+   */
+  private async recordStatusChange(
+    payment: PaymentRecord,
+    before: PaymentStatus,
+    summary: string,
+    reason: string | null | undefined,
+    actorId: string | null | undefined,
+  ): Promise<void> {
+    if (!actorId) return
+    const actor = await this.audit.resolveActor(actorId).catch(() => AuditService.systemActor())
+    await this.audit.tryWrite({
+      actor,
+      sourceFeature: '5',
+      action: 'status_change',
+      entityType: 'payment',
+      entityId: payment.id,
+      summary,
+      reason,
+      before: { status: before },
+      after: { status: payment.status },
+    })
+  }
+
+  private async capturePayment(payment: PaymentRecord, actor?: string | null, note?: string | null): Promise<PaymentRecord> {
+    const now = this.clock.now()
+    const attempt = payment.attempts.find((a) => a.status === 'authorised') ?? payment.attempts[payment.attempts.length - 1]
+    const result = await this.gateway.capture({
+      payment_id: payment.id,
+      provider_session_id: attempt?.provider_session_id ?? '',
+      provider_intent_id: attempt?.provider_intent_id ?? undefined,
+      amount: payment.card_amount,
+      currency: payment.currency,
+      attempt_no: payment.capture_attempts + 1,
+    })
+
+    payment.capture_attempts += 1
+    payment.updated_at = now
+
+    if (!result.ok) {
+      payment.last_error = result.failure_code ?? 'capture_failed'
+      if (payment.capture_attempts >= ((await this.repo.readSetting('capture_retry_limit')) ?? CAPTURE_RETRY_LIMIT)) {
+        payment.capture_stalled_at = now
+        await this.openException(payment, `Capture failed ${payment.capture_attempts} times: ${payment.last_error}`)
+      }
+      return this.repo.update(payment)
+    }
+
+    payment.status = 'captured'
+    payment.captured_at = now
+    payment.provider_fee = result.provider_fee ?? null
+    payment.last_error = null
+    payment.capture_stalled_at = null
+    await this.issueReceipt(payment)
+    await this.closeException(payment, 'captured', actor, note ?? undefined)
+    const captured = await this.repo.update(payment)
+    await this.sellerCaptured
+      .get(payment.source_feature)?.(captured)
+      .catch((error: unknown) =>
+        this.logger.warn(`The seller of ${payment.purchase_ref} could not finish after the capture: ${String(error)}`),
+      )
+    return captured
+  }
+
+  /** Issues the receipt for a captured payment. One receipt per payment, as the schema's partial unique index says. */
+  private async issueReceipt(payment: PaymentRecord): Promise<ReceiptRecord> {
+    const existing = await this.repo.findReceiptByPaymentId(payment.id)
+    if (existing) return existing
+
+    const now = this.clock.now()
+    const receipt: ReceiptRecord = {
+      id: randomUUID(),
+      payment_id: payment.id,
+      refund_id: null,
+      document_type: payment.source_feature === 17 ? 'invoice' : 'receipt',
+      document_number: `${payment.source_feature === 17 ? 'INV' : 'RCPT'}-${payment.id.slice(-6).toUpperCase()}`,
+      amount: payment.amount_total,
+      billing_name: this.customerNameOf(payment),
+      issued_at: now,
+      created_at: now,
+    }
+    return this.repo.insertReceipt(receipt)
+  }
+
+  private buildAttempt(payment: PaymentRecord, result: Awaited<ReturnType<PaymentGateway['authorise']>>): PaymentAttemptRecord {
+    const now = this.clock.now()
+    return {
+      id: randomUUID(),
+      payment_id: payment.id,
+      provider_session_id: result.provider_session_id ?? `cs_failed_${payment.id.slice(-6)}`,
+      provider_intent_id: result.provider_intent_id ?? null,
+      status: result.ok ? 'authorised' : 'failed',
+      failure_code: result.failure_code ?? null,
+      card_brand: result.card_brand ?? null,
+      card_last4: result.card_last4 ?? null,
+      created_at: now,
+      updated_at: now,
+    }
+  }
+
+  /** Flags a payment for staff. The list has no table of its own yet, so the row lives in the mock repository. */
+  private async openException(payment: PaymentRecord, note: string): Promise<void> {
+    const existing = await this.repo.findException(payment.id)
+    await this.repo.saveException({
+      payment_id: payment.id,
+      state: 'needs_action',
+      detected_at: existing?.detected_at ?? this.clock.now(),
+      resolved_at: null,
+      resolved_by: null,
+      resolution: null,
+      note,
+    })
+  }
+
+  private async closeException(
+    payment: PaymentRecord,
+    resolution: PaymentExceptionResolution,
+    actor?: string | null,
+    note?: string,
+  ): Promise<void> {
+    const existing = await this.repo.findException(payment.id)
+    const now = this.clock.now()
+    await this.repo.saveException({
+      payment_id: payment.id,
+      state: 'resolved',
+      detected_at: existing?.detected_at ?? now,
+      resolved_at: now,
+      resolved_by: actor ?? null,
+      resolution,
+      note: note ?? existing?.note ?? null,
+    })
+  }
+
+  /**
+   * The problem a payment is, if it is one.
+   *
+   * A payment that is simply in flight is not a problem: it is not on the list. The frames' problems are a capture
+   * that stopped, a provider event that never arrived, a posting the ledger did not accept, and an authorisation the
+   * system released on its own.
+   */
+  private async problemFor(payment: PaymentRecord, now: Date): Promise<PaymentProblemDto | null> {
+    const exception = await this.repo.findException(payment.id)
+    const reference = paymentReference(payment)
+    const bookingReference = this.bookingReference(payment)
+
+    if (payment.capture_stalled_at) {
+      const cargo = payment.source_feature === 17
+      return {
+        id: payment.id,
+        type: cargo ? 'cargo_capture_stalled' : 'ticket_capture_stalled',
+        title: cargo ? 'Cargo capture stalled' : 'Ticket capture stalled',
+        reference,
+        booking_reference: bookingReference,
+        what_happened: cargo
+          ? 'The cargo booking is confirmed, but the card has not been charged. No Air Waybill is issued until it is.'
+          : 'The booking is confirmed and the ticket is live, but the card has not been charged.',
+        what_to_do: cargo
+          ? 'Retry the capture, or cancel the cargo booking.'
+          : 'Retry the capture. If it keeps failing, decide whether to cancel the ticket.',
+        action: 'retry_capture',
+        action_label: 'Retry capture',
+        since: payment.capture_stalled_at.toISOString(),
+        state: 'needs_action',
+        payment_id: payment.id,
+      }
+    }
+
+    if (payment.last_error === 'finance_posting_failed') {
+      return {
+        id: payment.id,
+        type: 'finance_posting_delayed',
+        title: 'Finance posting delayed',
+        reference,
+        booking_reference: bookingReference,
+        what_happened: 'The finance ledger did not answer (503). The payment itself is complete.',
+        what_to_do: 'Nothing needed. The job keeps retrying; send now if it is urgent.',
+        action: 'send_posting',
+        action_label: 'Send now',
+        since: payment.updated_at.toISOString(),
+        state: 'queued',
+        payment_id: payment.id,
+      }
+    }
+
+    if (exception?.resolution === 'posted') {
+      return {
+        id: payment.id,
+        type: 'finance_posting_delayed',
+        title: 'Finance posting delayed',
+        reference,
+        booking_reference: bookingReference,
+        what_happened: 'The finance ledger did not answer (503). The payment itself is complete.',
+        what_to_do: 'No action — the payment is in the ledger.',
+        action: 'none',
+        action_label: null,
+        since: exception.detected_at.toISOString(),
+        state: 'resolved',
+        payment_id: payment.id,
+      }
+    }
+
+    if (payment.status === 'voided' && payment.last_error === 'booking_confirm_failed') {
+      return {
+        id: payment.id,
+        type: 'authorisation_voided',
+        title: 'Authorisation voided',
+        reference,
+        booking_reference: bookingReference,
+        what_happened: 'The card was authorised, but the booking confirm failed twice. The hold was released automatically.',
+        what_to_do: 'No action. The customer was not charged.',
+        action: 'none',
+        action_label: null,
+        since: (payment.voided_at ?? payment.updated_at).toISOString(),
+        state: 'resolved',
+        payment_id: payment.id,
+      }
+    }
+
+    const waitingForProvider =
+      payment.status === 'authorised' &&
+      payment.capture_attempts === 0 &&
+      now.getTime() - payment.started_at.getTime() >= PROVIDER_EVENT_TIMEOUT_MS
+    if (waitingForProvider) {
+      return {
+        id: payment.id,
+        type: 'waiting_for_provider',
+        title: 'Waiting for Stripe',
+        reference,
+        booking_reference: bookingReference,
+        what_happened: 'No Stripe event for 30 minutes.',
+        what_to_do: 'Nothing yet. The reconciliation job is checking.',
+        action: 'none',
+        action_label: null,
+        since: payment.started_at.toISOString(),
+        state: 'queued',
+        payment_id: payment.id,
+      }
+    }
+
+    return null
+  }
+
+  private toLineDto(line: PaymentLineRecord): PaymentLineDto {
+    return { line_type: line.line_type, description: line.description, amount: line.amount }
+  }
+
+  private async toReceiptSummary(receipt: ReceiptRecord, payment: PaymentRecord): Promise<ReceiptSummaryDto> {
+    const creditNote = await this.repo.findCreditNoteByPaymentId(payment.id)
+    const flight = this.flightOf(payment)
+    const miles = await this.milesRedeemed(payment)
+    return {
+      id: receipt.id,
+      document_number: receipt.document_number,
+      document_type: receipt.document_type,
+      payment_id: payment.id,
+      source_feature: payment.source_feature,
+      source_feature_label: SOURCE_FEATURE_LABELS[payment.source_feature],
+      status: payment.status,
+      receipt_status: this.receiptStatusFor(payment, miles),
+      title: this.receiptTitle(payment),
+      amount: receipt.amount,
+      voucher_amount: payment.voucher_amount,
+      card_amount: payment.card_amount,
+      currency: payment.currency,
+      issued_at: receipt.issued_at.toISOString(),
+      booking_reference: this.bookingReference(payment),
+      route: flight?.route ?? null,
+      flight_number: flight?.flight_number ?? null,
+      flight_date: flight?.flight_date ?? null,
+      refund_state: this.refundStateFor(payment),
+      has_credit_note: creditNote !== undefined,
+      miles_redeemed: miles,
+      paid_with: this.paidWith(payment, miles, true),
+    }
+  }
+
+  private async toStaffPaymentSummary(payment: PaymentRecord): Promise<StaffPaymentSummaryDto> {
+    const receipt = await this.repo.findReceiptByPaymentId(payment.id)
+    const attempt = payment.attempts[payment.attempts.length - 1]
+    const miles = await this.milesRedeemed(payment)
+    return {
+      id: payment.id,
+      reference: paymentReference(payment),
+      purchase_ref: payment.purchase_ref,
+      source_feature: payment.source_feature,
+      source_feature_label: SOURCE_FEATURE_LABELS[payment.source_feature],
+      status: payment.status,
+      status_label: STATUS_LABELS[payment.status],
+      payer_customer_id: payment.payer_customer_id,
+      customer_name: this.customerNameOf(payment),
+      customer_email: this.customerEmailOf(payment),
+      booking_reference: this.bookingReference(payment),
+      paid_with: this.paidWith(payment, miles),
+      card_brand: attempt?.card_brand ?? null,
+      card_last4: attempt?.card_last4 ?? null,
+      miles_redeemed: miles,
+      amount_total: payment.amount_total,
+      voucher_amount: payment.voucher_amount,
+      card_amount: payment.card_amount,
+      currency: payment.currency,
+      started_at: payment.started_at.toISOString(),
+      expires_at: payment.expires_at.toISOString(),
+      captured_at: payment.captured_at?.toISOString() ?? null,
+      capture_stalled_at: payment.capture_stalled_at?.toISOString() ?? null,
+      last_error: payment.last_error,
+      receipt_id: receipt?.id ?? null,
+      updated_at: payment.updated_at.toISOString(),
+    }
+  }
+
+  /**
+   * What the customer paid with, in the words the frames use.
+   *
+   * "Card ending 4242", "24,000 miles + card", "18,000 miles only". Miles are not money, so they sit next to the cash
+   * rather than inside it.
+   *
+   * The customer's receipt spells the card out in full — "24,000 miles + card ending 4242" — while the staff lookup
+   * keeps it short.
+   */
+  private paidWith(payment: PaymentRecord, miles: number | null, cardDigits = false): string {
+    const ending = this.cardEnding(payment)
+    const card = cardDigits ? (ending ? `card ending ${ending}` : 'card') : 'card'
+    if (miles !== null && miles > 0 && payment.card_amount > 0) return `${formatMiles(miles)} miles + ${card}`
+    if (miles !== null && miles > 0) return `${formatMiles(miles)} miles only`
+    if (payment.voucher_amount > 0 && payment.card_amount === 0) return 'Voucher'
+    if (ending) return `Card ending ${ending}`
+    return '—'
+  }
+
+  /** The last four digits of the card the payment was made with, when the provider told us. */
+  private cardEnding(payment: PaymentRecord): string | null {
+    const attempt = payment.attempts[payment.attempts.length - 1]
+    return attempt?.card_last4 ?? null
+  }
+
+  /**
+   * The customer's word for a receipt's state, from the frames.
+   *
+   * The frames show three: "Paid", "Miles + cash" and "Flown". A receipt that was refunded in full still shows "Paid",
+   * because a credit note is a separate document and the original receipt never changes.
+   *
+   * The flight's flown state and the miles both live outside the payment row — Feature 3b and Feature 11 own them — so
+   * the mock reads them from its own maps.
+   */
+  private receiptStatusFor(payment: PaymentRecord, miles: number | null): ReceiptStatus {
+    if (payment.context ? payment.context.flown : payment.booking_id && MOCK_BOOKING_FLOWN[payment.booking_id]) return 'flown'
+    if (miles !== null && miles > 0 && payment.card_amount > 0) return 'miles_and_cash'
+    return 'paid'
+  }
+
+  private countReceipts(summaries: ReceiptSummaryDto[]): Record<ReceiptFilter, number> {
+    const counts = { all: summaries.length, flights: 0, miles_and_cash: 0, cargo: 0, credit_note: 0 }
+    for (const filter of RECEIPT_FILTERS) {
+      if (filter === 'all') continue
+      counts[filter] = summaries.filter((summary) => this.matchesReceiptFilter(summary, filter)).length
+    }
+    return counts
+  }
+
+  /**
+   * Whether a receipt belongs on a filter chip.
+   *
+   * The frames' chips cut across the status: "Flights" is every flight receipt, "Cargo" every cargo invoice, "Miles +
+   * cash" the split ones, and "With credit note" the receipts a credit note is attached to.
+   */
+  private matchesReceiptFilter(summary: ReceiptSummaryDto, filter: ReceiptFilter): boolean {
+    if (filter === 'all') return true
+    if (filter === 'flights') return summary.source_feature === 3
+    if (filter === 'cargo') return summary.source_feature === 17
+    if (filter === 'credit_note') return summary.has_credit_note
+    return summary.receipt_status === filter
+  }
+
+  /** The receipts search box takes a booking reference, a receipt number or a city. */
+  private matchesReceiptSearch(summary: ReceiptSummaryDto, search: string | undefined): boolean {
+    if (!search) return true
+    const needle = search.trim().toLowerCase()
+    if (!needle) return true
+    return [summary.document_number, summary.booking_reference, summary.route, summary.title]
+      .filter((value): value is string => typeof value === 'string')
+      .some((value) => value.toLowerCase().includes(needle))
+  }
+
+  /** The staff lookup's search box takes a reference, a booking, a customer or the last four digits of a card. */
+  private matchesPaymentSearch(payment: PaymentRecord, search: string | undefined): boolean {
+    if (!search) return true
+    const needle = search.trim().toLowerCase()
+    if (!needle) return true
+    const attempt = payment.attempts[payment.attempts.length - 1]
+    return [
+      paymentReference(payment),
+      payment.purchase_ref,
+      this.bookingReference(payment),
+      this.customerNameOf(payment),
+      this.customerEmailOf(payment),
+      attempt?.card_last4,
+    ]
+      .filter((value): value is string => typeof value === 'string')
+      .some((value) => value.toLowerCase().includes(needle))
+  }
+
+  /** The row's own context when the repository read one (the real tables), the mock maps otherwise. */
+  private customerNameOf(payment: PaymentRecord): string | null {
+    return payment.context ? payment.context.customer_name : customerName(payment.payer_customer_id)
+  }
+
+  private customerEmailOf(payment: PaymentRecord): string | null {
+    return payment.context ? payment.context.customer_email : customerEmail(payment.payer_customer_id)
+  }
+
+  private flightOf(payment: PaymentRecord): { route: string | null; flight_number: string | null; flight_date: string | null } | null {
+    if (payment.context) {
+      const { route, flight_number, flight_date } = payment.context
+      return route || flight_number || flight_date ? { route, flight_number, flight_date } : null
+    }
+    return bookingFlight(payment.booking_id)
+  }
+
+  private bookingReference(payment: PaymentRecord): string | null {
+    if (payment.context) return payment.context.booking_reference
+    if (payment.booking_id) return MOCK_BOOKING_REFERENCE[payment.booking_id] ?? null
+    if (payment.cargo_booking_id) return MOCK_CARGO_REFERENCE[payment.cargo_booking_id] ?? null
+    return null
+  }
+
+  private receiptTitle(payment: PaymentRecord): string {
+    const label = SOURCE_FEATURE_LABELS[payment.source_feature]
+    const reference = this.bookingReference(payment)
+    return reference ? `${label} · ${reference}` : label
+  }
+
+  /**
+   * The miles a booking was redeemed with.
+   *
+   * Miles are not money: they live on Feature 11's redeem rows, not on the payment, so the receipt carries them as
+   * their own number next to the cash that was charged.
+   *
+   * They come from Feature 11's `redeem` rows (less any `redeem_reversal`), read through the repository.
+   */
+  private async milesRedeemed(payment: PaymentRecord): Promise<number | null> {
+    if (!payment.booking_id) return null
+    return this.repo.milesRedeemed(payment.booking_id)
+  }
+
+  /**
+   * Whether the customer can ask for a refund, and whether a staff member has to decide.
+   *
+   * A cargo invoice or an onboard order is not refundable by the customer — the money goes back through the seller.
+   *
+   * TODO(F5a): the refundable state is the booking's, and the "flown" state is the flight's — both belong to Feature
+   * 3b. The mock keeps them in `mock-booking-state.ts`.
+   */
+  private refundStateFor(payment: PaymentRecord): RefundState {
+    if (payment.status === 'reversed') return 'not_refundable'
+    if (payment.context) {
+      /* Real rows: refundable while a line of a captured payment still has money on it, as Feature 5b reads it. A cargo
+         invoice goes back through the cargo desk. A flight that has gone needs a person to decide. */
+      const sold = payment.source_feature !== 17
+      const left = payment.lines.some((line) => line.amount - line.refunded_amount > 0)
+      if (payment.status !== 'captured' || !sold || !left) return 'not_refundable'
+      return payment.context.flown ? 'ask_staff' : 'refundable'
+    }
+    if (!payment.booking_id) return 'not_refundable'
+    return MOCK_BOOKING_REFUND_STATE[payment.booking_id] ?? 'ask_staff'
+  }
+}
+
+/** The staff lookup's filter keys, as the chips on the page. */
+type StaffPaymentFilterKey = (typeof STAFF_PAYMENT_FILTERS)[number]
