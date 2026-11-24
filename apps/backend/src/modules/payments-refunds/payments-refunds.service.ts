@@ -633,7 +633,7 @@ export class PaymentsRefundsService {
   async refundCargoBooking(input: {
     paymentId: string
     cargoBookingId: string
-    reason: 'cargo_cancel' | 'cargo_rejected' | 'cargo_reweigh'
+    reason: 'cargo_cancel' | 'cargo_rejected' | 'cargo_reweigh' | 'flight_cancelled'
     amount: number
     note: string
     reweighNo?: number
@@ -645,9 +645,12 @@ export class PaymentsRefundsService {
       reason: input.reason,
       amount: input.amount,
       note: input.note,
-      label: { cargo_cancel: 'Cancelled by the shipper', cargo_rejected: 'Shipment rejected', cargo_reweigh: 'Re-weighed lower' }[
-        input.reason
-      ],
+      label: {
+        cargo_cancel: 'Cancelled by the shipper',
+        cargo_rejected: 'Shipment rejected',
+        cargo_reweigh: 'Re-weighed lower',
+        flight_cancelled: 'Flight cancelled',
+      }[input.reason],
       rule: 'The amount Feature 17 worked out from its fee and refundable percent.',
       lineTypes: ['cargo_freight', 'cargo_surcharge'],
     })

@@ -7,7 +7,7 @@ import { PaymentsRefundsService } from './payments-refunds.service'
 export interface CargoRefundRequest {
   cargoBookingId: string
   /** `cargo_cancel` (the shipper cancels), `cargo_rejected` (staff reject the shipment) or `cargo_reweigh` (a lower weight). */
-  reason: 'cargo_cancel' | 'cargo_rejected' | 'cargo_reweigh'
+  reason: 'cargo_cancel' | 'cargo_rejected' | 'cargo_reweigh' | 'flight_cancelled'
   /** What goes back, worked out by Feature 17 from its fee and refundable percent (the whole payment before acceptance). */
   amount: number
   note: string
@@ -34,6 +34,28 @@ export class CargoRefundAdapter {
     private readonly payments: PaymentsCheckoutService,
     private readonly refunds: PaymentsRefundsService,
   ) {}
+
+  /**
+   * The call Feature 17's cancel, reject and flight-cancel paths make, which know the payment but not the cargo booking id.
+   * The whole `amount` goes back; a payment that is only authorised is voided instead (answers undefined).
+   */
+  async refundForPayment(request: {
+    bookingRef: string
+    paymentId: string
+    amount: number
+    reason: 'cancel' | 'rejected' | 'flight'
+  }): Promise<RefundRecord | undefined> {
+    const payment = await this.payments.findPaymentById(request.paymentId)
+    if (!payment?.cargo_booking_id) throw new Error(`Payment ${request.paymentId} is not a cargo payment`)
+    return this.refund({
+      cargoBookingId: payment.cargo_booking_id,
+      reason: { cancel: 'cargo_cancel', rejected: 'cargo_rejected', flight: 'flight_cancelled' }[
+        request.reason
+      ] as CargoRefundRequest['reason'],
+      amount: request.amount,
+      note: `Cargo booking ${request.bookingRef}`,
+    })
+  }
 
   async refund(request: CargoRefundRequest): Promise<RefundRecord | undefined> {
     const payment = await this.payments.findLivePaymentForCargoBooking(request.cargoBookingId)

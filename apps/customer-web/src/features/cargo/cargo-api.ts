@@ -218,7 +218,6 @@ export interface BookingDetail {
   consignee: { name: string; address: string; phone: string | null }
   timeline: TimelineEvent[]
   claim: BookingClaim | null
-  mock_payment_available?: boolean
 }
 
 export interface ClaimListItem {
@@ -262,9 +261,11 @@ export interface ClaimableResult {
   data: ClaimableBooking[]
 }
 
-export interface MockPayResult {
-  awbNumber?: string
-  error?: { code: string; message: string }
+export interface CargoCheckoutResult {
+  payment_id: string
+  /** `captured` or `authorised` when paid on the spot; `created` when the customer goes to `checkout_url`. */
+  status: string
+  checkout_url: string | null
 }
 
 export interface TrackResult {
@@ -360,7 +361,13 @@ export function useCustomerCargoApi() {
 
     getBookingDetail: (id: string) => send<BookingDetail>(`/api/cargo/bookings/${id}`),
     cancelBooking: (id: string) => send<{ status: string; refundId?: string }>(`/api/cargo/bookings/${id}`, { method: 'DELETE' }),
-    mockPay: (id: string) => send<MockPayResult>(`/api/cargo/bookings/${id}/mock-pay`, { method: 'POST' }),
+    /** Feature 5's checkout for a held cargo booking. The key makes a second click the same payment. */
+    checkout: (cargoBookingId: string, idempotencyKey: string) =>
+      send<CargoCheckoutResult>('/api/checkout', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify({ cargo_booking_id: cargoBookingId }),
+      }),
 
     fileClaim: (bookingId: string, body: { claim_type: string; pieces_affected: number; description: string; claimed_amount: number }) =>
       send<{ id: string; claimRef: string }>(`/api/cargo/bookings/${bookingId}/claims`, { method: 'POST', body: JSON.stringify(body) }),

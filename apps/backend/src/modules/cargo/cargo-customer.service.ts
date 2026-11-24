@@ -441,8 +441,6 @@ export class CargoCustomerService {
       },
     })
 
-    const isDev = process.env.NODE_ENV !== 'production'
-
     return {
       id: booking.id,
       bookingRef: booking.booking_ref,
@@ -524,7 +522,6 @@ export class CargoCustomerService {
               : null,
           }
         : null,
-      ...(isDev ? { mock_payment_available: true } : {}),
     }
   }
 
@@ -547,7 +544,7 @@ export class CargoCustomerService {
       }
 
       if (status === 'booked' && booking.payment_id) {
-        let refundResult: { refundId: string }
+        let refundResult: { refundId: string | undefined }
         try {
           refundResult = await refundFull(tx, booking.booking_ref, booking.payment_id, Number(booking.quoted_charge), 'cancel')
         } catch (e) {
