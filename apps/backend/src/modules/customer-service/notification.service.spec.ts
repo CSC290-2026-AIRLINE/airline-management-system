@@ -133,6 +133,17 @@ describe('NotificationService', () => {
       await expect(service.processStoredEvents()).resolves.toBe(1)
     })
 
+    it('stops retrying an event that keeps failing so it cannot fill the batch', async () => {
+      db.inbound_event.updateMany.mockRejectedValue(new Error('bad row'))
+      for (let i = 0; i < 5; i++) await service.processStoredEvents()
+
+      await service.processStoredEvents()
+
+      expect(db.inbound_event.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { processed_at: null, id: { notIn: ['ev-11'] } } }),
+      )
+    })
+
     it('marks an event for a customer that no longer exists as processed without sending', async () => {
       db.customer.findFirst.mockResolvedValue(null)
       await expect(service.processStoredEvents()).resolves.toBe(1)
@@ -974,6 +985,17 @@ describe('NotificationService', () => {
         where: { id: 'notif-fail-legacy' },
         data: expect.objectContaining({ body: 'Dear , your flight FY308 is delayed.', status: 'sent' }),
       })
+    })
+
+    it('also looks at recently cancelled bookings when asked, for flight_cancelled', async () => {
+      db.booking_segment.findMany.mockResolvedValue([])
+
+      await service.findPassengersForFlightTemporary('flight-1', { includeRecentlyCancelled: true })
+      await service.findPassengersForFlightTemporary('flight-1')
+
+      const where = (n: number) => db.booking_segment.findMany.mock.calls[n][0].where.booking
+      expect(where(0).OR).toEqual([{ status: 'confirmed' }, { status: 'cancelled', cancelled_at: { gte: expect.any(Date) } }])
+      expect(where(1)).toEqual({ status: 'confirmed' })
     })
 
     it('gives a co-traveller without an account no customer id, instead of the booker’s', async () => {

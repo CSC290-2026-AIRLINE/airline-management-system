@@ -60,10 +60,12 @@ function statusText(status: string): string {
 
 /** How often (real time) stored events from other features are picked up and sent. */
 export const STORED_EVENT_TICK_MS = 15_000
+const MAX_STORED_EVENT_ATTEMPTS = 5
 
 @Injectable()
 export class NotificationService implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(NotificationService.name)
+  private readonly storedEventFailures = new Map<string, number>()
   private mockFailure = false
   private timer: NodeJS.Timeout | null = null
   private ticking = false
@@ -133,11 +135,19 @@ export class NotificationService implements OnModuleInit, OnApplicationBootstrap
   /**
    * Temporary method querying confirmed bookings on a flight until Feature 3 provides its passenger-list route.
    */
-  async findPassengersForFlightTemporary(flightId: string): Promise<EventRecipient[]> {
+  async findPassengersForFlightTemporary(
+    flightId: string,
+    options: { includeRecentlyCancelled?: boolean } = {},
+  ): Promise<EventRecipient[]> {
+    // Feature 3 cancels a flight's bookings when the flight is cancelled, so by the time `flight.cancelled` reaches us
+    // they are no longer confirmed. For that event also take bookings cancelled within the last day (simulation clock).
+    const recentCutoff = new Date(this.clock.now().getTime() - 24 * 60 * 60 * 1000)
     const segments = await this.db.booking_segment.findMany({
       where: {
         flight_id: flightId,
-        booking: { status: 'confirmed' },
+        booking: options.includeRecentlyCancelled
+          ? { OR: [{ status: 'confirmed' }, { status: 'cancelled', cancelled_at: { gte: recentCutoff } }] }
+          : { status: 'confirmed' },
       },
       include: {
         booking: {
@@ -201,7 +211,9 @@ export class NotificationService implements OnModuleInit, OnApplicationBootstrap
     const notifType = typeMapping[event.type]
     if (!notifType) return
 
-    const recipients = await this.findPassengersForFlightTemporary(event.flight_id)
+    const recipients = await this.findPassengersForFlightTemporary(event.flight_id, {
+      includeRecentlyCancelled: event.type === 'flight.cancelled',
+    })
 
     const payload: Record<string, any> = {
       flight_number: event.flight_number,
@@ -393,8 +405,11 @@ export class NotificationService implements OnModuleInit, OnApplicationBootstrap
    * processed, so only these are picked up. Returns how many events were sent.
    */
   async processStoredEvents(limit = 50): Promise<number> {
+    // A row that keeps failing is skipped after MAX_STORED_EVENT_ATTEMPTS tries (until restart) so it cannot fill the batch
+    // and starve newer events.
+    const exhausted = [...this.storedEventFailures].filter(([, n]) => n >= MAX_STORED_EVENT_ATTEMPTS).map(([id]) => id)
     const pending = await this.db.inbound_event.findMany({
-      where: { processed_at: null },
+      where: { processed_at: null, ...(exhausted.length ? { id: { notIn: exhausted } } : {}) },
       orderBy: { received_at: 'asc' },
       take: limit,
     })
@@ -402,8 +417,10 @@ export class NotificationService implements OnModuleInit, OnApplicationBootstrap
     for (const event of pending) {
       try {
         if (await this.processStoredEvent(event)) processed++
+        this.storedEventFailures.delete(event.id)
       } catch (e) {
-        // One bad event must not hold up the rest; it stays unprocessed and is tried again on the next tick.
+        // One bad event must not hold up the rest; it stays unprocessed and is tried again on the next tick, up to a limit.
+        this.storedEventFailures.set(event.id, (this.storedEventFailures.get(event.id) ?? 0) + 1)
         this.logger.error(`Stored event ${event.id} (${event.event_type}) failed`, e instanceof Error ? e.stack : String(e))
       }
     }

@@ -186,7 +186,10 @@ describe('CustomerServiceService', () => {
       expect(db.booking_segment.findFirst).toHaveBeenCalledWith({
         where: {
           flight_id: 'flight-1',
-          booking: { OR: [{ customer_id: CUSTOMER.id }, { booking_passenger: { some: { passenger_id: CUSTOMER.passenger_id } } }] },
+          booking: {
+            status: 'confirmed',
+            OR: [{ customer_id: CUSTOMER.id }, { booking_passenger: { some: { passenger_id: CUSTOMER.passenger_id } } }],
+          },
         },
         select: { id: true },
       })

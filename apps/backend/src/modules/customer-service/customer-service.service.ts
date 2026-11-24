@@ -152,7 +152,6 @@ export interface StaffDeliveryLogResponse {
     eventsReceived: number
     messagesSent: number
     failedRetrying: number
-    duplicateIgnored: number
   }
   rows: DeliveryLogRowView[]
 }
@@ -238,6 +237,7 @@ export class CustomerServiceService {
         where: {
           flight_id: flight.id,
           booking: {
+            status: 'confirmed',
             ...(bookingReference ? { booking_reference: bookingReference } : {}),
             OR: [{ customer_id: customer.id }, { booking_passenger: { some: { passenger_id: customer.passenger_id } } }],
           },
@@ -1044,8 +1044,6 @@ export class CustomerServiceService {
         eventsReceived: new Set(notifs.map((n) => n.inbound_event_id)).size,
         messagesSent: notifs.filter((n) => n.status === 'sent').length,
         failedRetrying: notifs.filter((n) => n.status === 'failed').length,
-        // Duplicate inbound events are rejected by inbound_event's unique key and never stored, so there is nothing to count yet.
-        duplicateIgnored: 0,
       },
       rows,
     }
