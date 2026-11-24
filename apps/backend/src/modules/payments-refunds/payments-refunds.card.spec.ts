@@ -5,7 +5,7 @@ import { PaymentsRefundsService } from './payments-refunds.service'
 import { buildSeedRefunds, buildSeedVouchers, InMemoryRefundRepository, seedRepository } from './refund.repository'
 import { IssueCompensationDto, RefundDecisionDto } from './dto/refund-action.dto'
 import type { CardRefundPort } from './card-refund.port'
-import type { BookingInfo, RefundRecord } from './refund.types'
+import type { BookingInfo, PaidPayment, RefundRecord } from './refund.types'
 
 // The service imports the audit writer, which imports DbService; the tests need neither a database nor Clerk.
 jest.mock('@backend/db/db.service', () => ({ DbService: class {} }))
@@ -315,5 +315,31 @@ describe('PaymentsRefundsService.issueCompensation — a card refund as compensa
     const entry = await svc.issueCompensation(STAFF, dto)
 
     expect(entry.status_label).toBe('Payout failed')
+  })
+})
+
+describe('PaymentsRefundsService — approving to the card on a payment a voucher helped pay', () => {
+  it('sends only the card’s share to the card and returns the voucher’s share as a new voucher', async () => {
+    const { svc, port, repo } = await setup({ total: 300, refunds: [waitingRefund('r-mixed', 300)] })
+    jest.spyOn(repo, 'findPaidPayment').mockResolvedValue({ amount_total: 300, voucher_amount: 200 } as PaidPayment)
+
+    const detail = await svc.decide('r-mixed', STAFF, decision('approve_card'))
+
+    expect(port.refundToCard).toHaveBeenCalledWith({ payment_id: PAYMENT, refund_id: 'r-mixed', amount: 100 })
+    expect(detail.voucher_amount).toBe(200)
+    expect(detail.status).toBe('succeeded')
+    const stored = await repo.findRefundById('r-mixed')
+    expect(stored?.context.voucher_code).toEqual(expect.any(String))
+  })
+
+  it('needs no card payout when the voucher paid for all of it', async () => {
+    const { svc, port, repo } = await setup({ total: 50, refunds: [waitingRefund('r-voucher', 50)] })
+    jest.spyOn(repo, 'findPaidPayment').mockResolvedValue({ amount_total: 50, voucher_amount: 50 } as PaidPayment)
+
+    const detail = await svc.decide('r-voucher', STAFF, decision('approve_card'))
+
+    expect(port.refundToCard).not.toHaveBeenCalled()
+    expect(detail.voucher_amount).toBe(50)
+    expect(detail.status).toBe('succeeded')
   })
 })

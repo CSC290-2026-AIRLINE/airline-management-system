@@ -67,6 +67,11 @@ function providerRefundOf(refund: RefundRecord): string {
   return `RF-${refund.reference.replace(/^REF-/, '')}`
 }
 
+/** What of a refund goes back to the card: all of it less the share a voucher paid. */
+function cardShareOf(refund: RefundRecord): number {
+  return Math.round((refund.amount - refund.voucher_amount) * 100) / 100
+}
+
 /** True when a refund is one the compensation page owns rather than the queue the customer's requests go through. */
 function isCompensation(refund: RefundRecord): boolean {
   return COMPENSATION_REASONS.includes(refund.reason)
@@ -176,11 +181,34 @@ export class PaymentsRefundsService {
     if (dto.decision === 'reject') {
       refund.status = 'rejected'
     } else if (dto.decision === 'approve_card') {
-      refund.status = 'processing'
       refund.method = 'original'
-      refund.voucher_amount = 0
-      /* The provider names the refund once it has it; without a provider the module keeps its own placeholder. */
-      refund.provider_refund_id = this.cardRefunds ? null : providerRefundOf(refund)
+      /*
+       * A payment made partly with a voucher gives the voucher's share back as a new voucher, in the same proportion as
+       * `refundPaidPayment`, and only the card's share goes to the card: the card never paid the whole amount, so the
+       * provider would refuse it.
+       */
+      refund.voucher_amount = await this.voucherShareOf(refund)
+      if (refund.voucher_amount > 0) {
+        voucher = await this.newVoucher({
+          customerId: refund.context.customer_id,
+          amount: refund.voucher_amount,
+          currency: await this.currencyOf(refund),
+          booking: refund.context.booking_reference,
+          refundId: refund.id,
+          note: dto.reason,
+          description: `Voucher share of refund ${referenceOf(refund)}`,
+        })
+        refund.context.voucher_code = voucher.code
+      }
+      if (cardShareOf(refund) > 0) {
+        refund.status = 'processing'
+        /* The provider names the refund once it has it; without a provider the module keeps its own placeholder. */
+        refund.provider_refund_id = this.cardRefunds ? null : providerRefundOf(refund)
+      } else {
+        /* A payment the voucher paid in full has nothing to send to a card: the new voucher is the whole refund. */
+        refund.status = 'succeeded'
+        refund.completed_at = now
+      }
     } else {
       refund.method = 'voucher'
       refund.voucher_amount = refund.amount
@@ -220,7 +248,7 @@ export class PaymentsRefundsService {
     })
 
     /* The decision is saved as "paying to card" before the provider is asked, so a refund is never lost between the two. */
-    if (dto.decision === 'approve_card') await this.payToCard(refund, actorId)
+    if (dto.decision === 'approve_card' && refund.status === 'processing') await this.payToCard(refund, actorId)
 
     return this.toDetail(refund)
   }
@@ -256,9 +284,17 @@ export class PaymentsRefundsService {
     const outcome = await this.cardRefunds.refundToCard({
       payment_id: refund.payment_id,
       refund_id: refund.id,
-      amount: Math.round((refund.amount - refund.voucher_amount) * 100) / 100,
+      amount: cardShareOf(refund),
     })
     await this.settleCardPayout(refund, outcome, actorId)
+  }
+
+  /** The part of a refund a voucher paid for: its share of the payment, as `refundPaidPayment` splits it. 0 when unknown. */
+  private async voucherShareOf(refund: RefundRecord): Promise<number> {
+    const paid = await this.repo.findPaidPayment(refund.payment_id)
+    if (!paid || paid.amount_total <= 0 || paid.voucher_amount <= 0) return 0
+    const cents = (value: number) => Math.round(value * 100)
+    return Math.round((cents(refund.amount) * cents(paid.voucher_amount)) / cents(paid.amount_total)) / 100
   }
 
   /**
