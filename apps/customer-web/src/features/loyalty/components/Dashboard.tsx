@@ -152,7 +152,7 @@ function Progress({ label, have, need, note, bar }: { label: string; have: numbe
           {formatMiles(have)} / {formatMiles(need)}
         </span>
       </div>
-      <ProgressBar value={pct} aria-label={label} className={cx('h-1.5 bg-divider', bar)} />
+      <ProgressBar value={pct} aria-label={label} className={cx('h-1.5 bg-line', bar)} />
       <span className="text-[11px] text-muted-foreground">{note}</span>
     </div>
   )
@@ -271,7 +271,7 @@ function LatestActivity({ rows }: { rows: StatementRow[] }) {
           {rows.map((r) => {
             const { icon: Icon, tone } = ACTIVITY_ICON[r.type]
             return (
-              <li key={r.seq} className="flex items-center gap-3 border-b border-divider py-3 last:border-0">
+              <li key={r.seq} className="flex items-center gap-3 border-b border-line py-3 last:border-0">
                 <span className={cx('grid size-9 flex-none place-items-center rounded-full', tone)} aria-hidden="true">
                   <Icon size={16} />
                 </span>

@@ -11,7 +11,7 @@ export const AWARD_SEARCH_PATH = '/loyalty/flights'
 
 export const cx = (...classes: (string | false | null | undefined)[]) => classes.filter(Boolean).join(' ')
 
-export const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal'
+export const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-link'
 
 // Page wrapper shared by every Feature 11 customer page: the F11 palette and type, light in dark mode as designed, and
 // headings reset against the app-wide h1/h2/p styles in index.css.

@@ -7,12 +7,7 @@ import { TrendingDestinations } from './TrendingDestinations'
 /** Public landing page, built from the "Composite / Homepage v2" frame in the design file. */
 export function HomePage() {
   return (
-    // Brand colours only: shadcn components below keep their stock size, radius and spacing and read these variables.
-    // The select list and calendar popups render in a portal outside this element, so they keep the app's neutral theme.
-    <div
-      data-full-bleed
-      className="flex-1 bg-soft selection:bg-[#ff9f00]/40 selection:text-navy [--primary-foreground:#ffffff] [--primary:var(--color-navy)] [--ring:var(--color-navy)]"
-    >
+    <div data-full-bleed className="flex-1 bg-muted selection:bg-brand-accent/40 selection:text-navy">
       <main>
         <section className="relative isolate">
           {/* A fixed-height photo band. The search form flows normally and straddles its lower edge, so the form can grow
@@ -34,8 +29,8 @@ export function HomePage() {
           <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8 px-4 pt-10 sm:px-6 md:gap-10">
             {/* The one authored moment: the headline and then the search settle in once. Skipped for reduced motion. */}
             <div className="flex max-w-[520px] animate-in flex-col gap-4 duration-700 ease-out fade-in slide-in-from-bottom-4 fill-mode-backwards motion-reduce:animate-none">
-              <h1 className="m-0 text-5xl leading-none font-bold tracking-tight text-white md:text-6xl lg:text-7xl">
-                Where to <span className="block text-[#ff9e00]">next?</span>
+              <h1 className="m-0 font-serif text-[2rem]/10 font-bold tracking-[-0.02em] text-white md:text-display">
+                Where to <span className="block text-brand-accent">next?</span>
               </h1>
               <p className="max-w-[400px] text-xl/normal text-white/90">
                 Search flights, check in online or ship cargo with Flython Airlines.

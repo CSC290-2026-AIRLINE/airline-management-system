@@ -13,7 +13,6 @@ import { Skeleton } from '@customer-web/components/ui/skeleton'
 import { DESTINATIONS, formatMoney, type Destination } from './destinations'
 import { useDestinationFares, type DestinationFare } from './useDestinationFares'
 
-const serif = 'font-[family-name:Merriweather,Georgia,serif]'
 const shortDay = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
 
 function DestinationCard({ destination, fare, origin }: { destination: Destination; fare: DestinationFare; origin: string }) {
@@ -49,10 +48,10 @@ function DestinationCard({ destination, fare, origin }: { destination: Destinati
           <div className="mt-auto flex items-center justify-between gap-3 pt-4">
             <div className="flex flex-col gap-0.5">
               <span className="text-xs text-muted-foreground">One way from</span>
-              <span className={`${serif} text-lg font-bold`}>{formatMoney(fare.price, fare.currency)}</span>
+              <span className="font-serif text-subheading font-bold">{formatMoney(fare.price, fare.currency)}</span>
             </div>
             {/* The whole card is the link, so this only has the look of a button and is not a second control. */}
-            <Button asChild size="icon" className="bg-[#ff9f00] text-navy group-hover:bg-[#ff9f00]/90">
+            <Button asChild size="icon" className="bg-brand-accent text-on-brand-accent group-hover:bg-brand-accent/90">
               <span>
                 <ArrowUpRight aria-hidden />
               </span>
@@ -85,7 +84,7 @@ export function TrendingDestinations() {
     <section aria-labelledby="trending-heading" className="flex flex-col gap-7">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-2">
-          <h2 id="trending-heading" className={`${serif} m-0 text-2xl leading-tight font-bold`}>
+          <h2 id="trending-heading" className="m-0 text-heading">
             Trending destinations
           </h2>
           <p className="text-muted-foreground">Lowest fares departing from your city over the next three weeks.</p>

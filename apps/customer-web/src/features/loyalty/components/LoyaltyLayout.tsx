@@ -9,10 +9,10 @@ const TABS = [
   { to: '/loyalty/redemptions', label: 'My Redemptions', short: 'Redemptions', exact: false },
 ] as const
 
-// Desktop: underlined tabs. Phone: a segmented control with the active tab in mint (M1).
+// Desktop: underlined tabs. Phone: a segmented control with the active tab on the info tint.
 const tab = cx(
   'flex-1 whitespace-nowrap rounded-lg px-2 py-2 text-center text-[13px] font-medium text-muted-foreground no-underline',
-  'data-[status=active]:bg-mint data-[status=active]:font-semibold data-[status=active]:text-[#0b5563]',
+  'data-[status=active]:bg-info-tint data-[status=active]:font-semibold data-[status=active]:text-navy',
   'sm:flex-none sm:rounded-none sm:border-b-2 sm:border-transparent sm:px-0 sm:pt-0 sm:pb-3 sm:text-sm',
   'sm:data-[status=active]:border-navy sm:data-[status=active]:bg-transparent sm:data-[status=active]:text-ink',
   'hover:text-ink',

@@ -67,7 +67,7 @@ export function BenefitsPage({ member, tiers, uses }: { member: MemberSummary; t
                   <span
                     className={cx(
                       'grid size-10 flex-none place-items-center rounded-lg',
-                      line.included ? 'bg-[#fbe7a8] text-gold-ink' : 'bg-divider text-muted-foreground',
+                      line.included ? 'bg-[#fbe7a8] text-gold-ink' : 'bg-line text-muted-foreground',
                     )}
                     aria-hidden="true"
                   >
@@ -170,7 +170,7 @@ function BenefitHistory({ uses }: { uses: BenefitUse[] }) {
                   {shown.map((u) => (
                     <li
                       key={u.id}
-                      className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1 border-b border-divider px-4 py-4 last:border-0 sm:grid-cols-[auto_1fr_1fr_auto] sm:px-5"
+                      className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1 border-b border-line px-4 py-4 last:border-0 sm:grid-cols-[auto_1fr_1fr_auto] sm:px-5"
                     >
                       <span
                         className="row-span-2 grid size-9 place-items-center rounded-lg bg-[#e8eef7] text-link sm:row-span-1"
