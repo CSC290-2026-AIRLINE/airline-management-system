@@ -9,27 +9,48 @@ export function HomePage() {
   return (
     // Brand colours only: shadcn components below keep their stock size, radius and spacing and read these variables.
     // The select list and calendar popups render in a portal outside this element, so they keep the app's neutral theme.
-    <div data-full-bleed className="flex-1 bg-soft [--primary-foreground:#ffffff] [--primary:var(--color-navy)] [--ring:var(--color-navy)]">
+    <div
+      data-full-bleed
+      className="flex-1 bg-soft selection:bg-[#ff9f00]/40 selection:text-navy [--primary-foreground:#ffffff] [--primary:var(--color-navy)] [--ring:var(--color-navy)]"
+    >
       <main>
-        <section className="relative isolate flex flex-col justify-end bg-navy">
-          <img src={hero} alt="" className="absolute inset-0 -z-20 size-full object-cover object-[70%_center]" />
-          <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[rgba(20,33,61,0.85)] via-[rgba(20,33,61,0.4)] via-60% to-transparent md:from-[rgba(20,33,61,0.78)] md:via-[rgba(20,33,61,0.35)] md:to-[rgba(20,33,61,0)]" />
-          <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-16 px-4 pt-14 sm:px-6 md:gap-24 md:pt-24 lg:pt-[100px]">
-            <div className="flex max-w-[520px] flex-col gap-4">
-              <h1 className="m-0 text-6xl leading-none font-bold tracking-tight text-white md:text-7xl lg:text-[90px]">
+        <section className="relative isolate">
+          {/* A fixed-height photo band. The search form flows normally and straddles its lower edge, so the form can grow
+              (multi-city) without pushing the photo or hiding the aircraft, which is anchored into the visible part. */}
+          <div className="absolute inset-x-0 top-0 -z-10 h-[26rem] overflow-hidden bg-navy md:h-[540px]">
+            {/* The largest paint on the page, so it loads first and has its size reserved. */}
+            <img
+              src={hero}
+              alt=""
+              width={1672}
+              height={941}
+              fetchPriority="high"
+              decoding="async"
+              className="size-full object-cover object-[70%_75%]"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-[rgba(20,33,61,0.85)] via-[rgba(20,33,61,0.4)] via-60% to-transparent md:from-[rgba(20,33,61,0.78)] md:via-[rgba(20,33,61,0.35)] md:to-[rgba(20,33,61,0)]" />
+          </div>
+          {/* Tight enough that the whole search form is on the first screen of a laptop, since searching is the page's job. */}
+          <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8 px-4 pt-10 sm:px-6 md:gap-10">
+            {/* The one authored moment: the headline and then the search settle in once. Skipped for reduced motion. */}
+            <div className="flex max-w-[520px] animate-in flex-col gap-4 duration-700 ease-out fade-in slide-in-from-bottom-4 fill-mode-backwards motion-reduce:animate-none">
+              <h1 className="m-0 text-5xl leading-none font-bold tracking-tight text-white md:text-6xl lg:text-7xl">
                 Where to <span className="block text-[#ff9e00]">next?</span>
               </h1>
               <p className="max-w-[400px] text-xl/normal text-white/90">
                 Search flights, check in online or ship cargo with Flython Airlines.
               </p>
             </div>
-            <div className="-mb-6">
+            <div
+              className="animate-in duration-700 ease-out fade-in slide-in-from-bottom-4 fill-mode-backwards motion-reduce:animate-none"
+              style={{ animationDelay: '150ms' }}
+            >
               <SearchCard />
             </div>
           </div>
         </section>
 
-        <div className="mx-auto flex max-w-[1200px] flex-col gap-16 px-4 pt-24 pb-20 sm:px-6 md:gap-[72px]">
+        <div className="mx-auto flex max-w-[1200px] flex-col gap-16 px-4 pt-16 pb-20 sm:px-6 md:gap-[72px]">
           <TrendingDestinations />
           <LoyaltyBanner />
         </div>
