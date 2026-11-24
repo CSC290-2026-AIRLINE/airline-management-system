@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, InternalServerErrorException } from '@nestjs/common'
+import { ConflictException, ForbiddenException } from '@nestjs/common'
 import { CargoDeskService } from './cargo-desk.service'
 import { CargoEventsService } from './cargo-events.service'
 
@@ -14,6 +14,8 @@ jest.mock('./cargo-deps', () => ({
   getAircraftCapacity: jest.fn().mockResolvedValue({ holdLimitKg: 4000, sellableSeats: 180 }),
   seatsTakenOnFlight: jest.fn().mockReturnValue(0),
   refundFull: jest.fn().mockResolvedValue({ refundId: 'refund-1' }),
+  refundFailed: (what: 'cancellation' | 'rejection', cause: unknown) =>
+    jest.requireActual<typeof import('./cargo-deps')>('./cargo-deps').refundFailed(what, cause),
   loadedBaggageKg: jest.fn().mockReturnValue(null),
 }))
 
@@ -44,6 +46,7 @@ function makeTx() {
       findUnique: jest.fn(),
     },
     $queryRaw: jest.fn(),
+    $executeRaw: jest.fn().mockResolvedValue(1),
   }
 }
 
@@ -209,6 +212,8 @@ describe('CargoDeskService', () => {
       getAircraftCapacity.mockClear()
 
       await service.postEvent('b1', 'loaded', undefined, 'user-1')
+      const lockSql = tx.$executeRaw.mock.calls.map((c) => [...(c[0] as TemplateStringsArray), ...c.slice(1)].join(''))
+      expect(lockSql.some((sql) => sql.includes('pg_advisory_xact_lock') && sql.includes('cargo-flight:f1'))).toBe(true)
       expect(getAircraftCapacity).toHaveBeenCalledWith(expect.anything(), 'ac-1')
       expect(getAircraftCapacity).not.toHaveBeenCalledWith(expect.anything(), 'f1')
     })
@@ -293,7 +298,7 @@ describe('CargoDeskService', () => {
       refundFull.mockRejectedValueOnce(new Error('provider down'))
 
       const err = await service.postEvent('b1', 'cancelled', 'Customer requested', 'user-1').catch((e) => e)
-      expect(err).toBeInstanceOf(InternalServerErrorException)
+      expect(err.getStatus()).toBe(502)
       expect(err.response.error.message).toContain('provider down')
     })
   })

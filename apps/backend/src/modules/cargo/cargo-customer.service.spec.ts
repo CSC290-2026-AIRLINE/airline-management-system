@@ -1,4 +1,4 @@
-import { ConflictException, InternalServerErrorException, NotFoundException } from '@nestjs/common'
+import { ConflictException, NotFoundException } from '@nestjs/common'
 import { CargoCustomerService } from './cargo-customer.service'
 import { CargoEventsService } from './cargo-events.service'
 
@@ -14,6 +14,8 @@ jest.mock('./cargo-deps', () => ({
   getAircraftCapacity: jest.fn().mockResolvedValue({ holdLimitKg: 4000, sellableSeats: 180 }),
   seatsTakenOnFlight: jest.fn().mockReturnValue(0),
   refundFull: jest.fn().mockResolvedValue({ refundId: 'refund-1' }),
+  refundFailed: (what: 'cancellation' | 'rejection', cause: unknown) =>
+    jest.requireActual<typeof import('./cargo-deps')>('./cargo-deps').refundFailed(what, cause),
   loadedBaggageKg: jest.fn().mockReturnValue(null),
 }))
 
@@ -111,7 +113,7 @@ describe('CargoCustomerService.cancelMyBooking', () => {
     refundFull.mockRejectedValueOnce(new Error('check constraint violation'))
 
     const err = await service.cancelMyBooking('cust-1', 'b1').catch((e) => e)
-    expect(err).toBeInstanceOf(InternalServerErrorException)
+    expect(err.getStatus()).toBe(502)
     expect(err.response.error.message).toContain('check constraint violation')
   })
 

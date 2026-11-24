@@ -100,6 +100,49 @@ describe('CargoBookingService', () => {
     })
   })
 
+  describe('quote: flight choice', () => {
+    it('gives a tie on departure to the flight with more available weight', async () => {
+      runQuote.mockRestore()
+      const dep = new Date('2026-11-12T01:00:00Z')
+      const quoteDb = {
+        cargo_setting: { findMany: jest.fn().mockResolvedValue([]) },
+        cargo_prohibited_item: { findMany: jest.fn().mockResolvedValue([]) },
+        cargo_commodity_type: {
+          findFirst: jest.fn().mockResolvedValue({
+            handling_class: 'general',
+            min_weight_kg: 1,
+            max_weight_kg: 5000,
+            max_piece_weight_kg: 500,
+          }),
+        },
+        flight: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'small', flight_number: 'FY1', dep_at: dep, arr_at: dep, aircraft_id: 'ac-small' },
+            { id: 'big', flight_number: 'FY2', dep_at: dep, arr_at: dep, aircraft_id: 'ac-big' },
+            { id: 'later', flight_number: 'FY3', dep_at: new Date(dep.getTime() + 3_600_000), arr_at: dep, aircraft_id: 'ac-big' },
+          ]),
+        },
+        cargo_booking: { findMany: jest.fn().mockResolvedValue([]) },
+        route: { findUnique: jest.fn().mockResolvedValue({ distance_km: 600 }) },
+        cargo_rate: { findFirst: jest.fn().mockResolvedValue({ id: 'rate1', rate_per_kg: 1.4, min_charge: 50 }) },
+      }
+      // Reserve is 90 pax x 15 kg = 1350 kg: the small hold has 650 kg free, the big one 6650 kg.
+      const { getAircraftCapacity } = jest.requireMock('./cargo-deps')
+      getAircraftCapacity.mockImplementation((_db: unknown, id: string) =>
+        Promise.resolve({ holdLimitKg: id === 'ac-small' ? 2000 : 8000, sellableSeats: 180 }),
+      )
+      ops.conflictingBookingRef.mockResolvedValue(null)
+      const quoteService = new CargoBookingService(
+        quoteDb as never,
+        events as unknown as CargoEventsService,
+        ops as unknown as CargoOperationsService,
+      )
+
+      const q = await quoteService.quote(INPUT)
+      expect(q.flightId).toBe('big')
+    })
+  })
+
   describe('confirmCargoBooking', () => {
     it('takes the AWB advisory lock before reading the next serial', async () => {
       tx.$queryRaw

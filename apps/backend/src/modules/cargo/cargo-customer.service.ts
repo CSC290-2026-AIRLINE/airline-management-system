@@ -1,9 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { simNow } from '@backend/modules/pricing/fare-quote/sim-clock'
 import { CargoBookingService, type QuoteInput, type BookingInput } from './cargo-booking.service'
 import { CargoEventsService } from './cargo-events.service'
-import { refundFull, getAircraftCapacity, seatsTakenOnFlight } from './cargo-deps'
+import { refundFailed, refundFull, getAircraftCapacity, seatsTakenOnFlight } from './cargo-deps'
 import { availableKg } from './cargo-calc'
 import { committedKgOnFlight } from './cargo-weight'
 import { addDays, localDateStr } from './cargo-input'
@@ -275,13 +275,13 @@ export class CargoCustomerService {
 
     if (input.shipDate < today) {
       throw new BadRequestException({
-        error: { code: 'CLAIM_NOT_ALLOWED', message: 'Ship date cannot be in the past' },
+        error: { code: 'INVALID_DATE', message: 'Ship date cannot be in the past' },
       })
     }
     if (input.shipDate > maxDateStr) {
       throw new BadRequestException({
         error: {
-          code: 'CLAIM_NOT_ALLOWED',
+          code: 'INVALID_DATE',
           message: `Ship date must be within ${settings.requestWindowDays} days from today`,
         },
       })
@@ -551,12 +551,7 @@ export class CargoCustomerService {
         try {
           refundResult = await refundFull(tx, booking.booking_ref, booking.payment_id, Number(booking.quoted_charge), 'cancel')
         } catch (e) {
-          throw new InternalServerErrorException({
-            error: {
-              code: 'REFUND_FAILED',
-              message: `Refund could not be processed — cancellation was not recorded: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          })
+          throw refundFailed('cancellation', e)
         }
         const event = await this.events.appendEvent(tx, {
           bookingId,

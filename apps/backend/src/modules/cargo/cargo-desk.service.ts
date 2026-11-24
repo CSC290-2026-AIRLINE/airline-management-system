@@ -1,14 +1,7 @@
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  InternalServerErrorException,
-  NotFoundException,
-} from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { availableKg, chargeableKg, exceedsTolerance, formatAwb } from './cargo-calc'
-import { getAircraftCapacity, loadedBaggageKg, refundFull, seatsTakenOnFlight } from './cargo-deps'
+import { getAircraftCapacity, loadedBaggageKg, refundFailed, refundFull, seatsTakenOnFlight } from './cargo-deps'
 import { CargoEventsService } from './cargo-events.service'
 import {
   BOOKING_WEIGHT_SELECT,
@@ -401,12 +394,7 @@ export class CargoDeskService {
       try {
         refundResult = await refundFull(tx, booking.booking_ref, paymentId, Number(booking.quoted_charge), 'rejected')
       } catch (e) {
-        throw new InternalServerErrorException({
-          error: {
-            code: 'REFUND_FAILED',
-            message: `Refund could not be processed — rejection was not recorded: ${e instanceof Error ? e.message : String(e)}`,
-          },
-        })
+        throw refundFailed('rejection', e)
       }
 
       const event = await this.events.appendEvent(tx, {
@@ -472,12 +460,7 @@ export class CargoDeskService {
         try {
           refundResult = await refundFull(tx, booking.booking_ref, paymentId, Number(booking.quoted_charge), refundReason)
         } catch (e) {
-          throw new InternalServerErrorException({
-            error: {
-              code: 'REFUND_FAILED',
-              message: `Refund could not be processed — cancellation was not recorded: ${e instanceof Error ? e.message : String(e)}`,
-            },
-          })
+          throw refundFailed('cancellation', e)
         }
         const event = await this.events.appendEvent(tx, {
           bookingId: id,
@@ -491,6 +474,8 @@ export class CargoDeskService {
       }
 
       if (eventType === 'loaded') {
+        // Same per-flight lock as taking a hold or moving a booking: two bookings loaded at once must not both fit the last room.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`cargo-flight:${booking.flight_id}`}, 0))`
         const measuredWeight = bookingWeightKg(booking)
         const flight = await tx.flight.findUnique({ where: { id: booking.flight_id }, select: { aircraft_id: true } })
         if (!flight) throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Flight not found' } })

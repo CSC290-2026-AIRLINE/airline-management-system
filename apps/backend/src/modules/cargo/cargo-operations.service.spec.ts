@@ -129,6 +129,16 @@ describe('CargoOperationsService.tick', () => {
     expect(appendEvent).not.toHaveBeenCalled()
   })
 
+  it('follows Feature 2 marking the flight departed or arrived before the clock gets there', async () => {
+    const departed = setup([row({ status: 'loaded', flight_status: 'departed', dep_at: at(1), arr_at: at(6) })])
+    await departed.svc.tick()
+    expect(calls(departed.appendEvent)).toEqual([['departed', 'system']])
+
+    const arrived = setup([row({ status: 'in_transit', flight_status: 'arrived', dep_at: at(-5), arr_at: at(1) })])
+    await arrived.svc.tick()
+    expect(arrived.appendEvent.mock.calls[0][1]).toMatchObject({ eventType: 'arrived', airportCode: 'NRT' })
+  })
+
   it('lands an in-transit booking at the destination, or at the diversion airport', async () => {
     const landed = { status: 'in_transit', dep_at: at(-8), arr_at: at(-1) }
     const normal = setup([row(landed)])

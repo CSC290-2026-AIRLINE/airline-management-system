@@ -32,13 +32,14 @@ export class CargoCustomerMockController {
     const charge = Number(booking.quoted_charge)
     const now = simNow()
 
-    const existing = await this.db.payment.findFirst({
-      where: { cargo_booking_id: booking.id, status: 'captured' },
-      select: { id: true },
+    // Behave like Feature 5a: authorise, ask cargo to confirm, then capture on success or void on a refusal (hold expired, amount
+    // changed, booking cancelled), so a failed confirm never leaves money marked as taken.
+    const live = await this.db.payment.findFirst({
+      where: { cargo_booking_id: booking.id, status: { in: ['authorised', 'captured'] } },
+      select: { id: true, status: true },
     })
-
-    const paymentId = existing
-      ? existing.id
+    const paymentId = live
+      ? live.id
       : (
           await this.db.payment.create({
             data: {
@@ -47,7 +48,7 @@ export class CargoCustomerMockController {
               payer_customer_id: customerId,
               cargo_booking_id: booking.id,
               idempotency_key: `test-cargo-${booking.booking_ref}-${Date.now()}`,
-              status: 'captured',
+              status: 'authorised',
               provider: 'fake',
               currency: booking.currency,
               amount_total: charge,
@@ -56,12 +57,22 @@ export class CargoCustomerMockController {
               started_at: now,
               expires_at: new Date(now.getTime() + 3_600_000),
               authorised_at: now,
-              captured_at: now,
             },
           })
         ).id
 
-    const result = await this.bookings.confirmCargoBooking(booking.booking_ref, paymentId, charge)
+    let result: Awaited<ReturnType<CargoBookingService['confirmCargoBooking']>>
+    try {
+      result = await this.bookings.confirmCargoBooking(booking.booking_ref, paymentId, charge)
+    } catch (e) {
+      if (live?.status !== 'captured') {
+        await this.db.payment.update({ where: { id: paymentId }, data: { status: 'voided', voided_at: simNow() } })
+      }
+      throw e
+    }
+    if (live?.status !== 'captured') {
+      await this.db.payment.update({ where: { id: paymentId }, data: { status: 'captured', captured_at: simNow() } })
+    }
     return { awbNumber: result.awbNumber }
   }
 }

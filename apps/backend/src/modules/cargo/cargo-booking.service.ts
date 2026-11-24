@@ -274,9 +274,13 @@ export class CargoBookingService {
     })
 
     let selectedFlight: (typeof flights)[number] | null = null
+    let selectedAvailable = -1
     let firstClash: string | null = null
 
+    // Earliest departure with room wins; a tie on departure goes to the flight with more available weight (spec). Flights are in
+    // dep_at order, so once one is chosen only flights leaving at that same moment can still replace it.
     for (const flight of flights) {
+      if (selectedFlight && flight.dep_at.getTime() !== selectedFlight.dep_at.getTime()) break
       const clash = await this.ops.conflictingBookingRef(tx, flight.id, commodityType.handling_class)
       if (clash) {
         firstClash ??= clash
@@ -293,9 +297,9 @@ export class CargoBookingService {
         floorPercent: settings.floorPercent,
         committedKg: committed,
       })
-      if (available >= input.declaredWeightKg) {
+      if (available >= input.declaredWeightKg && available > selectedAvailable) {
         selectedFlight = flight
-        break
+        selectedAvailable = available
       }
     }
 

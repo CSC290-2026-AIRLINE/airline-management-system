@@ -1,3 +1,4 @@
+import { HttpException, HttpStatus } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
 import { computeCapacity } from '@backend/modules/aircraft-management/seat-map'
 import type { SeatLayout } from '@backend/modules/aircraft-management/dto/layout.dto'
@@ -42,6 +43,22 @@ export async function seatsTakenOnFlight(db: PrismaLike, flightId: string): Prom
     _sum: { held_count: true, sold_count: true },
   })
   return (totals._sum.held_count ?? 0) + (totals._sum.sold_count ?? 0)
+}
+
+/**
+ * Feature 5b did not complete the refund, so nothing was recorded and the call can be retried. 502 (spec: REFUND_FAILED), since the
+ * failure is in the service we called, not in ours.
+ */
+export function refundFailed(what: 'cancellation' | 'rejection', cause: unknown): HttpException {
+  return new HttpException(
+    {
+      error: {
+        code: 'REFUND_FAILED',
+        message: `Refund could not be processed — ${what} was not recorded: ${cause instanceof Error ? cause.message : String(cause)}`,
+      },
+    },
+    HttpStatus.BAD_GATEWAY,
+  )
 }
 
 // MOCK: replace when Feature 5a payment/refund service is merged

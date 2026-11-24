@@ -81,7 +81,9 @@ export class CargoOperationsService {
       return 'none'
     }
 
-    const departed = row.dep_at <= now
+    // The spec detects departure and landing from Feature 2 when it says so, else from the clock passing dep_at / arr_at.
+    const departed = row.dep_at <= now || row.flight_status === 'departed' || row.flight_status === 'arrived'
+    const landed = row.arr_at <= now || row.flight_status === 'arrived'
     const flightEvent =
       row.flight_status === 'cancelled' || row.flight_status === 'diverted'
         ? await this.latestFlightEvent(row.flight_id, [row.flight_status])
@@ -122,7 +124,7 @@ export class CargoOperationsService {
         return 'moved'
       }
     }
-    if (row.status === 'in_transit' && row.arr_at <= now) {
+    if (row.status === 'in_transit' && landed) {
       const diverted = await this.latestFlightEvent(row.flight_id, ['diverted'])
       await this.append(row.booking_id, 'arrived', { airportCode: diverted?.newDestination ?? row.destination })
       return 'moved'
