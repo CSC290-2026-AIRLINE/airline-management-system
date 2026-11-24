@@ -8,6 +8,7 @@ import {
   voucherIssuedPosting,
   writePostings,
 } from '@backend/modules/payments-checkout/finance-journal'
+import { messageAmount, messageDate, purchaseReferenceOf, queueCustomerMessage } from '@backend/modules/payments-checkout/customer-messages'
 import type { RefundRepository } from './refund-repository.interface'
 import type { RefundMethod, RefundReason, RefundStatus, VoucherStatus } from './refund-status'
 import type {
@@ -174,6 +175,17 @@ export class PrismaRefundRepository implements RefundRepository {
         },
       })
       await writePostings(tx, [voucherIssuedPosting(voucher)])
+      await queueCustomerMessage(tx, {
+        type: 'voucher_issued',
+        sourceId: voucher.id,
+        customerId: voucher.customer_id,
+        at: voucher.issued_at,
+        placeholders: {
+          voucher_code: voucher.code,
+          amount: messageAmount(voucher.amount, voucher.currency),
+          expires_on: messageDate(voucher.expires_at),
+        },
+      })
     })
     refund.reference = referenceOf(refund.id)
     return { refund, voucher }
@@ -210,6 +222,7 @@ export class PrismaRefundRepository implements RefundRepository {
       })
       await tx.payment_line.update({ where: { id: line.payment_line_id }, data: { refunded_amount: { increment: line.amount } } })
     }
+    await this.messageRefund(tx, refund, null)
   }
 
   /** Writes what a decision changes, and gives the lines back when the refund stops counting. */
@@ -232,6 +245,7 @@ export class PrismaRefundRepository implements RefundRepository {
       },
     })
     await this.postRefundMovement(tx, refund, before.status)
+    await this.messageRefund(tx, refund, before.status)
     const wasCounted = !(GIVES_BACK as readonly string[]).includes(before.status)
     const isCounted = !(GIVES_BACK as readonly string[]).includes(refund.status)
     if (wasCounted && !isCounted) {
@@ -244,6 +258,32 @@ export class PrismaRefundRepository implements RefundRepository {
         await tx.payment_line.update({ where: { id: line.payment_line_id }, data: { refunded_amount: { increment: line.amount } } })
       }
     }
+  }
+
+  /**
+   * The customer's message for a refund that just finished, in the same transaction as the change: `refund_issued` for
+   * the cash part of one that succeeded (the voucher part has its own `voucher_issued`), `refund_failed` for one that
+   * failed, including a late failure after it had succeeded.
+   */
+  private async messageRefund(tx: Prisma.TransactionClient, refund: RefundRecord, before: string | null): Promise<void> {
+    if (refund.status === before) return
+    const cash = refund.amount - refund.voucher_amount
+    const type = refund.status === 'succeeded' && cash > 0 ? 'refund_issued' : refund.status === 'failed' ? 'refund_failed' : null
+    if (!type) return
+    const payment = await tx.payment.findUniqueOrThrow({
+      where: { id: refund.payment_id },
+      select: { payer_customer_id: true, currency: true },
+    })
+    await queueCustomerMessage(tx, {
+      type,
+      sourceId: refund.id,
+      customerId: payment.payer_customer_id,
+      at: refund.completed_at ?? refund.updated_at,
+      placeholders: {
+        reference: await purchaseReferenceOf(tx, refund.payment_id),
+        amount: messageAmount(type === 'refund_issued' ? cash : refund.amount, payment.currency),
+      },
+    })
   }
 
   /**

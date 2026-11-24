@@ -17,7 +17,9 @@ import { DbSeats } from './providers/db-seats'
 import { DbStaffIdentity } from './providers/db-staff-identity'
 import { F15Audit, F15Clock } from './providers/f15-adapters'
 import { F7Screening } from './providers/f7-screening'
+import { F13Notify } from './providers/f13-notify'
 import { ScreeningModule } from '@backend/modules/screening/screening.module'
+import { CustomerServiceModule } from '@backend/modules/customer-service'
 import {
   FixtureBookings,
   FixtureClock,
@@ -59,7 +61,6 @@ import { PrismaCheckInRepository } from './store/prisma-checkin-repository'
 const SHARED_PROVIDERS = [
   { provide: POLICE, useClass: FixturePolice },
   { provide: TIERS, useClass: FixtureTiers },
-  { provide: NOTIFY, useClass: LoggerNotify },
   { provide: SENSOR, useClass: FixtureSensor },
   { provide: STAFF_IDENTITY, useClass: DbStaffIdentity },
 ]
@@ -76,6 +77,7 @@ const MEMORY_PROVIDERS = [
   { provide: SETTINGS, useClass: FixtureSettings },
   { provide: AUDIT, useClass: LoggerAudit },
   { provide: SCREENING, useClass: FixtureScreening },
+  { provide: NOTIFY, useClass: LoggerNotify },
 ]
 
 /** 'db': the real tables of the other groups, behind the same provider interfaces. */
@@ -90,6 +92,7 @@ const DB_PROVIDERS = [
   { provide: PAYMENTS, useClass: DbPayments },
   { provide: SETTINGS, useClass: DbSettings },
   { provide: SCREENING, useClass: F7Screening },
+  { provide: NOTIFY, useClass: F13Notify },
 ]
 
 const EXPORTED_TOKENS = [
@@ -133,7 +136,7 @@ export class CheckinBoardingModule implements OnModuleInit {
     const repository = db ? PrismaCheckInRepository : CheckInStore
     return {
       module: CheckinBoardingModule,
-      imports: db ? [DbModule, AuditModule, ScreeningModule, AdminConsoleModule] : [DbModule],
+      imports: db ? [DbModule, AuditModule, ScreeningModule, AdminConsoleModule, CustomerServiceModule] : [DbModule],
       controllers: [CheckInController, StaffController],
       providers: [
         ...(db ? DB_PROVIDERS : MEMORY_PROVIDERS),

@@ -1,6 +1,7 @@
 import {
   Accessibility,
   CalendarClock,
+  ChartColumn,
   Globe,
   Gauge,
   ClipboardCheck,
@@ -8,9 +9,11 @@ import {
   FileText,
   GitCompareArrows,
   IdCard,
+  Inbox,
   KeyRound,
   ListChecks,
   Luggage,
+  MailCheck,
   Package,
   PackageSearch,
   Percent,
@@ -116,6 +119,14 @@ export const CREW_ITEMS = [
   },
   { to: '/setup-crew', code: 'f08.crew', label: 'Crew', icon: IdCard, match: ['/setup-crew'] },
   { to: '/setup-rule', code: 'f08.rules', label: 'Rules', icon: ListChecks, match: ['/setup-rule'] },
+] as const
+
+/** The Feature 13 (customer service) staff pages: the complaint queue plus its reporting and notification screens. */
+export const CUSTOMER_SERVICE_ITEMS = [
+  { to: '/complaints', label: 'Complaint queue', icon: Inbox },
+  { to: '/complaints/charts', label: 'Complaint charts', icon: ChartColumn },
+  { to: '/complaints/delivery-log', label: 'Delivery log', icon: MailCheck },
+  { to: '/complaints/templates', label: 'Templates', icon: FileText },
 ] as const
 
 /** The check-in and gate screens of the Check-in & Boarding feature (F6). */

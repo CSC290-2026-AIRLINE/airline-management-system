@@ -3,6 +3,7 @@ import { DbService } from '@backend/db/db.service'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import type { ChargeRequest, CheckoutPort, PaymentResult } from '@backend/modules/booking-pnr/contracts'
 import { PaymentErrorCode, paymentFailure } from '@backend/modules/payments-crew-pay/payments.errors'
+import { messageAmount, purchaseReferenceOf, queueCustomerMessage, receiptNumberOf } from './customer-messages'
 import { capturedPostings, writePostings } from './finance-journal'
 
 type Tx = Parameters<Parameters<DbService['$transaction']>[0]>[0]
@@ -145,6 +146,17 @@ export class BookingChargeAdapter implements CheckoutPort {
           lines: [{ line_type: lineType ?? 'seat_fee', amount: request.amount }],
         }),
       )
+      await queueCustomerMessage(tx, {
+        type: 'payment_received',
+        sourceId: payment.id,
+        customerId: booking.customer_id,
+        at: now,
+        placeholders: {
+          reference: await purchaseReferenceOf(tx, payment.id),
+          amount: messageAmount(request.amount, request.currency),
+          document_number: receiptNumberOf({ id: payment.id, source_feature: 3 }),
+        },
+      })
     }
     return { paymentId: payment.id, amount: request.amount, currency: request.currency }
   }

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import type { PaymentRequest, PaymentsPort, PaymentStartResult } from '@backend/modules/onboard-products/common/cross-module-ports'
+import { messageAmount, queueCustomerMessage, receiptNumberOf } from '@backend/modules/payments-checkout/customer-messages'
 import { capturedPostings, writePostings } from '@backend/modules/payments-checkout/finance-journal'
 import { PaymentsCheckoutService } from '@backend/modules/payments-checkout/payments-checkout.service'
 import { PaymentsRefundsService } from './payments-refunds.service'
@@ -130,6 +131,17 @@ export class OnboardPaymentsAdapter implements PaymentsPort {
           lines: [{ line_type: 'onboard_order', amount: request.amount }],
         }),
       )
+      await queueCustomerMessage(tx, {
+        type: 'payment_received',
+        sourceId: payment.id,
+        customerId: request.customerId,
+        at: now,
+        placeholders: {
+          reference: request.reference,
+          amount: messageAmount(request.amount, request.currency),
+          document_number: receiptNumberOf({ id: payment.id, source_feature: 12 }),
+        },
+      })
       return payment.id
     })
     return { paymentId, status: 'paid' }
