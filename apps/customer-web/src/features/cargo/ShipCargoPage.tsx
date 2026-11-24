@@ -408,10 +408,12 @@ export default function ShipCargoPage() {
     )
   }
 
-  const subtitle = `Tell us the route and the day you want to ship. We put your cargo on the earliest flight that day with room, and hold the weight for ${holdMinutes} minutes while you pay.`
+  const subtitle = 'Tell us the route and the day you want to ship.'
+  const holdNote = `We put your cargo on the earliest flight that day with room, and hold the weight for ${holdMinutes} minutes while you pay.`
 
   return (
     <CargoPage subtitle={subtitle}>
+      <p className="m-0 text-sm text-muted-foreground">{holdNote}</p>
       <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
         {/* ── Left column ──────────────────────────────────── */}
         <div>

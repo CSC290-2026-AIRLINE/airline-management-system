@@ -22,8 +22,11 @@ export function NotificationPreferencesPage() {
     <ComplaintPage
       current="/complaints/preferences"
       title="Notification preferences"
-      subtitle="Choose how you receive flight alerts and customer service notices. Critical messages (flight delays, cancellations and gate changes) are always sent on at least one channel."
+      subtitle="Choose how you receive flight alerts and customer service notices."
     >
+      <p className="m-0 text-sm text-muted-foreground">
+        Critical messages (flight delays, cancellations and gate changes) are always sent on at least one channel.
+      </p>
       <AccountGate signInTitle="Sign in to manage notifications" redirect="/complaints/preferences">
         {() => <PreferencesForm />}
       </AccountGate>
