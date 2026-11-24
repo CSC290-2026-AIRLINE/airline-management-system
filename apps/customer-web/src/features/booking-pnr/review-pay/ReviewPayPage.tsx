@@ -246,18 +246,18 @@ function HeldReview({
 
   return (
     <>
-      <PageShell>
+      <PageShell
+        title={
+          <span className="inline-flex flex-wrap items-center gap-3">
+            Review &amp; pay
+            <span className="rounded-md border border-white/30 bg-white/10 px-2 py-0.5 font-mono text-xs font-normal text-white">
+              Booking {booking.reference}
+            </span>
+          </span>
+        }
+        subtitle={copy.subtitle}
+      >
         <div className="space-y-6">
-          <header className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2 [&_h1]:m-0">
-              <h1>Review &amp; pay</h1>
-              <span className="rounded-md border bg-background px-2 py-0.5 font-mono text-xs text-muted-foreground">
-                Booking {booking.reference}
-              </span>
-            </div>
-            <p className="text-base text-muted-foreground">{copy.subtitle}</p>
-          </header>
-
           {/* The bar takes the customer back to a step of this booking. Every step but the one they are on can be
               opened, so they can walk back and forth while the hold runs. */}
           <BookingRouteBar

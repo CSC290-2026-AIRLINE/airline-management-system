@@ -6,7 +6,7 @@ import type { FlightSearchUrlState } from '../../booking-search/search-params'
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { HoldBookingRequest, HoldBookingResponse, HoldBookingSeat } from '../api/types'
 import { BookingRouteBar, type BookingStep } from '../components/BookingRouteBar'
-import { PageShell, PageTitle } from '../components/PageShell'
+import { PageShell } from '../components/PageShell'
 import { PassengersPage } from '../passengers/PassengersPage'
 import {
   clearFlowDraft,
@@ -266,17 +266,17 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
       />
     )
   return (
-    <PageShell className="[&_h1]:m-0 [&_h2]:m-0 [&_h2]:text-subheading">
-      <PageTitle
-        title={step === 2 ? 'Passengers & extras' : step === 3 ? 'Choose your seats' : 'Booking held'}
-        subtitle={
-          step === 2
-            ? 'Enter traveller details exactly as they appear on the passport.'
-            : step === 3
-              ? undefined
-              : 'Keep your booking reference for the next step.'
-        }
-      />
+    <PageShell
+      className="[&_h1]:m-0 [&_h2]:m-0 [&_h2]:text-subheading"
+      title={step === 2 ? 'Passengers & extras' : step === 3 ? 'Choose your seats' : 'Booking held'}
+      subtitle={
+        step === 2
+          ? 'Enter traveller details exactly as they appear on the passport.'
+          : step === 3
+            ? undefined
+            : 'Keep your booking reference for the next step.'
+      }
+    >
       <div className="">
         <BookingRouteBar currentStep={step} onStepClick={goToStep} />
       </div>

@@ -1,21 +1,40 @@
 import type { ReactNode } from 'react'
-import { PageContent, PageHeader, type PageWidth } from '@customer-web/components/Page'
+import { Page, PageContent, type PageWidth } from '@customer-web/components/Page'
 
 /**
- * The column of a booking page, on the shared page shell. Booking pages hold a flow with a side panel, so they default to
- * the wide column; a list or a detail page passes `width="standard"`.
+ * A booking page on the shared page shell. With a `title` it gets the navy banner (title, a line under it, actions on the
+ * right, tabs along the bottom edge); without one it is just the content column, for a state that has no title block.
+ * Booking pages hold a flow with a side panel, so they default to the wide column.
  */
-export function PageShell({ className, width = 'wide', children }: { className?: string; width?: PageWidth; children: ReactNode }) {
+export function PageShell({
+  className,
+  width = 'wide',
+  title,
+  subtitle,
+  actions,
+  tabs,
+  children,
+}: {
+  className?: string
+  width?: PageWidth
+  title?: ReactNode
+  subtitle?: ReactNode
+  actions?: ReactNode
+  tabs?: ReactNode
+  children: ReactNode
+}) {
+  if (title !== undefined) {
+    return (
+      <Page width={width} title={title} description={subtitle} actions={actions} tabs={tabs} className={className}>
+        {children}
+      </Page>
+    )
+  }
   return (
     <PageContent width={width} className={className}>
       {children}
     </PageContent>
   )
-}
-
-/** The title block every customer page uses. */
-export function PageTitle({ title, subtitle, actions }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode }) {
-  return <PageHeader title={title} description={subtitle} actions={actions} />
 }
 
 /** A centred message card: loading, empty, error and not-found states. */

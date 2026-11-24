@@ -1,6 +1,6 @@
 import { Component, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { BookingRouteBar } from '../../booking-pnr/components/BookingRouteBar'
-import { PageShell, PageTitle } from '../../booking-pnr/components/PageShell'
+import { PageShell } from '../../booking-pnr/components/PageShell'
 import { FlightSearchForm } from '../components/FlightSearchForm'
 import { validateSearch } from '../components/search-validation'
 import { airportCity } from '../components/airports'
@@ -253,18 +253,18 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
     ['duration', 'Duration'],
   ]
   return (
-    <PageShell className="[&_h1]:m-0 [&_h2]:m-0 [&_h2]:text-subheading">
-      <PageTitle
-        title="Find a flight"
-        subtitle="Direct flights only. Seats and prices are checked live; nothing is reserved until you continue."
-        actions={
-          tripLink ? (
-            <a className="text-sm font-medium text-link underline-offset-4 hover:underline" href={tripLink.href}>
-              {tripLink.label}
-            </a>
-          ) : undefined
-        }
-      />
+    <PageShell
+      className="[&_h1]:m-0 [&_h2]:m-0 [&_h2]:text-subheading"
+      title="Find a flight"
+      subtitle="Direct flights only. Seats and prices are checked live; nothing is reserved until you continue."
+      actions={
+        tripLink ? (
+          <a className="text-sm font-medium text-white underline underline-offset-4 hover:text-white/80" href={tripLink.href}>
+            {tripLink.label}
+          </a>
+        ) : undefined
+      }
+    >
       <div className="">
         <BookingRouteBar currentStep={1} />
       </div>
