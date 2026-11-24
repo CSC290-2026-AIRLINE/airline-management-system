@@ -48,11 +48,28 @@ async function main(): Promise<void> {
     await db.query('BEGIN')
 
     // Children first, like the refresh does.
-    for (const table of ['bi_metric_day', 'bi_booking_day', 'bi_flight_delay', 'bi_flight_cabin', 'bi_flight', 'bi_route']) {
+    for (const table of [
+      'bi_metric_day',
+      'bi_booking_day',
+      'bi_flight_delay',
+      'bi_flight_cabin',
+      'bi_flight',
+      'bi_aircraft_downtime',
+      'bi_aircraft',
+      'bi_route',
+    ]) {
       await db.query(`DELETE FROM ${table}`)
     }
     await db.query(
       `INSERT INTO bi_route (route_id, origin, destination, distance_km) SELECT id, origin, destination, distance_km FROM route`,
+    )
+    // Every bi_flight needs an aircraft, so the real aircraft are copied the way the refresh copies them.
+    await db.query(
+      `INSERT INTO bi_aircraft (aircraft_id, tail_number, type_code, in_service_from, retired_on)
+       SELECT a.id, a.tail_number, t.code, a.entry_into_service_date, a.retired_on
+       FROM aircraft a
+       JOIN aircraft_type t ON t.id = a.aircraft_type_id
+       WHERE a.deleted_at IS NULL`,
     )
     await db.query(
       `INSERT INTO bi_setting (key, value) SELECT 'on_time_minutes', '15'
@@ -60,6 +77,10 @@ async function main(): Promise<void> {
     )
 
     const { rows: routes } = await db.query<{ route_id: string }>('SELECT route_id FROM bi_route ORDER BY origin, destination')
+    const { rows: aircraft } = await db.query<{ aircraft_id: string }>('SELECT aircraft_id FROM bi_aircraft ORDER BY tail_number')
+    if (routes.length === 0 || aircraft.length === 0) {
+      throw new Error(`found ${routes.length} routes and ${aircraft.length} aircraft; run npm run db:seed first`)
+    }
     const days = datesBetween(FIRST_DAY, LAST_DAY)
     let flights = 0
     let delayed = 0
@@ -84,8 +105,8 @@ async function main(): Promise<void> {
 
         await db.query(
           `INSERT INTO bi_flight (flight_id, route_id, flight_number, flight_date, status, scheduled_departure_at,
-             actual_departure_at, delay_minutes, revenue_amount, refund_amount)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+             actual_departure_at, delay_minutes, revenue_amount, refund_amount, aircraft_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
           [
             flightId,
             route.route_id,
@@ -97,6 +118,7 @@ async function main(): Promise<void> {
             delay,
             revenue,
             refund,
+            aircraft[flights % aircraft.length].aircraft_id,
           ],
         )
         for (const [cabin, available, sold] of cabinRows) {
@@ -133,7 +155,7 @@ async function main(): Promise<void> {
     // The same aggregation the refresh runs, so the daily figures agree with a real refresh.
     await db.query(`
       INSERT INTO bi_metric_day (route_id, flight_date, flight_count, cancelled_count, departed_count, on_time_count, delay_minutes,
-        seat_available, seat_sold, revenue_amount, refund_amount)
+        seat_available, seat_sold, revenue_amount, refund_amount, booked_count, boarded_count, denied_count, no_show_count)
       SELECT f.route_id, f.flight_date,
         COUNT(*)::int,
         COUNT(*) FILTER (WHERE f.status = 'cancelled')::int,
@@ -144,7 +166,11 @@ async function main(): Promise<void> {
         COALESCE(SUM(seats.seat_available) FILTER (WHERE f.actual_departure_at IS NOT NULL), 0)::int,
         COALESCE(SUM(seats.seat_sold) FILTER (WHERE f.actual_departure_at IS NOT NULL), 0)::int,
         COALESCE(SUM(f.revenue_amount) FILTER (WHERE f.actual_departure_at IS NOT NULL), 0),
-        COALESCE(SUM(f.refund_amount) FILTER (WHERE f.actual_departure_at IS NOT NULL), 0)
+        COALESCE(SUM(f.refund_amount) FILTER (WHERE f.actual_departure_at IS NOT NULL), 0),
+        COALESCE(SUM(f.booked_count), 0)::int,
+        COALESCE(SUM(f.boarded_count), 0)::int,
+        COALESCE(SUM(f.denied_count), 0)::int,
+        COALESCE(SUM(f.no_show_count), 0)::int
       FROM bi_flight f
       LEFT JOIN (
         SELECT flight_id, SUM(seat_available) AS seat_available, SUM(seat_sold) AS seat_sold
