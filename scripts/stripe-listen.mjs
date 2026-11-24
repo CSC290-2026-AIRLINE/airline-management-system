@@ -72,8 +72,9 @@ if (
 }
 
 const port = process.env.PORT ?? "8080";
+// The same binary the version check found: outside npm, node_modules/.bin is not on the PATH.
 const child = spawn(
-  "stripe",
+  stripe,
   [
     "listen",
     "--events",
@@ -86,6 +87,10 @@ const child = spawn(
     stdio: "inherit",
   },
 );
+child.on("error", (error) => {
+  say(`could not start the Stripe CLI: ${error.message}`);
+  process.exit(0);
+});
 child.on("exit", (code) => process.exit(code ?? 0));
 for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, () => child.kill(signal));
