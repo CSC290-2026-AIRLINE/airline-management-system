@@ -7,7 +7,7 @@ import { TrendingDestinations } from './TrendingDestinations'
 /** Public landing page, built from the "Composite / Homepage v2" frame in the design file. */
 export function HomePage() {
   return (
-    <div data-full-bleed className="flex-1 bg-muted selection:bg-brand-accent/40 selection:text-navy">
+    <div className="flex-1 bg-muted selection:bg-brand-accent/40 selection:text-navy">
       <main>
         <section className="relative isolate">
           {/* A fixed-height photo band. The search form flows normally and straddles its lower edge, so the form can grow
@@ -26,7 +26,7 @@ export function HomePage() {
             <div className="absolute inset-0 bg-gradient-to-r from-[rgba(20,33,61,0.85)] via-[rgba(20,33,61,0.4)] via-60% to-transparent md:from-[rgba(20,33,61,0.78)] md:via-[rgba(20,33,61,0.35)] md:to-[rgba(20,33,61,0)]" />
           </div>
           {/* Tight enough that the whole search form is on the first screen of a laptop, since searching is the page's job. */}
-          <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-8 px-4 pt-10 sm:px-6 md:gap-10">
+          <div className="mx-auto flex w-full max-w-[79rem] flex-col gap-8 px-4 pt-10 md:px-6 xl:px-8 md:gap-10">
             {/* The one authored moment: the headline and then the search settle in once. Skipped for reduced motion. */}
             <div className="flex max-w-[520px] animate-in flex-col gap-4 duration-700 ease-out fade-in slide-in-from-bottom-4 fill-mode-backwards motion-reduce:animate-none">
               <h1 className="m-0 font-serif text-[2rem]/10 font-bold tracking-[-0.02em] text-white md:text-display">
@@ -45,7 +45,7 @@ export function HomePage() {
           </div>
         </section>
 
-        <div className="mx-auto flex max-w-[1200px] flex-col gap-16 px-4 pt-16 pb-20 sm:px-6 md:gap-[72px]">
+        <div className="mx-auto flex max-w-[79rem] flex-col gap-16 px-4 pt-16 pb-20 md:px-6 xl:px-8 md:gap-[72px]">
           <TrendingDestinations />
           <LoyaltyBanner />
         </div>

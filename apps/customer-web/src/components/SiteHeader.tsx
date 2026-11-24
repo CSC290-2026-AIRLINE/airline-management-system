@@ -3,6 +3,8 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { SignedIn, SignedOut, useUser } from '@clerk/clerk-react'
 import { Menu } from 'lucide-react'
 import BrandLogo from '@customer-web/components/BrandLogo'
+import { pageContainer } from '@customer-web/components/Page'
+import { cn } from '@customer-web/lib/utils'
 import LogoutButton from '@customer-web/components/LogoutButton'
 import { Avatar, AvatarFallback, AvatarImage } from '@customer-web/components/ui/avatar'
 import { Button } from '@customer-web/components/ui/button'
@@ -58,7 +60,7 @@ export default function SiteHeader() {
   const [open, setOpen] = useState(false)
   return (
     <header className="sticky top-0 z-40 border-b bg-background/60 backdrop-blur-lg supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto flex h-12 max-w-5xl items-center justify-between px-4">
+      <div className={cn(pageContainer, 'flex h-12 items-center justify-between')}>
         <Link to="/" aria-label="Flython Airline home">
           <BrandLogo />
         </Link>

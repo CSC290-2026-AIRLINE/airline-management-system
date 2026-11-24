@@ -199,31 +199,18 @@
     cursor: not-allowed;
   }
 
+  /* The app root fills the window and lays out from the left. Pages sit on the shared page shell (components/Page.tsx). */
   #root {
     width: 100%;
-    text-align: center;
+    text-align: left;
     min-height: 100svh;
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
   }
 
-  /* Pages marked data-full-bleed (the Feature 11 loyalty pages) fill the window and lay out from the left. */
-  #root:has([data-full-bleed]) {
-    width: auto;
-    border-inline: 0;
-    text-align: left;
-  }
-
-  /* Customer pages that own their own full-bleed shell, like the staff shell does. */
-  #root:has(.f3-customer-layout) {
-    width: 100%;
-    border-inline: 0;
-    text-align: left;
-  }
-
-  /* Page title (title step) and section heading (heading step). The margins are the old ones, kept until the page shell
-     owns the spacing between title, description and content. */
+  /* Page title (title step) and section heading (heading step). The shared PageHeader zeroes the h1 margin; the old margins
+     stay for any heading outside it. */
   h1,
   h2 {
     color: var(--foreground);

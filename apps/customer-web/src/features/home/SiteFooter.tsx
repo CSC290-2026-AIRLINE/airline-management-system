@@ -54,7 +54,7 @@ export function SiteFooter() {
     <footer className="relative isolate overflow-hidden bg-[#0a152b] text-white">
       <img src={footerPhoto} alt="" loading="lazy" className="absolute inset-0 -z-20 size-full object-cover" />
       <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[rgba(10,21,43,0.92)] via-[rgba(10,21,43,0.8)] via-45% to-[rgba(10,21,43,0.62)]" />
-      <div className="mx-auto flex max-w-[1200px] flex-col gap-10 px-6 pt-16 pb-10 lg:gap-14 lg:pt-20">
+      <div className="mx-auto flex max-w-[79rem] flex-col gap-10 px-4 pt-16 md:px-6 xl:px-8 pb-10 lg:gap-14 lg:pt-20">
         <div className="flex flex-col gap-10 lg:flex-row lg:justify-between">
           <div className="flex max-w-[380px] flex-col gap-5">
             <img src={logo} alt="Flython Airline" width={175} height={44} className="h-11 w-auto self-start" />
