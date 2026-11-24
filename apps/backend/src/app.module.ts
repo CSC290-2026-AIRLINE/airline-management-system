@@ -6,6 +6,7 @@ import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
 import { OnboardProductsModule } from './modules/onboard-products/onboard-products.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
+import { CargoModule } from './modules/cargo/cargo.module'
 import { BaggageModule } from './modules/baggage/baggage.module'
 import { BaggageLifecycleModule } from './modules/baggage/baggage-lifecycle.module'
 import { PassengerLostReportModule } from './modules/baggage/passenger-lost-report.module'
@@ -50,6 +51,7 @@ import { FlightSchedulingModule } from './modules/flight-scheduling/flight-sched
     WatchlistModule,
     AircraftManagementModule,
     FlightSchedulingModule,
+    CargoModule,
     LoyaltyModule,
     BookingSearchModule,
     BookingPnrModule,

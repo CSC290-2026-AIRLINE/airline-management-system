@@ -23,6 +23,7 @@ import sidebarPattern from '../assets/sidebar-pattern.png'
 import { groupKey, readOpen, writeOpen } from '../hooks/persisted-open'
 import {
   ADMIN_ITEMS,
+  CARGO_ITEMS,
   CATERING_ITEMS,
   CHECKIN_ITEMS,
   CREW_ITEMS,
@@ -239,6 +240,24 @@ export function AppSidebar({ roleName, onSignOut, expandedGroup }: { roleName: s
 
           <NavGroup label="Loyalty Programme" defaultOpen={groupIsOpen('Loyalty Programme')}>
             {LOYALTY_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === item.to || pathname.startsWith(item.to + '/')}
+                  tooltip={item.label}
+                  className="pl-4"
+                >
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Cargo & Air Freight" defaultOpen={groupIsOpen('Cargo & Air Freight')}>
+            {CARGO_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton
                   asChild
