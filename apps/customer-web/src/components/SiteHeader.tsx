@@ -3,6 +3,7 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { SignedIn, SignedOut, useUser } from '@clerk/clerk-react'
 import { Menu } from 'lucide-react'
 import BrandLogo from '@customer-web/components/BrandLogo'
+import LogoutButton from '@customer-web/components/LogoutButton'
 import { Avatar, AvatarFallback, AvatarImage } from '@customer-web/components/ui/avatar'
 import { Button } from '@customer-web/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@customer-web/components/ui/sheet'
@@ -77,6 +78,7 @@ export default function SiteHeader() {
                 Profile
               </Link>
             </Button>
+            <LogoutButton className="-ml-2" />
           </nav>
           <div className="flex items-center gap-1 md:hidden">
             <Button asChild variant="ghost" size="icon">
@@ -84,6 +86,7 @@ export default function SiteHeader() {
                 <UserAvatar className="size-7" />
               </Link>
             </Button>
+            <LogoutButton />
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="Open navigation">
