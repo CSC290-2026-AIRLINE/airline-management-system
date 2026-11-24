@@ -6,10 +6,13 @@ import {
   ClipboardCheck,
   DoorOpen,
   FileText,
+  GitCompareArrows,
   IdCard,
   KeyRound,
   ListChecks,
+  Luggage,
   Package,
+  PackageSearch,
   Percent,
   PlaneLanding,
   PlaneTakeoff,
@@ -23,6 +26,7 @@ import {
   Star,
   Tag,
   Ticket,
+  Truck,
   UserCheck,
   UserPlus,
   Users,
@@ -130,6 +134,14 @@ export const FLIGHT_SCHEDULING_ITEMS: readonly {
   { to: '/routes', label: 'Routes', icon: Route },
   { to: '/congestion', label: 'Congestion', icon: Gauge },
 ]
+
+/** The Feature 10 (lost and found baggage) staff pages. */
+export const BAGGAGE_ITEMS = [
+  { to: '/baggage/lost-bag-cases', label: 'Lost bag cases', icon: Luggage },
+  { to: '/baggage/found-bags', label: 'Found bags', icon: PackageSearch },
+  { to: '/baggage/match-review', label: 'Match review', icon: GitCompareArrows },
+  { to: '/baggage/deliveries', label: 'Deliveries', icon: Truck },
+] as const
 
 /** The Feature 11 (loyalty programme) staff pages. */
 export const LOYALTY_ITEMS = [

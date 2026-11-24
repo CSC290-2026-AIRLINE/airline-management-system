@@ -19,6 +19,9 @@ export interface EnvConfig {
    * TODO(F5-dev): delete this setting with the dev tools before the PR merges.
    */
   PAYMENT_DEV_TOOLS: boolean
+  S3_ENDPOINT?: string
+  S3_ACCESS_KEY?: string
+  S3_SECRET_KEY?: string
   // Optional. When set, every F12 timestamp uses this fixed point in
   // time so the seed data (relative to "now") is deterministic across
   // runs. The /api/staff routes read this via SystemClock.
@@ -69,6 +72,23 @@ export function validateEnv(rawConfig: Record<string, string | undefined>): EnvC
     throw new Error('PAYMENT_DEV_TOOLS must not be on when NODE_ENV is production')
   }
 
+  const storageValues = [rawConfig.S3_ENDPOINT, rawConfig.S3_ACCESS_KEY, rawConfig.S3_SECRET_KEY]
+  const hasPartialStorageConfig = storageValues.some(Boolean) && !storageValues.every(Boolean)
+  if (hasPartialStorageConfig) {
+    throw new Error('S3_ENDPOINT, S3_ACCESS_KEY, and S3_SECRET_KEY must be configured together')
+  }
+  if (rawConfig.S3_ENDPOINT) {
+    let endpoint: URL
+    try {
+      endpoint = new URL(rawConfig.S3_ENDPOINT)
+    } catch {
+      throw new Error('S3_ENDPOINT must be a valid HTTP or HTTPS URL')
+    }
+    if (!['http:', 'https:'].includes(endpoint.protocol)) {
+      throw new Error('S3_ENDPOINT must be a valid HTTP or HTTPS URL')
+    }
+  }
+
   return {
     DATABASE_URL: String(rawConfig.DATABASE_URL),
     PORT: Number(rawConfig.PORT),
@@ -82,6 +102,13 @@ export function validateEnv(rawConfig: Record<string, string | undefined>): EnvC
     STRIPE_SECRET_KEY: rawConfig.STRIPE_SECRET_KEY ?? '',
     STRIPE_WEBHOOK_SECRET: rawConfig.STRIPE_WEBHOOK_SECRET ?? '',
     PAYMENT_DEV_TOOLS: devTools,
+    ...(rawConfig.S3_ENDPOINT
+      ? {
+          S3_ENDPOINT: rawConfig.S3_ENDPOINT,
+          S3_ACCESS_KEY: rawConfig.S3_ACCESS_KEY,
+          S3_SECRET_KEY: rawConfig.S3_SECRET_KEY,
+        }
+      : {}),
     SIMULATION_NOW_ISO: rawConfig.SIMULATION_NOW_ISO ? String(rawConfig.SIMULATION_NOW_ISO) : undefined,
     F12_SCHEDULER_ENABLED: parseBoolean(rawConfig.F12_SCHEDULER_ENABLED),
     F12_SCHEDULER_INTERVAL_SECONDS: parsePositiveNumber(rawConfig.F12_SCHEDULER_INTERVAL_SECONDS),

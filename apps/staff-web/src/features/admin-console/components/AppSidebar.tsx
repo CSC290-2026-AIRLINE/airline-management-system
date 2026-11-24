@@ -29,6 +29,7 @@ import {
   FLIGHT_SCHEDULING_ITEMS,
   GROUPS,
   LOYALTY_ITEMS,
+  BAGGAGE_ITEMS,
   PRICING_ITEMS,
   type NavItem,
 } from '../nav-items'
@@ -230,6 +231,24 @@ export function AppSidebar({ roleName, onSignOut, expandedGroup }: { roleName: s
 
           <NavGroup label="Loyalty Programme" defaultOpen={groupIsOpen('Loyalty Programme')}>
             {LOYALTY_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === item.to || pathname.startsWith(item.to + '/')}
+                  tooltip={item.label}
+                  className="pl-4"
+                >
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Lost & Found Baggage" defaultOpen={groupIsOpen('Lost & Found Baggage')}>
+            {BAGGAGE_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton
                   asChild
