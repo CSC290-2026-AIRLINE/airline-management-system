@@ -1,3 +1,4 @@
+import { Page } from '@customer-web/components/Page'
 import { useEffect, useReducer, useRef, useState, type FormEvent } from 'react'
 import { Link, useLocation } from '@tanstack/react-router'
 import { useAppAuth } from '../../../auth/AuthProvider'
@@ -763,265 +764,273 @@ export function PassengerLostBagCasePage() {
   const isTimedOutCase = progress.steps[0] === 'Reported'
 
   return (
-    <main className="passenger-case-page">
-      <header className="passenger-case-page__intro">
-        <h1>My bag case</h1>
-        <p>Enter your case number with your booking reference and surname. A case number alone does not open a case.</p>
-      </header>
-
-      <section className="passenger-case-access" aria-label="Open a baggage case">
-        <div className="passenger-case-access__desktop">{renderLookupForm('desktop')}</div>
-        <div className="passenger-case-access__mobile">
-          {report && !isEditingAccess ? (
-            <>
-              <div className="passenger-case-access__viewing">
-                <div>
-                  <span>Viewing case</span>
-                  <strong>
-                    {report.caseNumber} · {access?.surname}
-                  </strong>
+    <Page
+      width="wide"
+      title="My bag case"
+      description="Enter your case number with your booking reference and surname. A case number alone does not open a case."
+    >
+      <div className="passenger-case-page">
+        <section className="passenger-case-access" aria-label="Open a baggage case">
+          <div className="passenger-case-access__desktop">{renderLookupForm('desktop')}</div>
+          <div className="passenger-case-access__mobile">
+            {report && !isEditingAccess ? (
+              <>
+                <div className="passenger-case-access__viewing">
+                  <div>
+                    <span>Viewing case</span>
+                    <strong>
+                      {report.caseNumber} · {access?.surname}
+                    </strong>
+                  </div>
+                  <Button variant="outline" size="sm" type="button" onClick={() => setIsEditingAccess(true)}>
+                    Change
+                  </Button>
                 </div>
-                <Button variant="outline" size="sm" type="button" onClick={() => setIsEditingAccess(true)}>
-                  Change
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>{renderLookupForm('mobile')}</>
+              </>
+            ) : (
+              <>{renderLookupForm('mobile')}</>
+            )}
+          </div>
+          {renderTryCaseChips()}
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
-        </div>
-        {renderTryCaseChips()}
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        {isLookingUp && (
-          <Alert role="status">
-            <AlertDescription>Loading case details…</AlertDescription>
-          </Alert>
-        )}
-        {caseListMessage && (
-          <p className="passenger-case-page__loading" role="status">
-            {caseListMessage}
-          </p>
-        )}
-      </section>
-
-      {shouldShowNoOpenCase(Boolean(report), isLookingUp, Boolean(error)) && (
-        <section className="passenger-case-empty" aria-labelledby="passenger-case-empty-title">
-          <h2 id="passenger-case-empty-title">No case open yet</h2>
-          <p>Enter your case details above to follow a report. If you have not reported a bag yet, start here.</p>
-          <Button asChild variant="outline">
-            <Link to="/report-lost-bag">Report a lost bag</Link>
-          </Button>
+          {isLookingUp && (
+            <Alert role="status">
+              <AlertDescription>Loading case details…</AlertDescription>
+            </Alert>
+          )}
+          {caseListMessage && (
+            <p className="passenger-case-page__loading" role="status">
+              {caseListMessage}
+            </p>
+          )}
         </section>
-      )}
 
-      {report && !isEditingAccess && (
-        <div className="passenger-case-layout">
-          <section className="passenger-case-card" aria-labelledby="passenger-case-title">
-            <header className="passenger-case-card__heading">
-              <h2 id="passenger-case-title">{report.caseNumber}</h2>
-              <span
-                className={`passenger-case-card__status${displayedCaseStatus === 'Open' ? ' passenger-case-card__status--open' : ''}${displayedCaseStatus === 'Lost' ? ' passenger-case-card__status--lost' : ''}`}
+        {shouldShowNoOpenCase(Boolean(report), isLookingUp, Boolean(error)) && (
+          <section className="passenger-case-empty" aria-labelledby="passenger-case-empty-title">
+            <h2 id="passenger-case-empty-title">No case open yet</h2>
+            <p>Enter your case details above to follow a report. If you have not reported a bag yet, start here.</p>
+            <Button asChild variant="outline">
+              <Link to="/report-lost-bag">Report a lost bag</Link>
+            </Button>
+          </section>
+        )}
+
+        {report && !isEditingAccess && (
+          <div className="passenger-case-layout">
+            <section className="passenger-case-card" aria-labelledby="passenger-case-title">
+              <header className="passenger-case-card__heading">
+                <h2 id="passenger-case-title">{report.caseNumber}</h2>
+                <span
+                  className={`passenger-case-card__status${displayedCaseStatus === 'Open' ? ' passenger-case-card__status--open' : ''}${displayedCaseStatus === 'Lost' ? ' passenger-case-card__status--lost' : ''}`}
+                >
+                  {displayedCaseStatus}
+                </span>
+              </header>
+
+              <ol
+                className={`passenger-case-progress${isTimedOutCase ? ' passenger-case-progress--lost' : ''}`}
+                aria-label="Baggage recovery progress"
               >
-                {displayedCaseStatus}
-              </span>
-            </header>
+                {progress.steps.map((step, index) => {
+                  const activeStep = progress.activeStep
+                  const className =
+                    index < activeStep
+                      ? 'passenger-case-progress__step passenger-case-progress__step--complete'
+                      : index === activeStep
+                        ? 'passenger-case-progress__step passenger-case-progress__step--current'
+                        : 'passenger-case-progress__step'
 
-            <ol
-              className={`passenger-case-progress${isTimedOutCase ? ' passenger-case-progress--lost' : ''}`}
-              aria-label="Baggage recovery progress"
-            >
-              {progress.steps.map((step, index) => {
-                const activeStep = progress.activeStep
-                const className =
-                  index < activeStep
-                    ? 'passenger-case-progress__step passenger-case-progress__step--complete'
-                    : index === activeStep
-                      ? 'passenger-case-progress__step passenger-case-progress__step--current'
-                      : 'passenger-case-progress__step'
+                  return (
+                    <li aria-current={index === activeStep ? 'step' : undefined} className={className} key={step}>
+                      <span className="passenger-case-progress__marker">{index < activeStep ? '✓' : index + 1}</span>
+                      <span>{step}</span>
+                    </li>
+                  )
+                })}
+              </ol>
 
-                return (
-                  <li aria-current={index === activeStep ? 'step' : undefined} className={className} key={step}>
-                    <span className="passenger-case-progress__marker">{index < activeStep ? '✓' : index + 1}</span>
-                    <span>{step}</span>
-                  </li>
-                )
-              })}
-            </ol>
-
-            <dl className="passenger-case-card__details">
-              {caseSummary && (
-                <>
-                  <dt>Passenger</dt>
-                  <dd>{`${caseSummary.passenger.firstName} ${caseSummary.passenger.lastName}`}</dd>
-                  <dt>Flight</dt>
-                  <dd>
-                    {caseSummary.flight.flightNumber} · {caseSummary.flight.origin} to {caseSummary.flight.destination} ·{' '}
-                    {formatServiceDate(caseSummary.flight.serviceDate)}
-                  </dd>
-                </>
-              )}
-              <dt>Bag</dt>
-              <dd>{[report.colour, report.bagType, report.brand].filter(Boolean).join(' · ')}</dd>
-              {report.tagNumber && (
-                <>
-                  <dt>Baggage tag</dt>
-                  <dd>{report.tagNumber}</dd>
-                </>
-              )}
-              {report.description && (
-                <>
-                  <dt>Description</dt>
-                  <dd>{report.description}</dd>
-                </>
-              )}
-              {delivery && (
-                <>
-                  <dt>Delivery</dt>
-                  <dd>
-                    <span className="passenger-case-card__delivery-status">{deliveryStatusLabel(delivery.status)}</span>
-                  </dd>
-                </>
-              )}
-              {delivery && deliveryDestination(delivery) && (
-                <>
-                  <dt>Sending to</dt>
-                  <dd>{deliveryDestination(delivery)}</dd>
-                </>
-              )}
-            </dl>
-
-            {isTimedOutCase && (
-              <p className="passenger-case-timeout" role="status">
-                Your bag was not found within 21 days.
-                {report.lostAt && (
+              <dl className="passenger-case-card__details">
+                {caseSummary && (
                   <>
-                    {' '}
-                    Marked lost <time dateTime={report.lostAt}>{formatDate(report.lostAt)}</time>.
+                    <dt>Passenger</dt>
+                    <dd>{`${caseSummary.passenger.firstName} ${caseSummary.passenger.lastName}`}</dd>
+                    <dt>Flight</dt>
+                    <dd>
+                      {caseSummary.flight.flightNumber} · {caseSummary.flight.origin} to {caseSummary.flight.destination} ·{' '}
+                      {formatServiceDate(caseSummary.flight.serviceDate)}
+                    </dd>
                   </>
                 )}
-              </p>
-            )}
-
-            <h3>Timeline</h3>
-            <ol className="passenger-case-timeline">
-              {caseSummary?.timeline.map((event, index) => (
-                <li key={`${event.type}-${event.occurredAt}-${index}`}>
-                  <time dateTime={event.occurredAt}>{formatDate(event.occurredAt)}</time>
-                  <span>{timelineEventLabel(event)}</span>
-                </li>
-              ))}
-            </ol>
-            {caseSummaryLoading && (
-              <p className="passenger-case-page__loading" role="status">
-                Loading recovery timeline…
-              </p>
-            )}
-            {caseSummaryError && (
-              <p className="passenger-case-page__loading" role="status">
-                Recovery timeline unavailable. {caseSummaryError}
-              </p>
-            )}
-            {caseSummary && caseSummary.timeline.length === 0 && (
-              <p className="passenger-case-page__loading" role="status">
-                No recovery updates have been recorded yet.
-              </p>
-            )}
-
-            {canReportBagFoundByPassenger(report.status, delivery?.status ?? null) && access && ownerActionsAllowed && (
-              <div className="passenger-case-self-found">
-                {!isConfirmingSelfFound ? (
-                  <Button variant="outline" type="button" disabled={isCancelling} onClick={() => setIsConfirmingSelfFound(true)}>
-                    The bag has been found
-                  </Button>
-                ) : (
-                  <div className="passenger-case-self-found__confirmation" role="group" aria-label="Confirm found bag cancellation">
-                    <p>Cancel this report because the bag was found?</p>
-                    <div>
-                      <Button type="button" variant="destructive" disabled={isCancelling} onClick={() => void reportBagFoundByPassenger()}>
-                        {isCancelling ? 'Cancelling…' : 'Yes, cancel report'}
-                      </Button>
-                      <Button type="button" variant="outline" disabled={isCancelling} onClick={() => setIsConfirmingSelfFound(false)}>
-                        Keep searching
-                      </Button>
-                    </div>
-                  </div>
+                <dt>Bag</dt>
+                <dd>{[report.colour, report.bagType, report.brand].filter(Boolean).join(' · ')}</dd>
+                {report.tagNumber && (
+                  <>
+                    <dt>Baggage tag</dt>
+                    <dd>{report.tagNumber}</dd>
+                  </>
                 )}
-              </div>
-            )}
-            {shouldShowCancellationUnavailable(report.status, delivery?.status ?? null) && access && ownerActionsAllowed && (
-              <Alert role="status">
-                <AlertDescription>{CANCELLATION_UNAVAILABLE_MESSAGE}</AlertDescription>
-              </Alert>
-            )}
-          </section>
+                {report.description && (
+                  <>
+                    <dt>Description</dt>
+                    <dd>{report.description}</dd>
+                  </>
+                )}
+                {delivery && (
+                  <>
+                    <dt>Delivery</dt>
+                    <dd>
+                      <span className="passenger-case-card__delivery-status">{deliveryStatusLabel(delivery.status)}</span>
+                    </dd>
+                  </>
+                )}
+                {delivery && deliveryDestination(delivery) && (
+                  <>
+                    <dt>Sending to</dt>
+                    <dd>{deliveryDestination(delivery)}</dd>
+                  </>
+                )}
+              </dl>
 
-          <aside className="passenger-case-delivery">
-            {viewerIsBagOwner === false ? (
-              <section className="passenger-case-info" role="status">
-                <h2>Delivery</h2>
-                <p>
-                  {caseSummary
-                    ? `Only ${caseSummary.passenger.firstName} ${caseSummary.passenger.lastName}, whose bag this is, can choose where we send it or cancel this report.`
-                    : 'Only the traveller whose bag this is can choose where we send it or cancel this report.'}{' '}
-                  They open this case with the case number and their own booking details.
+              {isTimedOutCase && (
+                <p className="passenger-case-timeout" role="status">
+                  Your bag was not found within 21 days.
+                  {report.lostAt && (
+                    <>
+                      {' '}
+                      Marked lost <time dateTime={report.lostAt}>{formatDate(report.lostAt)}</time>.
+                    </>
+                  )}
                 </p>
-              </section>
-            ) : isDeliveryUnavailable ? (
-              <section className="passenger-case-info" role="status">
-                <h2>Delivery</h2>
-                <p>{deliveryUnavailableMessage(report.status)}</p>
-              </section>
-            ) : deliveryError ? (
-              <section className="passenger-case-info" role="status">
-                <h2>Delivery details unavailable</h2>
-                <p>{deliveryError}</p>
-              </section>
-            ) : !delivery ? (
-              <section className="passenger-case-info" role="status">
-                <h2>Delivery details unavailable</h2>
-                <p>Delivery details could not be loaded. Reopen the case to try again.</p>
-              </section>
-            ) : !reportEligible ? (
-              <section className="passenger-case-info" role="status">
-                <h2>Delivery choice unavailable</h2>
-                <p>
-                  {report.status === 'cancelled'
-                    ? 'This case was cancelled, so its delivery choice can no longer be changed.'
-                    : report.status === 'closed'
-                      ? 'This case is closed, so its delivery choice can no longer be changed.'
-                      : 'A delivery choice is available after staff confirms a found bag for this case.'}
+              )}
+
+              <h3>Timeline</h3>
+              <ol className="passenger-case-timeline">
+                {caseSummary?.timeline.map((event, index) => (
+                  <li key={`${event.type}-${event.occurredAt}-${index}`}>
+                    <time dateTime={event.occurredAt}>{formatDate(event.occurredAt)}</time>
+                    <span>{timelineEventLabel(event)}</span>
+                  </li>
+                ))}
+              </ol>
+              {caseSummaryLoading && (
+                <p className="passenger-case-page__loading" role="status">
+                  Loading recovery timeline…
                 </p>
-              </section>
-            ) : !ownerActionsAllowed ? (
-              <section className="passenger-case-info" role="status">
-                <h2>Delivery</h2>
-                <p>Checking that this is your bag before showing delivery options. If they do not appear, reopen the case to try again.</p>
-              </section>
-            ) : (
-              <DeliveryChoiceForm
-                key={passengerDeliveryFormKey(report.caseNumber, deliveryFormRevision)}
-                locked={deliveryLocked}
-                initialChoice={toInitialChoice(delivery)}
-                onSaveChoice={saveChoice}
-              />
-            )}
-            {saveNotice && (
-              <p className="passenger-case-page__success" role="status">
-                {saveNotice}
-              </p>
-            )}
-          </aside>
-        </div>
-      )}
-      {isSaving && (
-        <span className="passenger-case-page__sr-only" role="status">
-          Saving delivery choice…
-        </span>
-      )}
-    </main>
+              )}
+              {caseSummaryError && (
+                <p className="passenger-case-page__loading" role="status">
+                  Recovery timeline unavailable. {caseSummaryError}
+                </p>
+              )}
+              {caseSummary && caseSummary.timeline.length === 0 && (
+                <p className="passenger-case-page__loading" role="status">
+                  No recovery updates have been recorded yet.
+                </p>
+              )}
+
+              {canReportBagFoundByPassenger(report.status, delivery?.status ?? null) && access && ownerActionsAllowed && (
+                <div className="passenger-case-self-found">
+                  {!isConfirmingSelfFound ? (
+                    <Button variant="outline" type="button" disabled={isCancelling} onClick={() => setIsConfirmingSelfFound(true)}>
+                      The bag has been found
+                    </Button>
+                  ) : (
+                    <div className="passenger-case-self-found__confirmation" role="group" aria-label="Confirm found bag cancellation">
+                      <p>Cancel this report because the bag was found?</p>
+                      <div>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          disabled={isCancelling}
+                          onClick={() => void reportBagFoundByPassenger()}
+                        >
+                          {isCancelling ? 'Cancelling…' : 'Yes, cancel report'}
+                        </Button>
+                        <Button type="button" variant="outline" disabled={isCancelling} onClick={() => setIsConfirmingSelfFound(false)}>
+                          Keep searching
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              {shouldShowCancellationUnavailable(report.status, delivery?.status ?? null) && access && ownerActionsAllowed && (
+                <Alert role="status">
+                  <AlertDescription>{CANCELLATION_UNAVAILABLE_MESSAGE}</AlertDescription>
+                </Alert>
+              )}
+            </section>
+
+            <aside className="passenger-case-delivery">
+              {viewerIsBagOwner === false ? (
+                <section className="passenger-case-info" role="status">
+                  <h2>Delivery</h2>
+                  <p>
+                    {caseSummary
+                      ? `Only ${caseSummary.passenger.firstName} ${caseSummary.passenger.lastName}, whose bag this is, can choose where we send it or cancel this report.`
+                      : 'Only the traveller whose bag this is can choose where we send it or cancel this report.'}{' '}
+                    They open this case with the case number and their own booking details.
+                  </p>
+                </section>
+              ) : isDeliveryUnavailable ? (
+                <section className="passenger-case-info" role="status">
+                  <h2>Delivery</h2>
+                  <p>{deliveryUnavailableMessage(report.status)}</p>
+                </section>
+              ) : deliveryError ? (
+                <section className="passenger-case-info" role="status">
+                  <h2>Delivery details unavailable</h2>
+                  <p>{deliveryError}</p>
+                </section>
+              ) : !delivery ? (
+                <section className="passenger-case-info" role="status">
+                  <h2>Delivery details unavailable</h2>
+                  <p>Delivery details could not be loaded. Reopen the case to try again.</p>
+                </section>
+              ) : !reportEligible ? (
+                <section className="passenger-case-info" role="status">
+                  <h2>Delivery choice unavailable</h2>
+                  <p>
+                    {report.status === 'cancelled'
+                      ? 'This case was cancelled, so its delivery choice can no longer be changed.'
+                      : report.status === 'closed'
+                        ? 'This case is closed, so its delivery choice can no longer be changed.'
+                        : 'A delivery choice is available after staff confirms a found bag for this case.'}
+                  </p>
+                </section>
+              ) : !ownerActionsAllowed ? (
+                <section className="passenger-case-info" role="status">
+                  <h2>Delivery</h2>
+                  <p>
+                    Checking that this is your bag before showing delivery options. If they do not appear, reopen the case to try again.
+                  </p>
+                </section>
+              ) : (
+                <DeliveryChoiceForm
+                  key={passengerDeliveryFormKey(report.caseNumber, deliveryFormRevision)}
+                  locked={deliveryLocked}
+                  initialChoice={toInitialChoice(delivery)}
+                  onSaveChoice={saveChoice}
+                />
+              )}
+              {saveNotice && (
+                <p className="passenger-case-page__success" role="status">
+                  {saveNotice}
+                </p>
+              )}
+            </aside>
+          </div>
+        )}
+        {isSaving && (
+          <span className="passenger-case-page__sr-only" role="status">
+            Saving delivery choice…
+          </span>
+        )}
+      </div>
+    </Page>
   )
 }

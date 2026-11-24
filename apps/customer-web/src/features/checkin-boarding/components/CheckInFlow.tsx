@@ -7,6 +7,7 @@ import { ErrorMessage } from './Message.tsx'
 import { FindBookingStep } from './FindBookingStep.tsx'
 import { PassportStep } from './PassportStep.tsx'
 import { SeatStep } from './SeatStep.tsx'
+import { Page } from '@customer-web/components/Page'
 import { Stepper } from './Stepper.tsx'
 import { Summary } from './Summary.tsx'
 import type { FlowError } from './flow-error.ts'
@@ -198,40 +199,38 @@ export function CheckInFlow({ api, now = () => new Date() }: { api: CheckInApi; 
   )
 
   return (
-    <div className={styles.flow}>
-      <header className={styles.head}>
+    <Page width="standard" title={TITLES[step]} description={step === 5 ? PASS_SUBTITLE : undefined}>
+      <div className={styles.flow}>
         {strip ? (
           <div className={styles.strip} data-open={strip.open}>
             {strip.open ? <strong className={styles.stripLabel}>Check-in open</strong> : null}
             <span>{strip.text}</span>
           </div>
         ) : null}
-        <h1 className={styles.title}>{TITLES[step]}</h1>
-        {step === 5 ? <p className={styles.subtitle}>{PASS_SUBTITLE}</p> : null}
-      </header>
 
-      <Stepper step={step} />
+        <Stepper step={step} />
 
-      <ErrorMessage error={error} />
+        <ErrorMessage error={error} />
 
-      <div className={styles.layout}>
-        {step === 5 ? (
-          <div className={styles.content}>
-            {pass ? (
-              <BoardingPassStep pass={pass} onStartOver={startOver} />
-            ) : (
-              <p className={styles.state} role="status">
-                Your boarding pass is being issued…
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className={styles.panel}>{steps}</div>
-        )}
+        <div className={styles.layout}>
+          {step === 5 ? (
+            <div className={styles.content}>
+              {pass ? (
+                <BoardingPassStep pass={pass} onStartOver={startOver} />
+              ) : (
+                <p className={styles.state} role="status">
+                  Your boarding pass is being issued…
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className={styles.panel}>{steps}</div>
+          )}
 
-        {step === 1 ? <BeforeYouStart /> : null}
-        {step > 1 && checkIn ? <Summary checkIn={checkIn} /> : null}
+          {step === 1 ? <BeforeYouStart /> : null}
+          {step > 1 && checkIn ? <Summary checkIn={checkIn} /> : null}
+        </div>
       </div>
-    </div>
+    </Page>
   )
 }

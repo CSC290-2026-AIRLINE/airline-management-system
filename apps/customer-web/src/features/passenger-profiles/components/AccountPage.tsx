@@ -1,11 +1,21 @@
 import type { ReactNode } from 'react'
-import { cn } from '@customer-web/lib/utils'
+import { PageCanvas, PageContent, type PageWidth } from '@customer-web/components/Page'
 
-/** Page frame shared by every account screen: a centered content column below. */
-export default function AccountPage({ className, children }: { className?: string; children: ReactNode }) {
+/** Page frame shared by every account screen, on the shared page shell. Profile is a detail page; setup is a short form. */
+export default function AccountPage({
+  className,
+  width = 'standard',
+  children,
+}: {
+  className?: string
+  width?: PageWidth
+  children: ReactNode
+}) {
   return (
-    <main className="flex-1 bg-muted/40 text-left">
-      <div className={cn('mx-auto w-full max-w-3xl space-y-6 px-4 py-6 md:py-10', className)}>{children}</div>
-    </main>
+    <PageCanvas>
+      <PageContent width={width} className={className}>
+        {children}
+      </PageContent>
+    </PageCanvas>
   )
 }

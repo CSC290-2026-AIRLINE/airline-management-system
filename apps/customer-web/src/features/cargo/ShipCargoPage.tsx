@@ -20,7 +20,7 @@ import {
   type ShipDateInfo,
   type RouteFlight,
 } from './cargo-api'
-import CargoHero from './CargoHero'
+import CargoPage from './CargoPage'
 
 /* ── Helpers ───────────────────────────────────────────────────── */
 
@@ -399,437 +399,423 @@ export default function ShipCargoPage() {
 
   if (loading) {
     return (
-      <div className="text-left">
-        <CargoHero subtitle="Loading…" />
-        <div className="mx-auto grid w-full max-w-6xl gap-3 px-6 py-8">
+      <CargoPage subtitle="Loading…">
+        <div className="grid gap-3">
           <Skeleton className="h-6 w-48" />
           <Skeleton className="h-40 w-full" />
         </div>
-      </div>
+      </CargoPage>
     )
   }
 
   const subtitle = `Tell us the route and the day you want to ship. We put your cargo on the earliest flight that day with room, and hold the weight for ${holdMinutes} minutes while you pay.`
 
   return (
-    <div className="text-left">
-      <CargoHero subtitle={subtitle} />
+    <CargoPage subtitle={subtitle}>
+      <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
+        {/* ── Left column ──────────────────────────────────── */}
+        <div>
+          {/* Section 1 */}
+          <section>
+            <Separator className="mb-6" />
+            <h2 className="mb-4 text-base font-semibold">1. Route and ship date</h2>
 
-      <div className="bg-slate-50 py-8">
-        <div className="mx-auto w-full max-w-6xl px-6">
-          <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
-            {/* ── Left column ──────────────────────────────────── */}
-            <div>
-              {/* Section 1 */}
-              <section>
-                <Separator className="mb-6" />
-                <h2 className="mb-4 text-base font-semibold">1. Route and ship date</h2>
-
-                <div className="grid gap-4">
-                  {/* From / To */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field
-                      id="from"
-                      label={
-                        <>
-                          From
-                          <Req />
-                        </>
-                      }
-                    >
-                      <Select value={fromAirport} onValueChange={setFromAirport}>
-                        <SelectTrigger id="from" aria-invalid={flaggedField === 'from'}>
-                          <SelectValue placeholder="Select origin">
-                            {!fromAirport ? <span className="text-muted-foreground">Select origin</span> : undefined}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {origins.map(([code, name]) => (
-                            <SelectItem key={code} value={code}>
-                              {name} ({code})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field
-                      id="to"
-                      label={
-                        <>
-                          To
-                          <Req />
-                        </>
-                      }
-                    >
-                      <Select value={toAirport} onValueChange={setToAirport} disabled={!fromAirport}>
-                        <SelectTrigger id="to" aria-invalid={flaggedField === 'to'}>
-                          <SelectValue placeholder="Select destination">
-                            {!toAirport ? <span className="text-muted-foreground">Select destination</span> : undefined}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {destinations.map(([code, name]) => (
-                            <SelectItem key={code} value={code}>
-                              {name} ({code})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                  </div>
-
-                  {/* Ship date */}
-                  <div id="shipDateSection" className="grid gap-1">
-                    <span className="text-sm leading-none font-medium">
-                      Ship date
+            <div className="grid gap-4">
+              {/* From / To */}
+              <div className="grid grid-cols-2 gap-4">
+                <Field
+                  id="from"
+                  label={
+                    <>
+                      From
                       <Req />
-                    </span>
-                    {shipDate ? (
-                      (() => {
-                        const di = shipDates.find((d) => d.date === shipDate)
-                        const freeKg = di?.maxAvailableKg ?? 0
-                        const wt = Number(weightKg) || 0
-                        return (
-                          <>
-                            <p className="text-sm font-medium">
-                              {freeKg.toLocaleString()} kg free on {formatDateShort(shipDate)}
+                    </>
+                  }
+                >
+                  <Select value={fromAirport} onValueChange={setFromAirport}>
+                    <SelectTrigger id="from" aria-invalid={flaggedField === 'from'}>
+                      <SelectValue placeholder="Select origin">
+                        {!fromAirport ? <span className="text-muted-foreground">Select origin</span> : undefined}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {origins.map(([code, name]) => (
+                        <SelectItem key={code} value={code}>
+                          {name} ({code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field
+                  id="to"
+                  label={
+                    <>
+                      To
+                      <Req />
+                    </>
+                  }
+                >
+                  <Select value={toAirport} onValueChange={setToAirport} disabled={!fromAirport}>
+                    <SelectTrigger id="to" aria-invalid={flaggedField === 'to'}>
+                      <SelectValue placeholder="Select destination">
+                        {!toAirport ? <span className="text-muted-foreground">Select destination</span> : undefined}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {destinations.map(([code, name]) => (
+                        <SelectItem key={code} value={code}>
+                          {name} ({code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </div>
+
+              {/* Ship date */}
+              <div id="shipDateSection" className="grid gap-1">
+                <span className="text-sm leading-none font-medium">
+                  Ship date
+                  <Req />
+                </span>
+                {shipDate ? (
+                  (() => {
+                    const di = shipDates.find((d) => d.date === shipDate)
+                    const freeKg = di?.maxAvailableKg ?? 0
+                    const wt = Number(weightKg) || 0
+                    return (
+                      <>
+                        <p className="text-sm font-medium">
+                          {freeKg.toLocaleString()} kg free on {formatDateShort(shipDate)}
+                        </p>
+                        {wt <= 0 && <p className="text-xs text-muted-foreground">Enter the weight to check it fits.</p>}
+                        {wt > 0 && wt <= freeKg && <p className="text-xs text-emerald-600">✓ Room for your {wt.toLocaleString()} kg</p>}
+                        {wt > 0 && wt > freeKg && (
+                          <p className="text-xs text-destructive">Not enough room for {wt.toLocaleString()} kg. Pick another day.</p>
+                        )}
+                      </>
+                    )
+                  })()
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Pick a day up to {requestWindowDays} days ahead (to {formatDate(maxDateStr)}). Your cargo goes on the earliest flight
+                    that day with room.
+                  </p>
+                )}
+              </div>
+
+              {/* Calendar picker */}
+              {routeId && shipDates.length > 0 && (
+                <ShipCalendar
+                  dates={shipDates}
+                  value={shipDate}
+                  onChange={setShipDate}
+                  calMonth={calMonth}
+                  onCalMonthChange={setCalMonth}
+                  weightKg={Number(weightKg) || 0}
+                  flagged={flaggedField === 'shipDateSection'}
+                />
+              )}
+
+              {/* Flights on day */}
+              {shipDate && dayFlights.length > 0 && (
+                <div className="grid gap-2">
+                  <h3 className="text-xs font-semibold">Flights on {formatDate(shipDate)}</h3>
+                  {quote && !quoteError && (
+                    <Alert>
+                      <Info />
+                      <AlertDescription>
+                        We put your cargo on the earliest flight with room. You don&apos;t need to choose.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  {(quoteError || (!quote && canQuote && !quoteLoading)) && (
+                    <p className="text-xs text-muted-foreground">A flight is assigned once your goods pass the checks.</p>
+                  )}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {dayFlights.map((f) => {
+                      const wt = Number(weightKg) || 0
+                      const isAssigned = !quoteError && quote?.flightId === f.id
+                      const notEnough = wt > 0 && f.availableKg < wt
+                      // "Later" only means something once a flight is assigned: before that, no flight is earlier or later than ours.
+                      const assigned = !quoteError ? dayFlights.find((d) => d.id === quote?.flightId) : undefined
+                      const isLater = assigned != null && new Date(f.depAt) > new Date(assigned.depAt)
+                      return (
+                        <Card key={f.id} className={`gap-1 py-3 text-sm ${isAssigned ? 'border-blue-600 bg-blue-50' : ''}`}>
+                          <CardContent className="grid gap-1 px-3">
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold">{f.flightNumber}</span>
+                              {isAssigned && (
+                                <Badge className="gap-1 text-xs">
+                                  <Check className="h-3 w-3" /> Your flight
+                                </Badge>
+                              )}
+                              {!isAssigned && !notEnough && isLater && <span className="text-xs text-muted-foreground">Later flight</span>}
+                              {!isAssigned && notEnough && <span className="text-xs text-destructive">Not enough room</span>}
+                            </div>
+                            <p className="text-muted-foreground">
+                              {formatTime(f.depAt)} {f.origin} → {formatTime(f.arrAt)} {f.destination}
                             </p>
-                            {wt <= 0 && <p className="text-xs text-muted-foreground">Enter the weight to check it fits.</p>}
-                            {wt > 0 && wt <= freeKg && <p className="text-xs text-emerald-600">✓ Room for your {wt.toLocaleString()} kg</p>}
-                            {wt > 0 && wt > freeKg && (
-                              <p className="text-xs text-destructive">Not enough room for {wt.toLocaleString()} kg. Pick another day.</p>
-                            )}
-                          </>
-                        )
-                      })()
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        Pick a day up to {requestWindowDays} days ahead (to {formatDate(maxDateStr)}). Your cargo goes on the earliest
-                        flight that day with room.
-                      </p>
-                    )}
+                            <p className="text-xs text-muted-foreground">{f.availableKg.toLocaleString()} kg free</p>
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
                   </div>
-
-                  {/* Calendar picker */}
-                  {routeId && shipDates.length > 0 && (
-                    <ShipCalendar
-                      dates={shipDates}
-                      value={shipDate}
-                      onChange={setShipDate}
-                      calMonth={calMonth}
-                      onCalMonthChange={setCalMonth}
-                      weightKg={Number(weightKg) || 0}
-                      flagged={flaggedField === 'shipDateSection'}
-                    />
-                  )}
-
-                  {/* Flights on day */}
-                  {shipDate && dayFlights.length > 0 && (
-                    <div className="grid gap-2">
-                      <h3 className="text-xs font-semibold">Flights on {formatDate(shipDate)}</h3>
-                      {quote && !quoteError && (
-                        <Alert>
-                          <Info />
-                          <AlertDescription>
-                            We put your cargo on the earliest flight with room. You don&apos;t need to choose.
-                          </AlertDescription>
-                        </Alert>
-                      )}
-                      {(quoteError || (!quote && canQuote && !quoteLoading)) && (
-                        <p className="text-xs text-muted-foreground">A flight is assigned once your goods pass the checks.</p>
-                      )}
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {dayFlights.map((f) => {
-                          const wt = Number(weightKg) || 0
-                          const isAssigned = !quoteError && quote?.flightId === f.id
-                          const notEnough = wt > 0 && f.availableKg < wt
-                          // "Later" only means something once a flight is assigned: before that, no flight is earlier or later than ours.
-                          const assigned = !quoteError ? dayFlights.find((d) => d.id === quote?.flightId) : undefined
-                          const isLater = assigned != null && new Date(f.depAt) > new Date(assigned.depAt)
-                          return (
-                            <Card key={f.id} className={`gap-1 py-3 text-sm ${isAssigned ? 'border-blue-600 bg-blue-50' : ''}`}>
-                              <CardContent className="grid gap-1 px-3">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-semibold">{f.flightNumber}</span>
-                                  {isAssigned && (
-                                    <Badge className="gap-1 text-xs">
-                                      <Check className="h-3 w-3" /> Your flight
-                                    </Badge>
-                                  )}
-                                  {!isAssigned && !notEnough && isLater && (
-                                    <span className="text-xs text-muted-foreground">Later flight</span>
-                                  )}
-                                  {!isAssigned && notEnough && <span className="text-xs text-destructive">Not enough room</span>}
-                                </div>
-                                <p className="text-muted-foreground">
-                                  {formatTime(f.depAt)} {f.origin} → {formatTime(f.arrAt)} {f.destination}
-                                </p>
-                                <p className="text-xs text-muted-foreground">{f.availableKg.toLocaleString()} kg free</p>
-                              </CardContent>
-                            </Card>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
-              </section>
-
-              {/* Section 2 */}
-              <section className="mt-6">
-                <Separator className="mb-6" />
-                <h2 className="mb-4 text-base font-semibold">2. Describe the goods</h2>
-
-                <div className="grid gap-4">
-                  {/* Commodity | Pieces | Weight | Volume */}
-                  <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_1fr]">
-                    <Field
-                      id="commodityType"
-                      label={
-                        <>
-                          Commodity type
-                          <Req />
-                        </>
-                      }
-                    >
-                      <Select value={commodityTypeId} onValueChange={setCommodityTypeId}>
-                        <SelectTrigger id="commodityType" aria-invalid={flaggedField === 'commodityType'}>
-                          <SelectValue placeholder="Select">
-                            {!commodityTypeId ? <span className="text-muted-foreground">Select</span> : undefined}
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {commodityTypes.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              {c.name} ({c.handlingClass})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field
-                      id="pieces"
-                      error={fieldErrors.pieces?.message}
-                      label={
-                        <>
-                          Pieces
-                          <Req />
-                        </>
-                      }
-                    >
-                      <Input
-                        id="pieces"
-                        type="number"
-                        min="1"
-                        value={pieces}
-                        onChange={(e) => setPieces(e.target.value)}
-                        aria-invalid={!!fieldErrors.pieces || flaggedField === 'pieces'}
-                      />
-                    </Field>
-                    <Field
-                      id="weight"
-                      error={fieldErrors.weightKg?.message}
-                      label={
-                        <>
-                          Weight (kg)
-                          <Req />
-                        </>
-                      }
-                    >
-                      <Input
-                        id="weight"
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        value={weightKg}
-                        onChange={(e) => setWeightKg(e.target.value)}
-                        aria-invalid={!!fieldErrors.weightKg || flaggedField === 'weight'}
-                      />
-                    </Field>
-                    <Field
-                      id="volume"
-                      label={
-                        <>
-                          Volume (m³)
-                          <Req />
-                        </>
-                      }
-                    >
-                      <Input
-                        id="volume"
-                        type="number"
-                        min="0"
-                        step="0.001"
-                        value={volumeM3}
-                        onChange={(e) => setVolumeM3(e.target.value)}
-                        aria-invalid={flaggedField === 'volume'}
-                      />
-                    </Field>
-                  </div>
-
-                  {/* Goods description — single-line input */}
-                  <Field
-                    id="description"
-                    label={
-                      <>
-                        Goods description
-                        <Req />
-                      </>
-                    }
-                  >
-                    <Input
-                      id="description"
-                      type="text"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Describe the goods being shipped"
-                      aria-invalid={!!fieldErrors.description || flaggedField === 'description'}
-                    />
-                    {fieldErrors.description && <FieldError error={fieldErrors.description} />}
-                  </Field>
-
-                  {/* Error banner for other quote errors */}
-                  {quoteError &&
-                    !fieldErrors.description &&
-                    quoteError.code !== 'NO_FLIGHT_AVAILABLE' &&
-                    quoteError.code !== 'NO_RATE' &&
-                    quoteError.code !== 'UN_NUMBER_REQUIRED' && <FieldError error={quoteError} />}
-
-                  {/* UN number (dangerous goods only) */}
-                  {isDangerous && (
-                    <Field
-                      id="unNumber"
-                      label={
-                        <>
-                          UN number
-                          <Req />
-                        </>
-                      }
-                      hint="Needed for dangerous goods: UN and four digits."
-                    >
-                      <Input
-                        id="unNumber"
-                        type="text"
-                        placeholder="UNxxxx"
-                        value={unNumber}
-                        onChange={(e) => setUnNumber(e.target.value)}
-                        maxLength={6}
-                        aria-invalid={!!fieldErrors.unNumber || flaggedField === 'unNumber'}
-                      />
-                      <FieldError error={fieldErrors.unNumber} />
-                    </Field>
-                  )}
-
-                  {/* Shipper / Consignee */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field
-                      id="shipperCompany"
-                      label={
-                        <>
-                          Shipper
-                          <Req />
-                        </>
-                      }
-                    >
-                      <Input
-                        id="shipperCompany"
-                        placeholder="Company"
-                        value={shipperCompany}
-                        onChange={(e) => setShipperCompany(e.target.value)}
-                        aria-invalid={flaggedField === 'shipperCompany'}
-                      />
-                    </Field>
-                    <Field
-                      id="consigneeName"
-                      label={
-                        <>
-                          Consignee name
-                          <Req />
-                        </>
-                      }
-                    >
-                      <Input
-                        id="consigneeName"
-                        placeholder="Name"
-                        value={consigneeName}
-                        onChange={(e) => setConsigneeName(e.target.value)}
-                        aria-invalid={flaggedField === 'consigneeName'}
-                      />
-                    </Field>
-                  </div>
-
-                  {/* Shipper phone / Consignee phone */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field id="shipperPhone" label="Shipper phone">
-                      <Input
-                        id="shipperPhone"
-                        placeholder="Optional"
-                        value={shipperPhone}
-                        onChange={(e) => setShipperPhone(e.target.value)}
-                      />
-                    </Field>
-                    <Field id="consigneePhone" label="Consignee phone">
-                      <Input
-                        id="consigneePhone"
-                        placeholder="Optional"
-                        value={consigneePhone}
-                        onChange={(e) => setConsigneePhone(e.target.value)}
-                      />
-                    </Field>
-                  </div>
-
-                  {/* Consignee address (full-width, API needs it separately) */}
-                  <Field
-                    id="consigneeAddress"
-                    label={
-                      <>
-                        Consignee address
-                        <Req />
-                      </>
-                    }
-                  >
-                    <Input
-                      id="consigneeAddress"
-                      placeholder="Address"
-                      value={consigneeAddress}
-                      onChange={(e) => setConsigneeAddress(e.target.value)}
-                      aria-invalid={flaggedField === 'consigneeAddress'}
-                    />
-                  </Field>
-                </div>
-              </section>
+              )}
             </div>
+          </section>
 
-            {/* ── Right column ─────────────────────────────────── */}
-            <div className="grid content-start gap-4 lg:sticky lg:top-6 lg:self-start">
-              <FlightCard
-                quote={quote}
-                quoteError={quoteError}
-                quoteLoading={quoteLoading}
-                canQuote={!!canQuote}
-                daysWithRoom={daysWithRoom}
-                onPickDate={setShipDate}
-                weightKg={Number(weightKg) || 0}
-                infoNote={flightInfoNote}
-              />
+          {/* Section 2 */}
+          <section className="mt-6">
+            <Separator className="mb-6" />
+            <h2 className="mb-4 text-base font-semibold">2. Describe the goods</h2>
 
-              <QuoteCard
-                quote={quote}
-                quoteError={quoteError}
-                quoteLoading={quoteLoading}
-                canSubmit={canSubmit}
-                submitting={submitting}
-                volumeM3={volumeM3}
-                onSubmit={handleSubmit}
-                disabledReason={disabledReason}
-                onDisabledClick={handleDisabledClick}
-                submitError={submitError}
-              />
+            <div className="grid gap-4">
+              {/* Commodity | Pieces | Weight | Volume */}
+              <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_1fr]">
+                <Field
+                  id="commodityType"
+                  label={
+                    <>
+                      Commodity type
+                      <Req />
+                    </>
+                  }
+                >
+                  <Select value={commodityTypeId} onValueChange={setCommodityTypeId}>
+                    <SelectTrigger id="commodityType" aria-invalid={flaggedField === 'commodityType'}>
+                      <SelectValue placeholder="Select">
+                        {!commodityTypeId ? <span className="text-muted-foreground">Select</span> : undefined}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {commodityTypes.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name} ({c.handlingClass})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field
+                  id="pieces"
+                  error={fieldErrors.pieces?.message}
+                  label={
+                    <>
+                      Pieces
+                      <Req />
+                    </>
+                  }
+                >
+                  <Input
+                    id="pieces"
+                    type="number"
+                    min="1"
+                    value={pieces}
+                    onChange={(e) => setPieces(e.target.value)}
+                    aria-invalid={!!fieldErrors.pieces || flaggedField === 'pieces'}
+                  />
+                </Field>
+                <Field
+                  id="weight"
+                  error={fieldErrors.weightKg?.message}
+                  label={
+                    <>
+                      Weight (kg)
+                      <Req />
+                    </>
+                  }
+                >
+                  <Input
+                    id="weight"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={weightKg}
+                    onChange={(e) => setWeightKg(e.target.value)}
+                    aria-invalid={!!fieldErrors.weightKg || flaggedField === 'weight'}
+                  />
+                </Field>
+                <Field
+                  id="volume"
+                  label={
+                    <>
+                      Volume (m³)
+                      <Req />
+                    </>
+                  }
+                >
+                  <Input
+                    id="volume"
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    value={volumeM3}
+                    onChange={(e) => setVolumeM3(e.target.value)}
+                    aria-invalid={flaggedField === 'volume'}
+                  />
+                </Field>
+              </div>
+
+              {/* Goods description — single-line input */}
+              <Field
+                id="description"
+                label={
+                  <>
+                    Goods description
+                    <Req />
+                  </>
+                }
+              >
+                <Input
+                  id="description"
+                  type="text"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe the goods being shipped"
+                  aria-invalid={!!fieldErrors.description || flaggedField === 'description'}
+                />
+                {fieldErrors.description && <FieldError error={fieldErrors.description} />}
+              </Field>
+
+              {/* Error banner for other quote errors */}
+              {quoteError &&
+                !fieldErrors.description &&
+                quoteError.code !== 'NO_FLIGHT_AVAILABLE' &&
+                quoteError.code !== 'NO_RATE' &&
+                quoteError.code !== 'UN_NUMBER_REQUIRED' && <FieldError error={quoteError} />}
+
+              {/* UN number (dangerous goods only) */}
+              {isDangerous && (
+                <Field
+                  id="unNumber"
+                  label={
+                    <>
+                      UN number
+                      <Req />
+                    </>
+                  }
+                  hint="Needed for dangerous goods: UN and four digits."
+                >
+                  <Input
+                    id="unNumber"
+                    type="text"
+                    placeholder="UNxxxx"
+                    value={unNumber}
+                    onChange={(e) => setUnNumber(e.target.value)}
+                    maxLength={6}
+                    aria-invalid={!!fieldErrors.unNumber || flaggedField === 'unNumber'}
+                  />
+                  <FieldError error={fieldErrors.unNumber} />
+                </Field>
+              )}
+
+              {/* Shipper / Consignee */}
+              <div className="grid grid-cols-2 gap-4">
+                <Field
+                  id="shipperCompany"
+                  label={
+                    <>
+                      Shipper
+                      <Req />
+                    </>
+                  }
+                >
+                  <Input
+                    id="shipperCompany"
+                    placeholder="Company"
+                    value={shipperCompany}
+                    onChange={(e) => setShipperCompany(e.target.value)}
+                    aria-invalid={flaggedField === 'shipperCompany'}
+                  />
+                </Field>
+                <Field
+                  id="consigneeName"
+                  label={
+                    <>
+                      Consignee name
+                      <Req />
+                    </>
+                  }
+                >
+                  <Input
+                    id="consigneeName"
+                    placeholder="Name"
+                    value={consigneeName}
+                    onChange={(e) => setConsigneeName(e.target.value)}
+                    aria-invalid={flaggedField === 'consigneeName'}
+                  />
+                </Field>
+              </div>
+
+              {/* Shipper phone / Consignee phone */}
+              <div className="grid grid-cols-2 gap-4">
+                <Field id="shipperPhone" label="Shipper phone">
+                  <Input id="shipperPhone" placeholder="Optional" value={shipperPhone} onChange={(e) => setShipperPhone(e.target.value)} />
+                </Field>
+                <Field id="consigneePhone" label="Consignee phone">
+                  <Input
+                    id="consigneePhone"
+                    placeholder="Optional"
+                    value={consigneePhone}
+                    onChange={(e) => setConsigneePhone(e.target.value)}
+                  />
+                </Field>
+              </div>
+
+              {/* Consignee address (full-width, API needs it separately) */}
+              <Field
+                id="consigneeAddress"
+                label={
+                  <>
+                    Consignee address
+                    <Req />
+                  </>
+                }
+              >
+                <Input
+                  id="consigneeAddress"
+                  placeholder="Address"
+                  value={consigneeAddress}
+                  onChange={(e) => setConsigneeAddress(e.target.value)}
+                  aria-invalid={flaggedField === 'consigneeAddress'}
+                />
+              </Field>
             </div>
-          </div>
+          </section>
+        </div>
+
+        {/* ── Right column ─────────────────────────────────── */}
+        <div className="grid content-start gap-4 lg:sticky lg:top-6 lg:self-start">
+          <FlightCard
+            quote={quote}
+            quoteError={quoteError}
+            quoteLoading={quoteLoading}
+            canQuote={!!canQuote}
+            daysWithRoom={daysWithRoom}
+            onPickDate={setShipDate}
+            weightKg={Number(weightKg) || 0}
+            infoNote={flightInfoNote}
+          />
+
+          <QuoteCard
+            quote={quote}
+            quoteError={quoteError}
+            quoteLoading={quoteLoading}
+            canSubmit={canSubmit}
+            submitting={submitting}
+            volumeM3={volumeM3}
+            onSubmit={handleSubmit}
+            disabledReason={disabledReason}
+            onDisabledClick={handleDisabledClick}
+            submitError={submitError}
+          />
         </div>
       </div>
-    </div>
+    </CargoPage>
   )
 }
 

@@ -1,41 +1,15 @@
 /* Feature 6 customer check-in on the final F6 design. Desktop first (1440), one column from 720 px. */
 
+/* The body of the check-in page, under the shared page title: the window strip, the stepper, then the form and its side panel. */
 .flow {
   font-family: var(--f6-ui);
   font-size: 16px;
   line-height: 1.5;
   color: var(--f6-ink);
-  /* 1200 px column + 45 px of page padding on each side. */
-  max-width: 1290px;
-  margin: 0 auto;
-  padding: 24px 45px 64px;
-  box-sizing: border-box;
   text-align: left;
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-
-.head {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.title {
-  font-family: var(--f6-ui);
-  font-size: 36px;
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  color: var(--f6-ink);
-  margin: 0;
-}
-
-.subtitle {
-  margin: 0;
-  color: var(--f6-muted);
-  font-size: 16px;
 }
 
 /* The window strip: green while check-in is open, amber once it is not. */

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { AlertCircle, Loader2, Check } from 'lucide-react'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
 import { Badge } from '@customer-web/components/ui/badge'
 import { Button } from '@customer-web/components/ui/button'
@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Separator } from '@customer-web/components/ui/separator'
 import { Skeleton } from '@customer-web/components/ui/skeleton'
 import { useCustomerCargoApi, CargoApiError, type BookingDetail, type CargoSettings } from './cargo-api'
-import CargoHero from './CargoHero'
+import CargoPage from './CargoPage'
+import { Stepper } from '@customer-web/components/ui/stepper'
 
 /* ── Formatting helpers ─────────────────────────────────────────── */
 
@@ -45,43 +46,7 @@ function flightDuration(dep: string, arr: string): string {
 /* ── Progress steps ─────────────────────────────────────────────── */
 
 function ProgressSteps({ step }: { step: 1 | 2 | 3 }) {
-  const steps = [
-    { num: 1, label: 'Ship cargo' },
-    { num: 2, label: 'Review and pay' },
-    { num: 3, label: 'Confirmed' },
-  ]
-
-  return (
-    <div className="flex items-center gap-0">
-      {steps.map((s, i) => {
-        const done = s.num < step
-        const active = s.num === step
-        const dim = s.num > step
-
-        return (
-          <div key={s.num} className="flex items-center">
-            {i > 0 && <div className={`h-px w-8 sm:w-12 ${done || active ? 'bg-white/60' : 'bg-white/20'}`} />}
-            <div className="flex items-center gap-2">
-              {done ? (
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-400">
-                  <Check className="h-3.5 w-3.5 text-white" />
-                </div>
-              ) : (
-                <div
-                  className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
-                    active ? 'bg-white text-[#1e2a5a]' : 'border border-white/30 text-white/40'
-                  }`}
-                >
-                  {s.num}
-                </div>
-              )}
-              <span className={`text-xs sm:text-sm ${dim ? 'text-white/40' : 'font-medium text-white'}`}>{s.label}</span>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
+  return <Stepper steps={['Ship cargo', 'Review and pay', 'Confirmed']} current={step - 1} aria-label="Cargo booking progress" />
 }
 
 /* ── Hold expired dialog ────────────────────────────────────────── */
@@ -398,160 +363,152 @@ function PayPageContent({
   const subtitle = `Booking ${d.bookingRef} · ${f.flightNumber} ${f.origin} → ${f.destination} · ${fmtDateShort(f.depAt)}. Check the details, then pay to confirm your space.`
 
   return (
-    <>
-      <CargoHero title="Review and pay" subtitle={subtitle} bottom={<ProgressSteps step={2} />} />
+    <CargoPage title="Review and pay" subtitle={subtitle} bottom={<ProgressSteps step={2} />}>
+      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+        {/* Left column */}
+        <div className="space-y-6">
+          {/* Hold banner */}
+          <Alert className="border-amber-300 bg-amber-50 text-amber-900">
+            <AlertDescription className="flex flex-wrap items-center justify-between gap-3 text-amber-900">
+              <span className="flex items-start gap-2">
+                <span className="text-lg">⏱</span>
+                <span>
+                  <strong>Your space is held</strong> · {g.declaredWeightKg} kg on {f.flightNumber}. Pay before the timer ends or the space
+                  is released.
+                </span>
+              </span>
+              <Badge className="bg-amber-900 px-3 py-1 text-sm text-white">{countdown.label} left</Badge>
+            </AlertDescription>
+          </Alert>
 
-      <div className="bg-muted/40 py-8">
-        <div className="mx-auto w-full max-w-6xl px-6">
-          <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-            {/* Left column */}
-            <div className="space-y-6">
-              {/* Hold banner */}
-              <Alert className="border-amber-300 bg-amber-50 text-amber-900">
-                <AlertDescription className="flex flex-wrap items-center justify-between gap-3 text-amber-900">
-                  <span className="flex items-start gap-2">
-                    <span className="text-lg">⏱</span>
-                    <span>
-                      <strong>Your space is held</strong> · {g.declaredWeightKg} kg on {f.flightNumber}. Pay before the timer ends or the
-                      space is released.
-                    </span>
-                  </span>
-                  <Badge className="bg-amber-900 px-3 py-1 text-sm text-white">{countdown.label} left</Badge>
-                </AlertDescription>
-              </Alert>
-
-              {/* Your shipment card */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Your shipment</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {/* Flight strip */}
-                  <Card className="mb-5 py-4 shadow-none">
-                    <CardContent className="px-4">
-                      <div className="mb-1 flex items-center gap-2">
-                        <span className="text-sm font-semibold text-primary">{f.flightNumber}</span>
-                        <span className="text-xs text-muted-foreground">{fmtDate(f.depAt)}</span>
-                      </div>
-                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-                        {/* Departure */}
-                        <div>
-                          <div className="text-2xl font-bold">{fmtTime(f.depAt)}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {f.origin} · {f.originName}
-                          </div>
-                        </div>
-                        {/* Centre */}
-                        <div className="flex flex-col items-center gap-1">
-                          <div className="flex items-center gap-2">
-                            <Separator className="w-8" />
-                            <span className="text-sm">✈</span>
-                            <Separator className="w-8" />
-                          </div>
-                          <div className="text-[11px] whitespace-nowrap text-muted-foreground">
-                            {flightDuration(f.depAt, f.arrAt)} · direct
-                          </div>
-                        </div>
-                        {/* Arrival */}
-                        <div className="text-right">
-                          <div className="text-2xl font-bold">{fmtTime(f.arrAt)}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {f.destination} · {f.destinationName}
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Detail grid */}
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <LabelValue label="Booking" value={d.bookingRef} />
-                    <LabelValue label="Goods" value={g.goodsDescription} />
-                    <LabelValue label="Pieces" value={String(g.pieces)} />
-                    <LabelValue label="Weight" value={`${g.declaredWeightKg} kg`} />
-                    <LabelValue label="Volume" value={`${g.declaredVolumeM3} m³`} />
-                    <LabelValue label="Route" value={`${f.origin} → ${f.destination} · ${q.distanceKm} km`} />
+          {/* Your shipment card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Your shipment</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* Flight strip */}
+              <Card className="mb-5 py-4 shadow-none">
+                <CardContent className="px-4">
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="text-sm font-semibold text-primary">{f.flightNumber}</span>
+                    <span className="text-xs text-muted-foreground">{fmtDate(f.depAt)}</span>
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* What you are paying for */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">What you are paying for</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  <Row label="Commodity" value={g.commodityTypeName} />
-                  <Row label={`Distance band (${q.distanceKm} km)`} value={fmtBand(q.distanceBand)} />
-                  <Row label="Actual weight" value={`${g.declaredWeightKg} kg`} />
-                  <Row
-                    label="Volume weight"
-                    value={`${q.chargeableKg >= g.declaredWeightKg ? q.chargeableKg : g.declaredVolumeM3 * (settings?.volumetricKgPerM3 ?? 167)} kg`}
-                  />
-                  <Row label="Chargeable weight" value={`${q.chargeableKg} kg`} bold />
-                  <Row label="Rate" value={`${fmtMoney(q.currency, q.ratePerKg)} / kg`} />
-
-                  <Separator />
-
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-sm text-muted-foreground">Total</span>
-                    <span className="text-2xl font-bold">{fmtMoney(q.currency, q.charge)}</span>
-                  </div>
-
-                  <p className="text-xs text-muted-foreground">
-                    Chargeable weight is the larger of the actual and volume weight, rounded up to 0.5 kg. Minimum charge{' '}
-                    {fmtMoney(q.currency, q.minCharge)}. The price is fixed once you book.
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Right column */}
-            <div>
-              <Card className="lg:sticky lg:top-6">
-                <CardHeader>
-                  <CardTitle className="text-base">Payment</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-4 space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Freight</span>
-                      <span>{fmtMoney(q.currency, q.charge)}</span>
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+                    {/* Departure */}
+                    <div>
+                      <div className="text-2xl font-bold">{fmtTime(f.depAt)}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {f.origin} · {f.originName}
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="font-medium">Total to pay</span>
-                      <span className="font-bold">{fmtMoney(q.currency, q.charge)}</span>
+                    {/* Centre */}
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="flex items-center gap-2">
+                        <Separator className="w-8" />
+                        <span className="text-sm">✈</span>
+                        <Separator className="w-8" />
+                      </div>
+                      <div className="text-[11px] whitespace-nowrap text-muted-foreground">{flightDuration(f.depAt, f.arrAt)} · direct</div>
+                    </div>
+                    {/* Arrival */}
+                    <div className="text-right">
+                      <div className="text-2xl font-bold">{fmtTime(f.arrAt)}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {f.destination} · {f.destinationName}
+                      </div>
                     </div>
                   </div>
-
-                  <Button className="mb-2 h-11 w-full" disabled={paying} onClick={onPay}>
-                    {paying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Pay {fmtMoney(q.currency, q.charge)}
-                  </Button>
-
-                  <Button variant="outline" className="mb-3 w-full" onClick={onCancel}>
-                    Cancel
-                  </Button>
-
-                  {payError && (
-                    <Alert variant="destructive" className="mb-3">
-                      <AlertCircle />
-                      <AlertDescription>{payError}</AlertDescription>
-                    </Alert>
-                  )}
-
-                  <p className="text-xs text-muted-foreground">
-                    🔒 You&apos;re only charged if your space is still held. Free cancellation until your cargo is loaded.
-                  </p>
                 </CardContent>
               </Card>
 
-              <p className="mt-3 text-center text-xs text-muted-foreground">Test payment: no real money moves.</p>
-            </div>
-          </div>
+              {/* Detail grid */}
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <LabelValue label="Booking" value={d.bookingRef} />
+                <LabelValue label="Goods" value={g.goodsDescription} />
+                <LabelValue label="Pieces" value={String(g.pieces)} />
+                <LabelValue label="Weight" value={`${g.declaredWeightKg} kg`} />
+                <LabelValue label="Volume" value={`${g.declaredVolumeM3} m³`} />
+                <LabelValue label="Route" value={`${f.origin} → ${f.destination} · ${q.distanceKm} km`} />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* What you are paying for */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">What you are paying for</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <Row label="Commodity" value={g.commodityTypeName} />
+              <Row label={`Distance band (${q.distanceKm} km)`} value={fmtBand(q.distanceBand)} />
+              <Row label="Actual weight" value={`${g.declaredWeightKg} kg`} />
+              <Row
+                label="Volume weight"
+                value={`${q.chargeableKg >= g.declaredWeightKg ? q.chargeableKg : g.declaredVolumeM3 * (settings?.volumetricKgPerM3 ?? 167)} kg`}
+              />
+              <Row label="Chargeable weight" value={`${q.chargeableKg} kg`} bold />
+              <Row label="Rate" value={`${fmtMoney(q.currency, q.ratePerKg)} / kg`} />
+
+              <Separator />
+
+              <div className="flex items-baseline justify-between">
+                <span className="text-sm text-muted-foreground">Total</span>
+                <span className="text-2xl font-bold">{fmtMoney(q.currency, q.charge)}</span>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Chargeable weight is the larger of the actual and volume weight, rounded up to 0.5 kg. Minimum charge{' '}
+                {fmtMoney(q.currency, q.minCharge)}. The price is fixed once you book.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right column */}
+        <div>
+          <Card className="lg:sticky lg:top-6">
+            <CardHeader>
+              <CardTitle className="text-base">Payment</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Freight</span>
+                  <span>{fmtMoney(q.currency, q.charge)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium">Total to pay</span>
+                  <span className="font-bold">{fmtMoney(q.currency, q.charge)}</span>
+                </div>
+              </div>
+
+              <Button className="mb-2 h-11 w-full" disabled={paying} onClick={onPay}>
+                {paying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Pay {fmtMoney(q.currency, q.charge)}
+              </Button>
+
+              <Button variant="outline" className="mb-3 w-full" onClick={onCancel}>
+                Cancel
+              </Button>
+
+              {payError && (
+                <Alert variant="destructive" className="mb-3">
+                  <AlertCircle />
+                  <AlertDescription>{payError}</AlertDescription>
+                </Alert>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                🔒 You&apos;re only charged if your space is still held. Free cancellation until your cargo is loaded.
+              </p>
+            </CardContent>
+          </Card>
+
+          <p className="mt-3 text-center text-xs text-muted-foreground">Test payment: no real money moves.</p>
         </div>
       </div>
-    </>
+    </CargoPage>
   )
 }
 
