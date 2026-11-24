@@ -66,7 +66,12 @@ export class BaggageCaseNotices {
     if (!this.db || !this.notifications) return
 
     if (notice.event === 'lost' && this.customerService) {
-      await this.customerService.openLostBagCase(notice.reportId)
+      // The passenger notice goes out even if the compensation case cannot be opened (e.g. the report moved on).
+      try {
+        await this.customerService.openLostBagCase(notice.reportId)
+      } catch (e) {
+        this.logger.error(`Case ${notice.reportId}: could not open the lost-bag case`, e instanceof Error ? e.stack : String(e))
+      }
     }
 
     const report = await this.db.lost_bag_report.findUnique({
