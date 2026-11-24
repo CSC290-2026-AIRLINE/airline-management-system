@@ -17,13 +17,13 @@ export interface BaggageCaseNotice {
   detail?: string
 }
 
-/** The status as the passenger reads it in a message. */
+/** The status as the passenger reads it; the templates put it after "is now:", so it is a short phrase. */
 const CASE_STATUS_TEXT: Record<Exclude<BaggageCaseEvent, 'delivering'>, string> = {
-  opened_for_found_bag: 'We found a bag tagged to you and opened this case for it',
-  matched: 'Your bag has been found and matched to your report',
+  opened_for_found_bag: 'Opened for a bag we found with your tag',
+  matched: 'Bag found',
   closed: 'Closed',
   cancelled: 'Cancelled',
-  lost: 'Not found in time. A customer service case has been opened for compensation',
+  lost: 'Not found in time, compensation case opened',
 }
 
 /** `in_transit` -> `In transit`. */

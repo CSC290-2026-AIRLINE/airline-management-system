@@ -39,7 +39,7 @@ describe('BaggageCaseNotices', () => {
       source: '10',
       sourceEventId: `matched:${REPORT_ID}`,
       eventType: 'bag_case_updated',
-      payload: { case_number: 'LB-2026-000009', status: expect.stringContaining('matched') },
+      payload: { case_number: 'LB-2026-000009', status: 'Bag found' },
       recipients: [{ passengerName: 'Ann Lee', email: 'pax@example.com', phone: '+66812345678', customerId: 'cust-1' }],
     })
     expect(customerService.openLostBagCase).not.toHaveBeenCalled()
