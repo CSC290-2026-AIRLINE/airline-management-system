@@ -90,7 +90,11 @@ describe('createPayment — the minimum hold and one live payment', () => {
 
   it('accepts exactly 3 minutes', async () => {
     const { svc, clock } = setup()
-    await expect(svc.createPayment(input(clock, { expires_at: new Date(clock.now().getTime() + 3 * MINUTE) }))).resolves.toBeDefined()
+    // Both ends from one reading of the clock: the service reads it again a moment later, which would leave a hair under 3.
+    const started_at = clock.now()
+    await expect(
+      svc.createPayment(input(clock, { started_at, expires_at: new Date(started_at.getTime() + 3 * MINUTE) })),
+    ).resolves.toBeDefined()
   })
 
   it('does not apply the minimum hold to a payment a voucher covers whole', async () => {

@@ -2,8 +2,8 @@
  * Feature 5c dev fixture: crew work to price, until Feature 8 produces real pairings. Development only — it writes into
  * Feature 2, 8 and 9 tables directly, which app code never does.
  *
- *   npx tsx -r tsconfig-paths/register src/modules/payments/dev/crew-pay-fixture.ts              # a worked pairing
- *   npx tsx -r tsconfig-paths/register src/modules/payments/dev/crew-pay-fixture.ts --draft-run  # a run to approve
+ *   npx tsx -r tsconfig-paths/register src/modules/payments-crew-pay/demo/crew-pay-fixture.ts              # a worked pairing
+ *   npx tsx -r tsconfig-paths/register src/modules/payments-crew-pay/demo/crew-pay-fixture.ts --draft-run  # a run to approve
  *
  * Without flags it creates three crew members (captain, first officer, cabin crew; created once and reused) and a new
  * two-day pairing from BKK whose four flights have all ARRIVED. The first duty day is 12.25 h, so with the default
