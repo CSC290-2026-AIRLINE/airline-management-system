@@ -133,7 +133,6 @@ export interface StaffDeliveryLogResponse {
     eventsReceived: number
     messagesSent: number
     failedRetrying: number
-    duplicateIgnored: number
   }
   rows: DeliveryLogRowView[]
 }

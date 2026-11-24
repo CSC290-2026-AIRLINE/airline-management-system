@@ -19,7 +19,6 @@ const EMPTY_DELIVERY_LOG: StaffDeliveryLogResponse = {
     eventsReceived: 0,
     messagesSent: 0,
     failedRetrying: 0,
-    duplicateIgnored: 0,
   },
   rows: [],
 }
@@ -166,7 +165,6 @@ export function DeliveryLogPage() {
         <StatCard label="Events received" value={data.kpis.eventsReceived} />
         <StatCard label="Messages sent" value={data.kpis.messagesSent} />
         <StatCard label="Failed, retrying" value={data.kpis.failedRetrying} />
-        <StatCard label="Duplicate event ignored" value={data.kpis.duplicateIgnored} />
       </div>
 
       <Card className="gap-3 px-4 py-3.5 shadow-none">
