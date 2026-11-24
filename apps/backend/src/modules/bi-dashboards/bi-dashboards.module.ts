@@ -1,6 +1,7 @@
 import { Module, type OnModuleInit } from '@nestjs/common'
 import { AdminConsoleModule } from '@backend/modules/admin-console/admin-console.module'
 import { AdminConsoleService } from '@backend/modules/admin-console/admin-console.service'
+import { AircraftManagementModule } from '@backend/modules/aircraft-management/aircraft-management.module'
 import { PricingModule } from '@backend/modules/pricing/pricing.module'
 import { BiDashboardsController } from './bi-dashboards.controller'
 import { BiEtlService } from './bi-etl.service'
@@ -17,7 +18,7 @@ import { BI_FINANCE_SCREEN, BI_OPERATIONS_SCREEN, BiStaffGuard } from './bi-staf
  * the charts.
  */
 @Module({
-  imports: [AdminConsoleModule, PricingModule],
+  imports: [AdminConsoleModule, PricingModule, AircraftManagementModule],
   controllers: [BiDashboardsController],
   providers: [BiEtlService, BiQueryService, BiFinanceService, BiPanelsService, BiStaffGuard, BiNightlyRefresh, BiAutoRefresh],
 })

@@ -51,6 +51,14 @@ export class BiEtlService implements OnModuleInit {
     return rows[0]?.id ?? null
   }
 
+  /** True when the staff member's role is an admin role (Feature 15's `is_admin`). Only admins may schedule maintenance. */
+  async isAdminStaff(staffId: string): Promise<boolean> {
+    const rows = await this.db.$queryRaw<{ is_admin: boolean }[]>`
+      SELECT r.is_admin FROM staff s JOIN role r ON r.id = s.role_id
+      WHERE s.id = ${staffId}::uuid AND s.deleted_at IS NULL`
+    return rows[0]?.is_admin === true
+  }
+
   /** Runs one refresh. Throws `ConflictException` if another run is still in progress. */
   async refresh(trigger: BiRunTrigger, staffId: string | null): Promise<BiRunSummary> {
     const dataAsOf = this.clock.now()

@@ -247,10 +247,13 @@ export function useBiApi() {
     getDelayCauses: (filters: BiFilters) => getJson<BiDelayCause[]>(`/api/bi/delay-causes?${filterQuery(filters)}`),
     getFlights: (filters: BiFilters) => getJson<BiFlight[]>(`/api/bi/flights?${filterQuery(filters)}`),
     getNoShows: (filters: BiFilters) => getJson<BiNoShows>(`/api/bi/no-shows?${filterQuery(filters)}`),
-    /* Extra revenue is always weekly, so the day/week/month choice in the page filters does not apply to it. */
-    getExtraRevenue: (filters: BiFilters) =>
-      getJson<BiExtraRevenuePeriod[]>(`/api/bi/extra-revenue?${filterQuery({ ...filters, group: 'week' })}`),
+    getExtraRevenue: (filters: BiFilters) => getJson<BiExtraRevenuePeriod[]>(`/api/bi/extra-revenue?${filterQuery(filters)}`),
     getAircraftUse: (filters: BiFilters) => getJson<BiAircraftUse>(`/api/bi/aircraft-use?${filterQuery(filters)}`),
+    /** Whether the signed-in user is an admin, and so may schedule maintenance. */
+    getMaintenanceAccess: () => getJson<{ allowed: boolean }>('/api/bi/maintenance-access'),
+    /** Feature 14 → Feature 9: schedules a maintenance period, and the copy refreshes before this resolves. */
+    markMaintenance: (aircraftId: string, body: { maintenance_type: string; planned_start_date: string; planned_end_date: string }) =>
+      getJson<unknown>(`/api/bi/aircraft/${aircraftId}/maintenance`, { method: 'POST', body: JSON.stringify(body) }),
     getFinanceRange: (from: string, to: string) => getJson<BiFinanceResponse>(`/api/bi/finance/range?from=${from}&to=${to}`),
     getFinance: (month: string | null) => getJson<BiFinanceResponse>(`/api/bi/finance${month ? `?month=${month}` : ''}`),
     getFinancePayments: () => getJson<BiScheduledPayment[]>('/api/bi/finance/payments'),

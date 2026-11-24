@@ -4,15 +4,16 @@ import { Button } from '@staff-web/components/ui/button'
 import { Card } from '@staff-web/components/ui/card'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
-import { useBiApi, type BiFilters as FilterState, type BiFinanceMonth } from '../api/bi'
-import { BiFilters } from '../components/BiFilters'
+import { useBiApi, type BiFinanceMonth } from '../api/bi'
+import { BiExportMenu } from '../components/BiFilters'
+import { BiMonthPicker } from '../components/BiMonthPicker'
 import { BiPageHeader } from '../components/BiPageHeader'
 import { FinanceWaterfall, type WaterfallStep } from '../components/FinanceWaterfall'
 import { BI_COLORS } from '../chart-colors'
 import { ChartFrame } from '../components/InteractiveCharts'
 import { KpiCard } from '../components/KpiCard'
 import { useBiLoad } from '../hooks/useBiLoad'
-import { comparison, defaultFilters, relativeChange } from '../lib-comparison'
+import { comparison, relativeChange } from '../lib-comparison'
 import { formatCount, formatDateTime, formatPercent, formatThb } from '../lib-format'
 
 function monthLabel(month: string, long = false): string {
@@ -40,16 +41,16 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export function FinancePage() {
   const api = useBiApi()
-  // The filter bar edits a draft; the report loads the applied filters, which change only when Apply is clicked.
-  const [draft, setDraft] = useState<FilterState>(defaultFilters)
-  const [filters, setFilters] = useState<FilterState>(defaultFilters)
+  // The report is monthly: the chosen month loads as soon as it is picked. Empty means the latest computed month.
+  const [chosen, setChosen] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
   const [showReport, setShowReport] = useState(false)
-  const finance = useBiLoad(`finance|${filters.from}|${filters.to}`, () => api.getFinanceRange(filters.from, filters.to))
+  const finance = useBiLoad(`finance|${chosen ?? ''}`, () => api.getFinance(chosen))
   const payments = useBiLoad('finance-payments', () => api.getFinancePayments())
   const current = finance.data?.current ?? null
   const previous = finance.data?.previous ?? null
-  const month = filters.to.slice(0, 7)
+  const months = finance.data?.months ?? finance.previousData?.months ?? []
+  const month = chosen ?? current?.month ?? finance.previousData?.current?.month ?? ''
   const suffix = previous ? `vs ${monthLabel(previous.month).split(' ')[0]}` : 'vs last month'
   const delta = (key: keyof BiFinanceMonth) =>
     current ? relativeChange(current[key] as number, previous?.[key] as number | undefined) : null
@@ -118,16 +119,15 @@ export function FinancePage() {
             </AlertDescription>
           </Alert>
         )}
-        <BiFilters
-          filters={draft}
-          routes={[]}
-          onChange={setDraft}
-          onApply={() => setFilters(draft)}
-          onExportCsv={() => void exportCsv()}
-          onPrint={() => window.print()}
-          showRoute={false}
-          note="Fleet-wide, not split by route"
-        />
+        <Card className="bi-filter-card print:hidden">
+          <div className="bi-filter-fields">
+            <div className="bi-field">
+              <span id="bi-month-label">Month</span>
+              <BiMonthPicker id="bi-month" value={month} months={months} onChange={setChosen} />
+            </div>
+          </div>
+          <BiExportMenu disabled={!current} onExportCsv={() => void exportCsv()} onPrint={() => window.print()} />
+        </Card>
         {!finance.error && finance.data === null && (
           <>
             <div className="bi-kpis">

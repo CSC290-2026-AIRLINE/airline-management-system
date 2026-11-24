@@ -4,12 +4,13 @@ import { Button } from '@staff-web/components/ui/button'
 import { ChartFrame } from '../components/InteractiveCharts'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
-import { useBiApi, type BiFilters as FilterState } from '../api/bi'
+import { useBiApi, type BiFilters as FilterState, type BiGroup } from '../api/bi'
 import { BiFilters } from '../components/BiFilters'
 import { BiPageHeader } from '../components/BiPageHeader'
 import { KpiCard } from '../components/KpiCard'
 import { BarPanelChart, LinePanelChart } from '../components/PanelCharts'
 import { RankBars } from '../components/RankBars'
+import { MarkForMaintenance } from '../components/MarkForMaintenance'
 import { useBiLoad } from '../hooks/useBiLoad'
 import { defaultFilters } from '../lib-comparison'
 import { formatCompact, formatCount, formatDateTime, formatPercent, formatThb } from '../lib-format'
@@ -17,9 +18,11 @@ import { formatCompact, formatCount, formatDateTime, formatPercent, formatThb } 
 /** How often an open panel re-reads the BI copy. Matches the backend's automatic refresh. */
 const AUTO_RELOAD_MS = 15_000
 
-/** Short week label, e.g. "5 Oct", from a `YYYY-MM-DD` period. */
-function weekLabel(period: string): string {
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${period}T00:00:00Z`))
+/** A period label for the chosen grouping: "5 Oct" for a day or week, "Oct 2026" for a month. */
+function periodLabel(period: string, group: BiGroup): string {
+  const options: Intl.DateTimeFormatOptions =
+    group === 'month' ? { month: 'short', year: 'numeric', timeZone: 'UTC' } : { day: 'numeric', month: 'short', timeZone: 'UTC' }
+  return new Intl.DateTimeFormat('en-GB', options).format(new Date(`${period}T00:00:00Z`))
 }
 
 /**
@@ -175,7 +178,7 @@ export function NoShowsView() {
   const routes = [...(body?.routes ?? [])].sort((a, b) => (b.no_show_rate ?? -1) - (a.no_show_rate ?? -1))
   const worst = routes[0]
   const rateRows = weeks.map((w) => (w.no_show_rate === null ? null : w.no_show_rate * 100))
-  const labels = weeks.map((w) => weekLabel(w.period))
+  const labels = weeks.map((w) => periodLabel(w.period, filters.group))
 
   return (
     <PanelFrame
@@ -222,7 +225,7 @@ export function NoShowsView() {
           </section>
           <section className="bi-chart-pair">
             <LinePanelChart
-              title="No-show rate by week"
+              title={`No-show rate by ${filters.group}`}
               labels={labels}
               values={rateRows}
               color="#d92d20"
@@ -231,7 +234,7 @@ export function NoShowsView() {
             />
             <BarPanelChart
               title="Passengers by boarding result"
-              subtitle="Per week"
+              subtitle={`Per ${filters.group}`}
               labels={labels}
               stacked
               labelTotals={weeks.map((w) => w.booked)}
@@ -284,7 +287,7 @@ export function ExtraRevenueView() {
   const typeGross = (key: string) => periods.reduce((t, p) => t + (p.by_type[key] ?? 0), 0)
   const typeRefunds = (key: string) => periods.reduce((t, p) => t + (p.refunds_by_type?.[key] ?? 0), 0)
   const biggest = EXTRA_TYPES.reduce((best, t) => (typeGross(t.key) > typeGross(best.key) ? t : best), EXTRA_TYPES[0])
-  const labels = periods.map((p) => weekLabel(p.period))
+  const labels = periods.map((p) => periodLabel(p.period, filters.group))
   const monthName = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
     new Date(`${filters.from}T00:00:00Z`),
   )
@@ -376,7 +379,7 @@ export function ExtraRevenueView() {
             </ChartFrame>
             <LinePanelChart
               title="Extra revenue per passenger"
-              subtitle="THB per week"
+              subtitle={`THB per ${filters.group}`}
               labels={labels}
               values={periods.map((p) => p.per_passenger)}
               color="#2a7f84"
@@ -467,6 +470,7 @@ export function AircraftUseView() {
               comparison={lowUse.length > 0 ? 'Could take more flights' : 'No aircraft to rebalance'}
             />
           </section>
+          <MarkForMaintenance aircraft={aircraft} onDone={data.retry} />
           <RankBars
             title="Hours flown per available day"
             subtitle="Ranked, lowest first. Click an aircraft for details."
@@ -489,9 +493,9 @@ export function AircraftUseView() {
           />
           <section className="bi-chart-pair">
             <BarPanelChart
-              title="Fleet hours by week"
+              title={`Fleet hours by ${filters.group}`}
               subtitle="All aircraft"
-              labels={weeks.map((w) => weekLabel(w.period))}
+              labels={weeks.map((w) => periodLabel(w.period, filters.group))}
               series={[{ name: 'Hours flown', color: '#2a7f84', values: weeks.map((w) => w.hours_flown) }]}
               labelTotals={weeks.map((w) => w.hours_flown)}
               format={(v) => `${Math.round(v)} h`}

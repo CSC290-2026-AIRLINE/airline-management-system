@@ -17,6 +17,15 @@ export interface BiPanelRange {
   from: string
   to: string
   route_id?: string
+  /** day, week or month: how the weekly figures are grouped. Defaults to week. */
+  group?: PeriodGroup
+}
+
+/** The period a flight date falls in, as SQL, for the chosen grouping (ISO weeks start on Monday). */
+function periodSql(group: PeriodGroup | undefined, column: Prisma.Sql): Prisma.Sql {
+  if (group === 'day') return Prisma.sql`${column}::date::text`
+  if (group === 'month') return Prisma.sql`date_trunc('month', ${column})::date::text`
+  return Prisma.sql`date_trunc('week', ${column})::date::text`
 }
 
 export interface NoShowCounts {
@@ -112,7 +121,7 @@ export class BiPanelsService {
   noShowWeeks(filter: BiFilterDto): Promise<NoShowWeek[]> {
     return this.db.$queryRaw<NoShowWeek[]>`
       SELECT
-        date_trunc('week', f.flight_date)::date::text AS period,
+        ${periodSql(filter.group, Prisma.raw('f.flight_date'))} AS period,
         SUM(f.booked_count)::int AS booked,
         SUM(f.boarded_count)::int AS boarded,
         SUM(f.denied_count)::int AS denied,
@@ -209,7 +218,7 @@ export class BiPanelsService {
   aircraftWeeks(range: BiPanelRange): Promise<AircraftWeek[]> {
     return this.db.$queryRaw<AircraftWeek[]>`
       SELECT
-        date_trunc('week', flight_date)::date::text AS period,
+        ${periodSql(range.group, Prisma.raw('flight_date'))} AS period,
         (SUM(block_minutes) / 60.0)::float8 AS hours_flown
       FROM bi_flight
       WHERE status <> 'cancelled'

@@ -164,3 +164,38 @@
   color: #6b7280;
   white-space: nowrap;
 }
+
+/* The "Mark for maintenance" form on the Aircraft use page: one row of controls. */
+.bi-mark-maintenance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  font-size: 13px;
+}
+
+.bi-mark-maintenance select,
+.bi-mark-maintenance input {
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid #dbe2ea;
+  border-radius: 6px;
+  background: white;
+}
+
+.bi-mark-message {
+  color: #4b5563;
+}
+
+/* The maintenance added in this session, listed under the form. */
+.bi-mark-added {
+  flex-basis: 100%;
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+  color: #102544;
+}

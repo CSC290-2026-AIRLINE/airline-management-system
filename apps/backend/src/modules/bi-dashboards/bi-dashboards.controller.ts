@@ -6,6 +6,8 @@ import {
   Header,
   HttpCode,
   NotFoundException,
+  Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Res,
@@ -21,6 +23,8 @@ import { computeKpis, sumMetrics } from './bi-rates'
 import { BiEtlService } from './bi-etl.service'
 import { BiQueryService } from './bi-query.service'
 import { BiPanelsService, type BiPanelRange } from './bi-panels.service'
+import { AircraftService } from '@backend/modules/aircraft-management/aircraft.service'
+import { CreateBiMaintenanceDto } from './dto/bi-maintenance.dto'
 import { toFlightDto, type FlightDto } from './bi-flight-rows'
 import { periodOf, seriesByPeriod } from './bi-period'
 import { metricsCsv, toCsv } from './bi-csv'
@@ -50,12 +54,13 @@ export class BiDashboardsController {
     private readonly query: BiQueryService,
     private readonly financeService: BiFinanceService,
     private readonly panels: BiPanelsService,
+    private readonly aircraft: AircraftService,
   ) {}
 
   /** The panel window: the filter's dates, or the simulation's current month up to today when none are given. */
   private panelRange(filter: BiFilterDto): BiPanelRange {
     const today = this.etl.simulationNow().slice(0, 10)
-    return { from: filter.from ?? `${today.slice(0, 7)}-01`, to: filter.to ?? today, route_id: filter.route_id }
+    return { from: filter.from ?? `${today.slice(0, 7)}-01`, to: filter.to ?? today, route_id: filter.route_id, group: filter.group }
   }
 
   /** Latest successful run, the most recent run, and whether a refresh is in progress. */
@@ -206,6 +211,31 @@ export class BiDashboardsController {
     @Query() query: BiFinanceQueryDto,
   ): Promise<{ current: BiFinanceMonth | null; previous: BiFinanceMonth | null; months: string[] }> {
     return this.financeService.forMonth(query.month)
+  }
+
+  /** Whether the signed-in user may schedule maintenance (admins only). The page hides the form when this is false. */
+  @Get('maintenance-access')
+  async maintenanceAccess(@CurrentUser() user: AuthenticatedUser): Promise<{ allowed: boolean }> {
+    const staffId = await this.etl.staffIdForUser(user.id)
+    return { allowed: staffId !== null && (await this.etl.isAdminStaff(staffId)) }
+  }
+
+  /**
+   * Feature 14 → Feature 9: schedules a maintenance period through Feature 9's own service, so its rules (valid dates,
+   * no overlap) still apply. Then it refreshes the copy, so this page shows the new period at once.
+   */
+  @Post('aircraft/:id/maintenance')
+  async markMaintenance(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: CreateBiMaintenanceDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const staffId = await this.etl.staffIdForUser(user.id)
+    if (!staffId) throw new ForbiddenException('STAFF_REQUIRED')
+    if (!(await this.etl.isAdminStaff(staffId))) throw new ForbiddenException('ADMIN_REQUIRED')
+    const maintenance = await this.aircraft.createMaintenance(id, dto, staffId)
+    await this.etl.refreshWhenFree('manual', staffId)
+    return maintenance
   }
 
   /** The finance figures summed over every month that overlaps `from`..`to`. The Financial report's date filter. */
