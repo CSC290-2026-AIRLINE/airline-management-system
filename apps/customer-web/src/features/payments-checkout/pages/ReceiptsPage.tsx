@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { CircleAlert, Download, Search } from 'lucide-react'
+import { CircleAlert, Download, ReceiptText, Search } from 'lucide-react'
 import { Button } from '@customer-web/components/ui/button'
 import { Alert, AlertDescription, AlertTitle } from '@customer-web/components/ui/alert'
-import { Card, CardDescription, CardHeader, CardTitle } from '@customer-web/components/ui/card'
+import { EmptyState } from '@customer-web/components/ui/empty-state'
 import { Input } from '@customer-web/components/ui/input'
 import { CustomerShell } from '../components/CustomerShell'
 import { FilterChips } from '../components/FilterChips'
@@ -110,15 +110,19 @@ export function ReceiptsPage() {
       )}
 
       {!list.loading && !list.error && list.receipts.length === 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>No receipts match</CardTitle>
-            <CardDescription>
-              Clear the search box to see every receipt. When you book a flight, add a bag or buy something on board, the receipt appears
-              here.
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <EmptyState
+          icon={ReceiptText}
+          title="No receipts match"
+          action={
+            search ? (
+              <Button variant="secondary" onClick={() => setSearch('')}>
+                Clear search
+              </Button>
+            ) : undefined
+          }
+        >
+          Clear the search box to see every receipt. When you book a flight, add a bag or buy something on board, the receipt appears here.
+        </EmptyState>
       )}
 
       {!list.loading && !list.error && list.receipts.length > 0 && (

@@ -1,8 +1,9 @@
 import { Link } from '@tanstack/react-router'
 import { useCallback, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Clock, PlaneTakeoff, Plus } from 'lucide-react'
 import { Badge } from '@customer-web/components/ui/badge'
 import { Button } from '@customer-web/components/ui/button'
+import { EmptyState as EmptyList } from '@customer-web/components/ui/empty-state'
 import { Tabs, TabsList, TabsTrigger } from '@customer-web/components/ui/tabs'
 import type { ApiError } from '../api/client'
 import { useCustomerTrips } from '../api/useCustomerTrips'
@@ -104,18 +105,21 @@ function LoadingState() {
 
 function EmptyState({ tab }: { tab: TripTab }) {
   return (
-    <MessageCard title={tab === 'upcoming' ? 'No upcoming bookings' : 'No past bookings yet'}>
-      <p className="text-sm text-muted-foreground">
-        {tab === 'upcoming'
-          ? 'Book a flight to plan your next trip.'
-          : 'The flights you have flown and the bookings you cancelled will show up here.'}
-      </p>
-      {tab === 'upcoming' ? (
-        <Button asChild>
-          <Link to="/search">Book a flight</Link>
-        </Button>
-      ) : null}
-    </MessageCard>
+    <EmptyList
+      icon={tab === 'upcoming' ? PlaneTakeoff : Clock}
+      title={tab === 'upcoming' ? 'No upcoming bookings' : 'No past bookings yet'}
+      action={
+        tab === 'upcoming' ? (
+          <Button asChild>
+            <Link to="/search">Book a flight</Link>
+          </Button>
+        ) : undefined
+      }
+    >
+      {tab === 'upcoming'
+        ? 'Book a flight to plan your next trip.'
+        : 'The flights you have flown and the bookings you cancelled will show up here.'}
+    </EmptyList>
   )
 }
 
