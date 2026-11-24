@@ -50,7 +50,8 @@ function PreferencesForm() {
     let active = true
     fetchPreferences()
       .then((data) => {
-        if (active) setPreferences(Array.isArray(data) ? data : [])
+        // SMS cannot reach an account with no phone number, so it shows (and is saved) as off.
+        if (active) setPreferences(Array.isArray(data) ? data.map((r) => (r.smsAvailable ? r : { ...r, sms: false })) : [])
       })
       .catch((err: unknown) => {
         if (active) setLoadError(errorMessage(err))
@@ -70,7 +71,11 @@ function PreferencesForm() {
     setLoadAttempt((n) => n + 1)
   }
 
+  /** SMS needs a phone number on the account; without one the switch is off and cannot be turned on. */
+  const smsAvailable = preferences.every((r) => r.smsAvailable)
+
   function handleToggle(row: NotificationPreferenceRow, channel: Channel) {
+    if (channel === 'sms' && !row.smsAvailable) return
     // A mandatory notice must stay on for at least one channel.
     if (row[channel] && row.isMandatory && !CHANNELS.some(({ key }) => key !== channel && row[key])) {
       setNotice(`"${row.typeName}" is a critical flight alert and must stay on for at least one channel.`)
@@ -85,6 +90,8 @@ function PreferencesForm() {
     try {
       setIsSaving(true)
       setError(null)
+      // The warning was about a switch that was refused; it no longer applies once the settings are saved.
+      setNotice(null)
       const updated = await api.updateNotificationPreferences(preferences)
       if (Array.isArray(updated) && updated.length > 0) {
         setPreferences(updated)
@@ -95,6 +102,8 @@ function PreferencesForm() {
       }, 50)
     } catch (err) {
       setError(errorMessage(err))
+      // The error banner is at the top of the page, above the table the customer scrolled past.
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     } finally {
       setIsSaving(false)
     }
@@ -200,6 +209,12 @@ function PreferencesForm() {
           </div>
         )}
 
+        {!isLoading && !loadError && preferences.length > 0 && !smsAvailable && (
+          <div role="note" style={{ fontSize: '13px', color: '#677287', marginBottom: '16px' }}>
+            SMS is off because your account has no phone number. Add one to your profile to receive text messages.
+          </div>
+        )}
+
         {/* Preferences Matrix Table */}
         <div style={{ overflowX: 'auto', marginBottom: '32px' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13.5px' }}>
@@ -273,16 +288,23 @@ function PreferencesForm() {
                         )}
                       </div>
                     </td>
-                    <td style={{ padding: '14px', color: '#677287', fontSize: '13px' }}>{row.sourceFeature}</td>
+                    <td style={{ padding: '14px', color: '#677287', fontSize: '13px' }}>{row.service}</td>
                     {CHANNELS.map(({ key, label }) => (
                       <td key={key} style={{ padding: '14px', textAlign: 'center' }}>
                         <input
                           type="checkbox"
                           aria-label={`${label} for ${row.typeName}`}
                           checked={row[key]}
+                          disabled={key === 'sms' && !row.smsAvailable}
+                          title={key === 'sms' && !row.smsAvailable ? 'Add a phone number to your profile to get SMS' : undefined}
                           onChange={() => handleToggle(row, key)}
                           className={focusRing}
-                          style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#2563EB' }}
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            cursor: key === 'sms' && !row.smsAvailable ? 'not-allowed' : 'pointer',
+                            accentColor: '#2563EB',
+                          }}
                         />
                       </td>
                     ))}

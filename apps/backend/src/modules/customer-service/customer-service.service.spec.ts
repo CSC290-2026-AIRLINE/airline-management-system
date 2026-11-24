@@ -19,6 +19,8 @@ const NOW = new Date('2026-11-12T08:00:00Z')
 const AGENT = { id: STAFF_ID, role: { code: 'cs-agent', is_admin: false } }
 const SUPERVISOR = { id: '66666666-6666-6666-6666-666666666666', role: { code: 'cs-supervisor', is_admin: false } }
 const DAY_MS = 24 * 60 * 60 * 1000
+/** A departure before NOW: complaints are only about flights that have left. */
+const FLOWN = new Date('2026-11-01T02:00:00Z')
 const DESCRIPTION = 'The gate agent was rude when I asked about boarding.'
 
 function caseRow(overrides: Record<string, unknown> = {}) {
@@ -159,7 +161,7 @@ describe('CustomerServiceService', () => {
     })
 
     it('links a flight complaint to the flight found by number and date', async () => {
-      db.$queryRaw.mockResolvedValue([{ id: 'flight-1' }])
+      db.$queryRaw.mockResolvedValue([{ id: 'flight-1', dep_at: FLOWN }])
       db.booking_segment.findFirst.mockResolvedValue({ id: 'seg-1' })
       await service.create(USER_ID, 'pax@example.com', {
         type: 'flight',
@@ -176,7 +178,7 @@ describe('CustomerServiceService', () => {
     })
 
     it('checks the flight is on the customer’s own bookings even without a booking reference', async () => {
-      db.$queryRaw.mockResolvedValue([{ id: 'flight-1' }])
+      db.$queryRaw.mockResolvedValue([{ id: 'flight-1', dep_at: FLOWN }])
       db.booking_segment.findFirst.mockResolvedValue(null)
       const dto = { type: 'food' as const, flight_number: 'FL1', service_date: '2026-11-01', issue: 'quality', description: DESCRIPTION }
 
@@ -192,7 +194,7 @@ describe('CustomerServiceService', () => {
     })
 
     it('narrows the check to the named booking when a reference is sent', async () => {
-      db.$queryRaw.mockResolvedValue([{ id: 'flight-1' }])
+      db.$queryRaw.mockResolvedValue([{ id: 'flight-1', dep_at: FLOWN }])
       db.booking_segment.findFirst.mockResolvedValue({ id: 'seg-1' })
       await service.create(USER_ID, 'pax@example.com', {
         type: 'flight',
@@ -211,6 +213,14 @@ describe('CustomerServiceService', () => {
       db.$queryRaw.mockResolvedValue([])
       const dto = { type: 'food' as const, flight_number: 'FL9', service_date: '2026-11-01', issue: 'quality', description: DESCRIPTION }
       await expect(service.create(USER_ID, 'pax@example.com', dto)).rejects.toThrow(NotFoundException)
+      expect(db.$transaction).not.toHaveBeenCalled()
+    })
+
+    it('refuses a complaint about a flight that has not departed yet, and writes nothing', async () => {
+      db.$queryRaw.mockResolvedValue([{ id: 'flight-1', dep_at: new Date(NOW.getTime() + DAY_MS) }])
+      const dto = { type: 'flight' as const, flight_number: 'FL501', service_date: '2026-11-13', issue: 'delay', description: DESCRIPTION }
+
+      await expect(service.create(USER_ID, 'pax@example.com', dto)).rejects.toThrow('FLIGHT_NOT_DEPARTED')
       expect(db.$transaction).not.toHaveBeenCalled()
     })
 
@@ -292,6 +302,23 @@ describe('CustomerServiceService', () => {
     it('refuses a caller who is not staff', async () => {
       db.staff.findFirst.mockResolvedValue(null)
       await expect(service.getForStaff(USER_ID, CASE_ID)).rejects.toThrow(ForbiddenException)
+    })
+
+    it('gives an employee case no flight or meal, and its location and staff name in their own fields', async () => {
+      db.complaint_case.findUnique.mockResolvedValue(
+        caseRow({ employee_complaint: { location: 'gate', staff_name: 'Gate agent with name tag Nok', description: DESCRIPTION } }),
+      )
+      const view = await service.getForStaff(USER_ID, CASE_ID)
+      expect(view).toMatchObject({ location: 'gate', staffName: 'Gate agent with name tag Nok', mealDetail: null })
+      expect(view.flightRoute).toBeUndefined()
+    })
+
+    it('shows times in Bangkok time, not UTC', async () => {
+      db.complaint_case.findUnique.mockResolvedValue(caseRow())
+      const view = await service.getForStaff(USER_ID, CASE_ID)
+      // NOW is 08:00 UTC, 15:00 in Bangkok.
+      expect(view.openedLabel).toBe('Opened 12 Nov 15:00 by the customer')
+      expect(view.events?.[0].timeLabel).toBe('12 Nov 15:00')
     })
   })
 
@@ -592,8 +619,9 @@ describe('CustomerServiceService', () => {
         {
           typeCode: 'complaint_received',
           typeName: 'Complaint received',
-          sourceFeature: 'Feature 13',
+          service: 'Customer service',
           isMandatory: true,
+          smsAvailable: true,
           email: true,
           sms: false,
           push: false,
@@ -601,8 +629,9 @@ describe('CustomerServiceService', () => {
         {
           typeCode: 'gate_changed',
           typeName: 'Gate changed',
-          sourceFeature: 'Feature 6',
+          service: 'Check-in and boarding',
           isMandatory: false,
+          smsAvailable: true,
           email: true,
           sms: true,
           push: false,
@@ -855,6 +884,15 @@ describe('CustomerServiceService', () => {
 
       expect(db.$transaction).toHaveBeenCalledTimes(1)
       expect(tx.notification_preference.upsert).toHaveBeenCalledTimes(6)
+    })
+
+    it('refuses SMS on an account with no phone number, since those messages would be skipped', async () => {
+      db.customer.findFirst.mockResolvedValue({ ...CUSTOMER, phone: null })
+      db.notification_type.findMany.mockResolvedValue([{ code: 'flight_delayed' }])
+      const preferences = [{ typeCode: 'flight_delayed', email: true, sms: true, push: false }]
+
+      await expect(service.updatePreferencesForCustomer(USER_ID, { preferences })).rejects.toThrow('SMS_NEEDS_PHONE')
+      expect(db.$transaction).not.toHaveBeenCalled()
     })
   })
 

@@ -13,23 +13,31 @@ const TRACKER_STEPS: { status: CaseStatus; label: string }[] = [
   { status: 'closed', label: 'Closed' },
 ]
 
-// The backend's dates and labels are UTC, so these are too.
+// Times are shown in Bangkok time, the airline's home time zone. A flight's service date is a calendar date (YYYY-MM-DD,
+// read as UTC midnight), so it is formatted in UTC to stay the same day.
+const HOME_TIME_ZONE = 'Asia/Bangkok'
 const SHORT_TIMESTAMP = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric',
   month: 'short',
   hour: '2-digit',
   minute: '2-digit',
   hourCycle: 'h23',
-  timeZone: 'UTC',
+  timeZone: HOME_TIME_ZONE,
 })
-const WEEKDAY_DAY_MONTH = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
-const DAY_MONTH = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+const WEEKDAY_DAY_MONTH = { weekday: 'short', day: 'numeric', month: 'short' } as const
+const DAY_MONTH = { day: 'numeric', month: 'short' } as const
 
-/** Formats an ISO timestamp or a YYYY-MM-DD date (read as UTC midnight); '—' when it cannot be read. */
-function formatUtc(format: Intl.DateTimeFormat, value: string | null): string {
+/** Formats an ISO timestamp; '—' when it cannot be read. */
+function formatTime(format: Intl.DateTimeFormat, value: string | null): string {
   if (!value) return '—'
   const d = new Date(value)
   return Number.isNaN(d.getTime()) ? '—' : format.format(d)
+}
+
+/** The flight's service date as a calendar date, or the day the case was opened in Bangkok when there is no flight. */
+function caseDate(options: Intl.DateTimeFormatOptions, serviceDate: string | null, openedAt: string): string {
+  const timeZone = serviceDate ? 'UTC' : HOME_TIME_ZONE
+  return formatTime(new Intl.DateTimeFormat('en-GB', { ...options, timeZone }), serviceDate ?? openedAt)
 }
 
 function StatusPill({ status }: { status: CaseStatus }) {
@@ -75,6 +83,14 @@ function StatusPill({ status }: { status: CaseStatus }) {
   )
 }
 
+/** What happens next, for the case's current status. */
+const NEXT_STEP: Record<CaseStatus, string> = {
+  with_supervisor: 'What happens next: a Customer Service supervisor reviews new cases, usually within 2 days.',
+  assigned: 'What happens next: a Customer Service agent is looking into your case.',
+  resolved: 'Your case is resolved. It will be closed once Customer Service has finished with it.',
+  closed: 'This case is closed.',
+}
+
 interface TimelineItem {
   id: string
   time: string
@@ -87,7 +103,7 @@ interface TimelineItem {
 function buildTimeline(complaint: Complaint): TimelineItem[] {
   const items: Omit<TimelineItem, 'dotColor'>[] = []
   for (const ev of complaint.events ?? []) {
-    const time = formatUtc(SHORT_TIMESTAMP, ev.occurredAt)
+    const time = formatTime(SHORT_TIMESTAMP, ev.occurredAt)
     if (ev.type === 'created') {
       items.push({ id: ev.id, time, title: 'You sent the complaint' })
     } else if (ev.type === 'routed_to_supervisor') {
@@ -305,7 +321,7 @@ function CaseBrowser({ user }: { user: AppUser }) {
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {list.cases.map((c) => {
               const isSelected = c.caseNumber === selected
-              const date = formatUtc(DAY_MONTH, c.serviceDate ?? c.openedAt)
+              const date = caseDate(DAY_MONTH, c.serviceDate, c.openedAt)
               const subLabel = (
                 c.type === 'employee'
                   ? ['Employee', optionLabel(LOCATIONS, c.location), date]
@@ -378,7 +394,7 @@ function CaseDetail({ complaint, user, onReopened }: { complaint: Complaint; use
     complaint.flightRoute && complaint.flightRoute !== '—'
       ? complaint.flightRoute.split('·').slice(0, 2).join('·').trim()
       : complaint.flightNumber || '—'
-  const dateFactValue = formatUtc(WEEKDAY_DAY_MONTH, complaint.serviceDate ?? complaint.openedAt)
+  const dateFactValue = caseDate(WEEKDAY_DAY_MONTH, complaint.serviceDate, complaint.openedAt)
   const issueFactValue = optionLabel(complaint.type === 'food' ? FOOD_ISSUES : FLIGHT_ISSUES, complaint.issue) || '—'
 
   return (
@@ -565,8 +581,7 @@ function CaseDetail({ complaint, user, onReopened }: { complaint: Complaint; use
       >
         <span style={{ fontSize: '15px', fontWeight: 600, color: '#1F408C', lineHeight: 1.2 }}>ⓘ</span>
         <span style={{ fontSize: '13px', color: '#29427A', lineHeight: 1.45 }}>
-          What happens next: a Customer Service supervisor reviews new cases, usually within 2 days. We email you at{' '}
-          {complaint.contactEmail || user.email} each time the status changes.
+          {NEXT_STEP[complaint.status]} We email you at {complaint.contactEmail || user.email} each time the status changes.
         </span>
       </div>
 

@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
@@ -30,6 +30,28 @@ const STATUS_CHIPS = [
   { key: 'closed', label: 'Closed' },
   { key: 'all', label: 'All' },
 ] as const
+
+/** What the backend's refusal codes mean, in words staff can act on. Anything else is already a sentence. */
+const ACTION_ERRORS: Record<string, string> = {
+  INVALID_STATUS: 'This case is already resolved or closed, so its owner can no longer be changed.',
+  NOT_CASE_OWNER: 'Only the case owner or the supervisor can do this.',
+  COMPENSATION_EXISTS: 'This case already has a compensation decision.',
+}
+
+function actionErrorText(message: string): string {
+  return ACTION_ERRORS[message] ?? message
+}
+
+/** Where the case came from, as staff read it. */
+function sourceLabel(source: Complaint['fromSource']): string {
+  return source === 'Feature 10' ? 'Lost bag report' : 'Customer'
+}
+
+const COMPENSATION_STATUS: Record<NonNullable<Complaint['compensation']>['status'], string> = {
+  pending: 'Sent for payment',
+  paid: 'Paid',
+  failed: 'Payment failed',
+}
 
 function shortCaseNo(caseNumber: string): string {
   const parts = caseNumber.split('-')
@@ -128,10 +150,16 @@ export function ComplaintsDashboard() {
   const [resolutionDraft, setResolutionDraft] = useState<string>('Not a duplicate')
   const [noteDraft, setNoteDraft] = useState<string>('')
   const [compTypeDraft, setCompTypeDraft] = useState<'voucher' | 'refund'>('voucher')
-  const [compAmountDraft, setCompAmountDraft] = useState<string>('1,000 THB')
+  const [compAmountDraft, setCompAmountDraft] = useState<string>('1,000')
   const [compReasonDraft, setCompReasonDraft] = useState<string>('')
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  // The error shows inside the actions box, and is scrolled into view, so it is next to the button that was clicked.
+  const actionErrorRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (actionError) actionErrorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [actionError])
 
   const fetchList = useEffectEvent(() => api.list())
   const loadStaffContext = useEffectEvent(() => {
@@ -198,10 +226,10 @@ export function ComplaintsDashboard() {
     setOwnerDraft(selected.ownerStaffId ?? '')
     setResolutionDraft('Not a duplicate')
     setNoteDraft('')
-    // The view labels the decided type ("Cash refund"); the API takes the code.
-    setCompTypeDraft(selected.compensation?.type === 'Cash refund' ? 'refund' : 'voucher')
-    setCompAmountDraft(selected.compensation?.amount ? String(selected.compensation.amount) : '1,000')
-    setCompReasonDraft(selected.compensation?.reason ?? '')
+    // A decided case shows its decision instead of the form, so the form always starts empty.
+    setCompTypeDraft('voucher')
+    setCompAmountDraft('1,000')
+    setCompReasonDraft('')
     setActionError(null)
   })
 
@@ -218,7 +246,7 @@ export function ComplaintsDashboard() {
       await work()
       setReloadToken((n) => n + 1)
     } catch (e) {
-      setActionError(errorMessage(e))
+      setActionError(actionErrorText(errorMessage(e)))
     } finally {
       setBusy(false)
     }
@@ -249,7 +277,10 @@ export function ComplaintsDashboard() {
       setActionError('Enter a compensation amount above 0.')
       return
     }
-    await runAction(() => api.sendCompensation(selected.id, { type: compTypeDraft, amount, reason: compReasonDraft.trim() }))
+    await runAction(async () => {
+      await api.sendCompensation(selected.id, { type: compTypeDraft, amount, reason: compReasonDraft.trim() })
+      setCompReasonDraft('')
+    })
   }
 
   async function handleCloseCase() {
@@ -260,7 +291,10 @@ export function ComplaintsDashboard() {
   const supervisor = Boolean(currentStaff?.isSupervisor)
   // Mirrors the backend: an agent works only their own cases; the supervisor may act on any case.
   const canWorkCase = Boolean(selected && currentStaff && (supervisor || selected.ownerStaffId === currentStaff.id))
-  const compBlocked = busy || !compReasonDraft.trim() || !supervisor || Boolean(selected?.compensation)
+  const compBlocked = busy || !compReasonDraft.trim() || !supervisor
+  // A resolved or closed case keeps its owner (the backend refuses INVALID_STATUS).
+  const canReassign = Boolean(selected && (selected.status === 'with_supervisor' || selected.status === 'assigned'))
+  const loading = complaints === null && !loadError
 
   return (
     <PageFrame
@@ -268,9 +302,9 @@ export function ComplaintsDashboard() {
       description="Every new complaint comes here first. Assign it, add notes, decide compensation and close it."
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Open cases" value={openCasesCount} />
-        <StatCard label="Waiting for an owner" value={waitingOwnerCount} />
-        <StatCard label="Resolved or closed" value={resolvedOrClosedCount} />
+        <StatCard label="Open cases" value={loading ? '—' : openCasesCount} />
+        <StatCard label="Waiting for an owner" value={loading ? '—' : waitingOwnerCount} />
+        <StatCard label="Resolved or closed" value={loading ? '—' : resolvedOrClosedCount} />
       </div>
 
       {loadError && (
@@ -292,12 +326,6 @@ export function ComplaintsDashboard() {
           <AlertDescription className="block">
             Could not load the staff list, so cases can’t be filtered by or assigned to an owner: {staffError}
           </AlertDescription>
-        </Alert>
-      )}
-
-      {actionError && (
-        <Alert variant="destructive">
-          <AlertDescription className="block">Could not save the change: {actionError}</AlertDescription>
         </Alert>
       )}
 
@@ -375,7 +403,7 @@ export function ComplaintsDashboard() {
                         <TableCell>
                           <TypeBadge type={c.type} />
                         </TableCell>
-                        {!selected && <TableCell>{c.fromSource ?? 'Customer'}</TableCell>}
+                        {!selected && <TableCell>{sourceLabel(c.fromSource)}</TableCell>}
                         <TableCell className={selected ? 'whitespace-normal' : 'max-w-0 w-full truncate'}>
                           {c.summary ?? c.description}
                         </TableCell>
@@ -401,7 +429,7 @@ export function ComplaintsDashboard() {
           </div>
 
           <div className="mt-2 border-t bg-page px-4 py-3 text-xs text-muted-foreground">
-            {openCasesCount} open · {resolvedCount} resolved · {closedCount} closed
+            {loading ? 'Loading…' : `${openCasesCount} open · ${resolvedCount} resolved · ${closedCount} closed`}
           </div>
         </Card>
 
@@ -421,15 +449,22 @@ export function ComplaintsDashboard() {
 
             <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Fact label="From">
-                {selected.passengerName} · {selected.fromSource ?? 'Customer'}
+                {selected.passengerName} · {sourceLabel(selected.fromSource)}
               </Fact>
               <Fact label="Contact">{selected.contactEmail ?? '—'}</Fact>
               <Fact label="Booking">{selected.bookingRef ?? '—'}</Fact>
-              <Fact label="Flight">{selected.flightRoute ?? selected.flightNumber ?? '—'}</Fact>
-              <Fact label={selected.type === 'food' ? 'Meal' : selected.type === 'employee' ? 'Location' : 'Details'}>
-                {selected.mealDetail ?? (selected.location ? humanize(selected.location) : '—')}
-              </Fact>
-              <Fact label="Issue">{selected.issue ? humanize(selected.issue) : '—'}</Fact>
+              {selected.type === 'employee' ? (
+                <>
+                  <Fact label="Location">{selected.location ? humanize(selected.location) : '—'}</Fact>
+                  <Fact label="Staff member">{selected.staffName ?? 'Not named'}</Fact>
+                </>
+              ) : (
+                <>
+                  <Fact label="Flight">{selected.flightRoute ?? selected.flightNumber ?? '—'}</Fact>
+                  {selected.type === 'food' && <Fact label="Meal">{selected.mealDetail ?? 'Not known'}</Fact>}
+                  <Fact label="Issue">{selected.issue ? humanize(selected.issue) : '—'}</Fact>
+                </>
+              )}
             </dl>
 
             <blockquote className="m-0 rounded-lg bg-page px-3 py-2.5 text-sm leading-relaxed text-foreground">
@@ -437,14 +472,22 @@ export function ComplaintsDashboard() {
             </blockquote>
 
             <div className="flex flex-col gap-4 rounded-lg border p-4">
+              {actionError && (
+                <div ref={actionErrorRef}>
+                  <Alert variant="destructive">
+                    <AlertDescription className="block">Could not save the change. {actionError}</AlertDescription>
+                  </Alert>
+                </div>
+              )}
+
               <ActionRow label="Owner">
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <NativeSelect
                     aria-label="Owner"
                     value={ownerDraft}
                     onChange={(e) => setOwnerDraft(e.target.value)}
-                    disabled={!supervisor}
-                    className="h-9 flex-1"
+                    disabled={!supervisor || !canReassign}
+                    className="h-9 min-w-56 flex-1"
                   >
                     <option value="">Pick who handles this case</option>
                     {(staffMembers ?? []).map((s) => (
@@ -455,25 +498,27 @@ export function ComplaintsDashboard() {
                   </NativeSelect>
                   <Button
                     type="button"
-                    disabled={busy || !ownerDraft || !supervisor}
+                    className="shrink-0"
+                    disabled={busy || !ownerDraft || !supervisor || !canReassign}
                     title={!supervisor ? 'Supervisor only' : undefined}
                     onClick={() => void handleAssign()}
                   >
                     Assign
                   </Button>
                 </div>
+                {!canReassign && <span className="text-xs text-muted-foreground">A resolved or closed case keeps its owner.</span>}
                 {staffMembers === null && !staffError && <span className="text-xs text-muted-foreground">Loading staff…</span>}
                 {staffMembers?.length === 0 && <span className="text-xs text-muted-foreground">No staff members to assign yet.</span>}
               </ActionRow>
 
               <ActionRow label="Resolution">
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <NativeSelect
                     aria-label="Resolution"
                     value={resolutionDraft}
                     disabled={!selected.ownerName}
                     onChange={(e) => setResolutionDraft(e.target.value)}
-                    className="h-9 flex-1"
+                    className="h-9 min-w-48 flex-1"
                   >
                     <option value="Not a duplicate">Not a duplicate</option>
                     <option value="Duplicate case">Duplicate case</option>
@@ -483,6 +528,7 @@ export function ComplaintsDashboard() {
                     <Button
                       type="button"
                       variant="outline"
+                      className="shrink-0"
                       disabled={busy || selected.status !== 'assigned'}
                       onClick={() => void handleResolve()}
                     >
@@ -502,64 +548,95 @@ export function ComplaintsDashboard() {
               </ActionRow>
 
               <ActionRow label="Internal note">
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Input
                     aria-label="Internal note"
                     value={noteDraft}
                     onChange={(e) => setNoteDraft(e.target.value)}
                     placeholder="Staff only. Never shown to the customer."
-                    className="h-9 flex-1"
+                    className="h-9 min-w-48 flex-1"
                   />
-                  <Button type="button" variant="outline" disabled={busy || !noteDraft.trim()} onClick={() => void handleAddNote()}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0"
+                    disabled={busy || !noteDraft.trim()}
+                    onClick={() => void handleAddNote()}
+                  >
                     Add note
                   </Button>
                 </div>
               </ActionRow>
 
               <ActionRow label="Compensation" hint="Supervisor only">
-                <div className="flex gap-2">
-                  <NativeSelect
-                    aria-label="Compensation type"
-                    value={compTypeDraft}
-                    onChange={(e) => setCompTypeDraft(e.target.value === 'refund' ? 'refund' : 'voucher')}
-                    className="h-9 flex-1"
-                  >
-                    <option value="voucher">Travel voucher</option>
-                    <option value="refund">Cash refund</option>
-                  </NativeSelect>
-                  <Input
-                    aria-label="Compensation amount"
-                    value={compAmountDraft}
-                    onChange={(e) => setCompAmountDraft(e.target.value)}
-                    className="h-9 w-32"
-                  />
-                </div>
-                <Input
-                  aria-label="Compensation reason"
-                  value={compReasonDraft}
-                  onChange={(e) => setCompReasonDraft(e.target.value)}
-                  placeholder="Reason (required, the customer sees it)"
-                  className="h-9"
-                />
-                <div className="mt-0.5 flex flex-wrap items-center gap-2.5">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={compBlocked}
-                    title={!supervisor ? 'Supervisor only' : selected.compensation ? 'Compensation already decided' : undefined}
-                    onClick={() => void handleSendComp()}
-                  >
-                    Send to Feature 5B
-                  </Button>
-                  <span className="text-xs text-muted-foreground">One live decision per case. Audit entry in Feature 15 first.</span>
-                </div>
+                {selected.compensation ? (
+                  <div className="flex flex-col gap-1 rounded-md bg-page px-3 py-2.5 text-sm">
+                    <span className="font-semibold text-foreground">
+                      {selected.compensation.type} · {selected.compensation.amount}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {COMPENSATION_STATUS[selected.compensation.status]} · decided {formatDateTime(selected.compensation.sentAt)}
+                    </span>
+                    {selected.compensation.failureReason && (
+                      <span className="text-danger">Reason it failed: {selected.compensation.failureReason}</span>
+                    )}
+                    <span className="text-foreground">“{selected.compensation.reason}”</span>
+                    <span className="text-xs text-muted-foreground">A case has one compensation decision.</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      <NativeSelect
+                        aria-label="Compensation type"
+                        value={compTypeDraft}
+                        disabled={!supervisor}
+                        onChange={(e) => setCompTypeDraft(e.target.value === 'refund' ? 'refund' : 'voucher')}
+                        className="h-9 min-w-48 flex-1"
+                      >
+                        <option value="voucher">Travel voucher</option>
+                        <option value="refund">Cash refund</option>
+                      </NativeSelect>
+                      <Input
+                        aria-label="Compensation amount in THB"
+                        value={compAmountDraft}
+                        disabled={!supervisor}
+                        onChange={(e) => setCompAmountDraft(e.target.value)}
+                        className="h-9 w-32 shrink-0"
+                      />
+                    </div>
+                    <Input
+                      aria-label="Compensation reason"
+                      value={compReasonDraft}
+                      disabled={!supervisor}
+                      onChange={(e) => setCompReasonDraft(e.target.value)}
+                      placeholder="Reason (required, the customer sees it)"
+                      className="h-9"
+                    />
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={compBlocked}
+                        title={!supervisor ? 'Supervisor only' : undefined}
+                        onClick={() => void handleSendComp()}
+                      >
+                        Send compensation
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        {supervisor
+                          ? 'Amount in THB. Paid by the payments team once sent.'
+                          : 'Only the supervisor can decide compensation.'}
+                      </span>
+                    </div>
+                  </>
+                )}
               </ActionRow>
 
               <Separator />
 
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="flex-1 text-xs text-muted-foreground">
-                  Close only after Resolved. Every change goes to the history and the Feature 15 audit log.
+                  Close only after Resolved. Every change goes to the history and the audit log.
                 </span>
                 {canWorkCase && (
                   <Button

@@ -25,6 +25,9 @@ export interface CompensationDecision {
   amount: number | string
   reason: string
   sentAt: string
+  /** pending = sent for payment. */
+  status: 'pending' | 'paid' | 'failed'
+  failureReason: string | null
 }
 
 export interface Complaint {

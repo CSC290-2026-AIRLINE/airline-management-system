@@ -6,6 +6,7 @@ import { FLIGHT_ISSUES, FOOD_ISSUES, type CaseStatus } from './customer-service.
 import { CASE_DETAIL_INCLUDE, CASE_INCLUDE, toComplaintDetail, toComplaintView, type ComplaintView } from './complaint.view'
 import type { CreateComplaintDto } from './dto/create-complaint.dto'
 import type { DecideCompensationDto, UpdateNotificationTemplateDto } from './dto/staff-actions.dto'
+import { clockTime, dayMonth } from './display-time'
 import { placeholdersFor, unknownPlaceholders } from './notification-placeholders'
 import type { InboundEventInput } from './notification-events'
 import { NotificationService } from './notification.service'
@@ -33,6 +34,17 @@ const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'S
 /** notification_type.source_feature ('2', '13', …) as the page shows it. */
 function featureLabel(sourceFeature: string): string {
   return `Feature ${sourceFeature}`
+}
+
+/** The customer's name for the part of the airline a message comes from (notification_type.source_feature). */
+const SERVICE_NAMES: Record<string, string> = {
+  '2': 'Flights',
+  '3': 'Bookings',
+  '5': 'Payments and refunds',
+  '6': 'Check-in and boarding',
+  '10': 'Baggage',
+  '11': 'Loyalty',
+  '13': 'Customer service',
 }
 
 /** ✓ = template on, – = template switched off, ! = no template for that channel yet. */
@@ -210,11 +222,13 @@ export class CustomerServiceService {
         throw new BadRequestException(`issue must be one of: ${issues.join(', ')}`)
       }
 
-      const [flight] = await this.db.$queryRaw<{ id: string }[]>`
-        SELECT id FROM flight
+      const [flight] = await this.db.$queryRaw<{ id: string; dep_at: Date }[]>`
+        SELECT id, dep_at FROM flight
         WHERE replace(upper(flight_number), ' ', '') = ${dto.flight_number} AND service_date = ${dto.service_date}::date
         LIMIT 1`
       if (!flight) throw new NotFoundException(`No flight ${dto.flight_number} on ${dto.service_date}`)
+      // A flight or meal complaint is about a flight that has happened: one that has not left yet cannot have gone wrong.
+      if (flight.dep_at.getTime() > this.clock.now().getTime()) throw new BadRequestException('FLIGHT_NOT_DEPARTED')
       flightId = flight.id
 
       // The flight must be on one of this customer's own bookings (and on the given booking, when one is named).
@@ -988,9 +1002,10 @@ export class CustomerServiceService {
     })
 
     const rows: DeliveryLogRowView[] = notifs.map((n) => {
-      const dateObj = n.sent_at || n.created_at
-      const timeStr = `${String(dateObj.getUTCHours()).padStart(2, '0')}:${String(dateObj.getUTCMinutes()).padStart(2, '0')}`
-      const dateLabel = dayMonthLabel(dateObj)
+      // Both are simulation-clock times (created_at is real time, so it would not line up with the rest of the log).
+      const dateObj = n.sent_at ?? n.queued_at
+      const timeStr = clockTime(dateObj)
+      const dateLabel = dayMonth(dateObj)
       const occurredAt = `${dateLabel} ${timeStr}`
 
       let channel: 'Email' | 'SMS' | 'Push' = 'Email'
@@ -1141,11 +1156,13 @@ export class CustomerServiceService {
     })
     const prefMap = new Map(prefs.map((p) => [`${p.type_code}:${p.channel}`, p.is_enabled]))
 
+    const smsAvailable = Boolean(customer.phone?.trim())
     return types.map((t) => ({
       typeCode: t.code,
       typeName: t.name,
-      sourceFeature: featureLabel(t.source_feature),
+      service: SERVICE_NAMES[t.source_feature] ?? 'Flython',
       isMandatory: t.is_mandatory,
+      smsAvailable,
       email: prefMap.get(`${t.code}:email`) ?? true,
       sms: prefMap.get(`${t.code}:sms`) ?? false,
       push: prefMap.get(`${t.code}:push`) ?? false,
@@ -1166,6 +1183,10 @@ export class CustomerServiceService {
     const rejected = [...new Set(list.map((item) => item.typeCode).filter((code) => !settableCodes.has(code)))]
     if (rejected.length > 0) {
       throw new BadRequestException(`Unknown notification type: ${rejected.join(', ')}`)
+    }
+    // A message for a channel with no address is skipped, so SMS cannot be switched on without a phone number.
+    if (!customer.phone?.trim() && list.some((item) => item.sms === true)) {
+      throw new BadRequestException('SMS_NEEDS_PHONE')
     }
 
     await this.db.$transaction(async (tx) => {

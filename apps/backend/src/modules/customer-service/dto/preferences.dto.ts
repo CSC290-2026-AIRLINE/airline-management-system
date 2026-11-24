@@ -25,8 +25,11 @@ export class UpdateNotificationPreferencesDto {
 export interface NotificationPreferenceView {
   typeCode: string
   typeName: string
-  sourceFeature: string
+  /** The part of the airline the message comes from, in the customer's words ("Flights", "Baggage"). */
+  service: string
   isMandatory: boolean
+  /** False when the account has no phone number: SMS cannot be sent, so it cannot be switched on. */
+  smsAvailable: boolean
   email: boolean
   sms: boolean
   push: boolean

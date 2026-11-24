@@ -100,8 +100,11 @@ export function optionLabel(options: { value: string; label: string }[], value: 
 export interface NotificationPreferenceRow {
   typeCode: string
   typeName: string
-  sourceFeature: string
+  /** The part of the airline the message comes from ("Flights", "Baggage"). */
+  service: string
   isMandatory: boolean
+  /** False when the account has no phone number, so SMS cannot be switched on. */
+  smsAvailable: boolean
   email: boolean
   sms: boolean
   push: boolean

@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import type { AppUser } from '@customer-web/auth/AuthProvider'
 import { errorMessage, useComplaintsApi } from './api'
@@ -7,6 +7,18 @@ import { FLIGHT_ISSUES, FOOD_ISSUES, LOCATIONS, type ComplaintType, type NewComp
 import { AccountGate, ComplaintPage, ComplaintsNav, Field } from './ui'
 
 const MIN_DESCRIPTION = 20
+
+/** What the backend's refusals mean for the customer. "No flight FY9 on ..." is already a sentence, so it is kept. */
+const SUBMIT_ERRORS: Record<string, string> = {
+  FLIGHT_NOT_ON_BOOKING: 'This flight is not on any of your bookings. Check the flight number and date, or your booking reference.',
+  FLIGHT_NOT_DEPARTED: 'This flight has not departed yet. You can complain about a flight once it has flown.',
+}
+
+function submitErrorText(message: string): string {
+  if (SUBMIT_ERRORS[message]) return SUBMIT_ERRORS[message]
+  if (message.startsWith('No flight ')) return `${message}. Check the flight number and date.`
+  return message
+}
 
 function EmployeeIcon({ selected }: { selected: boolean }) {
   return (
@@ -128,6 +140,12 @@ function ComplaintForm({ user }: { user: AppUser }) {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  // The error sits next to the Send button and is scrolled into view, so the customer sees why nothing happened.
+  const submitErrorRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (submitError) submitErrorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [submitError])
 
   function chooseType(newType: ComplaintType) {
     setType(newType)
@@ -188,7 +206,7 @@ function ComplaintForm({ user }: { user: AppUser }) {
         },
       })
     } catch (e) {
-      setSubmitError(errorMessage(e))
+      setSubmitError(submitErrorText(errorMessage(e)))
       setSubmitting(false)
     }
   }
@@ -204,12 +222,6 @@ function ComplaintForm({ user }: { user: AppUser }) {
 
   return (
     <>
-      {submitError && (
-        <div style={{ ...alertStyle, marginBottom: '24px', textAlign: 'left' }} role="alert">
-          {submitError}
-        </div>
-      )}
-
       {/* Two Column Layout matching Figma */}
       <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
         {/* Left Column: Complaint Form Card */}
@@ -426,6 +438,12 @@ function ComplaintForm({ user }: { user: AppUser }) {
               </Field>
             </div>
           </div>
+
+          {submitError && (
+            <div ref={submitErrorRef} style={{ ...alertStyle, marginBottom: '16px', textAlign: 'left' }} role="alert">
+              {submitError}
+            </div>
+          )}
 
           {/* Form Actions Footer */}
           <div

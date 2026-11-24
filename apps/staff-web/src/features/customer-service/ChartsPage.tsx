@@ -76,7 +76,7 @@ export function ChartsPage() {
         <StatCard
           label="Compensation decided"
           value={`฿${charts.compensationTotalThb.toLocaleString()}`}
-          hint={`${charts.compensationDecisions} decision${charts.compensationDecisions === 1 ? '' : 's'} · ${charts.compensationFailed} failed at Feature 5B`}
+          hint={`${charts.compensationDecisions} decision${charts.compensationDecisions === 1 ? '' : 's'} · ${charts.compensationFailed} failed payment${charts.compensationFailed === 1 ? '' : 's'}`}
         />
       </div>
 

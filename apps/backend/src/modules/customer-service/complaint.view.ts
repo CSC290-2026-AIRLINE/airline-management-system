@@ -1,5 +1,6 @@
 import type { Prisma } from '@backend/db/generated/prisma/client'
 import type { CaseStatus, ComplaintType } from './customer-service.constants'
+import { shortDateTime } from './display-time'
 
 const NAME = { select: { first_name: true, last_name: true } } as const
 const FLIGHT = {
@@ -73,6 +74,10 @@ export interface CompensationDecisionView {
   amount: string
   reason: string
   sentAt: string
+  /** pending (sent for payment), paid or failed. */
+  status: 'pending' | 'paid' | 'failed'
+  /** Why the payment failed, for staff. */
+  failureReason: string | null
 }
 
 export interface ComplaintView {
@@ -115,14 +120,7 @@ const iso = (d: Date | null) => (d ? d.toISOString() : null)
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function formatShortTime(d: Date): string {
-  const day = d.getUTCDate()
-  const mon = MONTHS[d.getUTCMonth()]
-  const hh = String(d.getUTCHours()).padStart(2, '0')
-  const mm = String(d.getUTCMinutes()).padStart(2, '0')
-  return `${day} ${mon} ${hh}:${mm}`
-}
-
+/** A flight's service date, a calendar date stored at UTC midnight, so read in UTC. */
 function formatDayMonth(d: Date): string {
   const dow = DAYS[d.getUTCDay()]
   const day = d.getUTCDate()
@@ -148,9 +146,18 @@ function deriveSummary(row: CaseRow): string {
   return `${firstSentence.slice(0, 41)}...`
 }
 
+/** `voucher: 1000` and a reason -> `Compensation offered: travel voucher of 1,000 THB. <reason>`. */
+function compensationTitle(toValue: string | null, reason: string | null): string {
+  const [type, amount] = (toValue ?? '').split(':').map((s) => s.trim())
+  const what = type === 'refund' ? 'cash refund' : 'travel voucher'
+  const value = Number(amount)
+  const offer = Number.isFinite(value) && value > 0 ? `${what} of ${value.toLocaleString('en-US')} THB` : what
+  return `Compensation offered: ${offer}.${reason ? ` ${reason}` : ''}`
+}
+
 function mapEventView(e: CaseRow['case_event'][number], audience: 'staff' | 'customer', contactEmail: string | null): CaseEventView {
   const staffFullName = fullName(e.staff)
-  const timeLabel = formatShortTime(e.occurred_at)
+  const timeLabel = shortDateTime(e.occurred_at)
   let actorLabel = e.actor_type === 'staff' ? (staffFullName ?? 'Staff') : e.actor_type === 'complainant' ? 'Customer' : 'System'
   let title = e.note || e.event_type
 
@@ -171,8 +178,8 @@ function mapEventView(e: CaseRow['case_event'][number], audience: 'staff' | 'cus
     actorLabel = `${staffFullName ?? 'Staff'} · Internal note`
     title = e.note ?? 'Internal note added'
   } else if (e.event_type === 'compensation_decided') {
-    actorLabel = `${staffFullName ?? 'Staff'} · Sent to Feature 5B`
-    title = e.note ?? `Compensation decided: ${e.to_value ?? ''}`
+    actorLabel = `${staffFullName ?? 'Staff'} · Compensation sent for payment`
+    title = compensationTitle(e.to_value, e.note)
   } else if (e.event_type === 'closed') {
     actorLabel = staffFullName ?? 'Staff'
     title = 'Closed case'
@@ -211,23 +218,17 @@ export function toComplaintView(row: CaseRow, now: Date): ComplaintView {
   const flightBooking = flightId ? ownBookings.find((b) => b.booking_segment.some((s) => s.flight_id === flightId)) : undefined
   const bookingRef = row.booking_passenger?.booking?.booking_reference ?? flightBooking?.booking_reference ?? null
 
+  // An employee complaint has no flight: its location and the staff member named are in `location` and `staffName`.
   const flightRoute = details?.flight
     ? `${details.flight.flight_number} · ${details.flight.route.origin} → ${details.flight.route.destination} · ${formatDayMonth(details.flight.service_date)}`
-    : row.employee_complaint
-      ? `Location · ${row.employee_complaint.location.replace(/_/g, ' ')}`
-      : '—'
+    : undefined
 
-  const mealDetail =
-    row.type === 'food'
-      ? (row.food_complaint?.product?.name ?? null)
-      : row.type === 'employee'
-        ? (row.employee_complaint?.staff_name ?? row.employee_complaint?.location ?? '—')
-        : '—'
+  const mealDetail = row.type === 'food' ? (row.food_complaint?.product?.name ?? null) : null
 
   const openedLabel =
     fromSource === 'Feature 10'
-      ? `Opened ${formatShortTime(row.opened_at)} by Feature 10`
-      : `Opened ${formatShortTime(row.opened_at)} by the customer`
+      ? `Opened ${shortDateTime(row.opened_at)} from a lost bag report`
+      : `Opened ${shortDateTime(row.opened_at)} by the customer`
 
   const latestComp = row.case_compensation?.[0]
   const compensation: CompensationDecisionView | null = latestComp
@@ -236,6 +237,8 @@ export function toComplaintView(row: CaseRow, now: Date): ComplaintView {
         amount: `${Number(latestComp.amount).toLocaleString('en-US')} THB`,
         reason: latestComp.reason,
         sentAt: latestComp.decided_at.toISOString(),
+        status: latestComp.status as CompensationDecisionView['status'],
+        failureReason: latestComp.failure_reason,
       }
     : null
 
@@ -285,7 +288,8 @@ export function toComplaintDetail(row: CaseRow, audience: 'staff' | 'customer', 
   return audience === 'staff' ? { ...view, events } : { ...withoutStaff(view), events }
 }
 
-/** The customer's copy of a case: no staff name or staff id. */
+/** The customer's copy of a case: no staff name or staff id, and no internal payment failure reason. */
 function withoutStaff(view: ComplaintView): ComplaintView {
-  return { ...view, ownerName: null, ownerStaffId: undefined }
+  const compensation = view.compensation ? { ...view.compensation, failureReason: null } : view.compensation
+  return { ...view, ownerName: null, ownerStaffId: undefined, compensation }
 }

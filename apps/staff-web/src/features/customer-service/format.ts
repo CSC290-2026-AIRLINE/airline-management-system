@@ -1,4 +1,6 @@
+// Bangkok time, the airline's home time zone, to match the labels the backend writes.
 const DATE_TIME = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Bangkok',
   day: '2-digit',
   month: 'short',
   year: 'numeric',
