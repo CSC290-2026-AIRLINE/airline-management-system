@@ -7,6 +7,18 @@ export interface EnvConfig {
   REFRESH_TOKEN_TTL_DAYS: number
   CLERK_SECRET_KEY_CUSTOMER: string
   CLERK_SECRET_KEY_STAFF: string
+  /** Feature 5's payment provider. `fake` (the default) needs no Stripe account or webhook tunnel. */
+  PAYMENT_PROVIDER: 'fake' | 'stripe'
+  /** Stripe test-mode secret key (`sk_test_...`); required only when PAYMENT_PROVIDER is `stripe`. */
+  STRIPE_SECRET_KEY: string
+  /** Stripe webhook signing secret (`whsec_...`); required only when PAYMENT_PROVIDER is `stripe`. */
+  STRIPE_WEBHOOK_SECRET: string
+  /**
+   * Feature 5's development test tools: a payment sandbox and sample crew data (`modules/payments-dev-tools`). Off by
+   * default, and refused when NODE_ENV is `production`.
+   * TODO(F5-dev): delete this setting with the dev tools before the PR merges.
+   */
+  PAYMENT_DEV_TOOLS: boolean
   S3_ENDPOINT?: string
   S3_ACCESS_KEY?: string
   S3_SECRET_KEY?: string
@@ -20,6 +32,8 @@ export interface EnvConfig {
   F12_SCHEDULER_ENABLED?: boolean
   F12_SCHEDULER_INTERVAL_SECONDS?: number
 }
+
+const PAYMENT_PROVIDERS = ['fake', 'stripe'] as const
 
 const REQUIRED_KEYS = [
   'DATABASE_URL',
@@ -36,6 +50,26 @@ export function validateEnv(rawConfig: Record<string, string | undefined>): EnvC
   const missing = REQUIRED_KEYS.filter((key) => !rawConfig[key])
   if (missing.length > 0) {
     throw new Error(`Missing required environment variable(s): ${missing.join(', ')}`)
+  }
+
+  const paymentProvider = rawConfig.PAYMENT_PROVIDER || 'fake'
+  if (!(PAYMENT_PROVIDERS as readonly string[]).includes(paymentProvider)) {
+    throw new Error(`PAYMENT_PROVIDER must be one of: ${PAYMENT_PROVIDERS.join(', ')}`)
+  }
+  if (paymentProvider === 'stripe') {
+    const missingStripe = (['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'] as const).filter((key) => !rawConfig[key])
+    if (missingStripe.length > 0) {
+      throw new Error(`PAYMENT_PROVIDER=stripe needs: ${missingStripe.join(', ')}`)
+    }
+    // Test mode only: a live key must never reach this app.
+    if (!String(rawConfig.STRIPE_SECRET_KEY).startsWith('sk_test_')) {
+      throw new Error('STRIPE_SECRET_KEY must be a test-mode key (sk_test_...)')
+    }
+  }
+
+  const devTools = String(rawConfig.PAYMENT_DEV_TOOLS ?? '').toLowerCase() === 'true'
+  if (devTools && rawConfig.NODE_ENV === 'production') {
+    throw new Error('PAYMENT_DEV_TOOLS must not be on when NODE_ENV is production')
   }
 
   const storageValues = [rawConfig.S3_ENDPOINT, rawConfig.S3_ACCESS_KEY, rawConfig.S3_SECRET_KEY]
@@ -64,6 +98,10 @@ export function validateEnv(rawConfig: Record<string, string | undefined>): EnvC
     REFRESH_TOKEN_TTL_DAYS: Number(rawConfig.REFRESH_TOKEN_TTL_DAYS),
     CLERK_SECRET_KEY_CUSTOMER: String(rawConfig.CLERK_SECRET_KEY_CUSTOMER),
     CLERK_SECRET_KEY_STAFF: String(rawConfig.CLERK_SECRET_KEY_STAFF),
+    PAYMENT_PROVIDER: paymentProvider as EnvConfig['PAYMENT_PROVIDER'],
+    STRIPE_SECRET_KEY: rawConfig.STRIPE_SECRET_KEY ?? '',
+    STRIPE_WEBHOOK_SECRET: rawConfig.STRIPE_WEBHOOK_SECRET ?? '',
+    PAYMENT_DEV_TOOLS: devTools,
     ...(rawConfig.S3_ENDPOINT
       ? {
           S3_ENDPOINT: rawConfig.S3_ENDPOINT,

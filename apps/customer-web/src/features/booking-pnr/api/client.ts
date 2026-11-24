@@ -5,12 +5,14 @@ import type {
   BookingDetail,
   CancelBookingResult,
   CancelPreview,
+  CheckoutResult,
   ConfirmBookingResult,
   CustomerTrips,
   HoldBookingRequest,
   HoldBookingResponse,
   ServiceCode,
   InsuranceOffer,
+  InsurancePolicySummary,
 } from './types'
 
 export class ApiError extends Error {
@@ -69,6 +71,33 @@ export function useBookingPnrApi() {
       throw await readError(response)
     }
     return (await response.json()) as ConfirmBookingResult
+  }
+
+  /**
+   * Pays for a held booking (Feature 5a). The idempotency key makes a double click or a second tab the same checkout. The
+   * add-on insurance, when ticked, is paid with the fare.
+   */
+  async function checkoutBooking(reference: string, options: { addInsurance?: boolean }, idempotencyKey: string): Promise<CheckoutResult> {
+    const response = await fetchWithAuth('/api/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify({ booking_reference: reference, ...(options.addInsurance ? { add_insurance: true } : {}) }),
+    })
+    if (!response.ok) {
+      throw await readError(response)
+    }
+    const body = (await response.json()) as {
+      payment_id: string
+      status: string
+      checkout_url: string | null
+      insurance_policy?: InsurancePolicySummary | null
+    }
+    return {
+      paymentId: body.payment_id,
+      status: body.status,
+      checkoutUrl: body.checkout_url,
+      insurancePolicy: body.insurance_policy ?? null,
+    }
   }
 
   /** What the booker's loyalty tier offers for travel insurance on this booking. */
@@ -136,6 +165,7 @@ export function useBookingPnrApi() {
     getBooking,
     holdBooking,
     devConfirmBooking,
+    checkoutBooking,
     getInsuranceOffer,
     getCancelPreview,
     cancelBooking,

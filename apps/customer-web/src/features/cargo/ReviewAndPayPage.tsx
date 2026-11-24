@@ -250,6 +250,7 @@ export default function ReviewAndPayPage() {
   const [error, setError] = useState('')
   const [paying, setPaying] = useState(false)
   const [payError, setPayError] = useState('')
+  const idempotencyKey = useRef(crypto.randomUUID())
   const [showCancel, setShowCancel] = useState(false)
   const [showExpired, setShowExpired] = useState(false)
 
@@ -286,13 +287,14 @@ export default function ReviewAndPayPage() {
     setPaying(true)
     setPayError('')
     try {
-      const result = await api.mockPay(detail.id)
-      if (result.error) {
-        if (result.error.code === 'HOLD_EXPIRED') {
-          setShowExpired(true)
-          return
-        }
-        setPayError(result.error.message)
+      const result = await api.checkout(detail.id, idempotencyKey.current)
+      if (result.checkout_url) {
+        window.location.assign(result.checkout_url)
+        return
+      }
+      if (result.status !== 'captured' && result.status !== 'authorised') {
+        // The seller refused (the hold ran out) and the card was voided.
+        setShowExpired(true)
         return
       }
       void navigate({ to: '/cargo/bookings/$id', params: { id: detail.id }, search: { confirmed: true } })

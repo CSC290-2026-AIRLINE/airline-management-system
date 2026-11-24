@@ -61,7 +61,22 @@ export function refundFailed(what: 'cancellation' | 'rejection', cause: unknown)
   )
 }
 
-// MOCK: replace when Feature 5a payment/refund service is merged
+/** Feature 5's refund method for cargo. When it is registered, a cancel or rejection refunds the card for real. */
+export type CargoRefundPort = (request: {
+  bookingRef: string
+  paymentId: string
+  amount: number
+  reason: 'cancel' | 'rejected' | 'flight'
+}) => Promise<{ id: string } | undefined>
+
+let cargoRefundPort: CargoRefundPort | undefined
+
+/** Registered once at startup by `CargoModule`. Without it (unit tests) `refundFull` falls back to the recorded-only mock below. */
+export function setCargoRefundPort(port: CargoRefundPort | undefined): void {
+  cargoRefundPort = port
+}
+
+// Fallback only: used when Feature 5's refund port is not registered
 const REFUND_REASON_MAP: Record<string, string> = {
   cancel: 'cargo_cancel',
   rejected: 'cargo_rejected',
@@ -74,7 +89,11 @@ export async function refundFull(
   paymentId: string,
   amount: number,
   reason: 'cancel' | 'rejected' | 'flight',
-): Promise<{ refundId: string }> {
+): Promise<{ refundId: string | undefined }> {
+  if (cargoRefundPort) {
+    const refund = await cargoRefundPort({ bookingRef, paymentId, amount, reason })
+    return { refundId: refund?.id }
+  }
   const dbReason = REFUND_REASON_MAP[reason]
   const sourceKey = `cargo:${bookingRef}:${reason}`
 

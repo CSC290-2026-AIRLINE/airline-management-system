@@ -1,12 +1,9 @@
 import {
   Accessibility,
-  Calendar,
   CalendarClock,
   Globe,
   Gauge,
-  ChartColumn,
   ClipboardCheck,
-  CreditCard,
   DoorOpen,
   FileText,
   GitCompareArrows,
@@ -14,8 +11,6 @@ import {
   KeyRound,
   ListChecks,
   Luggage,
-  MessageSquare,
-  Monitor,
   Package,
   PackageSearch,
   Percent,
@@ -35,7 +30,6 @@ import {
   Tag,
   Ticket,
   Truck,
-  User,
   UserCheck,
   UserPlus,
   Users,
@@ -53,21 +47,25 @@ export type NavRoute =
   | '/booking-lookup'
   | '/book-for-customer'
   | '/assistance'
+  // Feature 5 (Payments & Refunds), a top-level group in the sidebar.
+  | '/payments/lookup'
+  | '/payments/refunds'
+  | '/payments/compensation'
+  | '/payments/exceptions'
+  | '/payments/pay-runs'
+  | '/payments/my-pay'
 
 /** Sidebar contents, shared by the live sidebar and the Role access "Preview as user". `code` is the registered screen code. */
 export interface NavItem {
   label: string
   icon: LucideIcon
-  /** Set once the owning team has a route. Items without one stay disabled in the live sidebar. */
-  to?: NavRoute
+  to: NavRoute
   /** Path prefix that keeps the item highlighted on the feature's other pages. */
   activePrefix?: string
 }
 
-export const REPORTS_ITEM: NavItem = { label: 'Reports & Analytics', icon: ChartColumn }
-
 export const GROUPS: { label: string; items: NavItem[] }[] = [
-  // Groups with live links come first; the rest are disabled placeholders until their teams add routes.
+  // Only screens with a page behind them are listed. A team adds its group here when its routes exist.
   {
     label: 'Customer Management',
     items: [
@@ -76,7 +74,6 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
       { label: 'Book for Customer', icon: UserPlus, to: '/book-for-customer' },
       { label: 'Assistance Queue', icon: Accessibility, to: '/assistance' },
       { label: 'Security Screening', icon: ShieldCheck, to: '/security-screening/screening-queue', activePrefix: '/security-screening' },
-      { label: 'Service & Compensation', icon: MessageSquare },
     ],
   },
   {
@@ -85,20 +82,7 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
       { label: 'Fleet & Aircraft', icon: PlaneLanding, to: '/aircraft', activePrefix: '/aircraft' },
       { label: 'Aircraft Types', icon: PlaneTakeoff, to: '/aircraft-types', activePrefix: '/aircraft-types' },
       { label: 'Aircraft Readiness', icon: ClipboardCheck, to: '/readiness' },
-      { label: 'Crew Scheduling', icon: Calendar },
-      { label: 'My Roster', icon: User },
     ],
-  },
-  {
-    label: 'Commercial',
-    items: [
-      { label: 'Bookings & Inventory', icon: Ticket },
-      { label: 'Payments & Refunds', icon: CreditCard },
-    ],
-  },
-  {
-    label: 'Airport & Onboard',
-    items: [{ label: 'Gate Counter & Devices', icon: Monitor }],
   },
 ]
 

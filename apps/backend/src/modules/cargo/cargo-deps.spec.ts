@@ -5,7 +5,7 @@ jest.mock('@backend/modules/pricing/fare-quote/sim-clock', () => ({
   simNow: () => NOW,
 }))
 
-import { getAircraftCapacity, refundFull, seatsTakenOnFlight } from './cargo-deps'
+import { getAircraftCapacity, refundFull, seatsTakenOnFlight, setCargoRefundPort } from './cargo-deps'
 
 function makeDb() {
   return {
@@ -127,5 +127,26 @@ describe('getAircraftCapacity', () => {
     const db = makeDb()
     db.aircraft.findUnique.mockResolvedValue(null)
     await expect(getAircraftCapacity(db as never, 'ac1')).resolves.toEqual({ holdLimitKg: 4000, sellableSeats: 180 })
+  })
+})
+
+describe('refundFull with Feature 5 registered', () => {
+  afterEach(() => setCargoRefundPort(undefined))
+
+  it('asks Feature 5 for the refund and writes no row of its own', async () => {
+    const db = makeDb()
+    const port = jest.fn().mockResolvedValue({ id: 'r-real' })
+    setCargoRefundPort(port)
+
+    const result = await refundFull(db as never, 'CB-000004', 'pay-4', 150, 'cancel')
+
+    expect(result).toEqual({ refundId: 'r-real' })
+    expect(port).toHaveBeenCalledWith({ bookingRef: 'CB-000004', paymentId: 'pay-4', amount: 150, reason: 'cancel' })
+    expect(db.refund.create).not.toHaveBeenCalled()
+  })
+
+  it('answers no refund id when the payment was only authorised and got voided', async () => {
+    setCargoRefundPort(jest.fn().mockResolvedValue(undefined))
+    expect(await refundFull(makeDb() as never, 'CB-000005', 'pay-5', 10, 'rejected')).toEqual({ refundId: undefined })
   })
 })

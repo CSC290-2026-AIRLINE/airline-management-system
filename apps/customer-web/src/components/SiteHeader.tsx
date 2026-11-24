@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
 import { SignedIn, SignedOut, useUser } from '@clerk/clerk-react'
 import { Menu } from 'lucide-react'
 import BrandLogo from '@customer-web/components/BrandLogo'
@@ -7,24 +7,31 @@ import { Avatar, AvatarFallback, AvatarImage } from '@customer-web/components/ui
 import { Button } from '@customer-web/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@customer-web/components/ui/sheet'
 
-const links = ['Book', 'My Trips', 'Cargo', 'Membership', 'Help']
+const links = ['Book', 'My Trips', 'Receipts', 'Cargo', 'Membership', 'Help']
 
 // Labels with a page behind them. The others stay plain text until their pages exist.
-const linkTo: Partial<Record<(typeof links)[number], '/search' | '/bookings' | '/loyalty' | '/cargo'>> = {
+const linkTo: Partial<Record<(typeof links)[number], '/search' | '/bookings' | '/receipts' | '/loyalty' | '/cargo'>> = {
   Book: '/search',
   'My Trips': '/bookings',
+  // Receipts, refunds and vouchers (Feature 5): the page has tabs for the other two.
+  Receipts: '/receipts',
   Cargo: '/cargo',
   Membership: '/loyalty',
 }
 
+/** Receipts, My refunds and My vouchers are tabs of one area, so the Receipts link stays on for all three. */
+const RECEIPTS_AREA = ['/receipts', '/refunds', '/vouchers']
+
 function NavItem({ label, onClick }: { label: string; onClick?: () => void }) {
   const to = linkTo[label]
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
   if (!to) return <span className="text-muted-foreground">{label}</span>
+  const inReceiptsArea = label === 'Receipts' && RECEIPTS_AREA.some((path) => pathname === path || pathname.startsWith(`${path}/`))
   return (
     <Link
       to={to}
       onClick={onClick}
-      className="rounded-sm text-muted-foreground no-underline hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      className={`rounded-sm no-underline hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none ${inReceiptsArea ? 'text-foreground font-medium' : 'text-muted-foreground'}`}
       activeProps={{ className: 'text-foreground font-medium', 'aria-current': 'page' }}
     >
       {label}

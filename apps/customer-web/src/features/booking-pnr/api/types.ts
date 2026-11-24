@@ -232,6 +232,16 @@ export interface ConfirmBookingResult {
   insurancePolicy?: InsurancePolicySummary | null
 }
 
+// POST /checkout: Feature 5a's answer. A card payment gives the hosted page to send the customer to; a payment that needs no
+// page (the fake provider, a voucher, nothing due) is settled on the spot and `checkoutUrl` is null.
+export interface CheckoutResult {
+  paymentId: string
+  status: string
+  checkoutUrl: string | null
+  // The travel insurance policy, when the payment was settled on the spot and the booking has one.
+  insurancePolicy: InsurancePolicySummary | null
+}
+
 // GET /bookings/:ref/insurance: what the booker's loyalty tier offers (feature 11).
 export type InsuranceOffer =
   { kind: 'none' } | { kind: 'included'; tierName: string } | { kind: 'member_price'; tierName: string; price: number; currency: string }

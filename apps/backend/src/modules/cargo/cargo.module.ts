@@ -1,4 +1,7 @@
-import { Module } from '@nestjs/common'
+import { Module, type OnModuleInit } from '@nestjs/common'
+import { PaymentsRefundsModule } from '@backend/modules/payments-refunds/payments-refunds.module'
+import { CargoRefundAdapter } from '@backend/modules/payments-refunds/cargo-refund.adapter'
+import { setCargoRefundPort } from './cargo-deps'
 import { CargoController } from './cargo.controller'
 import { CargoService } from './cargo.service'
 import { CargoSettingsController } from './cargo-settings.controller'
@@ -13,12 +16,12 @@ import { CargoClaimsController } from './cargo-claims.controller'
 import { CargoClaimsService } from './cargo-claims.service'
 import { CargoCustomerController } from './cargo-customer.controller'
 import { CargoCustomerService } from './cargo-customer.service'
-import { CargoCustomerMockController } from './cargo-customer-mock.controller'
 import { CargoTestToolsController } from './cargo-test-tools.controller'
 
-const devControllers = process.env.NODE_ENV !== 'production' ? [CargoTestToolsController, CargoCustomerMockController] : []
+const devControllers = process.env.NODE_ENV !== 'production' ? [CargoTestToolsController] : []
 
 @Module({
+  imports: [PaymentsRefundsModule],
   controllers: [
     CargoController,
     CargoSettingsController,
@@ -48,4 +51,11 @@ const devControllers = process.env.NODE_ENV !== 'production' ? [CargoTestToolsCo
     CargoCustomerService,
   ],
 })
-export class CargoModule {}
+export class CargoModule implements OnModuleInit {
+  constructor(private readonly cargoRefunds: CargoRefundAdapter) {}
+
+  /** Cancels and rejections refund through Feature 5 (the card, the credit note, the journal), not a recorded-only row. */
+  onModuleInit(): void {
+    setCargoRefundPort((request) => this.cargoRefunds.refundForPayment(request))
+  }
+}

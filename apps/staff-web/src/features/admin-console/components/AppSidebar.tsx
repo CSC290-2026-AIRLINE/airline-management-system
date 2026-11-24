@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { ChevronRight, LogOut } from 'lucide-react'
+import { Banknote, ChevronRight, Gift, LogOut, Search, TriangleAlert, Undo2, Wallet } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@staff-web/components/ui/collapsible'
 import { ScrollArea } from '@staff-web/components/ui/scroll-area'
 import {
@@ -32,26 +32,8 @@ import {
   LOYALTY_ITEMS,
   BAGGAGE_ITEMS,
   PRICING_ITEMS,
-  REPORTS_ITEM,
   type NavItem,
 } from '../nav-items'
-
-/**
- * These screens belong to other feature teams and have no routes in this app yet, so they are listed as disabled
- * buttons (dimmed, not focusable) instead of links that go nowhere. When a team registers its route, swap its entry for
- * a `<SidebarMenuButton asChild><Link/></SidebarMenuButton>`.
- */
-// `indent` is for items inside a group: the padding sits on the button, so its hover block spans the full width.
-function PendingItem({ item, indent = false }: { item: NavItem; indent?: boolean }) {
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton disabled className={indent ? 'pl-4' : undefined}>
-        <item.icon />
-        <span>{item.label}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  )
-}
 
 /** A screen whose team has registered a route. A plain link, so the page swaps in without remounting the sidebar frame. */
 function LinkedItem({
@@ -110,6 +92,16 @@ function NavGroup({ label, defaultOpen = true, children }: { label: string; defa
     </Collapsible>
   )
 }
+
+/** The Payments & Refunds screens (Feature 5), in the F5 frames' order. Pay Runs and My Pay are Feature 5c's (crew pay). */
+const PAYMENTS_ITEMS: (NavItem & { to: NonNullable<NavItem['to']> })[] = [
+  { label: 'Payment Lookup', icon: Search, to: '/payments/lookup' },
+  { label: 'Refund Queue', icon: Undo2, to: '/payments/refunds' },
+  { label: 'Compensation & Vouchers', icon: Gift, to: '/payments/compensation' },
+  { label: 'Payment Exceptions', icon: TriangleAlert, to: '/payments/exceptions' },
+  { label: 'Pay Runs', icon: Banknote, to: '/payments/pay-runs' },
+  { label: 'My Pay', icon: Wallet, to: '/payments/my-pay' },
+]
 
 /**
  * The admin workspace sidebar: the shadcn `Sidebar` (icon-collapsible on desktop, a sheet on a phone). Administration
@@ -310,25 +302,19 @@ export function AppSidebar({ roleName, onSignOut, expandedGroup }: { roleName: s
             ))}
           </NavGroup>
 
+          <NavGroup label="Payments & Refunds" defaultOpen={groupIsOpen('Payments & Refunds')}>
+            {PAYMENTS_ITEMS.map((item) => (
+              <LinkedItem key={item.label} item={item} pathname={pathname} indent />
+            ))}
+          </NavGroup>
+
           {GROUPS.map((group) => (
             <NavGroup key={group.label} label={group.label} defaultOpen={groupIsOpen(group.label)}>
-              {group.items.map((item) =>
-                item.to ? (
-                  <LinkedItem key={item.label} item={{ ...item, to: item.to }} pathname={pathname} indent />
-                ) : (
-                  <PendingItem key={item.label} item={item} indent />
-                ),
-              )}
+              {group.items.map((item) => (
+                <LinkedItem key={item.label} item={item} pathname={pathname} indent />
+              ))}
             </NavGroup>
           ))}
-
-          <SidebarGroup className="py-1">
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <PendingItem item={REPORTS_ITEM} />
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
         </ScrollArea>
       </SidebarContent>
 

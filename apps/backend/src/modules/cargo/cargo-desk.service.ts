@@ -390,7 +390,7 @@ export class CargoDeskService {
         })
       }
 
-      let refundResult: { refundId: string }
+      let refundResult: { refundId: string | undefined }
       try {
         refundResult = await refundFull(tx, booking.booking_ref, paymentId, Number(booking.quoted_charge), 'rejected')
       } catch (e) {
@@ -456,7 +456,7 @@ export class CargoDeskService {
         // `:flight` key); any other staff cancel, an offloaded booking included, is an ordinary cancel.
         const cause = booking.cargo_shipment_event[0]?.event_type
         const refundReason = status === 'rebook_required' && (cause === 'flight_cancelled' || cause === 'diverted') ? 'flight' : 'cancel'
-        let refundResult: { refundId: string }
+        let refundResult: { refundId: string | undefined }
         try {
           refundResult = await refundFull(tx, booking.booking_ref, paymentId, Number(booking.quoted_charge), refundReason)
         } catch (e) {
