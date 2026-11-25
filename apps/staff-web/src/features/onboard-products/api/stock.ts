@@ -23,6 +23,7 @@ import {
   type WriteOffBatch,
 } from './mappers'
 import type {
+  AirportOption,
   CreatePurchaseReceiptInput,
   Product,
   PurchaseReceipt,
@@ -36,6 +37,8 @@ import type {
 
 export interface StockApi {
   listWarehouses: () => Promise<Warehouse[]>
+  /** Every active airport in the flight network, so a warehouse can be added for any of them. */
+  listAirports: () => Promise<AirportOption[]>
   createWarehouse: (input: { code: string; name: string; airportCode: string }) => Promise<Warehouse>
   updateWarehouse: (id: string, input: Partial<{ code: string; name: string; airportCode: string }>) => Promise<Warehouse>
   deleteWarehouse: (id: string) => Promise<void>
@@ -77,6 +80,17 @@ export function createStockApi(client: ApiClient): StockApi {
         return (wire ?? []).map((w) => mapWarehouse(w as never))
       } catch (err) {
         rethrow(err, new StockApiError('UNKNOWN', 'Could not load warehouses.', 0))
+      }
+    },
+    async listAirports() {
+      try {
+        const wire = await client.get<{ data: Array<{ iata_code: string; name: string; city: string }> }>(
+          '/api/flight-scheduling/airports',
+          { limit: 100, is_active: 'true' },
+        )
+        return (wire?.data ?? []).map((a) => ({ code: a.iata_code, name: a.name, city: a.city }))
+      } catch (err) {
+        rethrow(err, new StockApiError('UNKNOWN', 'Could not load the airports.', 0))
       }
     },
     async createWarehouse(input) {

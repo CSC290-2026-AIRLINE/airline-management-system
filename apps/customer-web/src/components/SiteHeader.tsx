@@ -10,14 +10,14 @@ import { Avatar, AvatarFallback, AvatarImage } from '@customer-web/components/ui
 import { Button } from '@customer-web/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@customer-web/components/ui/sheet'
 
-const links = ['Book', 'My Trips', 'Receipts', 'Cargo', 'Membership', 'Help']
+const links = ['Book', 'My Trips', 'Payments', 'Cargo', 'Membership', 'Help']
 
 // Labels with a page behind them. The others stay plain text until their pages exist.
 const linkTo: Partial<Record<(typeof links)[number], '/search' | '/bookings' | '/receipts' | '/loyalty' | '/cargo' | '/complaints'>> = {
   Book: '/search',
   'My Trips': '/bookings',
   // Receipts, refunds and vouchers (Feature 5): the page has tabs for the other two.
-  Receipts: '/receipts',
+  Payments: '/receipts',
   Cargo: '/cargo',
   Membership: '/loyalty',
   // Customer service (Feature 13): make a complaint, check a case, notification preferences.

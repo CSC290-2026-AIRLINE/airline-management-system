@@ -9,6 +9,7 @@ import { Button } from '@staff-web/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@staff-web/components/ui/dialog'
 import { Input } from '@staff-web/components/ui/input'
 import { Label } from '@staff-web/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
 import { KebabMenu } from '../catalog/KebabMenu'
 import { ConfirmDeleteDialog } from '../catalog/ConfirmDeleteDialog'
 
@@ -20,6 +21,15 @@ export interface ManageListItem {
   isProtected?: boolean
   /** Optional helper text shown under the name in the row. */
   hint?: string
+}
+
+/** One choice in the add form's dropdown, for lists whose items come from another list (an airport from the flight network). */
+export interface ManageListOption {
+  value: string
+  /** What the dropdown shows. */
+  label: string
+  /** The name the new item gets. */
+  name: string
 }
 
 export interface ManageListInput {
@@ -34,6 +44,11 @@ interface Props {
   secondaryLabel?: string
   /** When set, the secondary field is shown for every item and is required. */
   secondaryRequired?: boolean
+  /** When set, adding an item means picking one of these instead of typing a name and a code. */
+  addOptions?: ManageListOption[]
+  addOptionLabel?: string
+  /** Shown instead of the dropdown when every option has been added. */
+  addOptionsEmptyMessage?: string
   items: ManageListItem[]
   emptyMessage: string
   addLabel: string
@@ -51,6 +66,9 @@ export function ManageListDialog(props: Props) {
     nameLabel,
     secondaryLabel,
     secondaryRequired,
+    addOptions,
+    addOptionLabel,
+    addOptionsEmptyMessage,
     items,
     emptyMessage,
     addLabel,
@@ -61,10 +79,11 @@ export function ManageListDialog(props: Props) {
     onDelete,
   } = props
 
-  type EditState = { mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; id: string; initial: ManageListInput }
-  const [editState, setEditStateRaw] = useState<EditState>({ mode: 'closed' })
+  type EditState = { mode: 'create' } | { mode: 'edit'; id: string; initial: ManageListInput }
+  const [editState, setEditStateRaw] = useState<EditState>({ mode: 'create' })
   const [name, setName] = useState('')
   const [secondary, setSecondary] = useState('')
+  const [picked, setPicked] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<ManageListItem | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -76,6 +95,7 @@ export function ManageListDialog(props: Props) {
     if (next.mode === 'create') {
       setName('')
       setSecondary('')
+      setPicked('')
       setError(null)
     } else if (next.mode === 'edit') {
       setName(next.initial.name)
@@ -88,6 +108,20 @@ export function ManageListDialog(props: Props) {
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     if (busy) return
+    if (editState.mode === 'create' && addOptions) {
+      const option = addOptions.find((o) => o.value === picked)
+      if (!option) {
+        setError(`Pick ${addOptionLabel ? `an ${addOptionLabel.toLowerCase()}` : 'one'} from the list.`)
+        return
+      }
+      try {
+        await onCreate({ name: option.name, secondary: option.value })
+        setEditState({ mode: 'create' })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not save the item.')
+      }
+      return
+    }
     const trimmedName = name.trim()
     const trimmedSecondary = secondary.trim()
     if (trimmedName === '') {
@@ -104,7 +138,7 @@ export function ManageListDialog(props: Props) {
       } else if (editState.mode === 'edit') {
         await onUpdate(editState.id, { name: trimmedName, secondary: trimmedSecondary })
       }
-      setEditState({ mode: 'closed' })
+      setEditState({ mode: 'create' })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the item.')
     }
@@ -137,35 +171,53 @@ export function ManageListDialog(props: Props) {
           </DialogHeader>
 
           <form className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-4" onSubmit={onSubmit} noValidate>
-            <div className="grid gap-3 sm:grid-cols-2">
+            {editState.mode === 'create' && addOptions ? (
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="ml-name">{nameLabel}</Label>
-                <Input
-                  id="ml-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={nameLabel}
-                  autoComplete="off"
-                  disabled={busy}
-                />
+                <Label htmlFor="ml-pick">{addOptionLabel ?? nameLabel}</Label>
+                {addOptions.length === 0 ? (
+                  <p className="m-0 text-sm text-muted-foreground">{addOptionsEmptyMessage ?? 'Everything is already on the list.'}</p>
+                ) : (
+                  <NativeSelect id="ml-pick" className="w-full" value={picked} onChange={(e) => setPicked(e.target.value)} disabled={busy}>
+                    <NativeSelectOption value="">Select an airport…</NativeSelectOption>
+                    {addOptions.map((o) => (
+                      <NativeSelectOption key={o.value} value={o.value}>
+                        {o.label}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                )}
               </div>
-              {showSecondaryField && (
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="ml-secondary">
-                    {secondaryLabel}
-                    {secondaryRequired ? '' : ' (optional)'}
-                  </Label>
+                  <Label htmlFor="ml-name">{nameLabel}</Label>
                   <Input
-                    id="ml-secondary"
-                    value={secondary}
-                    onChange={(e) => setSecondary(e.target.value)}
-                    placeholder={secondaryLabel}
+                    id="ml-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder={nameLabel}
                     autoComplete="off"
                     disabled={busy}
                   />
                 </div>
-              )}
-            </div>
+                {showSecondaryField && (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="ml-secondary">
+                      {secondaryLabel}
+                      {secondaryRequired ? '' : ' (optional)'}
+                    </Label>
+                    <Input
+                      id="ml-secondary"
+                      value={secondary}
+                      onChange={(e) => setSecondary(e.target.value)}
+                      placeholder={secondaryLabel}
+                      autoComplete="off"
+                      disabled={busy}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
             {error && (
               <Alert variant="destructive" role="alert">
                 <AlertDescription>{error}</AlertDescription>
@@ -175,12 +227,20 @@ export function ManageListDialog(props: Props) {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setEditState({ mode: 'closed' })}
-                disabled={busy || editState.mode === 'closed'}
+                onClick={() => setEditState({ mode: 'create' })}
+                disabled={busy || editState.mode !== 'edit'}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={busy || name.trim() === '' || (secondaryRequired && secondary.trim() === '')}>
+              <Button
+                type="submit"
+                disabled={
+                  busy ||
+                  (editState.mode === 'create' && addOptions
+                    ? picked === ''
+                    : name.trim() === '' || (secondaryRequired && secondary.trim() === ''))
+                }
+              >
                 {editState.mode === 'edit' ? (busy ? 'Saving…' : 'Save changes') : busy ? 'Adding…' : addLabel}
               </Button>
             </div>

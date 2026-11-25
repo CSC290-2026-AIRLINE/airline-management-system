@@ -238,6 +238,13 @@ export interface Warehouse {
   airportCode: string
 }
 
+/** An airport from the flight network, offered when a warehouse is added. */
+export interface AirportOption {
+  code: string
+  name: string
+  city: string
+}
+
 export interface Supplier {
   id: string
   name: string
