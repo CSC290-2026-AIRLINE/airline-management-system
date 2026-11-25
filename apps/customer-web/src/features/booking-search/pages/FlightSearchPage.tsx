@@ -1,4 +1,7 @@
 import { Component, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { SelectTile } from '@customer-web/components/ui/select-tile'
+import { ToggleGroup, ToggleGroupItem } from '@customer-web/components/ui/toggle-group'
+import { Button } from '@customer-web/components/ui/button'
 import { BookingRouteBar } from '../../booking-pnr/components/BookingRouteBar'
 import { PageShell } from '../../booking-pnr/components/PageShell'
 import { FlightSearchForm } from '../components/FlightSearchForm'
@@ -81,12 +84,7 @@ class SearchBoundary extends Component<{ children: ReactNode }, { failed: boolea
       <PageShell className="[&_h1]:m-0 [&_h2]:m-0 [&_h2]:text-subheading">
         <h1>Flight search is unavailable</h1>
         <p>Refresh the page to try again.</p>
-        <button
-          className="inline-flex h-10 w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm sm:h-9 sm:w-auto font-medium whitespace-nowrap text-primary-foreground shadow-xs transition-all outline-none hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-          onClick={() => window.location.reload()}
-        >
-          Refresh page
-        </button>
+        <Button onClick={() => window.location.reload()}>Refresh page</Button>
       </PageShell>
     ) : (
       this.props.children
@@ -303,13 +301,28 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
               <span className="rounded-md border bg-background px-2.5 py-1 text-xs text-muted-foreground">
                 Prices and availability checked live
               </span>
-              <div className="flex flex-wrap items-center gap-2 [&>span]:text-xs [&>span]:font-medium [&>span]:text-muted-foreground [&_button]:h-8 [&_button]:cursor-pointer [&_button]:rounded-md [&_button]:border [&_button]:bg-background [&_button]:px-3 [&_button]:text-sm [&_button]:font-medium [&_button]:shadow-xs [&_button:hover]:bg-accent [&_button[aria-pressed=true]]:border-primary [&_button[aria-pressed=true]]:bg-primary [&_button[aria-pressed=true]]:text-primary-foreground">
-                <span>Sort</span>
-                {sortOptions.map(([value, label]) => (
-                  <button key={value} type="button" aria-pressed={sort === value} onClick={() => changeSort(value)}>
-                    {label}
-                  </button>
-                ))}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Sort</span>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  size="sm"
+                  spacing={2}
+                  value={sort}
+                  onValueChange={(next) => next && changeSort(next as typeof sort)}
+                  aria-label="Sort flights"
+                  className="flex-wrap"
+                >
+                  {sortOptions.map(([value, label]) => (
+                    <ToggleGroupItem
+                      key={value}
+                      value={value}
+                      className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                    >
+                      {label}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
               </div>
             </div>
             {result.legs.map((leg, legIndex) => {
@@ -413,11 +426,11 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                                   selected[legIndex]?.flight.flightId === flight.flightId &&
                                   selected[legIndex]?.fare.fareClassId === fare.fareClassId
                                 return (
-                                  <button
+                                  <SelectTile
                                     key={`${fare.cabin}/${fare.fareClassId}`}
-                                    className={`flex min-h-14 cursor-pointer flex-col items-start gap-0.5 rounded-lg border bg-background px-3 py-2 text-left outline-none transition-colors hover:border-primary hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:border-dashed disabled:bg-transparent disabled:text-muted-foreground disabled:hover:border-border [&>small]:text-xs [&>small]:text-muted-foreground [&>strong]:text-sm [&>strong]:font-semibold [&>strong]:tabular-nums ${pickedFare ? 'border-primary bg-primary/5 ring-1 ring-primary' : ''}`}
+                                    className="min-h-14 flex-col items-start gap-0.5 bg-background px-3 py-2 hover:bg-accent disabled:border-dashed disabled:bg-transparent disabled:text-muted-foreground disabled:opacity-100 [&>small]:text-xs [&>small]:text-muted-foreground [&>strong]:text-sm [&>strong]:font-semibold [&>strong]:tabular-nums"
                                     disabled={!!fare.unavailableReason}
-                                    aria-pressed={pickedFare}
+                                    selected={pickedFare}
                                     onClick={() => pickFare(legIndex, flight, fare)}
                                   >
                                     <strong>
@@ -428,7 +441,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                                         ? fare.unavailableReason
                                         : `${fare.seatsLeft > 9 ? '9+' : fare.seatsLeft} seats left`}
                                     </small>
-                                  </button>
+                                  </SelectTile>
                                 )
                               })}
                           </div>
@@ -459,8 +472,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                   <strong>{money(total, tripCurrency)}</strong>
                 </div>
                 {onContinue && (
-                  <button
-                    className="inline-flex h-10 w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm sm:h-9 sm:w-auto font-medium whitespace-nowrap text-primary-foreground shadow-xs transition-all outline-none hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+                  <Button
                     disabled={!complete}
                     onClick={() =>
                       onContinue({
@@ -471,7 +483,7 @@ function FlightSearchContent({ onContinue, initialItinerary, tripLink, urlState,
                     }
                   >
                     Continue to passengers
-                  </button>
+                  </Button>
                 )}
               </div>
             </section>

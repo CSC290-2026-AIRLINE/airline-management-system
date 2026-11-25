@@ -1,9 +1,9 @@
 import { useState } from 'react'
+import { Button } from '@customer-web/components/ui/button'
 import { ApiError } from '../api/client'
 import type { Cabin, SeatMap } from '../api/types'
 import { SeatPicker } from './SeatPicker'
 import { SeatTakenDialog } from './SeatTakenDialog'
-import controls from '../styles/controls'
 import { formatMoney } from '../lib/format'
 
 interface BookingSeatChangeProps {
@@ -90,9 +90,9 @@ export function BookingSeatChange({
             Current seat: {currentSeat ?? 'Not chosen'} · Exit-row seats have eligibility rules.
           </p>
         </div>
-        <button className={controls.secondary} type="button" disabled={saving} onClick={onClose}>
+        <Button variant="outline" type="button" disabled={saving} onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
       <SeatTakenDialog open={taken} seatCode={selected} onClose={chooseAnother} onChooseAnother={chooseAnother} />
       <SeatPicker
@@ -134,8 +134,7 @@ export function BookingSeatChange({
       )}
       <div className="flex flex-wrap justify-end gap-2 pt-2">
         {import.meta.env.DEV && paymentRequired && paymentLock && onPaySeat && (
-          <button
-            className={controls.primary}
+          <Button
             type="button"
             disabled={saving || assigned}
             onClick={() => {
@@ -151,19 +150,14 @@ export function BookingSeatChange({
             }}
           >
             {saving ? 'Confirming payment…' : 'Confirm seat payment (development)'}
-          </button>
+          </Button>
         )}
-        <button
-          className={controls.primary}
-          type="button"
-          disabled={!selected || saving || paymentRequired || assigned}
-          onClick={() => void submit()}
-        >
+        <Button type="button" disabled={!selected || saving || paymentRequired || assigned} onClick={() => void submit()}>
           {saving ? 'Saving…' : 'Confirm seat'}
-        </button>
-        <button className={controls.secondary} type="button" disabled={saving} onClick={onClose}>
+        </Button>
+        <Button variant="outline" type="button" disabled={saving} onClick={onClose}>
           {assigned ? 'Done' : 'Cancel'}
-        </button>
+        </Button>
       </div>
     </section>
   )

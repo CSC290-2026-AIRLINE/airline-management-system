@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button } from '@customer-web/components/ui/button'
 import { Message } from './Message.tsx'
 import styles from './flow.module.css'
 
@@ -68,9 +69,9 @@ export function FindBookingStep({
 
       <Message tone="info">Only paid bookings on flights that are not cancelled can be checked in.</Message>
 
-      <button className={styles.button} type="submit" disabled={busy || !pnr.trim() || !lastName.trim() || (!!firstNames && !firstName)}>
+      <Button type="submit" disabled={busy || !pnr.trim() || !lastName.trim() || (!!firstNames && !firstName)}>
         {busy ? 'Searching…' : 'Find booking'}
-      </button>
+      </Button>
     </form>
   )
 }

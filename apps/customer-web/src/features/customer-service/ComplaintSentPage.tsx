@@ -106,7 +106,7 @@ function SentCase({ caseNumber, user }: { caseNumber: string; user: AppUser }) {
       <Card>
         <CardContent className="flex flex-col gap-5">
           <Alert>
-            <CheckCircle2 className="text-success" />
+            <CheckCircle2 className="text-ok" />
             <AlertDescription>
               Thank you. Your complaint was sent. We emailed a copy to {complaint.contactEmail || user.email}.
             </AlertDescription>

@@ -58,7 +58,7 @@ export function CancelOrderDialog({ order, isPending, error, onConfirm, onCancel
           </p>
         </header>
         <div className="px-6 py-2 pb-4">
-          <div className="flex items-center justify-between bg-[#eef2f7] rounded-lg px-3 py-2.5 mb-3.5">
+          <div className="flex items-center justify-between bg-disabled rounded-lg px-3 py-2.5 mb-3.5">
             <span className="font-sans font-semibold text-foreground text-sm">Amount to refund</span>
             <span className="font-mono font-medium text-foreground text-sm tabular-nums">
               {formatMoney(order.totalAmount, order.currency)}
@@ -73,14 +73,14 @@ export function CancelOrderDialog({ order, isPending, error, onConfirm, onCancel
           </p>
           {error && (
             <p
-              className="text-destructive bg-[#fff3f2] border border-[#fdb5b0] rounded-lg px-4 py-3 my-4 text-sm leading-[1.45]"
+              className="text-destructive bg-danger-tint border border-danger/30 rounded-lg px-4 py-3 my-4 text-sm leading-[1.45]"
               role="alert"
             >
               {error}
             </p>
           )}
         </div>
-        <div className="flex justify-end gap-2.5 px-6 py-3.5 bg-[#f8fafc] border-t border-[#e8edf3] rounded-b-xl">
+        <div className="flex justify-end gap-2.5 px-6 py-3.5 bg-canvas border-t border-line rounded-b-xl">
           <Button
             type="button"
             variant="ghost"

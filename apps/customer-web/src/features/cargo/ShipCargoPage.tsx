@@ -48,8 +48,8 @@ function durationText(dep: string, arr: string): string {
   return `${h} h ${m} min · direct`
 }
 
-function Req() {
-  return <span className="ml-0.5 text-destructive">*</span>
+function Optional() {
+  return <span className="ml-1 font-normal text-muted-foreground">(optional)</span>
 }
 
 /* ── Main component ────────────────────────────────────────────── */
@@ -425,15 +425,7 @@ export default function ShipCargoPage() {
             <div className="grid gap-4">
               {/* From / To */}
               <div className="grid grid-cols-2 gap-4">
-                <Field
-                  id="from"
-                  label={
-                    <>
-                      From
-                      <Req />
-                    </>
-                  }
-                >
+                <Field id="from" label={<>From</>}>
                   <Select value={fromAirport} onValueChange={setFromAirport}>
                     <SelectTrigger id="from" aria-invalid={flaggedField === 'from'}>
                       <SelectValue placeholder="Select origin">
@@ -449,15 +441,7 @@ export default function ShipCargoPage() {
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field
-                  id="to"
-                  label={
-                    <>
-                      To
-                      <Req />
-                    </>
-                  }
-                >
+                <Field id="to" label={<>To</>}>
                   <Select value={toAirport} onValueChange={setToAirport} disabled={!fromAirport}>
                     <SelectTrigger id="to" aria-invalid={flaggedField === 'to'}>
                       <SelectValue placeholder="Select destination">
@@ -477,10 +461,7 @@ export default function ShipCargoPage() {
 
               {/* Ship date */}
               <div id="shipDateSection" className="grid gap-1">
-                <span className="text-sm leading-none font-medium">
-                  Ship date
-                  <Req />
-                </span>
+                <span className="text-sm leading-none font-medium">Ship date</span>
                 {shipDate ? (
                   (() => {
                     const di = shipDates.find((d) => d.date === shipDate)
@@ -578,15 +559,7 @@ export default function ShipCargoPage() {
             <div className="grid gap-4">
               {/* Commodity | Pieces | Weight | Volume */}
               <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr_1fr]">
-                <Field
-                  id="commodityType"
-                  label={
-                    <>
-                      Commodity type
-                      <Req />
-                    </>
-                  }
-                >
+                <Field id="commodityType" label={<>Commodity type</>}>
                   <Select value={commodityTypeId} onValueChange={setCommodityTypeId}>
                     <SelectTrigger id="commodityType" aria-invalid={flaggedField === 'commodityType'}>
                       <SelectValue placeholder="Select">
@@ -602,16 +575,7 @@ export default function ShipCargoPage() {
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field
-                  id="pieces"
-                  error={fieldErrors.pieces?.message}
-                  label={
-                    <>
-                      Pieces
-                      <Req />
-                    </>
-                  }
-                >
+                <Field id="pieces" error={fieldErrors.pieces?.message} label={<>Pieces</>}>
                   <Input
                     id="pieces"
                     type="number"
@@ -621,16 +585,7 @@ export default function ShipCargoPage() {
                     aria-invalid={!!fieldErrors.pieces || flaggedField === 'pieces'}
                   />
                 </Field>
-                <Field
-                  id="weight"
-                  error={fieldErrors.weightKg?.message}
-                  label={
-                    <>
-                      Weight (kg)
-                      <Req />
-                    </>
-                  }
-                >
+                <Field id="weight" error={fieldErrors.weightKg?.message} label={<>Weight (kg)</>}>
                   <Input
                     id="weight"
                     type="number"
@@ -641,15 +596,7 @@ export default function ShipCargoPage() {
                     aria-invalid={!!fieldErrors.weightKg || flaggedField === 'weight'}
                   />
                 </Field>
-                <Field
-                  id="volume"
-                  label={
-                    <>
-                      Volume (m³)
-                      <Req />
-                    </>
-                  }
-                >
+                <Field id="volume" label={<>Volume (m³)</>}>
                   <Input
                     id="volume"
                     type="number"
@@ -663,15 +610,7 @@ export default function ShipCargoPage() {
               </div>
 
               {/* Goods description — single-line input */}
-              <Field
-                id="description"
-                label={
-                  <>
-                    Goods description
-                    <Req />
-                  </>
-                }
-              >
+              <Field id="description" label={<>Goods description</>}>
                 <Input
                   id="description"
                   type="text"
@@ -692,16 +631,7 @@ export default function ShipCargoPage() {
 
               {/* UN number (dangerous goods only) */}
               {isDangerous && (
-                <Field
-                  id="unNumber"
-                  label={
-                    <>
-                      UN number
-                      <Req />
-                    </>
-                  }
-                  hint="Needed for dangerous goods: UN and four digits."
-                >
+                <Field id="unNumber" label={<>UN number</>} hint="Needed for dangerous goods: UN and four digits.">
                   <Input
                     id="unNumber"
                     type="text"
@@ -717,15 +647,7 @@ export default function ShipCargoPage() {
 
               {/* Shipper / Consignee */}
               <div className="grid grid-cols-2 gap-4">
-                <Field
-                  id="shipperCompany"
-                  label={
-                    <>
-                      Shipper
-                      <Req />
-                    </>
-                  }
-                >
+                <Field id="shipperCompany" label={<>Shipper</>}>
                   <Input
                     id="shipperCompany"
                     placeholder="Company"
@@ -734,15 +656,7 @@ export default function ShipCargoPage() {
                     aria-invalid={flaggedField === 'shipperCompany'}
                   />
                 </Field>
-                <Field
-                  id="consigneeName"
-                  label={
-                    <>
-                      Consignee name
-                      <Req />
-                    </>
-                  }
-                >
+                <Field id="consigneeName" label={<>Consignee name</>}>
                   <Input
                     id="consigneeName"
                     placeholder="Name"
@@ -755,13 +669,29 @@ export default function ShipCargoPage() {
 
               {/* Shipper phone / Consignee phone */}
               <div className="grid grid-cols-2 gap-4">
-                <Field id="shipperPhone" label="Shipper phone">
-                  <Input id="shipperPhone" placeholder="Optional" value={shipperPhone} onChange={(e) => setShipperPhone(e.target.value)} />
+                <Field
+                  id="shipperPhone"
+                  label={
+                    <>
+                      Shipper phone
+                      <Optional />
+                    </>
+                  }
+                >
+                  <Input id="shipperPhone" value={shipperPhone} onChange={(e) => setShipperPhone(e.target.value)} />
                 </Field>
-                <Field id="consigneePhone" label="Consignee phone">
+                <Field
+                  id="consigneePhone"
+                  label={
+                    <>
+                      Consignee phone
+                      <Optional />
+                    </>
+                  }
+                >
                   <Input
                     id="consigneePhone"
-                    placeholder="Optional"
+
                     value={consigneePhone}
                     onChange={(e) => setConsigneePhone(e.target.value)}
                   />
@@ -769,15 +699,7 @@ export default function ShipCargoPage() {
               </div>
 
               {/* Consignee address (full-width, API needs it separately) */}
-              <Field
-                id="consigneeAddress"
-                label={
-                  <>
-                    Consignee address
-                    <Req />
-                  </>
-                }
-              >
+              <Field id="consigneeAddress" label={<>Consignee address</>}>
                 <Input
                   id="consigneeAddress"
                   placeholder="Address"

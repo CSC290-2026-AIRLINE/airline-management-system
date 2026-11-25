@@ -360,7 +360,7 @@ function CaseDetail({ complaint, user, onReopened }: { complaint: Complaint; use
             {timelineItems.map((item, idx) => (
               <li key={item.id} className="flex items-stretch gap-3.5">
                 <div className="flex shrink-0 flex-col items-center gap-1 pt-1">
-                  <span className={cn('size-3 shrink-0 rounded-full', item.latest ? 'bg-primary' : 'bg-success')} />
+                  <span className={cn('size-3 shrink-0 rounded-full', item.latest ? 'bg-primary' : 'bg-ok')} />
                   {idx < timelineItems.length - 1 && <span className="min-h-4 w-0.5 flex-1 bg-border" />}
                 </div>
                 <div className="flex flex-1 flex-col gap-0.5 pb-3.5">

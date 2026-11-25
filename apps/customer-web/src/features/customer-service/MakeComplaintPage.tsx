@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { SelectTile } from '@customer-web/components/ui/select-tile'
 import { useNavigate } from '@tanstack/react-router'
 import { Plane, User, Utensils, type LucideIcon } from 'lucide-react'
 import type { AppUser } from '@customer-web/auth/AuthProvider'
@@ -177,15 +178,11 @@ function ComplaintForm({ user }: { user: AppUser }) {
             {TYPE_CARDS.map(({ value, label, desc, Icon }) => {
               const selected = type === value
               return (
-                <button
+                <SelectTile
                   key={value}
-                  type="button"
-                  aria-pressed={selected}
+                  selected={selected}
                   onClick={() => chooseType(value)}
-                  className={cn(
-                    'flex flex-col items-start gap-2 rounded-lg border p-4 text-left transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                    selected ? 'border-primary bg-accent' : 'bg-card hover:bg-accent/50',
-                  )}
+                  className={cn('flex-col items-start gap-2 p-4', selected ? 'bg-accent' : 'hover:bg-accent/50')}
                 >
                   <span
                     aria-hidden="true"
@@ -198,7 +195,7 @@ function ComplaintForm({ user }: { user: AppUser }) {
                   </span>
                   <span className="text-sm font-medium">{label}</span>
                   <span className="text-xs text-muted-foreground">{desc}</span>
-                </button>
+                </SelectTile>
               )
             })}
           </div>

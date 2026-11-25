@@ -1,4 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
+import { Button } from '@customer-web/components/ui/button'
 import { useEffect, useRef, useState } from 'react'
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { BookingDetail, BookingServiceRequest, InsuranceOffer, InsurancePolicySummary } from '../api/types'
@@ -239,9 +240,9 @@ function HeldReview({
 
   /** The pay action belongs to the review & pay step. The other steps send the customer back to it. */
   const payAction = (
-    <button type="button" className={controls.primary} onClick={() => void handleConfirm()} disabled={isConfirming || isCancelling}>
+    <Button type="button" onClick={() => void handleConfirm()} disabled={isConfirming || isCancelling}>
       {isConfirming ? 'Processing payment…' : 'Pay now'}
-    </button>
+    </Button>
   )
 
   return (
@@ -325,17 +326,18 @@ function HeldReview({
                   </Link>
                 )}
                 {isPayStep ? (
-                  <button type="button" className={controls.secondary} onClick={() => goToStep(3)}>
+                  <Button variant="outline" type="button" onClick={() => goToStep(3)}>
                     Back to seats
-                  </button>
+                  </Button>
                 ) : null}
                 <Link to="/search" className={controls.secondary}>
                   Search again
                 </Link>
                 {isPayStep ? (
-                  <button
+                  <Button
+                    variant="outline"
                     type="button"
-                    className={controls.secondary}
+
                     onClick={() => {
                       setCancelError(null)
                       setCancelOpen(true)
@@ -343,7 +345,7 @@ function HeldReview({
                     disabled={isConfirming || isCancelling}
                   >
                     Cancel
-                  </button>
+                  </Button>
                 ) : null}
               </div>
 
@@ -460,13 +462,13 @@ function FlightsCard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2>Flights</h2>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={controls.action} onClick={onChangeFlights}>
+          <Button variant="outline" size="sm" type="button" onClick={onChangeFlights}>
             Change flights
-          </button>
+          </Button>
           {onEdit ? (
-            <button type="button" className={controls.action} onClick={onEdit}>
+            <Button variant="outline" size="sm" type="button" onClick={onEdit}>
               Back to flights
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -517,13 +519,13 @@ function PassengersCard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2>Passengers</h2>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={controls.action} onClick={onEditDetails}>
+          <Button variant="outline" size="sm" type="button" onClick={onEditDetails}>
             Edit details
-          </button>
+          </Button>
           {onEdit ? (
-            <button type="button" className={controls.action} onClick={onEdit}>
+            <Button variant="outline" size="sm" type="button" onClick={onEdit}>
               Back to passengers
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -563,9 +565,9 @@ function PassengersCard({
               )}
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <button type="button" className={controls.link} onClick={() => onRequestAssistance(passenger.bookingPassengerId)}>
+              <Button variant="link" className="h-auto p-0" type="button" onClick={() => onRequestAssistance(passenger.bookingPassengerId)}>
                 Request assistance
-              </button>
+              </Button>
             </div>
           </div>
         )
@@ -578,9 +580,9 @@ function PassengersCard({
             {booking.contactPhone ? ` · ${booking.contactPhone}` : ''}
           </p>
         </div>
-        <button type="button" className={controls.action} onClick={onEditContact}>
+        <Button variant="outline" size="sm" type="button" onClick={onEditContact}>
           Change contact details
-        </button>
+        </Button>
       </div>
     </section>
   )
@@ -712,9 +714,9 @@ function ErrorState({ error, onRetry }: { error: ApiError; onRetry: () => void }
       <div className="space-y-3 rounded-xl border bg-card p-6 text-left shadow-xs [&_h1]:m-0 [&_h1]:text-lg [&_h1]:font-semibold">
         <ApiErrorBanner error={error} />
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={controls.secondary} onClick={onRetry}>
+          <Button variant="outline" type="button" onClick={onRetry}>
             Try again
-          </button>
+          </Button>
           <Link to="/bookings" className={controls.secondary}>
             Go to My Trips
           </Link>

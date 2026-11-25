@@ -201,11 +201,7 @@
 }
 
 /* The form's own button sits at the right of the card; the button rows use .actions. */
-.form > .button {
-  align-self: flex-end;
-}
-
-.panelTitle {
+.form > .panelTitle {
   font-family: var(--f6-ui);
   font-size: 22px;
   font-weight: 600;
@@ -341,55 +337,6 @@
   flex-wrap: wrap;
 }
 
-.button {
-  font-family: var(--f6-ui);
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
-  background: var(--f6-navy);
-  border: 1px solid var(--f6-navy);
-  border-radius: 6px;
-  padding: 11px 18px;
-  cursor: pointer;
-}
-
-.button:hover:not(:disabled) {
-  background: #0a1f44;
-  border-color: #0a1f44;
-}
-
-.button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.ghostButton {
-  font-family: var(--f6-ui);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--f6-ink);
-  background: var(--f6-paper);
-  border: 1px solid var(--f6-line);
-  border-radius: 6px;
-  padding: 11px 18px;
-  cursor: pointer;
-}
-
-.ghostButton:hover:not(:disabled) {
-  border-color: var(--f6-navy);
-}
-
-.ghostButton:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.button:focus-visible,
-.ghostButton:focus-visible {
-  outline: 2px solid var(--f6-navy);
-  outline-offset: 2px;
-}
-
 /* The two allowance tiles of the baggage step. */
 .tiles {
   display: grid;
@@ -425,7 +372,7 @@
   color: var(--f6-muted);
 }
 
-/* The bag counter: a 40 px button on each side of the number. */
+/* The bag counter: a button on each side of the number. */
 .countRow {
   display: flex;
   flex-direction: column;
@@ -436,37 +383,6 @@
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.countButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  font-family: var(--f6-ui);
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--f6-navy);
-  background: var(--f6-paper);
-  border: 1px solid var(--f6-line);
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.countButton:hover:not(:disabled) {
-  background: #f3f4f6;
-}
-
-.countButton:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.countButton:focus-visible {
-  outline: 2px solid var(--f6-navy);
-  outline-offset: 2px;
 }
 
 .countValue {
@@ -537,8 +453,7 @@
     justify-content: stretch;
   }
 
-  .button,
-  .ghostButton {
+  .actions > button {
     flex: 1 1 auto;
   }
 

@@ -173,7 +173,7 @@ function BenefitHistory({ uses }: { uses: BenefitUse[] }) {
                       className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1 border-b border-line px-4 py-4 last:border-0 sm:grid-cols-[auto_1fr_1fr_auto] sm:px-5"
                     >
                       <span
-                        className="row-span-2 grid size-9 place-items-center rounded-lg bg-[#e8eef7] text-link sm:row-span-1"
+                        className="row-span-2 grid size-9 place-items-center rounded-lg bg-info-tint text-link sm:row-span-1"
                         aria-hidden="true"
                       >
                         <Icon size={16} />

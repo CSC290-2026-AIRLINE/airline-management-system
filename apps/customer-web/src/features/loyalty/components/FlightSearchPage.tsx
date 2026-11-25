@@ -1,4 +1,5 @@
 import { useCallback, useState, type FormEvent } from 'react'
+import { SelectTile } from '@customer-web/components/ui/select-tile'
 import { Info } from 'lucide-react'
 import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
 import { Button } from '@customer-web/components/ui/button'
@@ -233,7 +234,7 @@ function Results({ search, from, to, date }: { search: AwardSearchParams; from: 
         const party = partyLabel(search.adults ?? 1, search.children ?? 0)
         return (
           <>
-            <Alert className="border-[#c9d6ec] bg-[#e8eef7] text-link">
+            <Alert className="border-info-line bg-info-tint text-link">
               <Info />
               <AlertDescription className="text-link">
                 Where you see “or … miles”, you can pay the fare with miles on the next step. Taxes and surcharges are still paid by card.
@@ -310,7 +311,7 @@ function Leg({
       ) : (
         <>
           {!released && (
-            <Alert className="border-0 bg-[#f4f6f9]">
+            <Alert className="border-0 bg-canvas">
               <Info />
               <AlertDescription>No award seats are released on this day. Cash fares are on Book a flight.</AlertDescription>
             </Alert>
@@ -332,24 +333,21 @@ function FlightCard({ flight: f, selected, onPick }: { flight: AwardFlight; sele
   const nextDay = localDay(f.arrivesAt, f.destinationTimeZone) > localDay(f.departsAt, f.originTimeZone)
   const bookable = f.cabins.some((c) => c.enoughSeats)
   return (
-    <button
-      type="button"
+    <SelectTile
       onClick={onPick}
       disabled={!bookable}
-      aria-pressed={selected}
-      // A selectable tile styled like the shadcn Card; there is no shadcn tile component.
+      selected={selected}
       className={cx(
-        'flex w-full flex-col gap-2 rounded-xl border bg-card p-4 text-left font-sans text-card-foreground outline-none',
-        'focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
-        selected ? 'border-link ring-1 ring-link' : 'border-border',
-        bookable ? 'cursor-pointer hover:border-link' : 'cursor-default',
+        'w-full flex-col gap-2 rounded-xl p-4 font-sans',
+        selected && 'border-link ring-link',
+        bookable ? 'hover:border-link' : 'cursor-default',
       )}
     >
       <span className="flex items-end gap-2 whitespace-nowrap">
         <span className="text-lg font-bold">
           {clock(f.departsAt, f.originTimeZone)} → {clock(f.arrivesAt, f.destinationTimeZone)}
         </span>
-        {nextDay && <span className="text-xs font-semibold text-[#9a5b00]">+1 day</span>}
+        {nextDay && <span className="text-xs font-semibold text-warn">+1 day</span>}
       </span>
       <span className="text-[12.5px] text-muted-foreground">
         {f.flightNumber} · {duration(f.durationMin)} · direct
@@ -378,7 +376,7 @@ function FlightCard({ flight: f, selected, onPick }: { flight: AwardFlight; sele
           ))
         )}
       </span>
-    </button>
+    </SelectTile>
   )
 }
 
@@ -400,7 +398,7 @@ function TripSummary({
   const shortfall = balance !== null && miles > balance ? miles - balance : 0
 
   return (
-    <Card className="gap-3 border-0 bg-[#f4f6f9] py-4 shadow-none" aria-labelledby="your-trip">
+    <Card className="gap-3 border-0 bg-canvas py-4 shadow-none" aria-labelledby="your-trip">
       <CardHeader className="px-4">
         <CardTitle id="your-trip" className="text-[17px]">
           Your trip

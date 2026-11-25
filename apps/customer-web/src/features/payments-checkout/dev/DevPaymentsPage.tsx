@@ -26,10 +26,10 @@ interface DevPayment {
 const TOOLS_OFF = 'The dev tools are off. Set PAYMENT_DEV_TOOLS="true" in apps/backend/.env and restart the backend.'
 
 const STATUS_CLASS: Record<string, string> = {
-  created: 'bg-warning-soft text-warning',
-  authorised: 'bg-warning-soft text-warning',
-  captured: 'bg-success-soft text-success-strong',
-  failed: 'bg-danger-soft text-danger',
+  created: 'bg-warn-tint text-warn',
+  authorised: 'bg-warn-tint text-warn',
+  captured: 'bg-ok-tint text-ok',
+  failed: 'bg-danger-tint text-danger',
   voided: 'bg-secondary text-muted-foreground',
   expired: 'bg-secondary text-muted-foreground',
   reversed: 'bg-secondary text-muted-foreground',
@@ -176,7 +176,7 @@ function DevTools() {
       </form>
 
       {error && (
-        <p role="alert" className="m-0 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
+        <p role="alert" className="m-0 rounded-lg bg-danger-tint px-4 py-3 text-sm text-danger">
           {error}
         </p>
       )}

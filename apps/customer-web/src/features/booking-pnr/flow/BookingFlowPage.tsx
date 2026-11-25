@@ -1,4 +1,5 @@
 import { useSavedTravellers } from '../passengers/useSavedTravellers'
+import { Button } from '@customer-web/components/ui/button'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { FlightSearchPage, type SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
@@ -408,8 +409,8 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                   </p>
                 )}
                 <div className="flex flex-col-reverse items-stretch justify-between gap-3 sm:flex-row sm:items-center">
-                  <button
-                    className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border bg-background px-4 text-sm font-medium whitespace-nowrap shadow-xs transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+                  <Button
+                    variant="outline"
                     type="button"
                     disabled={busy}
                     onClick={() => {
@@ -418,15 +419,10 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                     }}
                   >
                     Back to passengers
-                  </button>
-                  <button
-                    className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium whitespace-nowrap text-primary-foreground shadow-xs transition-all outline-none hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void createHold()}
-                  >
+                  </Button>
+                  <Button type="button" disabled={busy} onClick={() => void createHold()}>
                     {busy ? 'Creating booking…' : 'Skip, choose seats later'}
-                  </button>
+                  </Button>
                 </div>
               </section>
             ))}

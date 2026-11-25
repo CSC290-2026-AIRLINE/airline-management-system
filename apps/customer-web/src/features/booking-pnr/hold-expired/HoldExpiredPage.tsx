@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { Button } from '@customer-web/components/ui/button'
 import { PageShell } from '../components/PageShell'
 import type { ApiError } from '../api/client'
 import { useBooking } from '../api/useBooking'
@@ -125,9 +126,9 @@ function ErrorState({ error, onRetry }: { error: ApiError; onRetry: () => void }
             The booking could not be read, so we cannot tell you yet what happened to its hold. Try again in a moment.
           </p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={controls.primary} onClick={onRetry}>
+            <Button type="button" onClick={onRetry}>
               Try again
-            </button>
+            </Button>
             <Link to="/bookings" className={controls.secondary}>
               Go to My Trips
             </Link>

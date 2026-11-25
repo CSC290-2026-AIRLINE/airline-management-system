@@ -107,17 +107,6 @@
   --color-gold: #f2a800;
   --color-gold-ink: #6b4e00;
 
-  /* Legacy names that pages still use, pointing at the new tokens so nothing breaks. Migrate each page to the new
-     name when it is redesigned, then delete the alias. */
-  --color-ink: var(--color-primary-pressed);
-  --color-success: var(--color-ok);
-  --color-success-strong: var(--color-ok);
-  --color-success-soft: var(--color-ok-tint);
-  --color-warning: var(--color-warn);
-  --color-warning-soft: var(--color-warn-tint);
-  --color-danger-soft: var(--color-danger-tint);
-  --color-danger-line: var(--color-danger);
-
   /* Feature 5 (receipts, refunds, vouchers, payment result): the breakpoints those pages use. */
   --breakpoint-phone: 37.5625rem; /* max-phone: is 600px and below */
   --breakpoint-tablet: 48.0625rem; /* max-tablet: is 768px and below */
@@ -263,5 +252,21 @@
     a {
       color: var(--color-link);
     }
+  }
+}
+
+/* Page changes: a short cross-fade of the page (see defaultViewTransition in router.tsx). The header has its own
+   transition name, so it stays put while the page under it fades. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 200ms;
+  animation-timing-function: ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }

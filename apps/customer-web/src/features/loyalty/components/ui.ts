@@ -16,7 +16,7 @@ export const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-2
 // Body wrapper shared by every Feature 11 customer page: the F11 type (small text, ink colour), and headings reset against the
 // app-wide h1/h2/p styles in index.css. The canvas, the container and the page title come from the shared Page.
 export const BODY = cx(
-  'flex flex-col gap-5 text-left font-sans text-sm leading-[1.45] tracking-normal text-ink sm:gap-6 [color-scheme:light]',
+  'flex flex-col gap-5 text-left font-sans text-sm leading-[1.45] tracking-normal text-primary-pressed sm:gap-6 [color-scheme:light]',
   '[&_:is(h1,h2,h3,p)]:m-0 [&_:is(h1,h2,h3)]:font-sans [&_:is(h1,h2,h3)]:tracking-normal [&_:is(h1,h2,h3)]:text-inherit',
 )
 
@@ -65,7 +65,7 @@ export const TIER_ART: Record<TierCode, string> = {
   platinum: 'bg-[linear-gradient(135deg,#5b4bb0_0%,#1d1b3a_100%)] text-white',
 }
 
-export const NO_TIER_ART = 'bg-[linear-gradient(135deg,#e8edf3_0%,#cfd7e2_100%)] text-ink'
+export const NO_TIER_ART = 'bg-[linear-gradient(135deg,#e8edf3_0%,#cfd7e2_100%)] text-primary-pressed'
 
 // The dashboard benefits card header.
 export const TIER_BAND: Record<TierCode, string> = {

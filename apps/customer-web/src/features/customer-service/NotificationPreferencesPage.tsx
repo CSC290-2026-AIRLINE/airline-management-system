@@ -117,7 +117,7 @@ function PreferencesForm() {
     <div className="flex flex-col gap-4">
       {isSaved && (
         <Alert role="status">
-          <CheckCircle2 className="text-success" />
+          <CheckCircle2 className="text-ok" />
           <AlertTitle>Preferences saved</AlertTitle>
           <AlertDescription>
             <div className="flex items-start justify-between gap-3">

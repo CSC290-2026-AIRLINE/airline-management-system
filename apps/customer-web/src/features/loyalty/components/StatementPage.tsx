@@ -12,7 +12,7 @@ import { cx, TYPE_LABEL } from './ui'
 
 // Filter chips: rounded, light blue when on.
 const CHIP =
-  'h-8 rounded-full! border-l! px-3.5 text-[13px] data-[state=on]:border-[#b9c8e4] data-[state=on]:bg-[#e8eef7] data-[state=on]:text-link'
+  'h-8 rounded-full! border-l! px-3.5 text-[13px] data-[state=on]:border-info-line data-[state=on]:bg-info-tint data-[state=on]:text-link'
 
 function windowFor(search: StatementSearch, member: MemberSummary, rows: StatementRow[]) {
   const today = toDateInput(member.asOf)
@@ -48,7 +48,7 @@ export function StatementPage({
   return (
     <>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
-        <div className="col-span-2 flex flex-col gap-1 rounded-xl bg-navy p-5 text-white sm:col-span-1 sm:border sm:border-line sm:bg-white sm:p-4 sm:text-ink">
+        <div className="col-span-2 flex flex-col gap-1 rounded-xl bg-navy p-5 text-white sm:col-span-1 sm:border sm:border-line sm:bg-white sm:p-4 sm:text-primary-pressed">
           <span className="text-[10px] font-semibold tracking-[0.06em] text-white/70 uppercase sm:text-muted-foreground">Balance now</span>
           <span className="text-[32px] leading-tight font-bold sm:text-xl">{formatMiles(member.milesBalance)}</span>
           <span className="text-xs text-white/70 sm:hidden">miles</span>
@@ -136,12 +136,12 @@ export function StatementPage({
 
 function Summary({ label, short, value, tone }: { label: string; short?: string; value: string; tone: string }) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl bg-[#eef1f6] p-4 sm:border sm:border-line sm:bg-white">
+    <div className="flex flex-col gap-1 rounded-xl bg-disabled p-4 sm:border sm:border-line sm:bg-white">
       <span className="text-[10px] font-semibold tracking-[0.06em] text-muted-foreground uppercase">
         <span className="sm:hidden">{short ?? label}</span>
         <span className="hidden sm:inline">{label}</span>
       </span>
-      <span className={cx('text-xl font-bold sm:text-ink', tone)}>{value}</span>
+      <span className={cx('text-xl font-bold sm:text-primary-pressed', tone)}>{value}</span>
     </div>
   )
 }
