@@ -1,4 +1,4 @@
-import { metricsCsv, toCsv } from './bi-csv'
+import { aircraftUseCsv, extraRevenueCsv, metricsCsv, noShowsCsv, toCsv } from './bi-csv'
 import type { BiKpis } from './dto/bi-dashboards.types'
 
 const SUMS = {
@@ -45,5 +45,52 @@ describe('toCsv', () => {
 
   it('writes null as an empty field', () => {
     expect(toCsv(['cause'], [[null]])).toBe('cause\r\n\r\n')
+  })
+})
+
+describe('noShowsCsv', () => {
+  it('writes the counts per period and the rate as a percentage, empty when nobody was booked', () => {
+    const csv = noShowsCsv([
+      { period: '2026-10-05', booked: 200, boarded: 186, denied: 2, no_show: 12 },
+      { period: '2026-10-12', booked: 0, boarded: 0, denied: 0, no_show: 0 },
+    ])
+    expect(csv).toBe(
+      'period,booked,boarded,denied,no_shows,no_show_rate_pct\r\n' + '2026-10-05,200,186,2,12,6.0\r\n' + '2026-10-12,0,0,0,0,\r\n',
+    )
+  })
+})
+
+describe('extraRevenueCsv', () => {
+  it('writes one column per line type, 0 for a type with no sales, then the totals', () => {
+    const csv = extraRevenueCsv([
+      {
+        period: '2026-10-05',
+        by_type: { baggage: 1200, insurance: 450.5 },
+        refunds_by_type: { baggage: 100 },
+        gross: 1650.5,
+        refunds: 100,
+        net: 1550.5,
+        passengers: 10,
+        per_passenger: 155.05,
+      },
+    ])
+    expect(csv).toBe(
+      'period,baggage_thb,upgrade_thb,onboard_order_thb,insurance_thb,gross_thb,refunds_thb,net_thb,passengers,per_passenger_thb\r\n' +
+        '2026-10-05,1200.00,0.00,0.00,450.50,1650.50,100.00,1550.50,10,155.05\r\n',
+    )
+  })
+})
+
+describe('aircraftUseCsv', () => {
+  it('lists the aircraft lowest hours per day first, as the page ranks them', () => {
+    const csv = aircraftUseCsv([
+      { tail_number: 'HS-AAA', type_code: 'A320', hours_flown: 40, available_days: 10, out_of_service_days: 0, hours_per_day: 4 },
+      { tail_number: 'HS-BBB', type_code: 'B738', hours_flown: 9.25, available_days: 5, out_of_service_days: 5, hours_per_day: 1.85 },
+    ])
+    expect(csv).toBe(
+      'tail_number,type,hours_flown,available_days,out_of_service_days,hours_per_day\r\n' +
+        'HS-BBB,B738,9.3,5,5,1.85\r\n' +
+        'HS-AAA,A320,40.0,10,0,4.00\r\n',
+    )
   })
 })

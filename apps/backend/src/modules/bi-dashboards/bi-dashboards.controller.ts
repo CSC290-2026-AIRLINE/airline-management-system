@@ -27,7 +27,7 @@ import { AircraftService } from '@backend/modules/aircraft-management/aircraft.s
 import { CreateBiMaintenanceDto } from './dto/bi-maintenance.dto'
 import { toFlightDto, type FlightDto } from './bi-flight-rows'
 import { periodOf, seriesByPeriod } from './bi-period'
-import { metricsCsv, toCsv } from './bi-csv'
+import { aircraftUseCsv, extraRevenueCsv, metricsCsv, noShowsCsv, toCsv } from './bi-csv'
 import { BiFilterDto, BiFinanceQueryDto } from './dto/bi-filter.dto'
 import type { BiDailyMetric, BiKpis, BiRouteMetric, BiRunSummary } from './dto/bi-dashboards.types'
 import { CABIN_KEYS } from './dto/bi-options'
@@ -202,6 +202,31 @@ export class BiDashboardsController {
   @Get('aircraft-use')
   aircraftUse(@Query() filter: BiFilterDto) {
     return this.panels.aircraftUse(this.panelRange(filter))
+  }
+
+  /** The No-shows chart's periods as CSV, with the same filters as `/bi/no-shows`. */
+  @Get('export/no-shows.csv')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  async exportNoShows(@Query() filter: BiFilterDto, @Res({ passthrough: true }) res: Response): Promise<string> {
+    res.setHeader('Content-Disposition', 'attachment; filename="no-shows.csv"')
+    return noShowsCsv((await this.panels.noShows(filter)).weeks)
+  }
+
+  /** The Extra revenue periods as CSV, with the same filters and screen as `/bi/extra-revenue`. */
+  @Get('export/extra-revenue.csv')
+  @BiScreens(BI_FINANCE_SCREEN)
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  async exportExtraRevenue(@Query() filter: BiFilterDto, @Res({ passthrough: true }) res: Response): Promise<string> {
+    res.setHeader('Content-Disposition', 'attachment; filename="extra-revenue.csv"')
+    return extraRevenueCsv(await this.panels.extraRevenue(this.panelRange(filter), filter.group ?? 'week'))
+  }
+
+  /** Each aircraft's hours and days as CSV, with the same dates as `/bi/aircraft-use`. */
+  @Get('export/aircraft-use.csv')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  async exportAircraftUse(@Query() filter: BiFilterDto, @Res({ passthrough: true }) res: Response): Promise<string> {
+    res.setHeader('Content-Disposition', 'attachment; filename="aircraft-use.csv"')
+    return aircraftUseCsv((await this.panels.aircraftUse(this.panelRange(filter))).aircraft)
   }
 
   /** One finance month, the month before it, and the months that exist. `month` is `YYYY-MM`; default is the latest. */

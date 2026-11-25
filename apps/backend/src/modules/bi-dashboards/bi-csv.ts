@@ -1,5 +1,6 @@
 import type { BiKpis } from './dto/bi-dashboards.types'
 import type { RevenueMode } from './dto/bi-options'
+import type { ExtraRevenuePeriod } from './bi-panels'
 
 /**
  * RFC 4180 CSV: fields containing a comma, quote or line break are wrapped in quotes, and quotes are doubled. Numbers
@@ -53,6 +54,73 @@ export function metricsCsv(
         b.bookings - b.cancellations,
       ]
     }),
+  )
+}
+
+/** The four extra-revenue line types, in the order the Extra revenue page lists them. */
+const EXTRA_REVENUE_TYPES = ['baggage', 'upgrade', 'onboard_order', 'insurance'] as const
+
+/** One row per period of the No-shows chart: the gate-close counts and the no-show rate as a percentage. */
+export function noShowsCsv(periods: { period: string; booked: number; boarded: number; denied: number; no_show: number }[]): string {
+  return toCsv(
+    ['period', 'booked', 'boarded', 'denied', 'no_shows', 'no_show_rate_pct'],
+    periods.map((p) => [
+      p.period,
+      p.booked,
+      p.boarded,
+      p.denied,
+      p.no_show,
+      p.booked > 0 ? ((p.no_show / p.booked) * 100).toFixed(1) : null,
+    ]),
+  )
+}
+
+/** One row per period of the Extra revenue chart: revenue per line type, then gross, refunds, net and per passenger. */
+export function extraRevenueCsv(periods: ExtraRevenuePeriod[]): string {
+  return toCsv(
+    [
+      'period',
+      ...EXTRA_REVENUE_TYPES.map((type) => `${type}_thb`),
+      'gross_thb',
+      'refunds_thb',
+      'net_thb',
+      'passengers',
+      'per_passenger_thb',
+    ],
+    periods.map((p) => [
+      p.period,
+      ...EXTRA_REVENUE_TYPES.map((type) => (p.by_type[type] ?? 0).toFixed(2)),
+      p.gross.toFixed(2),
+      p.refunds.toFixed(2),
+      p.net.toFixed(2),
+      p.passengers,
+      p.per_passenger === null ? null : p.per_passenger.toFixed(2),
+    ]),
+  )
+}
+
+/** One row per aircraft of the Aircraft use page, lowest hours per day first, as the ranked list shows them. */
+export function aircraftUseCsv(
+  aircraft: {
+    tail_number: string
+    type_code: string
+    hours_flown: number
+    available_days: number
+    out_of_service_days: number
+    hours_per_day: number | null
+  }[],
+): string {
+  const ranked = [...aircraft].sort((a, b) => (a.hours_per_day ?? 0) - (b.hours_per_day ?? 0))
+  return toCsv(
+    ['tail_number', 'type', 'hours_flown', 'available_days', 'out_of_service_days', 'hours_per_day'],
+    ranked.map((a) => [
+      a.tail_number,
+      a.type_code,
+      a.hours_flown.toFixed(1),
+      a.available_days,
+      a.out_of_service_days,
+      a.hours_per_day === null ? null : a.hours_per_day.toFixed(2),
+    ]),
   )
 }
 

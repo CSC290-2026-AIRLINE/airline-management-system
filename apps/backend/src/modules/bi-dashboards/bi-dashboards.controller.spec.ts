@@ -99,6 +99,20 @@ describe('BI endpoint contracts', () => {
   })
 })
 
+describe('BI panel CSV exports', () => {
+  it('requires the same screen as the panel each export comes from', () => {
+    // The handler's own @BiScreens, else the controller's default (operations).
+    const screens = (name: keyof BiDashboardsController): unknown => {
+      const handler = Object.getOwnPropertyDescriptor(BiDashboardsController.prototype, name)?.value as object
+      return Reflect.getMetadata('bi_screens', handler) ?? Reflect.getMetadata('bi_screens', BiDashboardsController)
+    }
+    expect(screens('exportNoShows')).toEqual(screens('noShows'))
+    expect(screens('exportExtraRevenue')).toEqual(['f14.finance'])
+    expect(screens('exportExtraRevenue')).toEqual(screens('extraRevenue'))
+    expect(screens('exportAircraftUse')).toEqual(screens('aircraftUse'))
+  })
+})
+
 describe('BI query validation', () => {
   const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
   it.each([
