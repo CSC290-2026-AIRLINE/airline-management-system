@@ -38,7 +38,7 @@ export default function MyProfilePage() {
   ]
   const localName = [profile.localFirstName, profile.localLastName].filter(Boolean).join(' ')
   return (
-    <AccountPage title="My Profile" description="Manage your details, saved passengers and profile photo.">
+    <AccountPage width="wide" title="My Profile" description="Manage your details, saved passengers and profile photo.">
       <Card aria-labelledby="profile-title">
         <CardHeader>
           <CardTitle id="profile-title" role="heading" aria-level={2}>
