@@ -21,6 +21,7 @@ export interface CateringOrderFilters {
 export interface OrdersApi {
   listCateringOrders: (filters?: CateringOrderFilters) => Promise<Flight[]>
   getCateringOrder: (flightId: string) => Promise<CateringOrder | null>
+  simulateOrderingClosed: (flightId: string) => Promise<CateringOrder>
   refreshCateringOrderApi: (flightId: string) => Promise<CateringOrder>
   markCateringOrderLoadedApi: (flightId: string) => Promise<CateringOrder>
   closeCateringOrderApi: (flightId: string) => Promise<CateringOrder>
@@ -54,6 +55,10 @@ export function createOrdersApi(client: ApiClient): OrdersApi {
         if (err instanceof ApiError && err.status === 404) return null
         rethrow(err, new CateringApiError('NOT_FOUND', 'Catering order not found.', 0))
       }
+    },
+    async simulateOrderingClosed(flightId) {
+      const wire = await client.post<unknown>(`/api/staff/flights/${flightId}/catering-order/simulate-close`, {})
+      return mapCateringOrder(wire as never)
     },
     async refreshCateringOrderApi(flightId) {
       try {

@@ -156,6 +156,7 @@ export interface Product {
   // True only for the "Default meal" pseudo-product that means
   // "no pre-order, serve whatever the cabin has".
   isDefaultChoice: boolean
+  availableQuantity?: number
 }
 
 // Cabin's meal policy for a flight. Mirrors the `cabin_setting` row in

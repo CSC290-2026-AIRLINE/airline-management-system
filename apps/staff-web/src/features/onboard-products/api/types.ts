@@ -165,7 +165,8 @@ export interface CateringOrder {
   arrivalAirport: string
   scheduledDeparture: string
   passengerCount: number
-  status: CateringOrderStatus
+  status: FlightCateringStatus
+  simulationAvailable?: boolean
   cutoffAt: string
   generatedAt: string
   loadedAt: string | null

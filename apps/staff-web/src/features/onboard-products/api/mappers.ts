@@ -626,6 +626,7 @@ interface WireCateringOrder {
   scheduledDeparture: string
   passengerCount?: number
   status: string
+  simulationAvailable?: boolean
   cutoffAt: string
   generatedAt: string
   loadedAt: string | null
@@ -657,6 +658,7 @@ export function mapCateringOrder(wire: WireCateringOrder): CateringOrder {
     scheduledDeparture: toIsoString(wire.scheduledDeparture),
     passengerCount: wire.passengerCount == null ? 0 : Number(wire.passengerCount),
     status: required('GET /api/staff/flights/:flightId/catering-order', 'status', wire.status) as CateringOrder['status'],
+    simulationAvailable: wire.simulationAvailable === true,
     cutoffAt: toIsoString(wire.cutoffAt),
     generatedAt: toIsoString(wire.generatedAt),
     loadedAt: toNullableIsoString(wire.loadedAt),

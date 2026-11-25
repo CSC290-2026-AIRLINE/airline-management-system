@@ -1,9 +1,8 @@
-// SalesService: CRUD over product_sale. payment_id is opaque to F12
-// (F5 owns payments). Total amount is quantity * unit_price_amount.
-// Unit cost is filled in by the flight-report submit using the
-// earliest-expiring valid aircraft batch.
+// On-board sales are constrained by the stock transferred for the selected flight.
 
+import { randomUUID } from 'node:crypto'
 import { Injectable } from '@nestjs/common'
+import type { Prisma } from '../../../db/generated/prisma/client'
 import { DbService } from '../../../db/db.service'
 import { ApiErrorException } from '../common/api-error'
 import { toNumber } from '../common/mapping'
@@ -42,84 +41,88 @@ export class SalesService {
     if (!Number.isFinite(input.unitPriceAmount) || input.unitPriceAmount < 0) {
       throw new ApiErrorException('REPORT_INVALID', 'unitPriceAmount must be 0 or more.', 400)
     }
-    const flight = await this.db.flight.findUnique({ where: { id: flightId } })
-    if (!flight) throw new ApiErrorException('NOT_FOUND', 'Flight not found.', 404)
-    const product = await this.db.product.findFirst({ where: { id: input.productId, deleted_at: null } })
-    if (!product) throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Product not found.', 404)
-    const onAircraft = await this.db.aircraft_stock.count({
-      where: { aircraft_id: flight.aircraft_id, product_id: input.productId, quantity: { gt: 0 } },
+    return this.db.$transaction(async (tx) => {
+      await this.lockSaleFlight(tx, flightId)
+      const product = await tx.product.findFirst({ where: { id: input.productId, deleted_at: null } })
+      if (!product) throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Product not found.', 404)
+      await this.assertSaleCapacity(tx, flightId, input.productId, input.quantity)
+      const total = input.quantity * input.unitPriceAmount
+      const row = await tx.product_sale.create({
+        data: {
+          flight_id: flightId,
+          product_id: input.productId,
+          quantity: input.quantity,
+          unit_price_amount: input.unitPriceAmount,
+          total_amount: total,
+          currency: 'USD',
+          payment_id: randomUUID(), // Local payment reference until F5 is wired into sales.
+          sold_at: new Date(),
+        },
+        include: { product: true },
+      })
+      return this.toDto(row)
     })
-    if (onAircraft === 0) {
-      throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Product is not loaded on the aircraft for this flight.', 409)
-    }
-    const paymentId = 'f5-confirmed' // F5 owns payments; F12 only stores the id.
-    const now = new Date()
-    const row = await this.db.product_sale.create({
-      data: {
-        flight_id: flightId,
-        product_id: input.productId,
-        quantity: input.quantity,
-        unit_price_amount: input.unitPriceAmount,
-        total_amount: input.quantity * input.unitPriceAmount,
-        currency: 'USD',
-        payment_id: paymentId,
-        sold_at: now,
-      },
-      include: { product: true },
-    })
-    return this.toDto(row)
   }
 
   async update(flightId: string, saleId: string, patch: { quantity?: number; unitPriceAmount?: number }): Promise<ProductSaleDto> {
-    const existing = await this.db.product_sale.findUnique({ where: { id: saleId }, include: { product: true } })
-    if (!existing || existing.flight_id !== flightId) throw new ApiErrorException('NOT_FOUND', 'Sale not found.', 404)
-    const data: Record<string, number> = {}
-    if (patch.quantity !== undefined) {
-      if (!Number.isInteger(patch.quantity) || patch.quantity <= 0) {
-        throw new ApiErrorException('REPORT_INVALID', 'quantity must be a positive integer.', 400)
-      }
-      data.quantity = patch.quantity
+    if (patch.quantity !== undefined && (!Number.isInteger(patch.quantity) || patch.quantity <= 0)) {
+      throw new ApiErrorException('REPORT_INVALID', 'quantity must be a positive integer.', 400)
     }
-    if (patch.unitPriceAmount !== undefined) {
-      if (!Number.isFinite(patch.unitPriceAmount) || patch.unitPriceAmount < 0) {
-        throw new ApiErrorException('REPORT_INVALID', 'unitPriceAmount must be 0 or more.', 400)
-      }
-      data.unit_price_amount = patch.unitPriceAmount
+    if (patch.unitPriceAmount !== undefined && (!Number.isFinite(patch.unitPriceAmount) || patch.unitPriceAmount < 0)) {
+      throw new ApiErrorException('REPORT_INVALID', 'unitPriceAmount must be 0 or more.', 400)
     }
-    const newQty = data.quantity ?? existing.quantity
-    const newPrice = data.unit_price_amount ?? Number(existing.unit_price_amount)
-    data.total_amount = newQty * newPrice
-    const row = await this.db.product_sale.update({ where: { id: saleId }, data, include: { product: true } })
-    return this.toDto(row)
+    return this.db.$transaction(async (tx) => {
+      await this.lockSaleFlight(tx, flightId)
+      const existing = await tx.product_sale.findFirst({ where: { id: saleId, flight_id: flightId } })
+      if (!existing) throw new ApiErrorException('NOT_FOUND', 'Sale not found.', 404)
+      const quantity = patch.quantity ?? existing.quantity
+      const unitPrice = patch.unitPriceAmount ?? Number(existing.unit_price_amount)
+      await this.assertSaleCapacity(tx, flightId, existing.product_id, quantity, saleId)
+      const row = await tx.product_sale.update({
+        where: { id: saleId },
+        data: { quantity, unit_price_amount: unitPrice, total_amount: quantity * unitPrice },
+        include: { product: true },
+      })
+      return this.toDto(row)
+    })
   }
 
   async delete(flightId: string, saleId: string): Promise<void> {
-    const existing = await this.db.product_sale.findUnique({ where: { id: saleId } })
-    if (!existing || existing.flight_id !== flightId) throw new ApiErrorException('NOT_FOUND', 'Sale not found.', 404)
-    await this.db.product_sale.delete({ where: { id: saleId } })
+    await this.db.$transaction(async (tx) => {
+      await this.lockSaleFlight(tx, flightId)
+      const deleted = await tx.product_sale.deleteMany({ where: { id: saleId, flight_id: flightId } })
+      if (!deleted.count) throw new ApiErrorException('NOT_FOUND', 'Sale not found.', 404)
+    })
   }
 
-  // Fills unit_cost_amount on every product_sale row for a flight,
-  // using the earliest-expiring valid batch on the aircraft. Called
-  // from flight-report.submit and from sales.update when the report
-  // already exists.
-  async fillUnitCosts(flightId: string, aircraftId: string): Promise<void> {
-    const sales = await this.db.product_sale.findMany({ where: { flight_id: flightId } })
-    for (const sale of sales) {
-      const batch = await this.db.aircraft_stock.findFirst({
-        where: { aircraft_id: aircraftId, product_id: sale.product_id, quantity: { gt: 0 } },
-        include: { stock_batch: true },
-        orderBy: [{ stock_batch: { expires_at: 'asc' } }],
-      })
-      let cost: number | null = null
-      if (batch && !batch.stock_batch.is_damaged) {
-        cost = Number(batch.stock_batch.unit_cost_amount)
-      }
-      if (cost == null) {
-        const product = await this.db.product.findUnique({ where: { id: sale.product_id } })
-        if (product?.purchase_cost_amount != null) cost = Number(product.purchase_cost_amount)
-      }
-      await this.db.product_sale.update({ where: { id: sale.id }, data: { unit_cost_amount: cost } })
+  private async lockSaleFlight(tx: Prisma.TransactionClient, flightId: string): Promise<void> {
+    const flights = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM flight WHERE id = ${flightId}::uuid FOR UPDATE`
+    if (!flights.length) throw new ApiErrorException('NOT_FOUND', 'Flight not found.', 404)
+    const order = await tx.catering_order.findUnique({ where: { flight_id: flightId } })
+    if (order?.status !== 'loaded') {
+      throw new ApiErrorException('REPORT_INVALID', 'Sales can only be changed while the catering order is loaded.', 409)
+    }
+  }
+
+  private async assertSaleCapacity(
+    tx: Prisma.TransactionClient,
+    flightId: string,
+    productId: string,
+    quantity: number,
+    excludingSaleId?: string,
+  ): Promise<void> {
+    const load = await tx.stock_transfer_line.aggregate({
+      where: { product_id: productId, stock_transfer: { flight_id: flightId } },
+      _sum: { quantity: true },
+    })
+    const count = load._sum.quantity ?? 0
+    if (count === 0) throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Product was not loaded for this flight.', 409)
+    const sales = await tx.product_sale.aggregate({
+      where: { flight_id: flightId, product_id: productId, ...(excludingSaleId ? { id: { not: excludingSaleId } } : {}) },
+      _sum: { quantity: true },
+    })
+    if ((sales._sum.quantity ?? 0) + quantity > count) {
+      throw new ApiErrorException('OUT_OF_STOCK', 'Quantity exceeds the unsold stock loaded for this flight.', 409)
     }
   }
 

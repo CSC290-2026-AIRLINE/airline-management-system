@@ -77,6 +77,7 @@ function uiStatus(flight: Flight, order: CateringOrder | null): UiStatus {
   // them, and prefer the fetched order when there is one: right after an
   // action it is the fresher of the two.
   if (order) {
+    if (order.status === 'open') return 'ordering_open'
     if (order.status === 'closed') return 'closed'
     if (order.status === 'loaded') return 'loaded'
     if (order.status === 'void') return 'void'
@@ -263,6 +264,20 @@ export function CateringOrdersPage() {
     }
   }
 
+  async function simulateOrderingClosed() {
+    if (!selectedId) return
+    setBusy(true)
+    try {
+      const order = await api.orders.simulateOrderingClosed(selectedId)
+      setOrders((previous) => ({ ...previous, [selectedId]: order }))
+      await refreshFlights()
+    } catch (error) {
+      showToast('error', error instanceof Error ? error.message : 'Could not close ordering.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function handleTransfer() {
     if (selectedId == null) return
     setBusy(true)
@@ -344,6 +359,8 @@ export function CateringOrdersPage() {
   const selectedStatus: UiStatus | null = selectedFlight ? uiStatus(selectedFlight, selectedOrder) : null
   const selectedWarehouse = selectedFlight ? (warehouses.find((w) => w.id === selectedFlight.warehouseId) ?? null) : null
   const selectedCutoff = selectedOrder?.cutoffAt ?? selectedFlight?.cutoffAt ?? ''
+  const canGenerate = selectedStatus === 'ordering_open' && Boolean(selectedOrder?.warehouseId) &&
+    Date.parse(selectedCutoff) <= Date.now() && Date.parse(selectedFlight?.scheduledDeparture ?? '') > Date.now()
   const shortLineCount = selectedOrder ? selectedOrder.lines.filter(lineIsShort).length : 0
   const totalUnits = selectedOrder ? selectedOrder.lines.reduce((acc, l) => acc + l.quantityRequired, 0) : 0
   const totalShort = selectedOrder ? selectedOrder.lines.reduce((acc, l) => acc + l.quantityShort, 0) : 0
@@ -533,6 +550,17 @@ export function CateringOrdersPage() {
                   {selectedStatus === 'ordering_open' && (
                     <button type="button" className={styles.actionButton} disabled={busy} onClick={() => void refreshOpenOrders()}>
                       Reload customer orders
+                    </button>
+                  )}
+                  {canGenerate && (
+                    <button type="button" className={styles.actionButton} disabled={busy} onClick={() => void handleRefresh()}>
+                      Generate catering order
+                    </button>
+                  )}
+                  {selectedStatus === 'ordering_open' && selectedOrder?.simulationAvailable && selectedOrder.warehouseId &&
+                    Date.parse(selectedFlight.scheduledDeparture) > Date.now() && (
+                    <button type="button" className={styles.actionButton} disabled={busy} onClick={() => void simulateOrderingClosed()}>
+                      Simulate orders closed
                     </button>
                   )}
                   <RefreshButton status={selectedStatus} busy={busy} onClick={handleRefresh} styles={styles} />

@@ -10,8 +10,10 @@ import { CateringOrdersService } from './catering-orders.service'
 import { StockTransfersModule } from '../stock-transfers/stock-transfers.module'
 import { CabinSettingsModule } from '../cabin-settings/cabin-settings.module'
 
+import { ProductOrdersModule } from '../product-orders/product-orders.module'
+
 @Module({
-  imports: [StockTransfersModule, CabinSettingsModule],
+  imports: [StockTransfersModule, CabinSettingsModule, ProductOrdersModule],
   controllers: [CateringOrdersController],
   providers: [CateringOrdersService],
   exports: [CateringOrdersService],

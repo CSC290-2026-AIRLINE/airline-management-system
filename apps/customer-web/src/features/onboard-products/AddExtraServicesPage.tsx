@@ -200,10 +200,16 @@ export function AddExtraServicesPage({ bookingId }: Props) {
     }
   }
 
+  const cartQuantities = new Map<string, number>()
+  for (const lines of Object.values(cart)) {
+    for (const line of lines) cartQuantities.set(line.productId, (cartQuantities.get(line.productId) ?? 0) + line.quantity)
+  }
+
   function handleSelectMeal(productId: string) {
     if (!selectedPassengerId || catalog.kind !== 'ready') return
     const product = catalog.products.find((p) => p.id === productId)
     if (!product || product.category !== 'meal') return
+    if (!product.isDefaultChoice && (cartQuantities.get(productId) ?? 0) >= (product.availableQuantity ?? Infinity)) return
     const existing = cart[selectedPassengerId] ?? []
     if (product.isDefaultChoice) {
       const next = existing.filter((l) => l.category !== 'meal')
@@ -227,6 +233,7 @@ export function AddExtraServicesPage({ bookingId }: Props) {
     if (!selectedPassengerId || catalog.kind !== 'ready') return
     const product = catalog.products.find((p) => p.id === productId)
     if (!product || product.category === 'meal') return
+    if ((cartQuantities.get(productId) ?? 0) >= (product.availableQuantity ?? Infinity)) return
     const existing = cart[selectedPassengerId] ?? []
     const found = existing.find((l) => l.productId === productId)
     if (found) {
@@ -453,6 +460,7 @@ export function AddExtraServicesPage({ bookingId }: Props) {
               </p>
             ) : (
               <ProductList
+                cartQuantities={cartQuantities}
                 products={products}
                 selectedMealProductId={selectedMealProductId}
                 quantities={quantities}

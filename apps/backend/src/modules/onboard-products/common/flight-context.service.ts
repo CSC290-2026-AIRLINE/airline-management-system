@@ -57,6 +57,7 @@ export class FlightContextService {
     const flight = await this.getFlight(flightId)
     const warehouse = await this.db.warehouse.findFirst({
       where: { airport_code: flight.origin, deleted_at: null },
+      orderBy: { id: 'asc' },
     })
     if (!warehouse) {
       throw new ApiErrorException('NO_WAREHOUSE_FOR_AIRPORT', `No warehouse is available at ${flight.origin}.`, 409, {

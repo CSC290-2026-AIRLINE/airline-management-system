@@ -167,7 +167,6 @@ export function FlightReportPage() {
 
   const [flights, setFlights] = useState<ReportableFlight[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [aircraftId, setAircraftId] = useState<string | null>(null)
   const [report, setReport] = useState<FlightReport | null>(null)
   const [sales, setSales] = useState<ProductSale[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -248,15 +247,10 @@ export function FlightReportPage() {
     if (selectedId == null) return
     let cancelled = false
     setLoading(true)
-    const flight = flights.find((f) => f.id === selectedId)
-    const aId = flight?.aircraftId ?? null
-    setAircraftId(aId)
     Promise.all([
       api.flightReport.getFlightReport(selectedId),
       api.flightReport.listFlightSales(selectedId),
-      aId != null
-        ? api.flightReport.getAircraftStock(aId).then((rows) => rows.map((r) => ({ productId: r.productId, quantity: r.quantity })))
-        : Promise.resolve([] as Array<{ productId: string; quantity: number }>),
+      api.flightReport.listLoadedProducts(selectedId),
     ])
       .then(async ([reportData, salesData, stockData]) => {
         if (cancelled) return
@@ -283,9 +277,7 @@ export function FlightReportPage() {
     const [reportData, salesData, stockData] = await Promise.all([
       api.flightReport.getFlightReport(selectedId),
       api.flightReport.listFlightSales(selectedId),
-      aircraftId != null
-        ? api.flightReport.getAircraftStock(aircraftId).then((rows) => rows.map((r) => ({ productId: r.productId, quantity: r.quantity })))
-        : Promise.resolve([] as Array<{ productId: string; quantity: number }>),
+      api.flightReport.listLoadedProducts(selectedId),
     ])
     setReport(reportData)
     setSales(salesData)
@@ -497,6 +489,9 @@ export function FlightReportPage() {
           </p>
         </div>
         <div className={styles.headerRight}>
+          <button type="button" onClick={() => {
+            void handleRefreshFlights().catch((error: unknown) => showToast('error', error instanceof Error ? error.message : 'Could not load flights.'))
+          }}>Refresh loaded flights</button>
           <span className={styles.policyChip}>Policy · Complimentary, 1 meal each</span>
         </div>
       </header>

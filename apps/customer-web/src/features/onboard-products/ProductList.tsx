@@ -12,6 +12,7 @@ interface Props {
   products: Product[]
   selectedMealProductId: string | null
   quantities: Map<string, number>
+  cartQuantities: Map<string, number>
   passengerFirstName: string
   currency: string
   onSelectMeal: (productId: string) => void
@@ -28,6 +29,7 @@ export function ProductList(props: Props) {
       <MealRadioList
         products={props.products}
         selectedId={props.selectedMealProductId}
+        cartQuantities={props.cartQuantities}
         passengerFirstName={props.passengerFirstName}
         onSelect={props.onSelectMeal}
         disabled={!!props.disabled}
@@ -38,6 +40,7 @@ export function ProductList(props: Props) {
     <AddonTableList
       products={props.products}
       quantities={props.quantities}
+      cartQuantities={props.cartQuantities}
       currency={props.currency}
       onAdd={props.onAddOne}
       onRemove={props.onRemoveOne}
@@ -49,12 +52,14 @@ export function ProductList(props: Props) {
 function MealRadioList({
   products,
   selectedId,
+  cartQuantities,
   passengerFirstName,
   onSelect,
   disabled,
 }: {
   products: Product[]
   selectedId: string | null
+  cartQuantities: Map<string, number>
   passengerFirstName: string
   onSelect: (id: string) => void
   disabled: boolean
@@ -77,6 +82,8 @@ function MealRadioList({
       </div>
       {products.map((p) => {
         const isSelected = p.id === selectedId
+        const outOfStock = !p.isDefaultChoice && p.availableQuantity === 0
+        const atLimit = !p.isDefaultChoice && (cartQuantities.get(p.id) ?? 0) >= (p.availableQuantity ?? Infinity)
         return (
           <button
             key={p.id}
@@ -87,7 +94,7 @@ function MealRadioList({
             className="grid items-center gap-3.5 px-6 py-3 bg-white border-0 border-b border-[#e8edf3] text-left font-sans text-inherit cursor-pointer w-full relative transition-colors hover:bg-[#f8fafc] focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[-2px] disabled:opacity-60 disabled:cursor-not-allowed data-[selected=true]:bg-[#e8eef7] data-[selected=true]:hover:bg-[#e8eef7] before:content-[''] before:absolute before:left-0 before:top-[-1px] before:bottom-[-1px] before:w-[3px] data-[selected=true]:before:bg-primary"
             style={{ gridTemplateColumns: '22px 64px minmax(0, 1fr) 64px 72px' }}
             onClick={() => onSelect(p.id)}
-            disabled={disabled}
+            disabled={disabled || outOfStock || (!isSelected && atLimit)}
           >
             <span
               className="w-[22px] h-[22px] rounded-[11px] border-2 bg-white inline-flex items-center justify-center flex-none data-[selected=true]:border-primary"
@@ -100,6 +107,7 @@ function MealRadioList({
             <span className="flex flex-col min-w-0">
               <span className="flex items-center gap-1.5">
                 <span className="text-foreground text-sm font-semibold whitespace-nowrap overflow-hidden text-ellipsis">{p.name}</span>
+                {outOfStock && <span className="text-xs text-muted-foreground">Out of stock</span>}
                 {p.isPremium && (
                   <span className="bg-[#fff4db] text-[#8a5300] font-mono text-[11px] font-normal rounded-md px-1.5 py-0.5 whitespace-nowrap">
                     Premium
@@ -122,6 +130,7 @@ function MealRadioList({
 function AddonTableList({
   products,
   quantities,
+  cartQuantities,
   currency,
   onAdd,
   onRemove,
@@ -129,6 +138,7 @@ function AddonTableList({
 }: {
   products: Product[]
   quantities: Map<string, number>
+  cartQuantities: Map<string, number>
   currency: string
   onAdd: (id: string) => void
   onRemove: (id: string) => void
@@ -149,6 +159,8 @@ function AddonTableList({
       <ul className="list-none m-0 p-0 flex flex-col">
         {products.map((p) => {
           const qty = quantities.get(p.id) ?? 0
+          const outOfStock = p.availableQuantity === 0
+          const cannotAdd = disabled || (cartQuantities.get(p.id) ?? 0) >= (p.availableQuantity ?? Infinity)
           return (
             <li
               key={p.id}
@@ -158,6 +170,7 @@ function AddonTableList({
               <ProductThumb imageUrl={p.imageUrl} color={p.thumbnailColor} />
               <span className="flex flex-col min-w-0 text-left">
                 <span className="text-foreground text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis">{p.name}</span>
+                {outOfStock && <span className="text-xs text-muted-foreground">Out of stock</span>}
                 <span className="text-muted-foreground text-[13px] leading-[1.4] mt-0.5 line-clamp-1">{p.description}</span>
               </span>
               <span className="text-primary font-mono text-sm font-medium tabular-nums text-right">
@@ -186,7 +199,7 @@ function AddonTableList({
                       className="w-8 h-8 inline-flex items-center justify-center bg-primary border-0 rounded-full font-sans text-lg font-medium text-white cursor-pointer p-0 leading-none hover:bg-[#1c3556] focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-1"
                       aria-label={`Add one more ${p.name}`}
                       onClick={() => onAdd(p.id)}
-                      disabled={disabled}
+                      disabled={cannotAdd}
                     >
                       +
                     </button>

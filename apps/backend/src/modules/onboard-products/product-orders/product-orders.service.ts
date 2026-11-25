@@ -123,7 +123,7 @@ export class ProductOrdersService {
     const cabin = this.resolveCabin(query.cabin)
     const settings = await this.settings.resolveForFlight(flightId, cabin)
     const now = this.clock.now()
-    const cutoff = cutoffAt(flight.scheduledDeparture, settings.orderWindowHours)
+    const cutoff = await this.customerCutoff(this.db, flight.id, cutoffAt(flight.scheduledDeparture, settings.orderWindowHours))
 
     const menu = await this.menuFor(flightId, flight.routeId, cabin)
     const productIds = menu.map((m) => m.productId)
@@ -223,7 +223,7 @@ export class ProductOrdersService {
     const flight = await this.flightContext.getFlight(input.flightId)
     const settings = await this.settings.resolveForFlight(input.flightId, input.cabin)
     const now = this.clock.now()
-    const cutoff = cutoffAt(flight.scheduledDeparture, settings.orderWindowHours)
+    const cutoff = await this.customerCutoff(this.db, flight.id, cutoffAt(flight.scheduledDeparture, settings.orderWindowHours))
     if (!settings.preorderEnabled) {
       throw new ApiErrorException('ORDER_WINDOW_CLOSED', 'Pre-ordering is not available in this cabin.', 409)
     }
@@ -266,6 +266,11 @@ export class ProductOrdersService {
     }
 
     const orderId = await this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM flight WHERE id = ${input.flightId}::uuid FOR UPDATE`
+      const currentCutoff = await this.customerCutoff(tx, input.flightId, cutoff)
+      if (!isOrderWindowOpen(this.clock.now(), currentCutoff)) {
+        throw new ApiErrorException('ORDER_WINDOW_CLOSED', 'The order window for this flight has closed.', 409)
+      }
       const snackIndex = priced.lines.findIndex((line) => line.category === 'snack' || line.category === 'beverage')
       let complimentary = false
       if (settings.snackService === 'complimentary' && snackIndex !== -1) {
@@ -393,7 +398,7 @@ export class ProductOrdersService {
 
     const flight = await this.flightContext.getFlight(order.flight_id)
     const settings = await this.settings.resolveForFlight(order.flight_id, order.cabin as F12Cabin)
-    const cutoff = cutoffAt(flight.scheduledDeparture, settings.orderWindowHours)
+    const cutoff = await this.customerCutoff(this.db, flight.id, cutoffAt(flight.scheduledDeparture, settings.orderWindowHours))
     if (!isOrderWindowOpen(this.clock.now(), cutoff)) {
       throw new ApiErrorException('ORDER_WINDOW_CLOSED', 'The order window for this flight has closed.', 409, {
         cutoffAt: cutoff.toISOString(),
@@ -480,6 +485,31 @@ export class ProductOrdersService {
       })
     }
     return expired
+  }
+
+  async expireUnpaidForDemoClose(tx: Prisma.TransactionClient, flightId: string, warehouseId: string, now: Date): Promise<void> {
+    const pending = await tx.product_order.findMany({
+      where: { flight_id: flightId, status: 'pending_payment' },
+      include: { product_order_line: { where: { deleted_at: null } } },
+    })
+    for (const order of pending) {
+      const expired = await tx.product_order.updateMany({
+        where: { id: order.id, status: 'pending_payment' },
+        data: { status: 'expired', expires_at: now },
+      })
+      if (!expired.count) continue
+      await tx.product_order_line.updateMany({ where: { product_order_id: order.id, deleted_at: null }, data: { deleted_at: now } })
+      await this.releaseOrderStock(tx, order.id, flightId, order.product_order_line, warehouseId, now)
+    }
+  }
+
+  private async customerCutoff(
+    db: Pick<Prisma.TransactionClient, 'catering_order'>,
+    flightId: string,
+    scheduledCutoff: Date,
+  ): Promise<Date> {
+    const order = await db.catering_order.findUnique({ where: { flight_id: flightId }, select: { cutoff_at: true } })
+    return order && order.cutoff_at < scheduledCutoff ? order.cutoff_at : scheduledCutoff
   }
 
   // -- helpers --------------------------------------------------------------

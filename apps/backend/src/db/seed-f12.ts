@@ -1309,5 +1309,23 @@ export async function seedF12(prisma: PrismaClient): Promise<void> {
     })
   }
 
+  const activeAirports = await prisma.airport.findMany({
+    where: { is_active: true },
+    select: { iata_code: true },
+  })
+  const activeWarehouses = await prisma.warehouse.findMany({
+    where: { deleted_at: null },
+    select: { airport_code: true },
+  })
+  const warehouseAirports = new Set(activeWarehouses.map((warehouse) => warehouse.airport_code))
+  for (const { iata_code: code } of activeAirports) {
+    if (warehouseAirports.has(code)) continue
+    await prisma.warehouse.upsert({
+      where: { code: `WH-${code}` },
+      update: { deleted_at: null },
+      create: { airport_code: code, code: `WH-${code}`, name: `${code} Catering Warehouse` },
+    })
+  }
+
   console.log('F12 seed complete.')
 }

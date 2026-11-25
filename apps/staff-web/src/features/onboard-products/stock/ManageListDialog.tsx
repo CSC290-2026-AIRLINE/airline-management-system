@@ -63,7 +63,7 @@ export function ManageListDialog(props: Props) {
   useDialogFocusTrap(true, dialogRef, onClose)
 
   type EditState = { mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; id: string; initial: ManageListInput }
-  const [editState, setEditStateRaw] = useState<EditState>({ mode: 'closed' })
+  const [editState, setEditStateRaw] = useState<EditState>({ mode: 'create' })
   const [name, setName] = useState('')
   const [secondary, setSecondary] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -88,7 +88,7 @@ export function ManageListDialog(props: Props) {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
-    if (busy) return
+    if (busy || editState.mode === 'closed') return
     const trimmedName = name.trim()
     const trimmedSecondary = secondary.trim()
     if (trimmedName === '') {

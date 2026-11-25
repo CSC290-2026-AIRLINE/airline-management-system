@@ -72,6 +72,7 @@ interface WireCatalog {
   complimentarySnackAvailable: boolean
   settings: CabinSetting
   cutoffAt: string
+  orderWindowOpen: boolean
   currency: string
   products: Array<
     Pick<Product, 'id' | 'category' | 'typeCode' | 'name' | 'isPremium'> & {
@@ -87,7 +88,6 @@ export async function fetchCatalog(flight: FlightRef, fetchWithAuth: FetchWithAu
   const catalog = await request<WireCatalog>(fetchWithAuth, `/api/catalog?${params}`)
   const products: Product[] = catalog.products
     .filter((product) => {
-      if (product.availableQuantity <= 0) return false
       const { settings } = catalog
       if (product.category === 'meal') {
         return (
@@ -112,6 +112,7 @@ export async function fetchCatalog(flight: FlightRef, fetchWithAuth: FetchWithAu
     products,
     setting: catalog.settings,
     cutoffAt: catalog.cutoffAt,
+    orderWindowOpen: catalog.orderWindowOpen,
     currency: catalog.currency,
     complimentarySnackAvailable: catalog.complimentarySnackAvailable,
   }

@@ -31,6 +31,7 @@ export interface FlightReportApi {
   updateFlightSaleApi: (flightId: string, saleId: string, patch: UpdateFlightSaleInput) => Promise<ProductSale>
   deleteFlightSaleApi: (flightId: string, saleId: string) => Promise<void>
   listReportableFlights: () => Promise<ReportableFlight[]>
+  listLoadedProducts: (flightId: string) => Promise<Array<{ productId: string; quantity: number }>>
   getAircraftStock: (aircraftId: string) => Promise<ReturnType<typeof mapAircraftStockRow>[]>
 }
 
@@ -129,6 +130,9 @@ export function createFlightReportApi(client: ApiClient): FlightReportApi {
       } catch (err) {
         rethrow(err, new FlightReportApiError('UNKNOWN', 'Could not load reportable flights.', 0))
       }
+    },
+    async listLoadedProducts(flightId) {
+      return client.get<Array<{ productId: string; quantity: number }>>(`/api/staff/flights/${flightId}/flight-report/loaded-products`)
     },
     async getAircraftStock(aircraftId) {
       try {

@@ -10,10 +10,12 @@
 //     nothing and returns the transfers that already exist.
 
 import { Injectable } from '@nestjs/common'
+import type { Prisma } from '../../../db/generated/prisma/client'
 import { DbService } from '../../../db/db.service'
 import { ApiErrorException } from '../common/api-error'
 import { AuditService } from '../common/audit.service'
 import { SystemClock } from '../common/clock'
+import { ReservationsService } from '../common/reservations.service'
 
 export interface StockTransferLineInput {
   productId: string
@@ -45,6 +47,7 @@ export class StockTransfersService {
     private readonly db: DbService,
     private readonly audit: AuditService,
     private readonly clock: SystemClock,
+    private readonly reservations: ReservationsService,
   ) {}
 
   // The catering order's lines, moved to the aircraft. This is the
@@ -106,6 +109,9 @@ export class StockTransfersService {
     }
 
     return this.db.$transaction(async (tx) => {
+      // Warehouse availability already includes this flight's holds. Release them in the
+      // same transaction before decreasing on-hand stock so the database constraint stays valid.
+      await this.releasePaidReservations(tx, input)
       const transfer = await tx.stock_transfer.create({
         data: {
           flight_id: input.flightId,
@@ -250,6 +256,45 @@ export class StockTransfersService {
         quantity: l.quantity,
       })),
     }))
+  }
+
+  // The paid orders' stock is now on the aircraft, so their warehouse
+  // reservation is given back. Without this, quantity_reserved keeps the
+  // units after quantity_on_hand has dropped, and available stock goes
+  // negative. release() is idempotent per (order, product), so a later
+  // cancel or refund of the same order cannot release twice. The pairs
+  // already released are skipped up front: release() detects a repeat
+  // through a unique violation, and inside this transaction that error
+  // would abort the whole transfer.
+  private async releasePaidReservations(tx: Prisma.TransactionClient, input: TransferToAircraftInput): Promise<void> {
+    const products = new Set(input.lines.map((l) => l.productId))
+    const orders = await tx.product_order.findMany({
+      where: { flight_id: input.flightId, status: 'confirmed' },
+      include: { product_order_line: { where: { deleted_at: null } } },
+    })
+    if (orders.length === 0) return
+    const released = await tx.stock_movement.findMany({
+      where: { type: 'release', product_order_id: { in: orders.map((o) => o.id) } },
+      select: { product_order_id: true, product_id: true },
+    })
+    const done = new Set(released.map((r) => `${r.product_order_id}|${r.product_id}`))
+    for (const order of orders) {
+      const byProduct = new Map<string, number>()
+      for (const line of order.product_order_line) {
+        if (!products.has(line.product_id) || done.has(`${order.id}|${line.product_id}`)) continue
+        byProduct.set(line.product_id, (byProduct.get(line.product_id) ?? 0) + line.quantity)
+      }
+      for (const [productId, quantity] of byProduct) {
+        await this.reservations.release(tx, {
+          warehouseId: input.warehouseId,
+          productId,
+          quantity,
+          orderId: order.id,
+          flightId: input.flightId,
+          occurredAt: input.occurredAt,
+        })
+      }
+    }
   }
 
   // How much of every product already went to the aircraft for this

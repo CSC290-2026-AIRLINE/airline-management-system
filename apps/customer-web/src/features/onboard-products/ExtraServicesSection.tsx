@@ -13,7 +13,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useAppAuth } from '../../auth/AuthProvider'
-import { cancelProductOrder, fetchProductOrdersForBooking } from './api'
+import { cancelProductOrder, fetchCatalog, fetchProductOrdersForBooking } from './api'
 import { CancelOrderDialog } from './CancelOrderDialog'
 import { ProductOrderCard } from './ProductOrderCard'
 import { defaultCutoffFor, formatDateTime } from './format'
@@ -61,7 +61,33 @@ export function ExtraServicesSection({ booking }: Props) {
       ? `Choose a meal for each passenger, or add snacks, drinks and duty-free. You have ${activeOrders.length} active order(s) on this booking, listed below.`
       : 'Choose a meal for each passenger, or add snacks, drinks and duty-free.'
 
-  const cutoffState = computeCutoffState(booking, now)
+  const [liveCutoff, setLiveCutoff] = useState<{ booking: Booking; state: CutoffState } | null>(null)
+  const cutoffState = liveCutoff?.booking === booking ? liveCutoff.state : computeCutoffState(booking, now)
+  useEffect(() => {
+    if (isAuthLoading) return
+    let cancelled = false
+    let request = 0
+    const refresh = async () => {
+      const current = ++request
+      const results = await Promise.allSettled(booking.flights.map((flight) => fetchCatalog(flight, fetchWithAuth)))
+      if (cancelled || current !== request) return
+      const flights = booking.flights.flatMap((flight, index) => {
+        const result = results[index]
+        if (result?.status !== 'fulfilled') return [flight]
+        return result.value.orderWindowOpen ? [{ ...flight, cutoffAt: result.value.cutoffAt }] : []
+      })
+      setLiveCutoff({ booking, state: computeCutoffState({ ...booking, flights }, Date.now()) })
+    }
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    void refresh()
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
+  }, [booking, fetchWithAuth, isAuthLoading])
 
   async function handleConfirmCancel() {
     if (!cancelTarget) return
