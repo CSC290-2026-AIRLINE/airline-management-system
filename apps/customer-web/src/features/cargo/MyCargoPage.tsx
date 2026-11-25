@@ -19,7 +19,7 @@ import {
   type TrackResult,
   type ClaimableBooking,
 } from './cargo-api'
-import CargoHero from './CargoHero'
+import CargoPage from './CargoPage'
 
 /* ── Formatting helpers ─────────────────────────────────────────── */
 
@@ -166,47 +166,41 @@ export default function MyCargoPage() {
   }, [])
 
   return (
-    <div className="text-left">
-      <CargoHero subtitle="Your bookings, tracking and claims. Click a reference to open it." unreadCount={unreadCount} />
+    <CargoPage subtitle="Your bookings, tracking and claims. Click a reference to open it." unreadCount={unreadCount}>
+      {/* Track */}
+      <TrackBox />
 
-      <div className="bg-muted/40 py-8">
-        <div className="mx-auto w-full max-w-6xl px-6">
-          {/* Track */}
-          <TrackBox />
+      {/* Card with tabs */}
+      <Card className="mt-6">
+        <CardContent>
+          <Tabs value={tab} onValueChange={(t) => switchTab(t as 'bookings' | 'claims' | 'notices')}>
+            <TabsList variant="line" className="w-full justify-start gap-6 border-b">
+              <TabsTrigger value="bookings" className="flex-none px-0">
+                Bookings
+              </TabsTrigger>
+              <TabsTrigger value="claims" className="flex-none px-0">
+                Claims
+              </TabsTrigger>
+              <TabsTrigger value="notices" className="flex-none px-0">
+                Notices
+                {unreadCount > 0 && (
+                  <Badge variant="destructive" className="h-4 min-w-4 justify-center px-1 text-[10px]">
+                    {unreadCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-          {/* Card with tabs */}
-          <Card className="mt-6">
-            <CardContent>
-              <Tabs value={tab} onValueChange={(t) => switchTab(t as 'bookings' | 'claims' | 'notices')}>
-                <TabsList variant="line" className="w-full justify-start gap-6 border-b">
-                  <TabsTrigger value="bookings" className="flex-none px-0">
-                    Bookings
-                  </TabsTrigger>
-                  <TabsTrigger value="claims" className="flex-none px-0">
-                    Claims
-                  </TabsTrigger>
-                  <TabsTrigger value="notices" className="flex-none px-0">
-                    Notices
-                    {unreadCount > 0 && (
-                      <Badge variant="destructive" className="h-4 min-w-4 justify-center px-1 text-[10px]">
-                        {unreadCount}
-                      </Badge>
-                    )}
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-
-              {/* Tab content */}
-              <div className="pt-5">
-                {tab === 'bookings' && <BookingsTab />}
-                {tab === 'claims' && <ClaimsTab />}
-                {tab === 'notices' && <NoticesTab onCountChange={setUnreadCount} />}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
+          {/* Tab content */}
+          <div className="pt-5">
+            {tab === 'bookings' && <BookingsTab />}
+            {tab === 'claims' && <ClaimsTab />}
+            {tab === 'notices' && <NoticesTab onCountChange={setUnreadCount} />}
+          </div>
+        </CardContent>
+      </Card>
+    </CargoPage>
   )
 }
 

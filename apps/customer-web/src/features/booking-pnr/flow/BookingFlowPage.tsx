@@ -1,4 +1,5 @@
 import { useSavedTravellers } from '../passengers/useSavedTravellers'
+import { Button } from '@customer-web/components/ui/button'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { FlightSearchPage, type SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
@@ -6,6 +7,7 @@ import type { FlightSearchUrlState } from '../../booking-search/search-params'
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { HoldBookingRequest, HoldBookingResponse, HoldBookingSeat } from '../api/types'
 import { BookingRouteBar, type BookingStep } from '../components/BookingRouteBar'
+import { PageShell } from '../components/PageShell'
 import { PassengersPage } from '../passengers/PassengersPage'
 import {
   clearFlowDraft,
@@ -216,11 +218,11 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
 
   if (!itinerary)
     return (
-      <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-left md:py-10 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
+      <PageShell className="[&_h1]:m-0 [&_h2]:m-0 [&_h2]:text-subheading">
         <h1>Choose your flights first</h1>
         <p>Your itinerary is missing or unavailable.</p>
         <Link to="/search">Search flights</Link>
-      </main>
+      </PageShell>
     )
   const tripCurrency = held?.currency ?? itinerary.selections[0]?.fare.currency ?? 'USD'
   const tripSummary = (
@@ -265,15 +267,17 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
       />
     )
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 text-left md:py-10 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight [&_h2]:m-0 [&_h2]:text-base [&_h2]:font-semibold">
-      <h1>{step === 2 ? 'Passengers & extras' : step === 3 ? 'Choose your seats' : 'Booking held'}</h1>
-      {step !== 3 && (
-        <p className="text-muted-foreground">
-          {step === 2
-            ? 'Enter traveller details exactly as they appear on the passport.'
-            : 'Keep your booking reference for the next step.'}
-        </p>
-      )}
+    <PageShell
+      className="[&_h1]:m-0 [&_h2]:m-0 [&_h2]:text-subheading"
+      title={step === 2 ? 'Passengers & extras' : step === 3 ? 'Choose your seats' : 'Booking held'}
+      subtitle={
+        step === 2
+          ? 'Enter traveller details exactly as they appear on the passport.'
+          : step === 3
+            ? undefined
+            : 'Keep your booking reference for the next step.'
+      }
+    >
       <div className="">
         <BookingRouteBar currentStep={step} onStepClick={goToStep} />
       </div>
@@ -405,8 +409,8 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                   </p>
                 )}
                 <div className="flex flex-col-reverse items-stretch justify-between gap-3 sm:flex-row sm:items-center">
-                  <button
-                    className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border bg-background px-4 text-sm font-medium whitespace-nowrap shadow-xs transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+                  <Button
+                    variant="outline"
                     type="button"
                     disabled={busy}
                     onClick={() => {
@@ -415,15 +419,10 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
                     }}
                   >
                     Back to passengers
-                  </button>
-                  <button
-                    className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium whitespace-nowrap text-primary-foreground shadow-xs transition-all outline-none hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void createHold()}
-                  >
+                  </Button>
+                  <Button type="button" disabled={busy} onClick={() => void createHold()}>
                     {busy ? 'Creating booking…' : 'Skip, choose seats later'}
-                  </button>
+                  </Button>
                 </div>
               </section>
             ))}
@@ -462,6 +461,6 @@ export function BookingFlowPage({ resolvePassengers, onHeld, AssistanceFields, S
           </aside>
         )}
       </div>
-    </main>
+    </PageShell>
   )
 }

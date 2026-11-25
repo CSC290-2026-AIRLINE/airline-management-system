@@ -1,7 +1,7 @@
 import type { ApiError } from '../api/client'
+import { Button } from '@customer-web/components/ui/button'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
 import { Dialog } from '../components/Dialog'
-import controls from '../styles/controls'
 
 interface CancelHoldDialogProps {
   open: boolean
@@ -26,12 +26,12 @@ export function CancelHoldDialog({ open, reference, seatLabel, isCancelling, err
       }}
       footer={
         <>
-          <button type="button" className={controls.secondary} onClick={onKeep} disabled={isCancelling}>
+          <Button variant="outline" type="button" onClick={onKeep} disabled={isCancelling}>
             Keep booking
-          </button>
-          <button type="button" className={controls.danger} onClick={onConfirm} disabled={isCancelling}>
+          </Button>
+          <Button variant="destructive" type="button" onClick={onConfirm} disabled={isCancelling}>
             {isCancelling ? 'Cancelling…' : 'Yes, cancel'}
-          </button>
+          </Button>
         </>
       }
     >

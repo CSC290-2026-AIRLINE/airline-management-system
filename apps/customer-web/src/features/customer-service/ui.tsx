@@ -2,21 +2,29 @@ import type { ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import { SignUpButton, useAuth } from '@clerk/clerk-react'
 import { useAppAuth, type AppUser } from '@customer-web/auth/AuthProvider'
+import { Page } from '@customer-web/components/Page'
 import { Alert, AlertDescription, AlertTitle } from '@customer-web/components/ui/alert'
 import { Button } from '@customer-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@customer-web/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@customer-web/components/ui/tabs'
 
-/** Page frame, the same as the other customer pages: the shared SiteHeader comes from the root route. */
-export function ComplaintPage({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
+/** Page frame on the shared page shell. The complaint pages are tabs of one area, so they share the wide column. */
+export function ComplaintPage({
+  title,
+  subtitle,
+  current,
+  children,
+}: {
+  title: string
+  subtitle?: string
+  /** The open tab. Left out on a page that is not one of the tabs (a complaint that was just sent). */
+  current?: ComplaintsPath
+  children: ReactNode
+}) {
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 text-left md:p-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="m-0 text-2xl font-semibold tracking-tight">{title}</h1>
-        {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
-      </div>
+    <Page width="wide" title={title} description={subtitle} tabs={<ComplaintsNav current={current} />}>
       {children}
-    </main>
+    </Page>
   )
 }
 

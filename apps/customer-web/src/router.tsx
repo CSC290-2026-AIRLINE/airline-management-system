@@ -8,6 +8,9 @@ export const router = createRouter({
   },
   defaultPreload: 'intent',
   scrollRestoration: true,
+  // A short cross-fade when the page changes. A query-string change (a tab, a sort, a picked fare) is not a new page, so it
+  // does not animate. The fade itself is tuned in index.css and switched off for reduced motion.
+  defaultViewTransition: { types: ({ pathChanged }) => (pathChanged ? ['page'] : false) },
 })
 
 /**

@@ -501,7 +501,7 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
 
   if (bookingState.kind === 'loading' || isAuthLoading) {
     return (
-      <div className="mx-auto w-full max-w-5xl px-4 pt-6 pb-24 text-left text-foreground md:pt-10">
+      <div className="mx-auto w-full max-w-[79rem] px-4 pt-8 pb-24 text-left text-foreground md:px-6 md:pt-12 xl:px-8">
         <p className="py-12 text-center text-muted-foreground">Loading…</p>
       </div>
     )
@@ -509,7 +509,7 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
 
   if (bookingState.kind === 'error') {
     return (
-      <div className="mx-auto w-full max-w-5xl px-4 pt-6 pb-24 text-left text-foreground md:pt-10">
+      <div className="mx-auto w-full max-w-[79rem] px-4 pt-8 pb-24 text-left text-foreground md:px-6 md:pt-12 xl:px-8">
         <Alert variant="destructive" role="alert">
           <AlertDescription className="col-start-2">{bookingState.error}</AlertDescription>
         </Alert>
@@ -519,7 +519,7 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
 
   if (!booking || !selectedFlight || !selectedPassengerId) {
     return (
-      <div className="mx-auto w-full max-w-5xl px-4 pt-6 pb-24 text-left text-foreground md:pt-10">
+      <div className="mx-auto w-full max-w-[79rem] px-4 pt-8 pb-24 text-left text-foreground md:px-6 md:pt-12 xl:px-8">
         <p className="py-12 text-center text-muted-foreground">No booking to show.</p>
       </div>
     )
@@ -528,7 +528,7 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
   const selectedPassenger = booking.passengers.find((p) => p.id === selectedPassengerId) ?? null
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 pt-6 pb-24 text-left text-foreground md:pt-10 flex flex-col gap-6">
+    <div className="mx-auto w-full max-w-[79rem] px-4 pt-8 pb-24 text-left text-foreground md:px-6 md:pt-12 xl:px-8 flex flex-col gap-6">
       <Button asChild variant="ghost" size="sm" className="-ml-2 self-start text-muted-foreground">
         <Link to="/bookings/$reference" params={{ reference: booking.reference }}>
           <ArrowLeft aria-hidden="true" />

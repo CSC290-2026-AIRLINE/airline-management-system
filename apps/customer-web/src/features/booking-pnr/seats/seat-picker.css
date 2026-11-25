@@ -1,6 +1,6 @@
 .seat-picker {
   min-width: 0;
-  color: var(--f3-ink, var(--color-ink));
+  color: var(--f3-ink, var(--color-primary-pressed));
   font-family: var(--font-sans);
 }
 .seat-picker__legend {

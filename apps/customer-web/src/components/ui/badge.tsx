@@ -4,7 +4,7 @@ import { cn } from '@customer-web/lib/utils'
 import { Slot } from 'radix-ui'
 
 const badgeVariants = cva(
-  'inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3',
+  'inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 [&>svg]:pointer-events-none [&>svg]:size-3',
   {
     variants: {
       variant: {
@@ -15,12 +15,14 @@ const badgeVariants = cva(
         outline: 'border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
         ghost: '[a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 [a&]:hover:underline',
-        // F12 variants
-        success: 'border-[oklch(0.88_0.10_148)] bg-[oklch(0.95_0.06_148)] text-[oklch(0.48_0.15_148)]',
-        warning: 'border-[oklch(0.88_0.10_85)] bg-[oklch(0.96_0.05_85)] text-[oklch(0.45_0.12_60)]',
-        pending: 'border-[#fedf89] bg-[#fffaeb] text-[#b54708]',
-        cancelled: 'border-[#dbe2ea] bg-[#eef2f7] text-[#475569]',
-        muted: 'border-[#dbe2ea] bg-[#f5f5f7] text-[#525866]',
+        // Status pills. The text is the word; the colour only reinforces it.
+        success: 'border-ok/25 bg-ok-tint text-ok',
+        warning: 'border-warn/25 bg-warn-tint text-warn',
+        pending: 'border-warn/25 bg-warn-tint text-warn',
+        danger: 'border-danger/25 bg-danger-tint text-danger',
+        info: 'border-info-line bg-info-tint text-link',
+        cancelled: 'border-line bg-muted text-muted-foreground',
+        muted: 'border-line bg-muted text-muted-foreground',
       },
     },
     defaultVariants: {

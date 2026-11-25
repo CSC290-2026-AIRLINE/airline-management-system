@@ -1,6 +1,6 @@
 import { ApiError } from '../api/client'
+import { Button } from '@customer-web/components/ui/button'
 import { Dialog } from '../components/Dialog'
-import controls from '../styles/controls'
 
 interface ChangeFlightsDialogProps {
   open: boolean
@@ -27,12 +27,12 @@ export function ChangeFlightsDialog({ open, reference, seatLabel, isReleasing, e
       }}
       footer={
         <>
-          <button type="button" className={controls.secondary} onClick={onKeep} disabled={isReleasing}>
+          <Button variant="outline" type="button" onClick={onKeep} disabled={isReleasing}>
             Keep my flights
-          </button>
-          <button type="button" className={controls.primary} onClick={onConfirm} disabled={isReleasing}>
+          </Button>
+          <Button type="button" onClick={onConfirm} disabled={isReleasing}>
             {isReleasing ? 'Releasing…' : 'Change flights'}
-          </button>
+          </Button>
         </>
       }
     >

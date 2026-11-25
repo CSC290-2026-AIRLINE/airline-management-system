@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
+import { SelectTile } from '@customer-web/components/ui/select-tile'
+import { Button } from '@customer-web/components/ui/button'
 import { X } from 'lucide-react'
 import { useAppAuth } from '@customer-web/auth/AuthProvider'
 import type { SeatMap } from '../api/types'
 import type { BookingSeatStepProps } from '../flow/integration'
 import { formatMoney } from '../lib/format'
 import { SeatPicker } from './SeatPicker'
-import controls from '../styles/controls'
 import { useSeatQuote } from './useSeatQuote'
 
 export function BookingSeatStep({
@@ -124,14 +125,15 @@ export function BookingSeatStep({
               Some chosen seats are no longer available: {unavailableChoices.map((choice) => choice.seatCode).join(', ')}. Clear them or
               choose replacement seats.
             </p>
-            <button
-              className={controls.secondary}
+            <Button
+              variant="outline"
+
               type="button"
               disabled={busy}
               onClick={() => onChange(choices.filter((choice) => !unavailableChoices.includes(choice)))}
             >
               Clear unavailable seats
-            </button>
+            </Button>
           </div>
         )}
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -141,8 +143,9 @@ export function BookingSeatStep({
               aria-label="Flights"
             >
               {itinerary.selections.map(({ flight }) => (
-                <button
-                  className={controls.secondary}
+                <Button
+                  variant="outline"
+
                   key={flight.flightId}
                   type="button"
                   disabled={busy}
@@ -150,7 +153,7 @@ export function BookingSeatStep({
                   onClick={() => setFlightId(flight.flightId)}
                 >
                   {flight.flightNumber} · {flight.origin} → {flight.destination}
-                </button>
+                </Button>
               ))}
             </div>
             {loadError ? (
@@ -159,8 +162,9 @@ export function BookingSeatStep({
                 role="alert"
               >
                 <p>{loadError}</p>
-                <button
-                  className={controls.secondary}
+                <Button
+                  variant="outline"
+
                   type="button"
                   onClick={() => {
                     setLoadError(null)
@@ -168,7 +172,7 @@ export function BookingSeatStep({
                   }}
                 >
                   Try again
-                </button>
+                </Button>
               </div>
             ) : !maps ? (
               <p className="py-8 text-center text-sm text-muted-foreground" role="status">
@@ -186,8 +190,10 @@ export function BookingSeatStep({
                 passengerLabel={`${traveller.givenName} ${traveller.familyName}`}
                 legendAction={
                   choices.some((choice) => choice.flightId === flightId) ? (
-                    <button
-                      className="seat-picker__legend-action inline-flex h-7 cursor-pointer items-center rounded-md px-2 text-xs font-medium text-primary hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                    <Button
+                      className="seat-picker__legend-action"
+                      variant="ghost"
+                      size="xs"
                       type="button"
                       disabled={busy}
                       aria-label="Clear seats for this flight"
@@ -195,7 +201,7 @@ export function BookingSeatStep({
                     >
                       <X aria-hidden="true" size={14} strokeWidth={2} />
                       Clear seats
-                    </button>
+                    </Button>
                   ) : null
                 }
                 disabledSeatCodes={allSeats
@@ -230,12 +236,11 @@ export function BookingSeatStep({
                   .map((person) => {
                     const seat = choices.find((choice) => choice.flightId === flightId && choice.travellerKey === person.key)
                     return (
-                      <button
-                        className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2.5 text-left text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-pressed:border-primary aria-pressed:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-50 [&_small]:text-xs [&_small]:text-muted-foreground [&_strong]:font-medium [&>span]:flex [&>span]:flex-col"
+                      <SelectTile
+                        className="w-full items-center justify-between gap-3 px-3 py-2.5 text-sm"
                         key={person.key}
-                        type="button"
                         disabled={busy}
-                        aria-pressed={travellerKey === person.key}
+                        selected={travellerKey === person.key}
                         onClick={() => setTravellerKey(person.key)}
                       >
                         <span>
@@ -244,7 +249,7 @@ export function BookingSeatStep({
                           </strong>
                         </span>
                         <span className="shrink-0 text-sm font-semibold tabular-nums">{seat?.seatCode ?? 'No seat yet'}</span>
-                      </button>
+                      </SelectTile>
                     )
                   })}
               </div>
@@ -271,9 +276,9 @@ export function BookingSeatStep({
                   role="alert"
                 >
                   <p>{quote.error}</p>
-                  <button className={controls.secondary} type="button" disabled={busy || skipping} onClick={quote.retry}>
+                  <Button variant="outline" type="button" disabled={busy || skipping} onClick={quote.retry}>
                     Retry price
-                  </button>
+                  </Button>
                 </div>
               )}
               {skipError && (
@@ -289,8 +294,7 @@ export function BookingSeatStep({
                 at check-in. Seats you pick are held with your booking.
               </p>
               <div className="grid gap-2 pt-1 [&>*]:w-full">
-                <button
-                  className={controls.primary}
+                <Button
                   type="button"
                   disabled={busy || skipping || quote.loading || quote.total === null || !!missingCabin || unavailableChoices.length > 0}
                   onClick={() => {
@@ -299,9 +303,10 @@ export function BookingSeatStep({
                   }}
                 >
                   {busy ? 'Creating booking…' : 'Continue to review'}
-                </button>
-                <button
-                  className={controls.secondary}
+                </Button>
+                <Button
+                  variant="outline"
+
                   type="button"
                   disabled={busy || skipping || !!missingCabin}
                   onClick={() => {
@@ -318,10 +323,10 @@ export function BookingSeatStep({
                   }}
                 >
                   {skipping ? 'Checking price…' : 'Skip, choose seats later'}
-                </button>
-                <button className={controls.secondary} type="button" disabled={busy || skipping} onClick={onBack}>
+                </Button>
+                <Button variant="outline" type="button" disabled={busy || skipping} onClick={onBack}>
                   Back
-                </button>
+                </Button>
               </div>
             </div>
           </aside>

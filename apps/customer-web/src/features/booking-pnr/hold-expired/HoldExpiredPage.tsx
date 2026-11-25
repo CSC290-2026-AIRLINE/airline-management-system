@@ -1,4 +1,6 @@
 import { Link } from '@tanstack/react-router'
+import { Button } from '@customer-web/components/ui/button'
+import { PageShell } from '../components/PageShell'
 import type { ApiError } from '../api/client'
 import { useBooking } from '../api/useBooking'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
@@ -44,9 +46,9 @@ export function HoldExpiredPage({ reference, reason }: { reference: string; reas
         : `Booking ${reference} was not paid within 15 minutes, so the ${seatLabel} ${seatCount === 1 ? 'is' : 'are'} back on sale and the booking is marked expired. Nothing was charged.`
 
   return (
-    <main className="mx-auto w-full max-w-xl px-4 py-10 text-left md:py-16">
+    <PageShell width="narrow">
       <div className="space-y-6">
-        <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight">
+        <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0">
           <span className="inline-flex w-fit items-center rounded-md border border-warn/25 bg-warn/10 px-2 py-0.5 text-xs font-medium text-warn">
             {chip}
           </span>
@@ -65,15 +67,15 @@ export function HoldExpiredPage({ reference, reason }: { reference: string; reas
           </p>
         </section>
       </div>
-    </main>
+    </PageShell>
   )
 }
 
 function ActiveHoldState({ reference }: { reference: string }) {
   return (
-    <main className="mx-auto w-full max-w-xl px-4 py-10 text-left md:py-16">
+    <PageShell width="narrow">
       <div className="space-y-6">
-        <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight">
+        <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0">
           <span className="inline-flex w-fit items-center rounded-md border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
             Hold active
           </span>
@@ -89,18 +91,15 @@ function ActiveHoldState({ reference }: { reference: string }) {
           </div>
         </section>
       </div>
-    </main>
+    </PageShell>
   )
 }
 
 function LoadingState({ reference }: { reference: string }) {
   return (
-    <main className="mx-auto w-full max-w-xl px-4 py-10 text-left md:py-16">
+    <PageShell width="narrow">
       <div className="space-y-6">
-        <section
-          className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight"
-          aria-busy="true"
-        >
+        <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0" aria-busy="true">
           <span className="inline-flex w-fit items-center rounded-md border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
             Hold expired
           </span>
@@ -108,7 +107,7 @@ function LoadingState({ reference }: { reference: string }) {
           <p className="text-muted-foreground">Checking what happened to booking {reference}.</p>
         </section>
       </div>
-    </main>
+    </PageShell>
   )
 }
 
@@ -118,33 +117,33 @@ function LoadingState({ reference }: { reference: string }) {
  */
 function ErrorState({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
   return (
-    <main className="mx-auto w-full max-w-xl px-4 py-10 text-left md:py-16">
+    <PageShell width="narrow">
       <div className="space-y-6">
-        <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight">
+        <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0">
           <ApiErrorBanner error={error} />
           <h1>We could not load this booking</h1>
           <p className="text-muted-foreground">
             The booking could not be read, so we cannot tell you yet what happened to its hold. Try again in a moment.
           </p>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={controls.primary} onClick={onRetry}>
+            <Button type="button" onClick={onRetry}>
               Try again
-            </button>
+            </Button>
             <Link to="/bookings" className={controls.secondary}>
               Go to My Trips
             </Link>
           </div>
         </section>
       </div>
-    </main>
+    </PageShell>
   )
 }
 
 function NotFoundState({ reference }: { reference: string }) {
   return (
-    <main className="mx-auto w-full max-w-xl px-4 py-10 text-left md:py-16">
+    <PageShell width="narrow">
       <div className="space-y-6">
-        <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight">
+        <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm [&_h1]:m-0">
           <span className="inline-flex w-fit items-center rounded-md border border-warn/25 bg-warn/10 px-2 py-0.5 text-xs font-medium text-warn">
             Not found
           </span>
@@ -160,6 +159,6 @@ function NotFoundState({ reference }: { reference: string }) {
           </div>
         </section>
       </div>
-    </main>
+    </PageShell>
   )
 }

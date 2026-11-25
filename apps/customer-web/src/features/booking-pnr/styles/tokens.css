@@ -4,7 +4,7 @@
   --f3-navy: var(--color-navy);
   --f3-primary: var(--primary);
   --f3-primary-hover: color-mix(in oklab, var(--primary) 90%, transparent);
-  --f3-ink: var(--color-ink);
+  --f3-ink: var(--color-primary-pressed);
   --f3-muted: var(--muted-foreground);
   --f3-page: var(--color-canvas);
   --f3-card: var(--card);

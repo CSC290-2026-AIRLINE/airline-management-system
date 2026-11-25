@@ -4,6 +4,7 @@
 // flight, else what happens without one: "Default meal" in a
 // complimentary cabin, "No pre-order" in a paid one.
 
+import { SelectTile } from '@customer-web/components/ui/select-tile'
 import { Avatar, AvatarFallback } from '@customer-web/components/ui/avatar'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@customer-web/components/ui/card'
 import { cn } from '@customer-web/lib/utils'
@@ -54,16 +55,12 @@ export function PassengerPicker({ passengers, cart, orderedMeals, mealService, s
             const isActive = p.id === selectedId
             const initial = p.firstName.charAt(0).toUpperCase() || '?'
             return (
-              <button
+              <SelectTile
                 key={p.id}
-                type="button"
                 role="radio"
                 aria-checked={isActive}
-                className={cn(
-                  'flex min-w-0 cursor-pointer items-center gap-3 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors outline-none',
-                  'hover:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                  isActive && 'border-primary ring-1 ring-primary',
-                )}
+                selected={isActive}
+                className="min-w-0 items-center gap-3 px-3 py-2.5"
                 onClick={() => onSelect(p.id)}
               >
                 <Avatar className="size-9 shrink-0">
@@ -77,7 +74,7 @@ export function PassengerPicker({ passengers, cart, orderedMeals, mealService, s
                     {subtitleFor(p.id, cart, orderedMeals, mealService)}
                   </span>
                 </span>
-              </button>
+              </SelectTile>
             )
           })}
         </div>

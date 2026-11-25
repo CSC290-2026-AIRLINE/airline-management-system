@@ -81,7 +81,7 @@ function RedemptionCard({ row }: { row: RedemptionRow }) {
           <span className="text-[10px] font-semibold tracking-[0.06em] text-muted-foreground uppercase">
             {row.returned ? 'Miles returned' : 'Miles used'}
           </span>
-          <span className={cx('text-xl font-bold md:text-2xl', row.returned && 'text-[#8a94a6]')}>{formatMiles(row.miles)}</span>
+          <span className={cx('text-xl font-bold md:text-2xl', row.returned && 'text-muted-foreground')}>{formatMiles(row.miles)}</span>
         </div>
         <Button asChild variant="link" className="px-0 text-link">
           <Link to={MY_TRIPS_PATH}>

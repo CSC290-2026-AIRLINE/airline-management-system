@@ -1,19 +1,20 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { SelectTile } from '@customer-web/components/ui/select-tile'
 import { useNavigate } from '@tanstack/react-router'
 import { Plane, User, Utensils, type LucideIcon } from 'lucide-react'
 import type { AppUser } from '@customer-web/auth/AuthProvider'
 import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
 import { Button } from '@customer-web/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@customer-web/components/ui/card'
-import { Field } from '@customer-web/components/ui/cw-field'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/cw-select'
+import { Field } from '@customer-web/components/ui/field'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
 import { Input } from '@customer-web/components/ui/input'
 import { Textarea } from '@customer-web/components/ui/textarea'
 import { cn } from '@customer-web/lib/utils'
 import { errorMessage, useComplaintsApi } from './api'
 import { FLIGHT_ISSUES, FOOD_ISSUES, LOCATIONS, type ComplaintType, type NewComplaint } from './types'
 import { WhatHappensNext } from './parts'
-import { AccountGate, ComplaintPage, ComplaintsNav } from './ui'
+import { AccountGate, ComplaintPage } from './ui'
 
 const MIN_DESCRIPTION = 20
 
@@ -39,8 +40,7 @@ const LOST_BAG_NOTE = 'Lost bag? Report it to Lost and Found. If the bag is not 
 
 export function MakeComplaintPage() {
   return (
-    <ComplaintPage title="Make a complaint" subtitle="Tell us what went wrong. A supervisor reads every case.">
-      <ComplaintsNav current="/complaints" />
+    <ComplaintPage current="/complaints" title="Make a complaint" subtitle="Tell us what went wrong. A supervisor reads every case.">
       <AccountGate signInTitle="Sign in to make a complaint" redirect="/complaints" note={LOST_BAG_NOTE}>
         {(user) => <ComplaintForm user={user} />}
       </AccountGate>
@@ -178,15 +178,11 @@ function ComplaintForm({ user }: { user: AppUser }) {
             {TYPE_CARDS.map(({ value, label, desc, Icon }) => {
               const selected = type === value
               return (
-                <button
+                <SelectTile
                   key={value}
-                  type="button"
-                  aria-pressed={selected}
+                  selected={selected}
                   onClick={() => chooseType(value)}
-                  className={cn(
-                    'flex flex-col items-start gap-2 rounded-lg border p-4 text-left transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
-                    selected ? 'border-primary bg-accent' : 'bg-card hover:bg-accent/50',
-                  )}
+                  className={cn('flex-col items-start gap-2 p-4', selected ? 'bg-accent' : 'hover:bg-accent/50')}
                 >
                   <span
                     aria-hidden="true"
@@ -199,7 +195,7 @@ function ComplaintForm({ user }: { user: AppUser }) {
                   </span>
                   <span className="text-sm font-medium">{label}</span>
                   <span className="text-xs text-muted-foreground">{desc}</span>
-                </button>
+                </SelectTile>
               )
             })}
           </div>

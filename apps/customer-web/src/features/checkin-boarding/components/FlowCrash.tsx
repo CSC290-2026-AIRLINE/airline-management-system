@@ -1,4 +1,5 @@
 import type { ErrorComponentProps } from '@tanstack/react-router'
+import { Button } from '@customer-web/components/ui/button'
 import { Message } from './Message.tsx'
 import styles from './flow.module.css'
 
@@ -10,9 +11,9 @@ export function FlowCrash({ reset }: ErrorComponentProps) {
         Online check-in stopped working. Try again, or reload the page if it keeps happening.
       </Message>
       <div className={styles.actions}>
-        <button type="button" className={styles.ghostButton} onClick={reset}>
+        <Button variant="outline" type="button" onClick={reset}>
           Try again
-        </button>
+        </Button>
       </div>
     </div>
   )

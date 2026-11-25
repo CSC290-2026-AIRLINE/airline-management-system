@@ -1,10 +1,12 @@
 import { Link, useNavigate } from '@tanstack/react-router'
+import { Button } from '@customer-web/components/ui/button'
 import { useEffect, useRef, useState } from 'react'
 import { ApiError, useBookingPnrApi } from '../api/client'
 import type { BookingDetail, BookingServiceRequest, InsuranceOffer, InsurancePolicySummary } from '../api/types'
 import { useBooking } from '../api/useBooking'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
 import { BookingRouteBar, type BookingStep } from '../components/BookingRouteBar'
+import { PageShell } from '../components/PageShell'
 import { HoldBanner } from '../components/HoldBanner'
 import { BookingSeatChangesPanel } from '../seats/BookingSeatChangesPanel'
 import { AssistanceRequestDialog } from '../assistance/AssistanceRequestDialog'
@@ -238,25 +240,25 @@ function HeldReview({
 
   /** The pay action belongs to the review & pay step. The other steps send the customer back to it. */
   const payAction = (
-    <button type="button" className={controls.primary} onClick={() => void handleConfirm()} disabled={isConfirming || isCancelling}>
+    <Button type="button" onClick={() => void handleConfirm()} disabled={isConfirming || isCancelling}>
       {isConfirming ? 'Processing payment…' : 'Pay now'}
-    </button>
+    </Button>
   )
 
   return (
     <>
-      <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 text-left md:py-10">
+      <PageShell
+        title={
+          <span className="inline-flex flex-wrap items-center gap-3">
+            Review &amp; pay
+            <span className="rounded-md border border-white/30 bg-white/10 px-2 py-0.5 font-mono text-xs font-normal text-white">
+              Booking {booking.reference}
+            </span>
+          </span>
+        }
+        subtitle={copy.subtitle}
+      >
         <div className="space-y-6">
-          <header className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2 [&_h1]:m-0 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:tracking-tight">
-              <h1>Review &amp; pay</h1>
-              <span className="rounded-md border bg-background px-2 py-0.5 font-mono text-xs text-muted-foreground">
-                Booking {booking.reference}
-              </span>
-            </div>
-            <p className="text-base text-muted-foreground">{copy.subtitle}</p>
-          </header>
-
           {/* The bar takes the customer back to a step of this booking. Every step but the one they are on can be
               opened, so they can walk back and forth while the hold runs. */}
           <BookingRouteBar
@@ -324,17 +326,18 @@ function HeldReview({
                   </Link>
                 )}
                 {isPayStep ? (
-                  <button type="button" className={controls.secondary} onClick={() => goToStep(3)}>
+                  <Button variant="outline" type="button" onClick={() => goToStep(3)}>
                     Back to seats
-                  </button>
+                  </Button>
                 ) : null}
                 <Link to="/search" className={controls.secondary}>
                   Search again
                 </Link>
                 {isPayStep ? (
-                  <button
+                  <Button
+                    variant="outline"
                     type="button"
-                    className={controls.secondary}
+
                     onClick={() => {
                       setCancelError(null)
                       setCancelOpen(true)
@@ -342,7 +345,7 @@ function HeldReview({
                     disabled={isConfirming || isCancelling}
                   >
                     Cancel
-                  </button>
+                  </Button>
                 ) : null}
               </div>
 
@@ -353,7 +356,7 @@ function HeldReview({
             </aside>
           </div>
         </div>
-      </main>
+      </PageShell>
 
       <CancelHoldDialog
         open={cancelOpen}
@@ -459,13 +462,13 @@ function FlightsCard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2>Flights</h2>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={controls.action} onClick={onChangeFlights}>
+          <Button variant="outline" size="sm" type="button" onClick={onChangeFlights}>
             Change flights
-          </button>
+          </Button>
           {onEdit ? (
-            <button type="button" className={controls.action} onClick={onEdit}>
+            <Button variant="outline" size="sm" type="button" onClick={onEdit}>
               Back to flights
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -516,13 +519,13 @@ function PassengersCard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2>Passengers</h2>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={controls.action} onClick={onEditDetails}>
+          <Button variant="outline" size="sm" type="button" onClick={onEditDetails}>
             Edit details
-          </button>
+          </Button>
           {onEdit ? (
-            <button type="button" className={controls.action} onClick={onEdit}>
+            <Button variant="outline" size="sm" type="button" onClick={onEdit}>
               Back to passengers
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -562,9 +565,9 @@ function PassengersCard({
               )}
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <button type="button" className={controls.link} onClick={() => onRequestAssistance(passenger.bookingPassengerId)}>
+              <Button variant="link" className="h-auto p-0" type="button" onClick={() => onRequestAssistance(passenger.bookingPassengerId)}>
                 Request assistance
-              </button>
+              </Button>
             </div>
           </div>
         )
@@ -577,9 +580,9 @@ function PassengersCard({
             {booking.contactPhone ? ` · ${booking.contactPhone}` : ''}
           </p>
         </div>
-        <button type="button" className={controls.action} onClick={onEditContact}>
+        <Button variant="outline" size="sm" type="button" onClick={onEditContact}>
           Change contact details
-        </button>
+        </Button>
       </div>
     </section>
   )
@@ -674,7 +677,7 @@ function PriceCard({ booking, insuranceAddOn }: { booking: BookingDetail; insura
 
 function LoadingState() {
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 text-left md:py-10">
+    <PageShell>
       <div
         className="space-y-3 rounded-xl border bg-card p-6 text-left shadow-xs [&_h1]:m-0 [&_h1]:text-lg [&_h1]:font-semibold"
         aria-busy="true"
@@ -682,13 +685,13 @@ function LoadingState() {
         <h1>Loading booking…</h1>
         <p className="text-sm text-muted-foreground">Checking your hold.</p>
       </div>
-    </main>
+    </PageShell>
   )
 }
 
 function NotFoundState({ reference }: { reference: string }) {
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 text-left md:py-10">
+    <PageShell>
       <div className="space-y-3 rounded-xl border bg-card p-6 text-left shadow-xs [&_h1]:m-0 [&_h1]:text-lg [&_h1]:font-semibold">
         <h1>We couldn&apos;t find booking {reference}</h1>
         <p className="text-sm text-muted-foreground">Check the reference or go back to your trips.</p>
@@ -701,24 +704,24 @@ function NotFoundState({ reference }: { reference: string }) {
           </Link>
         </div>
       </div>
-    </main>
+    </PageShell>
   )
 }
 
 function ErrorState({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 text-left md:py-10">
+    <PageShell>
       <div className="space-y-3 rounded-xl border bg-card p-6 text-left shadow-xs [&_h1]:m-0 [&_h1]:text-lg [&_h1]:font-semibold">
         <ApiErrorBanner error={error} />
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={controls.secondary} onClick={onRetry}>
+          <Button variant="outline" type="button" onClick={onRetry}>
             Try again
-          </button>
+          </Button>
           <Link to="/bookings" className={controls.secondary}>
             Go to My Trips
           </Link>
         </div>
       </div>
-    </main>
+    </PageShell>
   )
 }

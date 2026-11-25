@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
+import { Button } from '@customer-web/components/ui/button'
 import { Input } from '@customer-web/components/ui/input'
 import { DatePicker } from '@customer-web/components/ui/date-picker'
-import { Field } from '@customer-web/components/ui/cw-field'
+import { Field } from '@customer-web/components/ui/field'
 import { useBookingPnrApi, ApiError } from '../api/client'
 import type { BookingDetail } from '../api/types'
 import { Dialog } from '../components/Dialog'
@@ -9,7 +10,6 @@ import { formatMoney } from '../lib/format'
 import { useSavedTravellers } from '../passengers/useSavedTravellers'
 import type { TravellerDraft } from '../flow/draft'
 import { priceChangedDetails } from '../flow/integration'
-import controls from '../styles/controls'
 import { holdRequestForBooking } from './rebook'
 
 interface EditPassengersDialogProps {
@@ -283,17 +283,17 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
               The price changed from {formatMoney(price.previousTotal, price.currency)} to {formatMoney(price.newTotal, price.currency)}.
             </p>
             <div className="flex flex-wrap justify-end gap-2 pt-1">
-              <button type="button" className={controls.secondary} onClick={onClose} disabled={saving}>
+              <Button variant="outline" type="button" onClick={onClose} disabled={saving}>
                 Stop
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className={controls.primary}
+
                 onClick={() => void makeHold({ expectedTotal: price.newTotal })}
                 disabled={saving}
               >
                 Continue at {formatMoney(price.newTotal, price.currency)}
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
@@ -302,12 +302,12 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
           <div className="text-sm text-muted-foreground" role="status">
             <p>Those seats are no longer available. The new booking can be made without them, and you can pick seats again afterwards.</p>
             <div className="flex flex-wrap justify-end gap-2 pt-1">
-              <button type="button" className={controls.secondary} onClick={onClose} disabled={saving}>
+              <Button variant="outline" type="button" onClick={onClose} disabled={saving}>
                 Stop
-              </button>
-              <button type="button" className={controls.primary} onClick={() => void makeHold({ withoutSeats: true })} disabled={saving}>
+              </Button>
+              <Button type="button" onClick={() => void makeHold({ withoutSeats: true })} disabled={saving}>
                 Continue without seats
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
@@ -319,12 +319,12 @@ export function EditPassengersDialog({ open, booking, onClose, onRebooked }: Edi
         ) : null}
 
         <div className="flex flex-wrap justify-end gap-2 pt-1">
-          <button type="button" className={controls.secondary} onClick={onClose} disabled={saving}>
+          <Button variant="outline" type="button" onClick={onClose} disabled={saving}>
             Cancel
-          </button>
-          <button type="button" className={controls.primary} onClick={() => void submit()} disabled={saving}>
+          </Button>
+          <Button type="button" onClick={() => void submit()} disabled={saving}>
             {saving ? 'Saving…' : 'Save and re-book'}
-          </button>
+          </Button>
         </div>
       </div>
     </Dialog>

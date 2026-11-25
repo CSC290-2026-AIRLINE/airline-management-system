@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
+import { Button } from '@customer-web/components/ui/button'
 import type { BoardingPassView } from '../api/types.ts'
 import { qrModules } from '../domain/qr.ts'
 import { formatDay, formatTime } from '../format.ts'
-import flow from './flow.module.css'
 import { Message } from './Message.tsx'
 import styles from './pass.module.css'
 
@@ -112,12 +112,12 @@ export function BoardingPassStep({ pass, onStartOver }: { pass: BoardingPassView
       </div>
 
       <div className={styles.actions}>
-        <button className={flow.button} type="button" onClick={() => downloadWalletPass(pass)}>
+        <Button type="button" onClick={() => downloadWalletPass(pass)}>
           Add to wallet
-        </button>
-        <button className={flow.ghostButton} type="button" onClick={onStartOver}>
+        </Button>
+        <Button variant="outline" type="button" onClick={onStartOver}>
           Start over
-        </button>
+        </Button>
       </div>
     </div>
   )
