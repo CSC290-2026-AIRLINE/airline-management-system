@@ -25,11 +25,10 @@ describe('DevSeedService', () => {
     const service = new DevSeedService()
 
     expect(service.start().state).toBe('running')
-    expect(spawnMock).toHaveBeenCalledWith(
-      'npx',
-      ['tsx', '-r', 'tsconfig-paths/register', 'src/db/seed.ts'],
-      expect.not.objectContaining({ shell: true }),
-    )
+    const [command, args, options] = spawnMock.mock.calls[0] as [string, string[], Record<string, unknown>]
+    expect(command).toBe(process.execPath)
+    expect(args.slice(1)).toEqual(['-r', 'tsconfig-paths/register', 'src/db/seed.ts'])
+    expect(options.shell).toBeUndefined()
     child.stdout.emit('data', Buffer.from('Generated 5 upcoming pattern flights\n'))
     child.emit('close', 0)
 

@@ -66,6 +66,8 @@ services:
       CLERK_SECRET_KEY_STAFF: ${CLERK_SECRET_KEY_STAFF}
       CUSTOMER_WEB_ORIGIN: ${CUSTOMER_WEB_ORIGIN}
       STAFF_WEB_ORIGIN: ${STAFF_WEB_ORIGIN}
+      DEV_SEED_ENABLED: ${DEV_SEED_ENABLED:-false}
+      DEV_SEED_TOKEN: ${DEV_SEED_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
