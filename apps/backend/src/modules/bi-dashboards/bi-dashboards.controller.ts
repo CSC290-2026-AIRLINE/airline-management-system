@@ -76,7 +76,7 @@ export class BiDashboardsController {
   }
 
   /**
-   * Rebuilds the reporting copy now. Blocks until the run finishes. If an automatic run is in progress, waits for it
+   * Rebuilds the reporting copy now. Blocks until the run finishes. If the nightly run is in progress, waits for it
    * first; 409 only if a run is still going after a minute.
    */
   @Post('refresh')

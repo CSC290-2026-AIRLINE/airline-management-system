@@ -6,7 +6,7 @@ import type { BiRunSummary, BiRunTrigger } from './dto/bi-dashboards.types'
 
 const RUN_IN_PROGRESS_INDEX = 'bi_etl_run_one_running_uq'
 const REBUILD_TIMEOUT_MS = 120_000
-/** How long a manual refresh waits for an automatic run to finish, and how often it re-checks. */
+/** How long a manual refresh waits for a nightly run to finish, and how often it re-checks. */
 const REFRESH_WAIT_MS = 60_000
 const REFRESH_RETRY_MS = 250
 const MAX_ERROR_LENGTH = 500
@@ -73,7 +73,7 @@ export class BiEtlService implements OnModuleInit {
   }
 
   /**
-   * A manual refresh. If an automatic run is in progress it waits for that run to finish, then runs; it gives up with
+   * A manual refresh. If the nightly run is in progress it waits for that run to finish, then runs; it gives up with
    * the usual `ConflictException` only after `REFRESH_WAIT_MS`.
    */
   async refreshWhenFree(trigger: BiRunTrigger, staffId: string | null): Promise<BiRunSummary> {
