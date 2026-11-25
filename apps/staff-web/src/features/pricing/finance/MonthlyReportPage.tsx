@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { useAppAuth } from '@staff-web/auth/AuthProvider'
 import { Button } from '@staff-web/components/ui/button'
 import { errorMessage, usePricingApi } from '../api'
@@ -95,7 +96,8 @@ function MonthlyReport() {
         </Button>
       }
     >
-      <div className="pr-stack">
+      {/* One column no wider than the page, so the months table scrolls inside its card instead of widening the page. */}
+      <div className="pr-stack grid-cols-[minmax(0,1fr)]">
         {error && (
           <Alert variant="destructive">
             <AlertDescription className="block">Could not recompute: {error}</AlertDescription>
@@ -124,8 +126,13 @@ function MonthlyReport() {
           </ErrorBoundary>
         </div>
 
-        <p className="m-0 rounded-[10px] border border-[#102544] bg-[#fff1c7] px-4 py-3.5 text-[13px] text-[#102544]">
-          Dashboards and exports belong to Feature 14. This page only recomputes and shows the monthly summary.
+        {/* Where the charts live, for staff: no internal feature numbers on screen. */}
+        <p className="m-0 text-(length:--pr-text-small) text-(--pr-muted)">
+          Charts and exports of these figures are in{' '}
+          <Link to="/bi/finance" className="font-semibold text-(--pr-primary) underline-offset-2 hover:underline">
+            Business intelligence → Financial report
+          </Link>
+          .
         </p>
       </div>
     </PricingShell>
