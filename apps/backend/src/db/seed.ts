@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { faker } from '@faker-js/faker'
 import { PrismaPg } from '@prisma/adapter-pg'
@@ -10,9 +10,11 @@ import { F13_SCREENS } from '@backend/modules/customer-service/customer-service.
 import { F11_SCREENS } from '@backend/modules/loyalty/screens'
 import { F5_SCREENS } from '@backend/modules/payments-checkout/guards/f5-screens'
 import { F04_SCREENS } from '@backend/modules/pricing/pricing.screens'
+import { SEAT_FEE_TYPE } from '@backend/modules/checkin-boarding/providers/providers'
+import { DEMO_FLIGHTS, DEMO_LAYOUT, DEMO_PASSENGERS, demoDepartures } from '@backend/modules/checkin-boarding/providers/demo-data'
+import type { DemoFlight } from '@backend/modules/checkin-boarding/providers/demo-data'
+import type { Cabin, SeatType } from '@backend/modules/checkin-boarding/api-types'
 import { PrismaClient } from './generated/prisma/client'
-import { seedFeature6 } from './seed-f6'
-import { seedF12 } from './seed-f12'
 
 try {
   process.loadEnvFile(path.join(__dirname, '..', '..', '.env'))
@@ -2547,25 +2549,48 @@ async function seedFeature3Bookings(
   }) => {
     const cust = customers.get(spec.customerKey)!
     const existing = await prisma.booking.findUnique({ where: { booking_reference: spec.ref } })
-    const booking =
-      existing ??
-      (await prisma.booking.create({
-        data: {
-          id: spec.id,
-          booking_reference: spec.ref,
-          customer_id: cust.customerId,
-          trip_type: spec.tripType,
-          status: spec.status,
-          payment_type: spec.paymentType ?? 'cash',
-          currency: 'THB',
-          contact_email: cust.email,
-          idempotency_key: `seed-${spec.ref}`,
-          booked_at: spec.bookedAt,
-          hold_expires_at: spec.holdExpiresAt,
-          confirmed_at: spec.confirmedAt ?? null,
-          cancelled_at: spec.cancelledAt ?? null,
-        },
-      }))
+    if (existing) {
+      // Already seeded, possibly on an earlier day: its flights were created with that day's dates, so the booking keeps the
+      // flights it has. Rebuild its summary from the database instead of creating its segments and coupons again.
+      const rows = await prisma.booking_coupon.findMany({
+        where: { booking_id: existing.id },
+        include: { booking_segment: { select: { cabin: true, fare_class_id: true } } },
+        orderBy: { created_at: 'asc' },
+      })
+      bundles.set(spec.key, {
+        bookingId: existing.id,
+        ref: existing.booking_reference,
+        customerId: cust.customerId,
+        coupons: rows.map((row) => ({
+          id: row.id,
+          bookingPassengerId: row.booking_passenger_id,
+          passengerId: row.passenger_id,
+          flightId: row.flight_id,
+          segmentId: row.booking_segment_id,
+          priceTotal: Number(row.price_total),
+          cabin: row.booking_segment.cabin,
+          fareClassId: row.booking_segment.fare_class_id,
+        })),
+      })
+      return
+    }
+    const booking = await prisma.booking.create({
+      data: {
+        id: spec.id,
+        booking_reference: spec.ref,
+        customer_id: cust.customerId,
+        trip_type: spec.tripType,
+        status: spec.status,
+        payment_type: spec.paymentType ?? 'cash',
+        currency: 'THB',
+        contact_email: cust.email,
+        idempotency_key: `seed-${spec.ref}`,
+        booked_at: spec.bookedAt,
+        hold_expires_at: spec.holdExpiresAt,
+        confirmed_at: spec.confirmedAt ?? null,
+        cancelled_at: spec.cancelledAt ?? null,
+      },
+    })
 
     const couponsOut: SeededBookingBundle['coupons'] = []
     for (const p of spec.passengers) {
@@ -7151,6 +7176,1838 @@ async function seedFeature16Sessions() {
 }
 
 // ── Main Orchestrator ────────────────────────────────────────────────────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Feature 6 demo data (check-in and boarding): the network, fares and bookings of the two demo flights
+// ══════════════════════════════════════════════════════════════════════════════
+/**
+ * The demo data of feature 6: the two flights, their passengers and their bookings. The rows of the other groups
+ * (the airports, the routes, the aircraft, the fare classes) are written here as well, because the demo needs them and
+ * no other group seeds them yet.
+ *
+ * Every row is looked up on its natural key before it is written, so a second run changes nothing.
+ */
+
+/** The customer of the demo: the owner of every demo booking. */
+const DEMO_EMAIL = 'f6-demo-customer@flython.example'
+
+/** The 3-digit airline number of the ticket numbers and the bag tags (the bag_tag_airline_number setting). */
+const AIRLINE_NUMBER = '999'
+
+/** The airports of the demo. Bangkok and its neighbours are seeded by the shared seed. */
+const F6_AIRPORTS = [
+  { iata_code: 'NRT', icao_code: 'RJAA', name: 'Narita', city: 'Tokyo', country: 'jp', timezone: 'Asia/Tokyo', min_turnaround_min: 45 },
+  { iata_code: 'ICN', icao_code: 'RKSI', name: 'Incheon', city: 'Seoul', country: 'kr', timezone: 'Asia/Seoul', min_turnaround_min: 45 },
+]
+
+/**
+ * The aircraft type of both demo flights. The database never lets the layout of a type change, so the layout with
+ * premium economy seats is a type of its own; a database seeded with the earlier `F6-DEMO-A320` keeps that row.
+ */
+const AIRCRAFT_TYPE = {
+  code: 'F6-DEMO-A320-V2',
+  manufacturer: 'Airbus',
+  model: 'A320 (demo)',
+  layout: DEMO_LAYOUT,
+  hold_weight_limit_kg: 9000,
+  max_takeoff_weight_kg: 78000,
+  max_range_km: 6100,
+  min_turnaround_minutes: 45,
+  operating_cost_per_hour: 120000,
+  cost_currency: 'THB',
+}
+
+/** The fare classes of the demo and the free allowance of each (feature 4 has no seed of its own yet). */
+const F6_FARE_CLASSES = [
+  { code: 'Y', cabin: 'economy', name: 'Economy', freeAllowanceKg: 20, price: 4500 },
+  { code: 'W', cabin: 'premium_economy', name: 'Premium Economy', freeAllowanceKg: 25, price: 7900 },
+  { code: 'J', cabin: 'business', name: 'Business', freeAllowanceKg: 30, price: 15900 },
+]
+
+/** The seat fees of the demo: the front rows and the exit rows cost money in economy and premium economy. */
+const SEAT_FEES: Array<{ cabin: Cabin; type: SeatType; amount: number }> = [
+  { cabin: 'economy', type: 'front', amount: 250 },
+  { cabin: 'economy', type: 'exit', amount: 450 },
+  { cabin: 'premium_economy', type: 'front', amount: 250 },
+  { cabin: 'premium_economy', type: 'exit', amount: 450 },
+]
+
+/** The cabins of a demo flight, with the seats of each. */
+const CABINS: Cabin[] = ['economy', 'premium_economy', 'business']
+
+async function seedFeature6(prisma: PrismaClient): Promise<void> {
+  const now = new Date()
+  const override = process.env.F6_DEMO_DEP_AT
+  if (override && Number.isNaN(new Date(override).getTime())) {
+    throw new Error(`F6_DEMO_DEP_AT is not a date: ${override}`)
+  }
+  const departures = demoDepartures(now, override)
+
+  const airports = await seedAirports(prisma)
+  const aircraftType = await seedAircraftType(prisma)
+  const aircraft = await seedAircraft(prisma, aircraftType.id)
+  const fareClasses = await seedFareClasses(prisma)
+  await seedBaggageRates(prisma, fareClasses)
+  await seedSeatFees(prisma)
+
+  const flights: Array<{ demo: DemoFlight; row: { id: string } }> = []
+  for (const flight of Object.values(DEMO_FLIGHTS)) {
+    const route = await prisma.route.upsert({
+      where: { origin_destination: { origin: flight.origin, destination: flight.destination } },
+      update: {},
+      create: {
+        origin: flight.origin,
+        destination: flight.destination,
+        distance_km: flight.distanceKm,
+        block_time_min: flight.blockTimeMin,
+      },
+    })
+    const row = await seedFlight(prisma, flight, route.id, aircraft.get(flight.aircraftTail)!.id, departures[flight.key], override)
+    flights.push({ demo: flight, row })
+    for (const cabin of CABINS) {
+      await prisma.seat_inventory.upsert({
+        where: { flight_id_cabin: { flight_id: row.id, cabin } },
+        // The capacity follows the demo aircraft, also on a database seeded before premium economy had seats.
+        update: { capacity: flight.seatInventory[cabin], updated_at: now },
+        create: { flight_id: row.id, cabin, capacity: flight.seatInventory[cabin] },
+      })
+    }
+    await seedGateAssignment(prisma, row.id, flight.gateCode)
+  }
+
+  const customer = await seedDemoCustomer(prisma, DEMO_PASSENGERS)
+  let serviceRequests = 0
+  for (const passenger of DEMO_PASSENGERS) {
+    const flight = flights.find((f) => f.demo.key === passenger.flight)!
+    const fareClass = fareClasses.get(passenger.fareClass)!
+    const person = await seedPassenger(prisma, passenger)
+    const booking = await prisma.booking.upsert({
+      where: { booking_reference: passenger.pnr },
+      update: {},
+      create: {
+        booking_reference: passenger.pnr,
+        customer_id: customer.id,
+        trip_type: 'one_way',
+        status: 'confirmed',
+        payment_type: 'cash',
+        currency: 'THB',
+        contact_email: DEMO_EMAIL,
+        idempotency_key: passenger.pnr,
+        booked_at: daysAgo(now, 7),
+        hold_expires_at: daysAgo(now, 6),
+        confirmed_at: daysAgo(now, 7),
+      },
+    })
+    const segment = await prisma.booking_segment.upsert({
+      where: { booking_id_flight_id: { booking_id: booking.id, flight_id: flight.row.id } },
+      update: {},
+      create: {
+        booking_id: booking.id,
+        flight_id: flight.row.id,
+        segment_order: 1,
+        cabin: passenger.cabin,
+        fare_class_id: fareClass.id,
+      },
+    })
+    const bookingPassenger = await prisma.booking_passenger.upsert({
+      where: { booking_id_passenger_id: { booking_id: booking.id, passenger_id: person.id } },
+      update: {},
+      create: { booking_id: booking.id, passenger_id: person.id, passenger_type: passenger.passengerType },
+    })
+    const coupon = await prisma.booking_coupon.findUnique({
+      where: { booking_passenger_id_flight_id: { booking_passenger_id: bookingPassenger.id, flight_id: flight.row.id } },
+    })
+    if (!coupon) {
+      await prisma.booking_coupon.create({
+        data: {
+          booking_id: booking.id,
+          booking_segment_id: segment.id,
+          booking_passenger_id: bookingPassenger.id,
+          flight_id: flight.row.id,
+          passenger_id: person.id,
+          price_total: fareClass.price,
+          ticket_number: await nextTicketNumber(prisma),
+          status: 'confirmed',
+        },
+      })
+    }
+    serviceRequests += await seedServiceRequests(prisma, {
+      bookingId: booking.id,
+      bookingPassengerId: bookingPassenger.id,
+      segmentId: segment.id,
+      codes: passenger.specialAssistance,
+      now,
+    })
+  }
+
+  console.log(`Seeded the Feature 6 network: ${airports} airports, 2 routes, 1 aircraft type, ${aircraft.size} aircraft, 2 flights.`)
+  console.log(
+    `Seeded the Feature 6 pricing: ${fareClasses.size} fare classes, ${fareClasses.size} baggage rates, ${SEAT_FEES.length} seat fees.`,
+  )
+  console.log(
+    `Seeded the Feature 6 bookings: 1 demo customer, ${DEMO_PASSENGERS.length} passengers, ${DEMO_PASSENGERS.length} bookings and coupons, ${serviceRequests} service requests.`,
+  )
+}
+
+/**
+ * The special assistance codes of a demo passenger: one live service request of feature 3 per code. A code that is
+ * already on the books is left alone, so a second run of the seed changes nothing.
+ */
+async function seedServiceRequests(
+  prisma: PrismaClient,
+  input: { bookingId: string; bookingPassengerId: string; segmentId: string; codes: string[]; now: Date },
+): Promise<number> {
+  let live = 0
+  for (const code of input.codes) {
+    const existing = await prisma.booking_service_request.findFirst({
+      where: {
+        booking_passenger_id: input.bookingPassengerId,
+        service_code: code,
+        status: { in: ['requested', 'accepted'] },
+      },
+    })
+    if (!existing) {
+      await prisma.booking_service_request.create({
+        data: {
+          booking_id: input.bookingId,
+          booking_passenger_id: input.bookingPassengerId,
+          booking_segment_id: input.segmentId,
+          service_code: code,
+          // F3's CHECKs: 'requested' is the only status without a handling staff member, and UMNR/MEDA need a note.
+          status: 'requested',
+          note: 'Feature 6 demo booking (seed-f6)',
+          requested_at: input.now,
+        },
+      })
+    }
+    live += 1
+  }
+  return live
+}
+
+async function seedAirports(prisma: PrismaClient): Promise<number> {
+  for (const airport of F6_AIRPORTS) {
+    await prisma.airport.upsert({ where: { iata_code: airport.iata_code }, update: {}, create: airport })
+  }
+  return F6_AIRPORTS.length
+}
+
+/** The aircraft type has a partial unique index on its code, so it is found first and created when it is missing. */
+async function seedAircraftType(prisma: PrismaClient): Promise<{ id: string }> {
+  const existing = await prisma.aircraft_type.findFirst({ where: { code: AIRCRAFT_TYPE.code, deleted_at: null } })
+  if (existing) return existing
+  return prisma.aircraft_type.create({ data: AIRCRAFT_TYPE })
+}
+
+/** The tail number is unique as long as the aircraft is not deleted, so it is found first as well. */
+async function seedAircraft(prisma: PrismaClient, aircraftTypeId: string): Promise<Map<string, { id: string }>> {
+  const aircraft = new Map<string, { id: string }>()
+  for (const flight of Object.values(DEMO_FLIGHTS)) {
+    const existing = await prisma.aircraft.findFirst({ where: { tail_number: flight.aircraftTail, deleted_at: null } })
+    if (existing) {
+      // A database seeded earlier has the demo aircraft on the type without premium economy seats: they move to this one.
+      if (existing.aircraft_type_id !== aircraftTypeId) {
+        await prisma.aircraft.update({ where: { id: existing.id }, data: { aircraft_type_id: aircraftTypeId, updated_at: new Date() } })
+      }
+      aircraft.set(flight.aircraftTail, existing)
+      continue
+    }
+    aircraft.set(
+      flight.aircraftTail,
+      await prisma.aircraft.create({
+        data: {
+          tail_number: flight.aircraftTail,
+          aircraft_type_id: aircraftTypeId,
+          entry_into_service_date: new Date('2024-01-01T00:00:00.000Z'),
+          base_airport_code: 'BKK',
+        },
+      }),
+    )
+  }
+  return aircraft
+}
+
+async function seedFareClasses(prisma: PrismaClient): Promise<Map<string, { id: string; price: number }>> {
+  const fareClasses = new Map<string, { id: string; price: number }>()
+  for (const fareClass of F6_FARE_CLASSES) {
+    const existing = await prisma.fare_class.findFirst({ where: { code: fareClass.code, deleted_at: null } })
+    const row =
+      existing ?? (await prisma.fare_class.create({ data: { code: fareClass.code, cabin: fareClass.cabin, name: fareClass.name } }))
+    fareClasses.set(fareClass.code, { id: row.id, price: fareClass.price })
+  }
+  return fareClasses
+}
+
+/** The allowance of a fare class: the rate of the route, or the rate without a route when there is none. */
+async function seedBaggageRates(prisma: PrismaClient, fareClasses: Map<string, { id: string }>): Promise<void> {
+  for (const fareClass of F6_FARE_CLASSES) {
+    const fareClassId = fareClasses.get(fareClass.code)!.id
+    const existing = await prisma.overweight_baggage_rate.findFirst({
+      where: { fare_class_id: fareClassId, route_id: null, deleted_at: null },
+    })
+    if (existing) continue
+    await prisma.overweight_baggage_rate.create({
+      data: {
+        fare_class_id: fareClassId,
+        route_id: null,
+        free_allowance_kg: fareClass.freeAllowanceKg,
+        rate_per_kg: 500,
+        max_bag_kg: 32,
+      },
+    })
+  }
+}
+
+/** The seat fee of a cabin: the seat type of feature 4 is the one the database knows. */
+async function seedSeatFees(prisma: PrismaClient): Promise<void> {
+  for (const fee of SEAT_FEES) {
+    const seatType = SEAT_FEE_TYPE[fee.type]
+    const existing = await prisma.seat_fee.findFirst({ where: { cabin: fee.cabin, seat_type: seatType, deleted_at: null } })
+    if (existing) continue
+    await prisma.seat_fee.create({ data: { cabin: fee.cabin, seat_type: seatType, amount: fee.amount } })
+  }
+}
+
+/**
+ * The flight of the demo. Its departure is the one of demoDepartures, so the check-in window is open; a flight that is
+ * already there keeps its times while it has not departed, unless F6_DEMO_DEP_AT pins a new departure.
+ */
+async function seedFlight(
+  prisma: PrismaClient,
+  flight: (typeof DEMO_FLIGHTS)[keyof typeof DEMO_FLIGHTS],
+  routeId: string,
+  aircraftId: string,
+  departure: Date,
+  override?: string,
+): Promise<{ id: string }> {
+  const arrival = new Date(departure.getTime() + flight.blockTimeMin * 60_000)
+  const serviceDate = new Date(`${departure.toISOString().slice(0, 10)}T00:00:00.000Z`)
+  const existing = await prisma.flight.findFirst({ where: { flight_number: flight.flightNumber } })
+  if (existing) {
+    // A flight that already left is yesterday's demo: it is moved to today, so the check-in window is open again.
+    if (!override && existing.dep_at > new Date()) return existing
+    await clearCheckIns(prisma, existing.id, flight.flightNumber)
+    return prisma.flight.update({
+      where: { id: existing.id },
+      data: {
+        service_date: serviceDate,
+        scheduled_dep_at: departure,
+        scheduled_arr_at: arrival,
+        dep_at: departure,
+        arr_at: arrival,
+        updated_at: new Date(),
+      },
+    })
+  }
+  return prisma.flight.create({
+    data: {
+      flight_number: flight.flightNumber,
+      service_date: serviceDate,
+      route_id: routeId,
+      scheduled_dep_at: departure,
+      scheduled_arr_at: arrival,
+      dep_at: departure,
+      arr_at: arrival,
+      aircraft_id: aircraftId,
+      status: 'scheduled',
+    },
+  })
+}
+
+/**
+ * The feature 6 rows of a demo flight that moves to a new day: the check-ins, passes, boardings, bags and seats of the
+ * old departure, and its gate close. Left in place, the passengers stay no-shows who cannot check in again and the
+ * closed gate keeps the flight from boarding. A bag that feature 10 has found keeps the rows, so its record holds.
+ */
+async function clearCheckIns(prisma: PrismaClient, flightId: string, flightNumber: string): Promise<void> {
+  const checkInIds = (await prisma.check_in.findMany({ where: { flight_id: flightId }, select: { id: true } })).map((row) => row.id)
+  const ofCheckIn = { check_in_id: { in: checkInIds } }
+  if ((await prisma.found_bag.count({ where: { checked_bag: ofCheckIn } })) > 0) {
+    console.warn(`seed: ${flightNumber} keeps its check-ins, feature 10 has found one of its bags`)
+    return
+  }
+  // boarding_event is append-only (a trigger refuses UPDATE and DELETE) and its rows point at the passes, so a flight
+  // that was scanned at the gate keeps its check-ins too.
+  if ((await prisma.boarding_event.count({ where: { flight_id: flightId } })) > 0) {
+    console.warn(`seed: ${flightNumber} keeps its check-ins, it has boarding events, which cannot be deleted`)
+    return
+  }
+  await prisma.$transaction([
+    prisma.boarding_pass.deleteMany({ where: ofCheckIn }),
+    prisma.checked_bag.deleteMany({ where: ofCheckIn }),
+    prisma.carry_on_check.deleteMany({ where: ofCheckIn }),
+    prisma.travel_document.deleteMany({ where: ofCheckIn }),
+    prisma.check_in.deleteMany({ where: { id: { in: checkInIds } } }),
+    prisma.seat_assignment.deleteMany({ where: { flight_id: flightId } }),
+    prisma.flight_boarding.updateMany({
+      where: { flight_id: flightId },
+      data: { sensor_count: null, manual_count: null, boarded_count: null, closed_at: null, closed_by: null, updated_at: new Date() },
+    }),
+  ])
+}
+
+/** The gate of the flight: the gate screen needs the flight to be at a gate before it can be boarded. */
+async function seedGateAssignment(prisma: PrismaClient, flightId: string, gateCode: string): Promise<void> {
+  const existing = await prisma.flight_boarding.findUnique({ where: { flight_id: flightId } })
+  if (existing) return
+  const gate = await prisma.gate.findUnique({ where: { airport_code_code: { airport_code: 'BKK', code: gateCode } } })
+  if (!gate) throw new Error(`The gate ${gateCode} is missing: seedCheckIn() has to run first`)
+  await prisma.flight_boarding.create({ data: { flight_id: flightId, gate_id: gate.id } })
+}
+
+/** The customer of the demo: the user, the passenger behind it and the customer row that joins them. */
+async function seedDemoCustomer(prisma: PrismaClient, passengers: typeof DEMO_PASSENGERS): Promise<{ id: string }> {
+  const existingUser = await prisma.user.findFirst({ where: { email: DEMO_EMAIL, type: 'customer', deleted_at: null } })
+  const user = existingUser ?? (await prisma.user.create({ data: { type: 'customer', email: DEMO_EMAIL } }))
+  const existingCustomer = await prisma.customer.findFirst({ where: { user_id: user.id, deleted_at: null } })
+  if (existingCustomer) return existingCustomer
+  // The demo customer is Anna Eriksson: the passenger of the demo with no passport on file.
+  const anna = passengers.find((passenger) => passenger.pnr === 'ER224F')!
+  const person = await seedPassenger(prisma, anna)
+  return prisma.customer.create({ data: { user_id: user.id, passenger_id: person.id } })
+}
+
+/** The passenger of feature 7: found by the passport, or by the name when there is no passport yet. */
+async function seedPassenger(prisma: PrismaClient, passenger: (typeof DEMO_PASSENGERS)[number]): Promise<{ id: string }> {
+  const existing = passenger.passportNumber
+    ? await prisma.passenger.findFirst({ where: { passport_number: passenger.passportNumber, deleted_at: null } })
+    : await prisma.passenger.findFirst({
+        where: { first_name: passenger.firstName, last_name: passenger.lastName, deleted_at: null },
+      })
+  if (existing) return existing
+  return prisma.passenger.create({
+    data: {
+      first_name: passenger.firstName,
+      last_name: passenger.lastName,
+      date_of_birth: new Date(`${passenger.dateOfBirth}T00:00:00.000Z`),
+      gender: passenger.gender,
+      nationality: passenger.nationality,
+      passport_number: passenger.passportNumber,
+    },
+  })
+}
+
+/** The ticket number of a coupon: the airline number and ten digits of the sequence of the database. */
+async function nextTicketNumber(prisma: PrismaClient): Promise<string> {
+  const rows = await prisma.$queryRaw<Array<{ value: bigint }>>`SELECT nextval('ticket_number_seq') AS value`
+  return `${AIRLINE_NUMBER}${Number(rows[0].value).toString().padStart(10, '0')}`
+}
+
+const daysAgo = (from: Date, days: number): Date => new Date(from.getTime() - days * 24 * 60 * 60 * 1000)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Feature 12 demo data (onboard products): products, warehouses, stock, catering orders and sales
+// ══════════════════════════════════════════════════════════════════════════════
+// F12 seed (idempotent). Runs after the base Level 1 seed (which gives
+// us roles, customers, and staff). Inserts the network/route/flight
+// inventory F12 needs to exercise every endpoint: 4 airports, 2
+// aircraft, 1 route, 2 fare classes, 3 flights, 12 products, 4
+// warehouses, 5 suppliers, network + per-route + per-flight cabin
+// settings, 12 product offerings, 4 purchase receipts and 8 stock
+// batches (with varied expiry states), 4 catering orders in
+// generated/loaded/closed states, 2 stock transfers with aircraft
+// stock, 1 flight report with lines, 3 on-board product sales, and
+// (customer orders come from seed-f12-booking.ts, which needs a real booking).
+//
+// Re-running this seed is a no-op: every row is upserted on a stable
+// natural key.
+
+// Stable IDs (deterministic) so re-runs and the F12 dev pages are
+// stable. We use hex-shaped strings that look like UUIDs but are
+// not real UUIDs — Prisma uses UUID columns but treats the value
+// as a TEXT, so any non-empty string is fine.
+const id = (s: string): string => `00000000-0000-0000-0000-${s.padStart(12, '0')}`
+// Random UUID for tables where the natural key isn't usable.
+const ruid = (): string => randomUUID()
+// A stable uuid for a row that is derived from an airport, so a rerun finds the same rows.
+const stableId = (kind: string, key: string): string => {
+  const h = createHash('sha256').update(`f12:${kind}:${key}`).digest('hex')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`
+}
+
+const IDS = {
+  airport: {
+    BKK: id('a00000000001'),
+    NRT: id('a00000000002'),
+    SIN: id('a00000000003'),
+    HKG: id('a00000000004'),
+  },
+  aircraftType: {
+    A320: id('b00000000001'),
+    B777: id('b00000000002'),
+  },
+  aircraft: {
+    FYA: id('c00000000001'),
+    FYB: id('c00000000002'),
+  },
+  route: {
+    BKKNRT: id('d00000000001'),
+    SINBKK: id('d00000000002'),
+    NRTBKK: id('d00000000003'),
+  },
+  fareClass: {
+    ECON: id('e00000000001'),
+    BIZ: id('e00000000002'),
+  },
+  flight: {
+    F401: id('f00000000001'),
+    F405: id('f00000000002'),
+    F308: id('f00000000003'),
+    F220: id('f00000000004'),
+    F309: id('f00000000005'),
+  },
+  product: {
+    P001: id('100000000001'), // Beef stir-fry (meal, STD)
+    P002: id('100000000002'), // Wagyu steak (meal, STD, premium)
+    P003: id('100000000003'), // Mushroom risotto (meal, VGML)
+    P004: id('100000000004'), // Halal chicken biryani (meal, MOML)
+    P005: id('100000000005'), // Kosher-style beef stew (meal, KSML)
+    P006: id('100000000006'), // Cold brew coffee (beverage)
+    P007: id('100000000007'), // Sparkling water 330ml (beverage)
+    P008: id('100000000008'), // Fresh orange juice 200ml (beverage)
+    P009: id('100000000009'), // Mixed nuts 30g (snack)
+    P010: id('100000000010'), // Sea-salt crisps 40g (snack)
+    P011: id('100000000011'), // Dark chocolate 70% 30g (snack)
+    P012: id('100000000012'), // Eau de parfum 50ml (duty_free)
+  },
+  warehouse: {
+    WHBKK: id('200000000001'),
+    WHNRT: id('200000000002'),
+    WHSIN: id('200000000003'),
+    WHHKG: id('200000000004'),
+  },
+  supplier: {
+    SG1: id('300000000001'),
+    SG2: id('300000000002'),
+    SG3: id('300000000003'),
+    SG4: id('300000000004'),
+    SG5: id('300000000005'),
+  },
+  receipt: {
+    R001: id('400000000001'),
+    R002: id('400000000002'),
+    R003: id('400000000003'),
+    R004: id('400000000004'),
+  },
+  batch: {
+    B001: id('500000000001'),
+    B002: id('500000000002'),
+    B003: id('500000000003'),
+    B004: id('500000000004'),
+    B005: id('500000000005'),
+    B006: id('500000000006'),
+    B007: id('500000000007'),
+    B008: id('500000000008'),
+  },
+  cateringOrder: {
+    CO401: id('600000000001'),
+    CO405: id('600000000002'),
+    CO308: id('600000000003'),
+    COOLD: id('600000000004'),
+    CO309: id('600000000005'),
+  },
+  stockTransfer: {
+    ST401: id('700000000001'),
+    ST308: id('700000000002'),
+    ST405: id('700000000003'),
+  },
+  flightReport: {
+    FR401: id('800000000001'),
+  },
+  productOrder: {
+    PO1: id('900000000001'),
+    PO2: id('900000000002'),
+    PO3: id('900000000003'),
+    PO4: id('900000000004'),
+  },
+  cabinSetting: {
+    NET_ECON: id('a00000000001'),
+    NET_BIZ: id('a00000000002'),
+    ROUTE_BKKNRT_ECON: id('a00000000003'),
+    FLIGHT_F401_BIZ: id('a00000000004'),
+  },
+  productOffering: {
+    PREFIX: 'b0000000',
+  },
+}
+
+// "Now" anchor for relative dates. The level-1 seed runs before this
+// and gives us a stable "today" (the container's clock at boot).
+function nowMs(): number {
+  return Date.now()
+}
+
+function daysFromNow(d: number): Date {
+  return new Date(nowMs() + d * 24 * 60 * 60 * 1000)
+}
+
+function hoursFromNow(h: number): Date {
+  return new Date(nowMs() + h * 60 * 60 * 1000)
+}
+
+// Idempotently write a stock_batch. If a row already exists with the
+// same id but a different product_id, drop the dependent rows that
+// would otherwise violate the composite (batch, product) FK, then
+// update the batch. The later stock_transfer / stock_transfer_line /
+// aircraft_stock sections of this seed recreate those rows with the
+// new product_id.
+//
+// A rerun refills a batch to its seeded quantity (handy for testing),
+// and records the difference as an adjust movement (reason
+// count_correction) so the stock_movement ledger still adds up.
+async function upsertStockBatch(
+  prisma: PrismaClient,
+  b: {
+    id: string
+    purchase_receipt_id: string
+    warehouse_id: string
+    product_id: string
+    batch_code: string
+    quantity_received: number
+    quantity_remaining: number
+    unit_cost_amount: string
+    received_at: Date
+    expires_at: Date | null
+  },
+): Promise<void> {
+  const existing = await prisma.stock_batch.findUnique({ where: { id: b.id } })
+  if (!existing) {
+    await prisma.stock_batch.create({ data: b })
+    return
+  }
+  if (existing.product_id !== b.product_id) {
+    await prisma.stock_transfer_line.deleteMany({
+      where: { stock_batch_id: b.id, product_id: existing.product_id },
+    })
+    await prisma.aircraft_stock.deleteMany({
+      where: { stock_batch_id: b.id, product_id: existing.product_id },
+    })
+    await prisma.stock_movement.updateMany({
+      where: { stock_batch_id: b.id, product_id: existing.product_id },
+      data: { product_id: b.product_id },
+    })
+  }
+  const delta = b.quantity_remaining - (existing.product_id === b.product_id ? existing.quantity_remaining : 0)
+  if (delta !== 0) {
+    await prisma.stock_movement.create({
+      data: {
+        product_id: b.product_id,
+        warehouse_id: b.warehouse_id,
+        stock_batch_id: b.id,
+        type: 'adjust',
+        quantity: delta,
+        reason: 'count_correction',
+        note: 'seed reset of demo stock',
+        created_by_staff_id: null,
+        occurred_at: new Date(),
+      },
+    })
+  }
+  await prisma.stock_batch.update({
+    where: { id: b.id },
+    data: {
+      product_id: b.product_id,
+      purchase_receipt_id: b.purchase_receipt_id,
+      warehouse_id: b.warehouse_id,
+      batch_code: b.batch_code,
+      quantity_received: b.quantity_received,
+      quantity_remaining: b.quantity_remaining,
+      unit_cost_amount: b.unit_cost_amount,
+      received_at: b.received_at,
+      expires_at: b.expires_at,
+    },
+  })
+}
+
+async function seedF12(prisma: PrismaClient): Promise<void> {
+  console.log('Seeding F12: airports, aircraft, flights, products, stock, sales...')
+
+  // --- Airports (upsert on PK) --------------------------------------------
+  for (const a of [
+    {
+      iata_code: 'BKK',
+      icao_code: 'VTBS',
+      name: 'Suvarnabhumi',
+      city: 'Bangkok',
+      country: 'th',
+      timezone: 'Asia/Bangkok',
+      min_turnaround_min: 45,
+    },
+    { iata_code: 'NRT', icao_code: 'RJAA', name: 'Narita', city: 'Tokyo', country: 'jp', timezone: 'Asia/Tokyo', min_turnaround_min: 60 },
+    {
+      iata_code: 'SIN',
+      icao_code: 'WSSS',
+      name: 'Changi',
+      city: 'Singapore',
+      country: 'sg',
+      timezone: 'Asia/Singapore',
+      min_turnaround_min: 45,
+    },
+    {
+      iata_code: 'HKG',
+      icao_code: 'VHHH',
+      name: 'Hong Kong Intl',
+      city: 'Hong Kong',
+      country: 'hk',
+      timezone: 'Asia/Hong_Kong',
+      min_turnaround_min: 45,
+    },
+  ]) {
+    await prisma.airport.upsert({ where: { iata_code: a.iata_code }, update: a, create: a })
+  }
+
+  // --- Aircraft types ----------------------------------------------------
+  IDS.aircraftType.A320 = (
+    (await prisma.aircraft_type.findUnique({ where: { code: 'A320' } })) ??
+    (await prisma.aircraft_type.create({
+      data: {
+        id: IDS.aircraftType.A320,
+        code: 'A320',
+        manufacturer: 'Airbus',
+        model: 'A320neo',
+        layout: {},
+        hold_weight_limit_kg: 5000,
+        max_takeoff_weight_kg: 79000,
+        max_range_km: 6300,
+        min_turnaround_minutes: 30,
+        operating_cost_per_hour: 4500,
+        cost_currency: 'USD',
+      },
+    }))
+  ).id
+  IDS.aircraftType.B777 = (
+    (await prisma.aircraft_type.findUnique({ where: { code: 'B777' } })) ??
+    (await prisma.aircraft_type.create({
+      data: {
+        id: IDS.aircraftType.B777,
+        code: 'B777',
+        manufacturer: 'Boeing',
+        model: '777-300ER',
+        layout: {},
+        hold_weight_limit_kg: 18000,
+        max_takeoff_weight_kg: 350000,
+        max_range_km: 14000,
+        min_turnaround_minutes: 60,
+        operating_cost_per_hour: 12000,
+        cost_currency: 'USD',
+      },
+    }))
+  ).id
+
+  // --- Aircraft (base at BKK) -------------------------------------------
+  IDS.aircraft.FYA = (
+    (await prisma.aircraft.findFirst({ where: { tail_number: 'HS-FYA' } })) ??
+    (await prisma.aircraft.create({
+      data: {
+        id: IDS.aircraft.FYA,
+        tail_number: 'HS-FYA',
+        aircraft_type_id: IDS.aircraftType.A320,
+        entry_into_service_date: new Date('2018-01-01'),
+        base_airport_code: 'BKK',
+      },
+    }))
+  ).id
+  IDS.aircraft.FYB = (
+    (await prisma.aircraft.findFirst({ where: { tail_number: 'HS-FYB' } })) ??
+    (await prisma.aircraft.create({
+      data: {
+        id: IDS.aircraft.FYB,
+        tail_number: 'HS-FYB',
+        aircraft_type_id: IDS.aircraftType.B777,
+        entry_into_service_date: new Date('2015-06-01'),
+        base_airport_code: 'BKK',
+      },
+    }))
+  ).id
+
+  // --- Route BKK → NRT ---------------------------------------------------
+  IDS.route.BKKNRT = (
+    (await prisma.route.findFirst({ where: { origin: 'BKK', destination: 'NRT' } })) ??
+    (await prisma.route.create({
+      data: {
+        origin: 'BKK',
+        destination: 'NRT',
+        distance_km: 4600,
+        block_time_min: 390,
+      },
+    }))
+  ).id
+  IDS.route.SINBKK = (
+    (await prisma.route.findFirst({ where: { origin: 'SIN', destination: 'BKK' } })) ??
+    (await prisma.route.create({
+      data: {
+        origin: 'SIN',
+        destination: 'BKK',
+        distance_km: 1400,
+        block_time_min: 130,
+      },
+    }))
+  ).id
+  IDS.route.NRTBKK = (
+    (await prisma.route.findFirst({ where: { origin: 'NRT', destination: 'BKK' } })) ??
+    (await prisma.route.create({
+      data: {
+        origin: 'NRT',
+        destination: 'BKK',
+        distance_km: 4600,
+        block_time_min: 390,
+      },
+    }))
+  ).id
+
+  // --- Fare classes ------------------------------------------------------
+  IDS.fareClass.ECON = (
+    (await prisma.fare_class.findFirst({ where: { code: 'ECO', cabin: 'economy' } })) ??
+    (await prisma.fare_class.create({
+      data: {
+        code: 'ECO',
+        cabin: 'economy',
+        name: 'Economy',
+      },
+    }))
+  ).id
+  IDS.fareClass.BIZ = (
+    (await prisma.fare_class.findFirst({ where: { code: 'BIZ', cabin: 'business' } })) ??
+    (await prisma.fare_class.create({
+      data: {
+        code: 'BIZ',
+        cabin: 'business',
+        name: 'Business',
+      },
+    }))
+  ).id
+
+  // --- Flights -----------------------------------------------------------
+  // f-401: BKK → NRT, business, departs in +5h, aircraft FYB (B777)
+  // f-405: BKK → NRT, economy, departs in +10h, aircraft FYA (A320)
+  // f-309: NRT → BKK, business, departs in +20h, aircraft FYA (A320) — return leg
+  // f-308: BKK → NRT, economy, departs in +25h, aircraft FYB (B777)
+  // f-220: SIN → BKK, economy, departs in +48h, aircraft FYA (A320) — void test case
+  // f-309 starts at +20h so it does not overlap with f-405 (which lands
+  // at +16.5h on the same aircraft). The flight_timetable_no_aircraft
+  // _overlap exclusion constraint would reject an overlap.
+  const f401Dep = hoursFromNow(5)
+  const f405Dep = hoursFromNow(10)
+  const f309Dep = hoursFromNow(20)
+  const f308Dep = hoursFromNow(25)
+  const f220Dep = hoursFromNow(48) // SIN → BKK, void test case
+  const addMinutes = (d: Date, m: number) => new Date(d.getTime() + m * 60_000)
+  const flightSeed = [
+    {
+      id: IDS.flight.F401,
+      flight_number: 'FL401',
+      service_date: new Date(f401Dep.toISOString().slice(0, 10)),
+      route_id: IDS.route.BKKNRT,
+      scheduled_dep_at: f401Dep,
+      scheduled_arr_at: addMinutes(f401Dep, 390),
+      dep_at: f401Dep,
+      arr_at: addMinutes(f401Dep, 390),
+      aircraft_id: IDS.aircraft.FYB,
+      status: 'scheduled' as const,
+    },
+    {
+      id: IDS.flight.F405,
+      flight_number: 'FL405',
+      service_date: new Date(f405Dep.toISOString().slice(0, 10)),
+      route_id: IDS.route.BKKNRT,
+      scheduled_dep_at: f405Dep,
+      scheduled_arr_at: addMinutes(f405Dep, 390),
+      dep_at: f405Dep,
+      arr_at: addMinutes(f405Dep, 390),
+      aircraft_id: IDS.aircraft.FYA,
+      status: 'scheduled' as const,
+    },
+    {
+      id: IDS.flight.F309,
+      flight_number: 'FL309',
+      service_date: new Date(f309Dep.toISOString().slice(0, 10)),
+      route_id: IDS.route.NRTBKK,
+      scheduled_dep_at: f309Dep,
+      scheduled_arr_at: addMinutes(f309Dep, 390),
+      dep_at: f309Dep,
+      arr_at: addMinutes(f309Dep, 390),
+      aircraft_id: IDS.aircraft.FYA,
+      status: 'scheduled' as const,
+    },
+    {
+      id: IDS.flight.F308,
+      flight_number: 'FL308',
+      service_date: new Date(f308Dep.toISOString().slice(0, 10)),
+      route_id: IDS.route.BKKNRT,
+      scheduled_dep_at: f308Dep,
+      scheduled_arr_at: addMinutes(f308Dep, 390),
+      dep_at: f308Dep,
+      arr_at: addMinutes(f308Dep, 390),
+      aircraft_id: IDS.aircraft.FYB,
+      status: 'scheduled' as const,
+    },
+    {
+      id: IDS.flight.F220,
+      flight_number: 'FL220',
+      service_date: new Date(f220Dep.toISOString().slice(0, 10)),
+      route_id: IDS.route.SINBKK,
+      scheduled_dep_at: f220Dep,
+      scheduled_arr_at: addMinutes(f220Dep, 130),
+      dep_at: f220Dep,
+      arr_at: addMinutes(f220Dep, 130),
+      aircraft_id: IDS.aircraft.FYA,
+      status: 'scheduled' as const,
+    },
+  ]
+  // The times are relative to now, so a rerun on a later day moves each flight. The database refuses two flights on one
+  // aircraft at overlapping times, and a flight's new slot can overlap another one's old slot (FL401 and FL308 share an
+  // aircraft). So any existing flight is first parked on its own day ten years out, then placed at its new time.
+  const existingFlights = await prisma.flight.findMany({ where: { id: { in: flightSeed.map((f) => f.id) } }, select: { id: true } })
+  for (const [index, { id: flightId }] of existingFlights.entries()) {
+    const parked = new Date(Date.UTC(new Date().getUTCFullYear() + 10, 0, 1 + index * 2))
+    await prisma.flight.update({
+      where: { id: flightId },
+      data: { scheduled_dep_at: parked, scheduled_arr_at: addMinutes(parked, 60), dep_at: parked, arr_at: addMinutes(parked, 60) },
+    })
+  }
+  for (const f of flightSeed) {
+    // Another flight may already hold this aircraft at this time, for example the test booking's FL501 and FL502 (they are
+    // scheduled from the day they were created, so they drift into these slots). The database refuses an overlap, so the
+    // departure moves later, an hour at a time, until the aircraft is free.
+    const length = f.scheduled_arr_at.getTime() - f.scheduled_dep_at.getTime()
+    let dep = f.scheduled_dep_at
+    for (let step = 0; step < 240; step++) {
+      const clash = await prisma.flight.findFirst({
+        where: {
+          aircraft_id: f.aircraft_id,
+          id: { not: f.id },
+          scheduled_dep_at: { lt: new Date(dep.getTime() + length) },
+          scheduled_arr_at: { gt: dep },
+        },
+        select: { id: true },
+      })
+      if (!clash) break
+      dep = new Date(dep.getTime() + 3_600_000)
+    }
+    const arr = new Date(dep.getTime() + length)
+    const times = {
+      service_date: new Date(dep.toISOString().slice(0, 10)),
+      scheduled_dep_at: dep,
+      scheduled_arr_at: arr,
+      dep_at: dep,
+      arr_at: arr,
+    }
+    await prisma.flight.upsert({
+      where: { id: f.id },
+      update: { ...times, aircraft_id: f.aircraft_id },
+      create: { ...f, ...times },
+    })
+  }
+
+  // --- Products (12) -----------------------------------------------------
+  // Meals cover the 3 special-meal codes (VGML/MOML/KSML) plus one
+  // regular STD meal and one premium Wagyu STD meal. Beverages, snacks
+  // and a single duty-free perfume round out the catalog. Photos and
+  // descriptions are seeded as null for now (photo upload is a UI
+  // placeholder).
+  const productSeed = [
+    {
+      id: IDS.product.P001,
+      sku: 'MEAL-BEEF-001',
+      category: 'meal' as const,
+      type_code: 'STD',
+      name: 'Beef stir-fry with jasmine rice',
+      price: '12.50',
+      cost: '4.00',
+      shelf: 2,
+      premium: false,
+      is_active: true,
+    },
+    {
+      id: IDS.product.P002,
+      sku: 'MEAL-WAGYU-001',
+      category: 'meal' as const,
+      type_code: 'STD',
+      name: 'Wagyu steak with truffle mash',
+      price: '28.00',
+      cost: '11.00',
+      shelf: 2,
+      premium: true,
+      is_active: true,
+    },
+    {
+      id: IDS.product.P003,
+      sku: 'MEAL-VEG-001',
+      category: 'meal' as const,
+      type_code: 'VGML',
+      name: 'Mushroom risotto (vegan)',
+      price: '11.00',
+      cost: '3.80',
+      shelf: 2,
+      premium: false,
+      is_active: true,
+    },
+    {
+      id: IDS.product.P004,
+      sku: 'MEAL-MOML-001',
+      category: 'meal' as const,
+      type_code: 'MOML',
+      name: 'Halal chicken biryani',
+      price: '13.00',
+      cost: '4.20',
+      shelf: 2,
+      premium: false,
+      is_active: true,
+    },
+    {
+      id: IDS.product.P005,
+      sku: 'MEAL-KSML-001',
+      category: 'meal' as const,
+      type_code: 'KSML',
+      name: 'Kosher-style beef stew',
+      price: '14.00',
+      cost: '4.80',
+      shelf: 2,
+      premium: false,
+      is_active: true,
+    },
+    {
+      id: IDS.product.P006,
+      sku: 'BEV-COFFEE-001',
+      category: 'beverage' as const,
+      name: 'Cold brew coffee',
+      price: '4.50',
+      cost: '1.20',
+      shelf: 30,
+      is_active: true,
+    },
+    {
+      id: IDS.product.P007,
+      sku: 'BEV-WATER-001',
+      category: 'beverage' as const,
+      name: 'Sparkling water 330ml',
+      price: '3.00',
+      cost: '0.60',
+      shelf: 365,
+      is_active: true,
+    },
+    {
+      id: IDS.product.P008,
+      sku: 'BEV-OJ-001',
+      category: 'beverage' as const,
+      name: 'Fresh orange juice 200ml',
+      price: '3.50',
+      cost: '0.90',
+      shelf: 7,
+      is_active: true,
+    },
+    {
+      id: IDS.product.P009,
+      sku: 'SNK-NUTS-001',
+      category: 'snack' as const,
+      name: 'Mixed nuts 30g',
+      price: '3.50',
+      cost: '0.80',
+      shelf: 180,
+      is_active: true,
+    },
+    {
+      id: IDS.product.P010,
+      sku: 'SNK-CRISPS-001',
+      category: 'snack' as const,
+      name: 'Sea-salt crisps 40g',
+      price: '3.00',
+      cost: '0.70',
+      shelf: 90,
+      is_active: true,
+    },
+    {
+      id: IDS.product.P011,
+      sku: 'SNK-CHOC-001',
+      category: 'snack' as const,
+      name: 'Dark chocolate 70% 30g',
+      price: '4.00',
+      cost: '1.10',
+      shelf: 270,
+      is_active: true,
+    },
+    {
+      id: IDS.product.P012,
+      sku: 'DF-PERFUME-001',
+      category: 'duty_free' as const,
+      name: 'Eau de parfum 50ml',
+      price: '78.00',
+      cost: '24.00',
+      shelf: null,
+      is_active: true,
+    },
+  ]
+  for (const p of productSeed) {
+    await prisma.product.upsert({
+      where: { id: p.id },
+      update: {
+        sku: p.sku,
+        category: p.category,
+        type_code: p.type_code ?? 'STD',
+        name: p.name,
+        price_amount: p.price,
+        purchase_cost_amount: p.cost,
+        shelf_life_days: p.shelf,
+        is_premium: p.premium ?? false,
+        is_active: p.is_active,
+      },
+      create: {
+        id: p.id,
+        sku: p.sku,
+        category: p.category,
+        type_code: p.type_code ?? 'STD',
+        name: p.name,
+        price_amount: p.price,
+        purchase_cost_amount: p.cost,
+        shelf_life_days: p.shelf,
+        is_premium: p.premium ?? false,
+        is_active: p.is_active,
+      },
+    })
+  }
+
+  // --- Warehouses (one per departure airport) ----------------------------
+  const whSeed = [
+    { id: IDS.warehouse.WHBKK, code: 'WH-BKK', name: 'BKK Catering Warehouse', airport_code: 'BKK' },
+    { id: IDS.warehouse.WHNRT, code: 'WH-NRT', name: 'NRT Catering Warehouse', airport_code: 'NRT' },
+    { id: IDS.warehouse.WHSIN, code: 'WH-SIN', name: 'SIN Catering Warehouse', airport_code: 'SIN' },
+    { id: IDS.warehouse.WHHKG, code: 'WH-HKG', name: 'HKG Catering Warehouse', airport_code: 'HKG' },
+  ]
+  for (const w of whSeed) {
+    await prisma.warehouse.upsert({
+      where: { id: w.id },
+      update: { name: w.name },
+      create: w,
+    })
+  }
+
+  // --- Suppliers (≥1 per airport) ---------------------------------------
+  const supSeed = [
+    { id: IDS.supplier.SG1, name: 'Bangkok Catering Co.', airport_code: 'BKK', contact: 'bkk@example.com' },
+    { id: IDS.supplier.SG2, name: 'Thai Beverage Supply', airport_code: 'BKK', contact: 'bev@example.com' },
+    { id: IDS.supplier.SG3, name: 'Narita Inflight Services', airport_code: 'NRT', contact: 'nrt@example.com' },
+    { id: IDS.supplier.SG4, name: 'Singapore Air Catering', airport_code: 'SIN', contact: 'sin@example.com' },
+    { id: IDS.supplier.SG5, name: 'HK Duty Free Partners', airport_code: 'HKG', contact: 'hkg@example.com' },
+  ]
+  for (const s of supSeed) {
+    await prisma.supplier.upsert({
+      where: { id: s.id },
+      update: { name: s.name, contact: s.contact, is_active: true },
+      create: { ...s, is_active: true },
+    })
+  }
+
+  // --- A staff member to be the "received_by" and audit actor ----------
+  const anyStaff = await prisma.staff.findFirst({ where: { deleted_at: null } })
+  if (!anyStaff) throw new Error('seedF12 needs a staff row from the level-1 seed first.')
+  const staffId = anyStaff.id
+
+  // --- Cabin settings: network + route override + flight override -------
+  // The schema seeds 4 placeholder network rows on migration; we update
+  // the two we care about (economy, business) and add route/flight
+  // overrides on the composite unique key (route_id, flight_id, cabin).
+  // Prisma 7 won't accept null in `where` for nullable columns, so
+  // findFirst + update.
+  const networkEconomy = await prisma.cabin_setting.findFirst({ where: { scope: 'network', cabin: 'economy' } })
+  if (networkEconomy) {
+    await prisma.cabin_setting.update({
+      where: { id: networkEconomy.id },
+      data: {
+        meal_service: 'paid',
+        meal_selection: 'choose',
+        included_per_passenger: 0,
+        preorder_enabled: true,
+        order_window_hours: 48,
+        premium_meals_allowed: true,
+        snacks_enabled: true,
+        duty_free_enabled: true,
+        onboard_buffer_percent: 10,
+      },
+    })
+  }
+  const networkBusiness = await prisma.cabin_setting.findFirst({ where: { scope: 'network', cabin: 'business' } })
+  if (networkBusiness) {
+    await prisma.cabin_setting.update({
+      where: { id: networkBusiness.id },
+      data: {
+        meal_service: 'complimentary',
+        meal_selection: 'choose',
+        included_per_passenger: 1,
+        preorder_enabled: true,
+        order_window_hours: 48,
+        premium_meals_allowed: true,
+        snacks_enabled: true,
+        duty_free_enabled: true,
+        onboard_buffer_percent: 10,
+      },
+    })
+  }
+  // Route override: enable duty-free on economy for BKK-NRT
+  const existingRoute = await prisma.cabin_setting.findFirst({ where: { scope: 'route', route_id: IDS.route.BKKNRT, cabin: 'economy' } })
+  if (existingRoute) {
+    await prisma.cabin_setting.update({ where: { id: existingRoute.id }, data: { duty_free_enabled: true } })
+  } else {
+    await prisma.cabin_setting.create({
+      data: {
+        id: IDS.cabinSetting.ROUTE_BKKNRT_ECON,
+        scope: 'route',
+        route_id: IDS.route.BKKNRT,
+        cabin: 'economy',
+        duty_free_enabled: true,
+        updated_by_staff_id: staffId,
+      },
+    })
+  }
+  // Flight override: f-401 (business) has shorter order window
+  const existingFlight = await prisma.cabin_setting.findFirst({ where: { scope: 'flight', flight_id: IDS.flight.F401, cabin: 'business' } })
+  if (existingFlight) {
+    await prisma.cabin_setting.update({ where: { id: existingFlight.id }, data: { order_window_hours: 24 } })
+  } else {
+    await prisma.cabin_setting.create({
+      data: {
+        id: IDS.cabinSetting.FLIGHT_F401_BIZ,
+        scope: 'flight',
+        flight_id: IDS.flight.F401,
+        cabin: 'business',
+        order_window_hours: 24,
+        updated_by_staff_id: staffId,
+      },
+    })
+  }
+
+  // --- Product offerings: 12 network-level (default = P001) --------------
+  for (const p of productSeed) {
+    const cabin = p.category === 'meal' ? 'business' : 'business'
+    // Use the composite (product_id, scope, route_id, flight_id, cabin) as
+    // the lookup key. findFirst+create/update is idempotent.
+    const existingBiz = await prisma.product_offering.findFirst({
+      where: { product_id: p.id, scope: 'network', cabin },
+    })
+    if (existingBiz) {
+      await prisma.product_offering.update({
+        where: { id: existingBiz.id },
+        data: { is_default: p.id === IDS.product.P001, is_active: true },
+      })
+    } else {
+      await prisma.product_offering.create({
+        data: {
+          id: ruid(),
+          product_id: p.id,
+          scope: 'network',
+          cabin,
+          is_default: p.id === IDS.product.P001,
+          is_active: true,
+        },
+      })
+    }
+    // Economy sells the same menu, so paid meals can be tried there too (P001 is the default meal).
+    {
+      const existingEcon = await prisma.product_offering.findFirst({
+        where: { product_id: p.id, scope: 'network', cabin: 'economy' },
+      })
+      if (existingEcon) {
+        await prisma.product_offering.update({
+          where: { id: existingEcon.id },
+          data: { is_active: true, is_default: p.id === IDS.product.P001 },
+        })
+      } else {
+        await prisma.product_offering.create({
+          data: {
+            id: ruid(),
+            product_id: p.id,
+            scope: 'network',
+            cabin: 'economy',
+            is_default: p.id === IDS.product.P001,
+            is_active: true,
+          },
+        })
+      }
+    }
+  }
+
+  // --- Purchase receipts + stock batches ---------------------------------
+  // Receipt 1: 200 P001 @ BKK
+  await prisma.purchase_receipt.upsert({
+    where: { id: IDS.receipt.R001 },
+    update: {},
+    create: {
+      id: IDS.receipt.R001,
+      supplier_id: IDS.supplier.SG1,
+      warehouse_id: IDS.warehouse.WHBKK,
+      received_at: daysFromNow(-3),
+      received_by_staff_id: staffId,
+    },
+  })
+  // Batch 001: P001 expires in 1 day (about to expire)
+  await upsertStockBatch(prisma, {
+    id: IDS.batch.B001,
+    purchase_receipt_id: IDS.receipt.R001,
+    warehouse_id: IDS.warehouse.WHBKK,
+    product_id: IDS.product.P001,
+    batch_code: 'B001',
+    quantity_received: 200,
+    quantity_remaining: 200,
+    unit_cost_amount: '4.00',
+    received_at: daysFromNow(-3),
+    expires_at: daysFromNow(1),
+  })
+  // Receipt 2: P002 (Wagyu), P006 (cold brew), P009 (mixed nuts) @ BKK
+  await prisma.purchase_receipt.upsert({
+    where: { id: IDS.receipt.R002 },
+    update: {},
+    create: {
+      id: IDS.receipt.R002,
+      supplier_id: IDS.supplier.SG1,
+      warehouse_id: IDS.warehouse.WHBKK,
+      received_at: daysFromNow(-1),
+      received_by_staff_id: staffId,
+    },
+  })
+  for (const b of [
+    {
+      id: IDS.batch.B002,
+      purchase_receipt_id: IDS.receipt.R002,
+      warehouse_id: IDS.warehouse.WHBKK,
+      product_id: IDS.product.P002,
+      batch_code: 'B002',
+      quantity_received: 120,
+      quantity_remaining: 120,
+      unit_cost_amount: '11.00',
+      received_at: daysFromNow(-1),
+      expires_at: daysFromNow(1),
+    },
+    {
+      id: IDS.batch.B003,
+      purchase_receipt_id: IDS.receipt.R002,
+      warehouse_id: IDS.warehouse.WHBKK,
+      product_id: IDS.product.P006,
+      batch_code: 'B003',
+      quantity_received: 300,
+      quantity_remaining: 300,
+      unit_cost_amount: '1.20',
+      received_at: daysFromNow(-1),
+      expires_at: daysFromNow(20),
+    },
+    {
+      id: IDS.batch.B004,
+      purchase_receipt_id: IDS.receipt.R002,
+      warehouse_id: IDS.warehouse.WHBKK,
+      product_id: IDS.product.P009,
+      batch_code: 'B004',
+      quantity_received: 250,
+      quantity_remaining: 250,
+      unit_cost_amount: '0.80',
+      received_at: daysFromNow(-1),
+      expires_at: daysFromNow(150),
+    },
+  ]) {
+    await upsertStockBatch(prisma, b)
+  }
+  // Receipt 3: P012 (perfume) @ BKK (duty-free, no expiry)
+  await prisma.purchase_receipt.upsert({
+    where: { id: IDS.receipt.R003 },
+    update: {},
+    create: {
+      id: IDS.receipt.R003,
+      supplier_id: IDS.supplier.SG5,
+      warehouse_id: IDS.warehouse.WHBKK,
+      received_at: daysFromNow(-7),
+      received_by_staff_id: staffId,
+    },
+  })
+  await upsertStockBatch(prisma, {
+    id: IDS.batch.B005,
+    purchase_receipt_id: IDS.receipt.R003,
+    warehouse_id: IDS.warehouse.WHBKK,
+    product_id: IDS.product.P012,
+    batch_code: 'B005',
+    quantity_received: 50,
+    quantity_remaining: 50,
+    unit_cost_amount: '24.00',
+    received_at: daysFromNow(-7),
+    expires_at: null,
+  })
+  // Receipt 4: P007 (water), P011 (dark chocolate) @ BKK (beverage, snack — long shelf life)
+  await prisma.purchase_receipt.upsert({
+    where: { id: IDS.receipt.R004 },
+    update: {},
+    create: {
+      id: IDS.receipt.R004,
+      supplier_id: IDS.supplier.SG2,
+      warehouse_id: IDS.warehouse.WHBKK,
+      received_at: daysFromNow(-5),
+      received_by_staff_id: staffId,
+    },
+  })
+  await upsertStockBatch(prisma, {
+    id: IDS.batch.B007,
+    purchase_receipt_id: IDS.receipt.R004,
+    warehouse_id: IDS.warehouse.WHBKK,
+    product_id: IDS.product.P007,
+    batch_code: 'B007',
+    quantity_received: 400,
+    quantity_remaining: 400,
+    unit_cost_amount: '0.60',
+    received_at: daysFromNow(-5),
+    expires_at: daysFromNow(300),
+  })
+  await upsertStockBatch(prisma, {
+    id: IDS.batch.B008,
+    purchase_receipt_id: IDS.receipt.R004,
+    warehouse_id: IDS.warehouse.WHBKK,
+    product_id: IDS.product.P011,
+    batch_code: 'B008',
+    quantity_received: 180,
+    quantity_remaining: 180,
+    unit_cost_amount: '1.10',
+    received_at: daysFromNow(-5),
+    expires_at: daysFromNow(200),
+  })
+
+  // --- Warehouse stock (one row per warehouse×product we delivered) -----
+  // On hand is the sum of the warehouse's batches (the doc's invariant),
+  // so it is recomputed, not hardcoded. Reserved is rebuilt from the
+  // ledger: the reserve minus release movements of orders still pending
+  // or confirmed, capped at on hand, so a rerun neither strands nor
+  // invents a reservation. Rows
+  // for products this warehouse no longer stocks are dropped only when
+  // nothing is reserved on them.
+  const stockedProducts = [
+    IDS.product.P001,
+    IDS.product.P002,
+    IDS.product.P006,
+    IDS.product.P007,
+    IDS.product.P009,
+    IDS.product.P011,
+    IDS.product.P012,
+  ]
+  await prisma.warehouse_stock.deleteMany({
+    where: { warehouse_id: IDS.warehouse.WHBKK, product_id: { notIn: stockedProducts }, quantity_reserved: 0 },
+  })
+  for (const productId of stockedProducts) {
+    const sum = await prisma.stock_batch.aggregate({
+      where: { warehouse_id: IDS.warehouse.WHBKK, product_id: productId },
+      _sum: { quantity_remaining: true },
+    })
+    const onHand = sum._sum.quantity_remaining ?? 0
+    // A reserve movement is -n and a release +n, so what is still held is minus their sum.
+    const held = await prisma.stock_movement.aggregate({
+      where: {
+        warehouse_id: IDS.warehouse.WHBKK,
+        product_id: productId,
+        type: { in: ['reserve', 'release'] },
+        product_order: { is: { status: { in: ['pending_payment', 'confirmed'] } } },
+      },
+      _sum: { quantity: true },
+    })
+    const reserved = Math.min(Math.max(0, -(held._sum.quantity ?? 0)), onHand)
+    await prisma.warehouse_stock.upsert({
+      where: { warehouse_id_product_id: { warehouse_id: IDS.warehouse.WHBKK, product_id: productId } },
+      update: { quantity_on_hand: onHand, quantity_reserved: reserved },
+      create: { warehouse_id: IDS.warehouse.WHBKK, product_id: productId, quantity_on_hand: onHand, quantity_reserved: reserved },
+    })
+  }
+
+  // --- Warehouses for the other airports ---------------------------------
+  // One warehouse for every airport (docs/f12-g15.md has one per departure airport), so catering orders and stock
+  // reservations work on any route that is added later, and the demo hubs above get stock too. Each gets a supplier, one
+  // delivery and a small stock of three products; BKK stays the main store. The rows are keyed on the airport, so a rerun
+  // changes nothing.
+  const airports = await prisma.airport.findMany({ select: { iata_code: true } })
+  const regionalStock = [
+    { productId: IDS.product.P001, quantity: 60, cost: '4.00', expiresInDays: 4 },
+    { productId: IDS.product.P007, quantity: 120, cost: '0.40', expiresInDays: 120 },
+    { productId: IDS.product.P009, quantity: 90, cost: '0.90', expiresInDays: 90 },
+  ]
+  // Every airport, plus the demo hubs above; BKK is stocked by its own section.
+  const airportsToStock = [...new Set([...airports.map((a) => a.iata_code), ...whSeed.map((w) => w.airport_code)])].filter(
+    (code) => code !== 'BKK',
+  )
+  for (const origin of airportsToStock) {
+    let warehouseId = (await prisma.warehouse.findFirst({ where: { airport_code: origin, deleted_at: null } }))?.id
+    if (!warehouseId) {
+      warehouseId = stableId('warehouse', origin)
+      await prisma.warehouse.create({
+        data: { id: warehouseId, code: `WH-${origin}`, name: `${origin} Catering Warehouse`, airport_code: origin },
+      })
+    }
+    const supplierId = stableId('supplier', origin)
+    await prisma.supplier.upsert({
+      where: { id: supplierId },
+      update: { is_active: true },
+      create: {
+        id: supplierId,
+        name: `${origin} Inflight Supply`,
+        airport_code: origin,
+        contact: `${origin.toLowerCase()}@example.com`,
+        is_active: true,
+      },
+    })
+    const receiptId = stableId('receipt', origin)
+    await prisma.purchase_receipt.upsert({
+      where: { id: receiptId },
+      update: {},
+      create: {
+        id: receiptId,
+        supplier_id: supplierId,
+        warehouse_id: warehouseId,
+        received_at: daysFromNow(-2),
+        received_by_staff_id: staffId,
+      },
+    })
+    for (const item of regionalStock) {
+      await upsertStockBatch(prisma, {
+        id: stableId('batch', `${origin}:${item.productId}`),
+        purchase_receipt_id: receiptId,
+        warehouse_id: warehouseId,
+        product_id: item.productId,
+        batch_code: `${origin}-${item.productId.slice(-3)}`,
+        quantity_received: item.quantity,
+        quantity_remaining: item.quantity,
+        unit_cost_amount: item.cost,
+        received_at: daysFromNow(-2),
+        expires_at: daysFromNow(item.expiresInDays),
+      })
+      await prisma.warehouse_stock.upsert({
+        where: { warehouse_id_product_id: { warehouse_id: warehouseId, product_id: item.productId } },
+        update: { quantity_on_hand: item.quantity },
+        create: {
+          warehouse_id: warehouseId,
+          product_id: item.productId,
+          quantity_on_hand: item.quantity,
+          quantity_reserved: 0,
+          reorder_level: 20,
+        },
+      })
+    }
+  }
+
+  // --- Catering orders --------------------------------------------------
+  // co-401: business, loaded (transfer already on the aircraft)
+  await prisma.catering_order.upsert({
+    where: { id: IDS.cateringOrder.CO401 },
+    update: { status: 'loaded', loaded_at: hoursFromNow(-1) },
+    create: {
+      id: IDS.cateringOrder.CO401,
+      flight_id: IDS.flight.F401,
+      warehouse_id: IDS.warehouse.WHBKK,
+      status: 'loaded',
+      cutoff_at: hoursFromNow(1),
+      generated_at: daysFromNow(-1),
+      generated_by_staff_id: staffId,
+      loaded_at: hoursFromNow(-1),
+    },
+  })
+  // co-405: economy, loaded (ready to be loaded from a transfer)
+  await prisma.catering_order.upsert({
+    where: { id: IDS.cateringOrder.CO405 },
+    update: { status: 'loaded', loaded_at: hoursFromNow(-1) },
+    create: {
+      id: IDS.cateringOrder.CO405,
+      flight_id: IDS.flight.F405,
+      warehouse_id: IDS.warehouse.WHBKK,
+      status: 'loaded',
+      cutoff_at: hoursFromNow(6),
+      generated_at: daysFromNow(-1),
+      generated_by_staff_id: staffId,
+      loaded_at: hoursFromNow(-1),
+    },
+  })
+  // co-308: economy, loaded
+  await prisma.catering_order.upsert({
+    where: { id: IDS.cateringOrder.CO308 },
+    update: { status: 'loaded', loaded_at: hoursFromNow(-1) },
+    create: {
+      id: IDS.cateringOrder.CO308,
+      flight_id: IDS.flight.F308,
+      warehouse_id: IDS.warehouse.WHBKK,
+      status: 'loaded',
+      cutoff_at: hoursFromNow(21),
+      generated_at: daysFromNow(-1),
+      generated_by_staff_id: staffId,
+      loaded_at: hoursFromNow(-1),
+    },
+  })
+  // co-old: economy, void (for a separate flight so the 1-per-flight
+  // unique constraint holds)
+  await prisma.catering_order.upsert({
+    where: { id: IDS.cateringOrder.COOLD },
+    update: { status: 'void' },
+    create: {
+      id: IDS.cateringOrder.COOLD,
+      flight_id: IDS.flight.F220,
+      warehouse_id: IDS.warehouse.WHSIN,
+      status: 'void',
+      cutoff_at: hoursFromNow(46),
+      generated_at: daysFromNow(-2),
+    },
+  })
+  // co-309: business, generated (FL309 NRT-BKK, no transfer yet)
+  await prisma.catering_order.upsert({
+    where: { id: IDS.cateringOrder.CO309 },
+    update: { status: 'generated' },
+    create: {
+      id: IDS.cateringOrder.CO309,
+      flight_id: IDS.flight.F309,
+      warehouse_id: IDS.warehouse.WHNRT,
+      status: 'generated',
+      cutoff_at: hoursFromNow(8),
+      generated_at: daysFromNow(-1),
+      generated_by_staff_id: staffId,
+    },
+  })
+
+  // Catering order lines (one per cabin+product for f-401 business)
+  for (const line of [
+    { catering_order_id: IDS.cateringOrder.CO401, cabin: 'business', product_id: IDS.product.P001, qty: 40, source: 'order' as const },
+    { catering_order_id: IDS.cateringOrder.CO401, cabin: 'business', product_id: IDS.product.P002, qty: 20, source: 'order' as const },
+    { catering_order_id: IDS.cateringOrder.CO401, cabin: 'business', product_id: IDS.product.P006, qty: 80, source: 'order' as const },
+    { catering_order_id: IDS.cateringOrder.CO401, cabin: 'business', product_id: IDS.product.P011, qty: 60, source: 'order' as const },
+  ]) {
+    const existing = await prisma.catering_order_line.findFirst({
+      where: { catering_order_id: line.catering_order_id, cabin: line.cabin, product_id: line.product_id, source: line.source },
+    })
+    if (existing) {
+      await prisma.catering_order_line.update({ where: { id: existing.id }, data: { quantity_required: line.qty, quantity_short: 0 } })
+    } else {
+      await prisma.catering_order_line.create({
+        data: {
+          id: ruid(),
+          catering_order_id: line.catering_order_id,
+          cabin: line.cabin,
+          product_id: line.product_id,
+          quantity_required: line.qty,
+          quantity_short: 0,
+          source: line.source,
+        },
+      })
+    }
+  }
+
+  // --- Stock transfers + aircraft stock ----------------------------------
+  // Transfer for f-401: 20 P002 (Wagyu) + 60 P011 (chocolate) + 40 P001 (beef stir-fry)
+  await prisma.stock_transfer.upsert({
+    where: { id: IDS.stockTransfer.ST401 },
+    update: {},
+    create: {
+      id: IDS.stockTransfer.ST401,
+      flight_id: IDS.flight.F401,
+      aircraft_id: IDS.aircraft.FYB,
+      warehouse_id: IDS.warehouse.WHBKK,
+      transferred_at: hoursFromNow(-1),
+      staff_id: staffId,
+    },
+  })
+  for (const tl of [
+    { stock_transfer_id: IDS.stockTransfer.ST401, product_id: IDS.product.P002, batch_id: IDS.batch.B002, qty: 20 },
+    { stock_transfer_id: IDS.stockTransfer.ST401, product_id: IDS.product.P011, batch_id: IDS.batch.B008, qty: 60 },
+    { stock_transfer_id: IDS.stockTransfer.ST401, product_id: IDS.product.P001, batch_id: IDS.batch.B001, qty: 40 },
+  ]) {
+    const existingLine = await prisma.stock_transfer_line.findFirst({
+      where: { stock_transfer_id: tl.stock_transfer_id, product_id: tl.product_id, stock_batch_id: tl.batch_id },
+    })
+    if (existingLine) {
+      await prisma.stock_transfer_line.update({ where: { id: existingLine.id }, data: { quantity: tl.qty } })
+    } else {
+      await prisma.stock_transfer_line.create({
+        data: {
+          id: ruid(),
+          stock_transfer_id: tl.stock_transfer_id,
+          product_id: tl.product_id,
+          stock_batch_id: tl.batch_id,
+          quantity: tl.qty,
+        },
+      })
+    }
+    await prisma.aircraft_stock.upsert({
+      where: { aircraft_id_stock_batch_id: { aircraft_id: IDS.aircraft.FYB, stock_batch_id: tl.batch_id } },
+      update: { quantity: tl.qty },
+      create: { aircraft_id: IDS.aircraft.FYB, product_id: tl.product_id, stock_batch_id: tl.batch_id, quantity: tl.qty },
+    })
+  }
+
+  // Transfer for f-405: 30 P007 (water) + 40 P011 (chocolate) on aircraft FYA
+  // (CO405 is loaded; this puts a few lines on FYA so the Flight Report
+  // page can show f-405 in the reportable picker.)
+  await prisma.stock_transfer.upsert({
+    where: { id: IDS.stockTransfer.ST405 },
+    update: {},
+    create: {
+      id: IDS.stockTransfer.ST405,
+      flight_id: IDS.flight.F405,
+      aircraft_id: IDS.aircraft.FYA,
+      warehouse_id: IDS.warehouse.WHBKK,
+      transferred_at: hoursFromNow(-1),
+      staff_id: staffId,
+    },
+  })
+  for (const tl of [
+    { stock_transfer_id: IDS.stockTransfer.ST405, product_id: IDS.product.P007, batch_id: IDS.batch.B007, qty: 30 },
+    { stock_transfer_id: IDS.stockTransfer.ST405, product_id: IDS.product.P011, batch_id: IDS.batch.B008, qty: 40 },
+  ]) {
+    const existingLine = await prisma.stock_transfer_line.findFirst({
+      where: { stock_transfer_id: tl.stock_transfer_id, product_id: tl.product_id, stock_batch_id: tl.batch_id },
+    })
+    if (existingLine) {
+      await prisma.stock_transfer_line.update({ where: { id: existingLine.id }, data: { quantity: tl.qty } })
+    } else {
+      await prisma.stock_transfer_line.create({
+        data: {
+          id: ruid(),
+          stock_transfer_id: tl.stock_transfer_id,
+          product_id: tl.product_id,
+          stock_batch_id: tl.batch_id,
+          quantity: tl.qty,
+        },
+      })
+    }
+    await prisma.aircraft_stock.upsert({
+      where: { aircraft_id_stock_batch_id: { aircraft_id: IDS.aircraft.FYA, stock_batch_id: tl.batch_id } },
+      update: { quantity: tl.qty },
+      create: { aircraft_id: IDS.aircraft.FYA, product_id: tl.product_id, stock_batch_id: tl.batch_id, quantity: tl.qty },
+    })
+  }
+
+  // Transfer for f-308: 20 P007 (water) + 50 P011 (chocolate) on aircraft FYB
+  await prisma.stock_transfer.upsert({
+    where: { id: IDS.stockTransfer.ST308 },
+    update: {},
+    create: {
+      id: IDS.stockTransfer.ST308,
+      flight_id: IDS.flight.F308,
+      aircraft_id: IDS.aircraft.FYB,
+      warehouse_id: IDS.warehouse.WHBKK,
+      transferred_at: hoursFromNow(-1),
+      staff_id: staffId,
+    },
+  })
+  for (const tl of [
+    { stock_transfer_id: IDS.stockTransfer.ST308, product_id: IDS.product.P007, batch_id: IDS.batch.B007, qty: 20 },
+    { stock_transfer_id: IDS.stockTransfer.ST308, product_id: IDS.product.P011, batch_id: IDS.batch.B008, qty: 50 },
+  ]) {
+    const existingLine = await prisma.stock_transfer_line.findFirst({
+      where: { stock_transfer_id: tl.stock_transfer_id, product_id: tl.product_id, stock_batch_id: tl.batch_id },
+    })
+    if (existingLine) {
+      await prisma.stock_transfer_line.update({ where: { id: existingLine.id }, data: { quantity: tl.qty } })
+    } else {
+      await prisma.stock_transfer_line.create({
+        data: {
+          id: ruid(),
+          stock_transfer_id: tl.stock_transfer_id,
+          product_id: tl.product_id,
+          stock_batch_id: tl.batch_id,
+          quantity: tl.qty,
+        },
+      })
+    }
+    await prisma.aircraft_stock.upsert({
+      where: { aircraft_id_stock_batch_id: { aircraft_id: IDS.aircraft.FYB, stock_batch_id: tl.batch_id } },
+      update: { quantity: tl.qty },
+      create: { aircraft_id: IDS.aircraft.FYB, product_id: tl.product_id, stock_batch_id: tl.batch_id, quantity: tl.qty },
+    })
+  }
+
+  // --- Flight report (already submitted for f-401) ---------------------
+  await prisma.flight_report.upsert({
+    where: { id: IDS.flightReport.FR401 },
+    update: {},
+    create: {
+      id: IDS.flightReport.FR401,
+      flight_id: IDS.flight.F401,
+      status: 'submitted',
+      submitted_by_staff_id: staffId,
+      submitted_at: hoursFromNow(-1),
+    },
+  })
+  for (const rl of [
+    { product_id: IDS.product.P001, initial: 40, served: 35, sold: 0, wasted: 2, damaged: 0 },
+    { product_id: IDS.product.P002, initial: 20, served: 16, sold: 0, wasted: 1, damaged: 0 },
+    { product_id: IDS.product.P011, initial: 60, served: 0, sold: 0, wasted: 0, damaged: 0 },
+  ]) {
+    const remaining = rl.initial - rl.served - rl.sold - rl.wasted - rl.damaged
+    const existingLine = await prisma.flight_report_line.findFirst({
+      where: { flight_report_id: IDS.flightReport.FR401, product_id: rl.product_id },
+    })
+    if (existingLine) {
+      await prisma.flight_report_line.update({
+        where: { id: existingLine.id },
+        data: { initial_quantity: rl.initial, served: rl.served, sold: rl.sold, wasted: rl.wasted, damaged: rl.damaged, remaining },
+      })
+    } else {
+      await prisma.flight_report_line.create({
+        data: {
+          id: ruid(),
+          flight_report_id: IDS.flightReport.FR401,
+          product_id: rl.product_id,
+          initial_quantity: rl.initial,
+          served: rl.served,
+          sold: rl.sold,
+          wasted: rl.wasted,
+          damaged: rl.damaged,
+          remaining,
+        },
+      })
+    }
+  }
+
+  // --- On-board product sales (2 rows for f-401: perfume + chocolate) -
+  // payment_id must be a UUID. Build a deterministic one from the
+  // product_id so the upsert stays idempotent.
+  for (const s of [
+    { flight_id: IDS.flight.F401, product_id: IDS.product.P012, qty: 2, price: '78.00', total: '156.00', currency: 'USD' },
+    { flight_id: IDS.flight.F401, product_id: IDS.product.P011, qty: 5, price: '4.00', total: '20.00', currency: 'USD' },
+  ]) {
+    const paymentId = `00000000-0000-0000-0000-f4010000${s.product_id.slice(-4)}`
+    // product_sale.payment_id is a foreign key to F5's payment table, so the payment row has to exist first.
+    await prisma.payment.upsert({
+      where: { id: paymentId },
+      update: {},
+      create: {
+        id: paymentId,
+        source_feature: 12,
+        purchase_ref: `seed-sale-${s.product_id.slice(-4)}`,
+        idempotency_key: `seed-sale-${s.product_id.slice(-4)}`,
+        status: 'captured',
+        provider: 'fake',
+        currency: s.currency,
+        amount_total: s.total,
+        card_amount: s.total,
+        started_at: hoursFromNow(-2),
+        expires_at: hoursFromNow(-1),
+        authorised_at: hoursFromNow(-1),
+        captured_at: hoursFromNow(-1),
+      },
+    })
+    const existingSale = await prisma.product_sale.findFirst({
+      where: { flight_id: s.flight_id, product_id: s.product_id, payment_id: paymentId },
+    })
+    if (existingSale) {
+      await prisma.product_sale.update({
+        where: { id: existingSale.id },
+        data: { quantity: s.qty, unit_price_amount: s.price, total_amount: s.total },
+      })
+    } else {
+      await prisma.product_sale.create({
+        data: {
+          id: ruid(),
+          flight_id: s.flight_id,
+          product_id: s.product_id,
+          quantity: s.qty,
+          unit_price_amount: s.price,
+          total_amount: s.total,
+          currency: s.currency,
+          payment_id: paymentId,
+          sold_at: hoursFromNow(-1),
+        },
+      })
+    }
+  }
+
+  // Customer orders are not seeded here: an order needs a real booking (see seed-f12-booking.ts).
+
+  console.log('F12 seed complete.')
+}
 
 async function main() {
   console.log('Seeding comprehensive mock data across all features (F1–F17)...')
