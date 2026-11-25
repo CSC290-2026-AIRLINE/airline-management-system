@@ -17,7 +17,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { PageHeader, StatCard } from '@staff-web/features/onboard-products/ui'
 import { AdjustStockDialog } from './AdjustStockDialog'
 import { ManageListDialog, type ManageListItem } from './ManageListDialog'
-import type { Product, StockBatch, StockMovement, Warehouse, WarehouseStockRow } from '@staff-web/features/onboard-products/api/types'
+import type {
+  AirportOption,
+  Product,
+  StockBatch,
+  StockMovement,
+  Warehouse,
+  WarehouseStockRow,
+} from '@staff-web/features/onboard-products/api/types'
 
 function formatQuantity(n: number): string {
   return n.toLocaleString('en-US')
@@ -85,6 +92,7 @@ export function StockPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [warehouseId, setWarehouseId] = useState<string | null>(null)
   const [adjusting, setAdjusting] = useState<WarehouseStockRow | null>(null)
+  const [airports, setAirports] = useState<AirportOption[]>([])
   const [managingAirports, setManagingAirports] = useState(false)
   const [manageBusy, setManageBusy] = useState(false)
 
@@ -109,6 +117,22 @@ export function StockPage() {
       cancelled = true
     }
   }, [api])
+
+  // Load the airports of the flight network once, for the Manage airports dialog.
+  useEffect(() => {
+    let active = true
+    stockApi
+      .listAirports()
+      .then((data) => {
+        if (active) setAirports(data)
+      })
+      .catch(() => {
+        // The dialog then has nothing to offer; the warehouse list itself is unaffected.
+      })
+    return () => {
+      active = false
+    }
+  }, [stockApi])
 
   // Load warehouses once.
   useEffect(() => {
@@ -419,10 +443,15 @@ export function StockPage() {
       {managingAirports && (
         <ManageListDialog
           title="Manage airports"
-          subtitle="Add the airport codes your catering team stocks. Stock is held per airport."
+          subtitle="Pick an existing airport to start stocking it. Stock is held per airport."
           nameLabel="Airport name"
           secondaryLabel="Code"
           secondaryRequired
+          addOptionLabel="Airport"
+          addOptionsEmptyMessage="Every airport in the network already has a warehouse."
+          addOptions={airports
+            .filter((a) => !warehouses.some((w) => w.airportCode === a.code))
+            .map((a) => ({ value: a.code, label: `${a.code} · ${a.name}, ${a.city}`, name: `${a.code} Catering Warehouse` }))}
           emptyMessage="No airports yet. Add one to start tracking stock."
           addLabel="Add airport"
           busy={manageBusy}
