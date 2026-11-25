@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Button } from '@staff-web/components/ui/button'
+import { Input } from '@staff-web/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
 import { useBiApi } from '../api/bi'
 import { useBiLoad } from '../hooks/useBiLoad'
 
@@ -50,29 +52,29 @@ export function MarkForMaintenance({ aircraft, onDone }: { aircraft: { aircraft_
   if (access.data?.allowed !== true) return null
 
   return (
-    <div className="bi-mark-maintenance print:hidden">
-      <select aria-label="Aircraft" value={aircraftId} onChange={(e) => setAircraftId(e.target.value)}>
+    <div className="flex flex-wrap items-center gap-2.5 rounded-xl border bg-card px-4 py-3 text-sm print:hidden">
+      <NativeSelect aria-label="Aircraft" value={aircraftId} onChange={(e) => setAircraftId(e.target.value)} className="h-9 w-full sm:w-36">
         {aircraft.map((a) => (
-          <option key={a.aircraft_id} value={a.aircraft_id}>
+          <NativeSelectOption key={a.aircraft_id} value={a.aircraft_id}>
             {a.tail_number}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
-      <select aria-label="Maintenance type" value={type} onChange={(e) => setType(e.target.value)}>
+      </NativeSelect>
+      <NativeSelect aria-label="Maintenance type" value={type} onChange={(e) => setType(e.target.value)} className="h-9 w-full sm:w-36">
         {TYPES.map((t) => (
-          <option key={t.value} value={t.value}>
+          <NativeSelectOption key={t.value} value={t.value}>
             {t.label}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
-      <input aria-label="Start date" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
-      <input aria-label="End date" type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
-      <Button type="button" className="bi-button" onClick={() => void submit()} disabled={busy}>
+      </NativeSelect>
+      <Input aria-label="Start date" type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-full sm:w-40" />
+      <Input aria-label="End date" type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="w-full sm:w-40" />
+      <Button type="button" onClick={() => void submit()} disabled={busy}>
         {busy ? 'Scheduling…' : 'Mark for maintenance'}
       </Button>
-      {message && <span className="bi-mark-message">{message}</span>}
+      {message && <span className="text-muted-foreground">{message}</span>}
       {added.length > 0 && (
-        <ul className="bi-mark-added" aria-label="Maintenance added in this session">
+        <ul className="m-0 basis-full list-disc pl-5 text-primary" aria-label="Maintenance added in this session">
           {added.map((item) => (
             <li key={item.key}>
               <strong>{item.tail}</strong> · {item.type} · {item.start} to {item.end}

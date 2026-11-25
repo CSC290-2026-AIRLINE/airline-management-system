@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { cn } from '@staff-web/lib/utils'
+import { CARD, EMPTY_TEXT } from '../lib-styles'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { filterQuery, useBiApi, type BiFilters } from '../api/bi'
@@ -38,20 +40,20 @@ export function BookingDrillPanel({
   }
 
   return (
-    <Card ref={panelRef} className="bi-drill-panel" role="region" aria-label={title} tabIndex={-1}>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-        <div className="print:hidden flex gap-2">
+    <Card ref={panelRef} className={cn(CARD, 'scroll-mt-5 gap-3.5')} role="region" aria-label={title} tabIndex={-1}>
+      <CardHeader className="px-0">
+        <CardTitle className="text-base font-bold">{title}</CardTitle>
+        <CardDescription className="text-xs">{description}</CardDescription>
+        <CardAction className="flex gap-2 print:hidden">
           <Button type="button" variant="outline" onClick={() => void exportBookings()} disabled={!rows.data}>
             Export CSV
           </Button>
           <Button type="button" variant="ghost" onClick={onClose}>
             Close
           </Button>
-        </div>
+        </CardAction>
       </CardHeader>
-      <CardContent className="overflow-x-auto">
+      <CardContent className="overflow-x-auto px-0 [&_table]:text-xs">
         {exportError && (
           <Alert variant="destructive">
             <AlertDescription>{exportError}</AlertDescription>
@@ -61,7 +63,7 @@ export function BookingDrillPanel({
           <Alert variant="destructive">
             <AlertDescription>
               Could not load bookings ({rows.error}).{' '}
-              <Button variant="outline" className="bi-button" onClick={rows.retry}>
+              <Button variant="outline" onClick={rows.retry}>
                 Retry bookings
               </Button>
             </AlertDescription>
@@ -69,7 +71,7 @@ export function BookingDrillPanel({
         ) : rows.data === null ? (
           <Skeleton className="h-40 w-full" />
         ) : rows.data.length === 0 ? (
-          <p className="bi-chart-empty">No bookings or cancellations for this route and dates.</p>
+          <p className={EMPTY_TEXT}>No bookings or cancellations for this route and dates.</p>
         ) : (
           <Table>
             <TableHeader>

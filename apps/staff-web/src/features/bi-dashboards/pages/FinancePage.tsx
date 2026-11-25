@@ -1,20 +1,24 @@
 import { useState } from 'react'
+import { AlertCircle } from 'lucide-react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
+import { Badge } from '@staff-web/components/ui/badge'
 import { Card } from '@staff-web/components/ui/card'
-import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { cn } from '@staff-web/lib/utils'
 import { useBiApi, type BiFinanceMonth } from '../api/bi'
-import { BiExportMenu } from '../components/BiFilters'
+import { BiExportMenu, BiFilterCard, FilterField } from '../components/BiFilters'
 import { BiMonthPicker } from '../components/BiMonthPicker'
-import { BiPageHeader } from '../components/BiPageHeader'
+import { BiPageFrame } from '../components/BiPageFrame'
+import { SectionEmpty, SectionLoading } from '../components/BiSectionState'
 import { FinanceWaterfall, type WaterfallStep } from '../components/FinanceWaterfall'
 import { BI_COLORS } from '../chart-colors'
-import { ChartFrame } from '../components/InteractiveCharts'
+import { ChartFrame, ChartHeading } from '../components/InteractiveCharts'
 import { KpiCard } from '../components/KpiCard'
 import { useBiLoad } from '../hooks/useBiLoad'
 import { comparison, relativeChange } from '../lib-comparison'
 import { formatCount, formatDateTime, formatPercent, formatThb } from '../lib-format'
+import { CARD, CARD_TITLE, EMPTY_TEXT, KPI_GRID, trendClass } from '../lib-styles'
 
 function monthLabel(month: string, long = false): string {
   return new Intl.DateTimeFormat('en-GB', { month: long ? 'long' : 'short', year: 'numeric', timeZone: 'UTC' })
@@ -79,220 +83,226 @@ export function FinancePage() {
   }
 
   return (
-    <>
-      <BiPageHeader
-        title="Financial report"
-        description="Monthly revenue, costs and profit from the Pricing & Finance monthly report. Read only."
-        status={
-          finance.loading
-            ? 'Loading figures…'
-            : finance.error
-              ? 'Figures unavailable'
-              : current
-                ? `Figures computed ${formatDateTime(current.computed_at)}`
-                : 'Figures not computed yet'
-        }
-        action={
-          <Button
-            variant="outline"
-            className="bi-button"
-            disabled={!current}
-            onClick={() => {
-              setShowReport(true)
-              window.setTimeout(() => document.getElementById('bi-report-lines')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
-            }}
-          >
-            View report lines
-          </Button>
-        }
-      />
-      <div className="bi-page-content" aria-busy={finance.loading}>
-        {(finance.error || exportError) && (
+    <BiPageFrame
+      title="Financial report"
+      description="Monthly revenue, costs and profit from the Pricing & Finance monthly report. Read only."
+      status={
+        finance.loading
+          ? 'Loading figures…'
+          : finance.error
+            ? 'Figures unavailable'
+            : current
+              ? `Figures computed ${formatDateTime(current.computed_at)}`
+              : 'Figures not computed yet'
+      }
+      action={
+        <Button
+          variant="outline"
+          disabled={!current}
+          onClick={() => {
+            setShowReport(true)
+            window.setTimeout(() => document.getElementById('bi-report-lines')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+          }}
+        >
+          View report lines
+        </Button>
+      }
+      busy={finance.loading}
+      filters={
+        <BiFilterCard
+          fields={
+            <FilterField label="Month" htmlFor="bi-month">
+              <BiMonthPicker id="bi-month" value={month} months={months} onChange={setChosen} />
+            </FilterField>
+          }
+          actions={<BiExportMenu disabled={!current} onExportCsv={() => void exportCsv()} onPrint={() => window.print()} />}
+        />
+      }
+      alerts={
+        (finance.error || exportError) && (
           <Alert variant="destructive">
-            <AlertDescription>
+            <AlertCircle />
+            <AlertDescription className="flex flex-col items-start gap-3">
               {exportError || `Could not load the finance figures (${finance.error}).`}
               {finance.error && (
-                <Button variant="outline" className="bi-button" onClick={finance.retry}>
+                <Button variant="outline" size="sm" onClick={finance.retry}>
                   Retry
                 </Button>
               )}
             </AlertDescription>
           </Alert>
-        )}
-        <Card className="bi-filter-card print:hidden">
-          <div className="bi-filter-fields">
-            <div className="bi-field">
-              <span id="bi-month-label">Month</span>
-              <BiMonthPicker id="bi-month" value={month} months={months} onChange={setChosen} />
-            </div>
+        )
+      }
+    >
+      {!finance.error && finance.data === null && (
+        <>
+          <div className={KPI_GRID}>
+            {Array.from({ length: 4 }, (_, i) => (
+              <SectionLoading key={i} className="h-[124px]" />
+            ))}
           </div>
-          <BiExportMenu disabled={!current} onExportCsv={() => void exportCsv()} onPrint={() => window.print()} />
-        </Card>
-        {!finance.error && finance.data === null && (
-          <>
-            <div className="bi-kpis">
-              {Array.from({ length: 4 }, (_, i) => (
-                <Skeleton key={i} className="h-[124px] rounded-xl" />
-              ))}
-            </div>
-            <Skeleton className="h-[380px] rounded-xl" />
-          </>
-        )}
-        {finance.data && !current && (
-          <Card className="bi-empty">
-            <h2>This month has not been computed yet</h2>
-            <p>Once Pricing & Finance computes the monthly report, the figures will appear here.</p>
-          </Card>
-        )}
-        {current && (
-          <>
-            {current.partial && (
-              <Alert>
-                <AlertDescription>
-                  Partial month. Figures computed {formatDateTime(current.computed_at)} may change as the month closes.
-                </AlertDescription>
-              </Alert>
-            )}
-            <section aria-label="Finance headline figures" className="bi-kpis">
-              <KpiCard
-                label="Revenue"
-                value={formatThb(current.revenue, true)}
-                hint="Feature 4 monthly revenue"
-                comparison={comparison(delta('revenue'), '%', suffix)}
-                trend={trend(delta('revenue'))}
-              />
-              <KpiCard
-                label="Costs"
-                value={formatThb(current.costs, true)}
-                hint="Maintenance, staff, catering, other"
-                comparison={comparison(delta('costs'), '%', suffix)}
-                trend={trend(delta('costs'), true)}
-              />
-              <KpiCard
-                label="Profit"
-                value={formatThb(current.profit, true)}
-                hint="After taxes for others and refunds"
-                comparison={comparison(delta('profit'), '%', suffix)}
-                trend={trend(delta('profit'))}
-              />
-              <KpiCard
-                label="Profit margin"
-                value={formatPercent(current.margin_pct)}
-                hint="Profit ÷ revenue"
-                comparison={comparison(
-                  current.margin_pct !== null && previous?.margin_pct != null ? current.margin_pct - previous.margin_pct : null,
-                  'pts',
-                  suffix,
-                )}
-                trend={trend(current.margin_pct !== null && previous?.margin_pct != null ? current.margin_pct - previous.margin_pct : null)}
-              />
-            </section>
-            <ChartFrame
-              title="From revenue to profit"
-              subtitle={`All routes · ${monthLabel(month)} · THB millions`}
-              wide
-              legend={[
-                { label: 'Revenue', color: BI_COLORS.navy },
-                { label: 'Taxes, surcharges and refunds', color: '#8fa4ca' },
-                { label: 'Costs', color: BI_COLORS.blue },
-                { label: 'Profit', color: BI_COLORS.green },
-              ]}
-            >
-              <FinanceWaterfall steps={steps} />
-            </ChartFrame>
-            <div className="bi-finance-details">
-              <Card className="bi-report-lines" id="bi-report-lines">
-                <div className="bi-chart-heading">
-                  <h2>Report lines</h2>
-                  {showReport && <span>{monthLabel(month, true)} monthly report</span>}
+          <SectionLoading className="h-[380px]" />
+        </>
+      )}
+      {finance.data && !current && (
+        <SectionEmpty
+          title="This month has not been computed yet"
+          description="Once Pricing & Finance computes the monthly report, the figures will appear here."
+        />
+      )}
+      {current && (
+        <>
+          {current.partial && (
+            <Alert>
+              <AlertDescription>
+                Partial month. Figures computed {formatDateTime(current.computed_at)} may change as the month closes.
+              </AlertDescription>
+            </Alert>
+          )}
+          <section aria-label="Finance headline figures" className={KPI_GRID}>
+            <KpiCard
+              label="Revenue"
+              value={formatThb(current.revenue, true)}
+              hint="Feature 4 monthly revenue"
+              comparison={comparison(delta('revenue'), '%', suffix)}
+              trend={trend(delta('revenue'))}
+            />
+            <KpiCard
+              label="Costs"
+              value={formatThb(current.costs, true)}
+              hint="Maintenance, staff, catering, other"
+              comparison={comparison(delta('costs'), '%', suffix)}
+              trend={trend(delta('costs'), true)}
+            />
+            <KpiCard
+              label="Profit"
+              value={formatThb(current.profit, true)}
+              hint="After taxes for others and refunds"
+              comparison={comparison(delta('profit'), '%', suffix)}
+              trend={trend(delta('profit'))}
+            />
+            <KpiCard
+              label="Profit margin"
+              value={formatPercent(current.margin_pct)}
+              hint="Profit ÷ revenue"
+              comparison={comparison(
+                current.margin_pct !== null && previous?.margin_pct != null ? current.margin_pct - previous.margin_pct : null,
+                'pts',
+                suffix,
+              )}
+              trend={trend(current.margin_pct !== null && previous?.margin_pct != null ? current.margin_pct - previous.margin_pct : null)}
+            />
+          </section>
+          <ChartFrame
+            title="From revenue to profit"
+            subtitle={`All routes · ${monthLabel(month)} · THB millions`}
+            legend={[
+              { label: 'Revenue', color: BI_COLORS.navy },
+              { label: 'Taxes, surcharges and refunds', color: '#8fa4ca' },
+              { label: 'Costs', color: BI_COLORS.blue },
+              { label: 'Profit', color: BI_COLORS.green },
+            ]}
+          >
+            <FinanceWaterfall steps={steps} />
+          </ChartFrame>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,690fr)_minmax(0,350fr)]">
+            <Card className={cn(CARD, 'scroll-mt-5')} id="bi-report-lines">
+              <ChartHeading title="Report lines" subtitle={showReport ? `${monthLabel(month, true)} monthly report` : undefined} />
+              <div className="overflow-x-auto">
+                <Table className="min-w-[590px] text-[13px] md:min-w-0">
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent [&>th]:text-[11px] [&>th]:font-semibold [&>th]:text-muted-foreground">
+                      <TableHead scope="col">LINE</TableHead>
+                      <TableHead scope="col" className="text-right">
+                        AMOUNT (THB)
+                      </TableHead>
+                      <TableHead scope="col" className="text-right">
+                        {suffix.toUpperCase()}
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {LINES.map((line) => {
+                      const value = current[line.key] as number
+                      const difference = delta(line.key)
+                      return (
+                        <TableRow
+                          key={line.key}
+                          className={cn(
+                            'hover:bg-transparent',
+                            line.key === 'profit' && 'border-t-2 border-t-muted-foreground/40 font-semibold',
+                            line.key === 'revenue' && 'font-semibold',
+                          )}
+                        >
+                          <TableCell>{line.label}</TableCell>
+                          <TableCell className="text-right">
+                            {new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value)}
+                          </TableCell>
+                          <TableCell className={cn('text-right', trendClass(trend(difference, line.deduct)))}>
+                            {difference === null ? '—' : `${difference >= 0 ? '+' : ''}${(difference * 100).toFixed(1)}%`}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
+            <Card className={cn(CARD, 'lg:h-full')}>
+              <div className="flex flex-col gap-1">
+                <h2 className={CARD_TITLE}>Upcoming payments</h2>
+                <p className="text-xs text-muted-foreground">Scheduled payments due from today.</p>
+              </div>
+              {payments.error ? (
+                <div role="alert" className="flex flex-col items-start gap-3 text-sm text-destructive">
+                  <p>Could not load scheduled payments.</p>
+                  <Button variant="outline" size="sm" onClick={payments.retry}>
+                    Retry payments
+                  </Button>
                 </div>
-                <div className="bi-table-scroll">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead scope="col">LINE</TableHead>
-                        <TableHead scope="col" className="text-right">
-                          AMOUNT (THB)
-                        </TableHead>
-                        <TableHead scope="col" className="text-right">
-                          {suffix.toUpperCase()}
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {LINES.map((line) => {
-                        const value = current[line.key] as number
-                        const difference = delta(line.key)
-                        return (
-                          <TableRow
-                            key={line.key}
-                            className={line.key === 'profit' ? 'bi-profit-row' : line.key === 'revenue' ? 'font-semibold' : ''}
-                          >
-                            <TableCell>{line.label}</TableCell>
-                            <TableCell className="text-right">
-                              {new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value)}
-                            </TableCell>
-                            <TableCell className={`text-right bi-trend-${trend(difference, line.deduct)}`}>
-                              {difference === null ? '—' : `${difference >= 0 ? '+' : ''}${(difference * 100).toFixed(1)}%`}
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              </Card>
-              <Card className="bi-payments">
-                <h2>Upcoming payments</h2>
-                <p className="bi-payments-description">Scheduled payments due from today.</p>
-                {payments.error ? (
-                  <div role="alert" className="bi-trend-bad">
-                    <p>Could not load scheduled payments.</p>
-                    <Button variant="outline" className="bi-button" onClick={payments.retry}>
-                      Retry payments
-                    </Button>
+              ) : payments.data === null ? (
+                <SectionLoading className="h-[240px]" />
+              ) : payments.data.length === 0 ? (
+                <p className={EMPTY_TEXT}>No upcoming payments.</p>
+              ) : (
+                <>
+                  {/* Beside the report card, the list scrolls inside that card's height; stacked, it shows in full. */}
+                  <ul className="m-0 list-none p-0 lg:min-h-0 lg:flex-1 lg:basis-0 lg:overflow-y-auto lg:pr-1.5">
+                    {payments.data.map((payment) => (
+                      <li key={payment.id} className="flex flex-col gap-1 border-b border-line py-2.5">
+                        <div className="flex items-baseline justify-between gap-2 text-[13px] font-semibold">
+                          <span>{payment.payee}</span>
+                          <span>{formatThb(payment.amount)}</span>
+                        </div>
+                        <div className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
+                          <span className="min-w-0">
+                            {CATEGORY_LABELS[payment.category] ?? payment.category} ·{' '}
+                            {payment.description ? `${payment.description} · ` : ''}Due{' '}
+                            {new Intl.DateTimeFormat('en-GB', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                              timeZone: 'UTC',
+                            }).format(new Date(`${payment.due_date}T00:00:00Z`))}
+                          </span>
+                          <Badge variant="secondary" className="shrink-0 text-[11px]">
+                            Scheduled
+                          </Badge>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex items-baseline justify-between gap-2 pt-2 text-[13px] font-semibold">
+                    <strong>Total scheduled</strong>
+                    <strong>{formatThb(totalScheduled)}</strong>
                   </div>
-                ) : payments.data === null ? (
-                  <Skeleton className="h-[240px]" />
-                ) : payments.data.length === 0 ? (
-                  <p className="bi-chart-empty">No upcoming payments.</p>
-                ) : (
-                  <>
-                    <ul>
-                      {payments.data.map((payment) => (
-                        <li key={payment.id}>
-                          <div>
-                            <strong>{payment.payee}</strong>
-                            <strong>{formatThb(payment.amount)}</strong>
-                          </div>
-                          <div>
-                            <span>
-                              {CATEGORY_LABELS[payment.category] ?? payment.category} ·{' '}
-                              {payment.description ? `${payment.description} · ` : ''}Due{' '}
-                              {new Intl.DateTimeFormat('en-GB', {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric',
-                                timeZone: 'UTC',
-                              }).format(new Date(`${payment.due_date}T00:00:00Z`))}
-                            </span>
-                            <span className="bi-scheduled">Scheduled</span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="bi-payments-total">
-                      <strong>Total scheduled</strong>
-                      <strong>{formatThb(totalScheduled)}</strong>
-                    </div>
-                    <span className="sr-only">{formatCount(payments.data.length)} scheduled payments</span>
-                  </>
-                )}
-              </Card>
-            </div>
-          </>
-        )}
-      </div>
-    </>
+                  <span className="sr-only">{formatCount(payments.data.length)} scheduled payments</span>
+                </>
+              )}
+            </Card>
+          </div>
+        </>
+      )}
+    </BiPageFrame>
   )
 }

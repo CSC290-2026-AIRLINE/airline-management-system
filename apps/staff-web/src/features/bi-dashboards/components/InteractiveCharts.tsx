@@ -1,9 +1,19 @@
 import { useId, type ReactNode } from 'react'
 import { Card } from '@staff-web/components/ui/card'
+import { cn } from '@staff-web/lib/utils'
+import { ToggleGroup, ToggleGroupItem } from '@staff-web/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@staff-web/components/ui/tooltip'
 import type { BiCabinRow, BiPeriodBookings, BiPeriodRow, BiRevenueMode, BiGroup } from '../api/bi'
 import { BI_COLORS } from '../chart-colors'
 import { formatCount, formatMoney, formatPercent } from '../lib-format'
+import { CARD, CARD_TITLE, EMPTY_TEXT, TOOLTIP } from '../lib-styles'
+
+/** The SVG plot: scrolls sideways on a phone instead of squeezing the labels. */
+export const PLOT_SCROLL = 'w-full min-w-0 overflow-x-auto print:overflow-visible'
+const PLOT_SVG = 'block aspect-[480/236] w-full min-w-[480px] overflow-visible font-sans print:min-w-0'
+/** Axis text and gridline labels; data labels sit above bars and points. */
+export const AXIS_TEXT = 'fill-muted-foreground text-[11px]'
+export const DATA_LABEL = 'fill-primary text-[10.5px] font-semibold'
 
 export function ChartFrame({
   title,
@@ -11,27 +21,22 @@ export function ChartFrame({
   legend,
   toolbar,
   children,
-  wide = false,
 }: {
   title: string
   subtitle?: string
   legend?: { label: string; color: string }[]
   toolbar?: ReactNode
   children: ReactNode
-  wide?: boolean
 }) {
   return (
-    <Card className={`bi-chart-card${wide ? ' bi-chart-wide' : ''}`}>
-      <div className="bi-chart-heading">
-        <h2>{title}</h2>
-        {subtitle && <span>{subtitle}</span>}
-      </div>
+    <Card className={cn(CARD, 'overflow-hidden')}>
+      <ChartHeading title={title} subtitle={subtitle} />
       {(legend || toolbar) && (
-        <div className="bi-chart-toolbar">
-          <div className="bi-legend">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
             {legend?.map((item) => (
-              <span key={item.label}>
-                <i style={{ background: item.color }} />
+              <span key={item.label} className="inline-flex items-center gap-1.5">
+                <span aria-hidden="true" className="size-2.5 shrink-0 rounded-xs" style={{ background: item.color }} />
                 {item.label}
               </span>
             ))}
@@ -41,6 +46,16 @@ export function ChartFrame({
       )}
       <TooltipProvider delayDuration={80}>{children}</TooltipProvider>
     </Card>
+  )
+}
+
+/** A card's title, with its note on the right (under it on a phone). */
+export function ChartHeading({ title, subtitle }: { title: string; subtitle?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+      <h2 className={CARD_TITLE}>{title}</h2>
+      {subtitle && <span className="text-xs text-muted-foreground">{subtitle}</span>}
+    </div>
   )
 }
 
@@ -73,7 +88,7 @@ export function ChartHit({
           tabIndex={0}
           role={onPick ? 'button' : 'img'}
           aria-label={detail}
-          className="bi-chart-hit"
+          className="cursor-pointer outline-none hover:fill-primary/5 focus-visible:fill-ring/10 focus-visible:stroke-ring print:hidden"
           onClick={onPick}
           onKeyDown={(event) => {
             if (onPick && (event.key === 'Enter' || event.key === ' ')) {
@@ -83,7 +98,7 @@ export function ChartHit({
           }}
         />
       </TooltipTrigger>
-      <TooltipContent side="top" sideOffset={8} className="bi-chart-tooltip">
+      <TooltipContent side="top" sideOffset={8} className={TOOLTIP}>
         <strong>{detail}</strong>
         {description && <span>{description}</span>}
         {onPick && <span>Click to see the flights behind this figure.</span>}
@@ -122,13 +137,19 @@ function Axis({
 }) {
   const every = Math.max(1, Math.ceil(labels.length / 8))
   return (
-    <g className="bi-chart-axis">
-      <text x={0} y={10} className="bi-axis-title">
+    <g className={AXIS_TEXT}>
+      <text x={0} y={10} className="font-medium">
         {unit}
       </text>
       {ticks.map((tick) => (
         <g key={tick}>
-          <line x1={PLOT.left} x2={PLOT.right} y1={y(tick)} y2={y(tick)} stroke={tick === ticks[0] ? '#9aa3b5' : '#e6e9ef'} />
+          <line
+            x1={PLOT.left}
+            x2={PLOT.right}
+            y1={y(tick)}
+            y2={y(tick)}
+            className={tick === ticks[0] ? 'stroke-muted-foreground/50' : 'stroke-line'}
+          />
           <text x={PLOT.left - 10} y={y(tick) + 4} textAnchor="end">
             {format(tick)}
           </text>
@@ -142,7 +163,7 @@ function Axis({
             </text>
           ),
       )}
-      <text x={261} y={232} textAnchor="middle" className="bi-axis-title">
+      <text x={261} y={232} textAnchor="middle" className="font-medium">
         {xLabel}
       </text>
     </g>
@@ -150,7 +171,7 @@ function Axis({
 }
 
 function EmptyChart() {
-  return <div className="bi-chart-empty">No data for this period.</div>
+  return <div className={EMPTY_TEXT}>No data for this period.</div>
 }
 function groupLabel(group: BiGroup) {
   return group === 'week' ? 'Week starting' : group === 'month' ? 'Month' : 'Date'
@@ -181,8 +202,8 @@ export function OnTimeChart({ rows, group, onPick }: { rows: BiPeriodRow[]; grou
       {values.length === 0 ? (
         <EmptyChart />
       ) : (
-        <div className="bi-plot-scroll">
-          <svg className="bi-plot" viewBox="0 0 480 236" role="group" aria-labelledby={titleId}>
+        <div className={PLOT_SCROLL}>
+          <svg className={PLOT_SVG} viewBox="0 0 480 236" role="group" aria-labelledby={titleId}>
             <title id={titleId}>On-time performance by {group}</title>
             <Axis
               ticks={ticks}
@@ -193,7 +214,7 @@ export function OnTimeChart({ rows, group, onPick }: { rows: BiPeriodRow[]; grou
               xLabel={groupLabel(group)}
             />
             <line x1={52} x2={470} y1={y(0.85)} y2={y(0.85)} stroke={BI_COLORS.red} strokeDasharray="5 3" />
-            <text x={232} y={y(0.85) - 6} style={{ fill: BI_COLORS.red }} className="bi-data-label">
+            <text x={232} y={y(0.85) - 6} style={{ fill: BI_COLORS.red }} className={DATA_LABEL}>
               Target 85%
             </text>
             <path d={path} fill="none" stroke={BI_COLORS.navy} strokeWidth={2.5} strokeLinejoin="round" />
@@ -203,7 +224,7 @@ export function OnTimeChart({ rows, group, onPick }: { rows: BiPeriodRow[]; grou
                   <g key={row.period}>
                     <circle cx={x(i)} cy={y(row.on_time_pct)} r={4} fill="white" stroke={BI_COLORS.navy} strokeWidth={2} />
                     {rows.length <= 14 && (
-                      <text x={x(i)} y={y(row.on_time_pct) - 14} textAnchor="middle" className="bi-data-label">
+                      <text x={x(i)} y={y(row.on_time_pct) - 14} textAnchor="middle" className={DATA_LABEL}>
                         {Math.round(row.on_time_pct * 100)}%
                       </text>
                     )}
@@ -253,8 +274,8 @@ export function CabinChart({
       {rows.length === 0 ? (
         <EmptyChart />
       ) : (
-        <div className="bi-plot-scroll">
-          <svg className="bi-plot" viewBox="0 0 480 236" role="group" aria-labelledby={titleId}>
+        <div className={PLOT_SCROLL}>
+          <svg className={PLOT_SVG} viewBox="0 0 480 236" role="group" aria-labelledby={titleId}>
             <title id={titleId}>Seats sold by cabin, current and previous period</title>
             <Axis ticks={ticks} y={y} format={(v) => `${Math.round(v * 100)}%`} unit="Seats sold %" labels={labels} xLabel="Cabin" />
             {ordered.map((row, i) => {
@@ -274,7 +295,7 @@ export function CabinChart({
                             rx={2}
                             fill={j ? BI_COLORS.gray : BI_COLORS.navy}
                           />
-                          <text x={center - 21 + j * 40} y={y(value) - 6} textAnchor="middle" className="bi-data-label">
+                          <text x={center - 21 + j * 40} y={y(value) - 6} textAnchor="middle" className={DATA_LABEL}>
                             {(value * 100).toFixed(1)}
                           </text>
                         </g>
@@ -349,21 +370,32 @@ export function PeriodBarChart({
       }
       toolbar={
         revenue && (
-          <div className="bi-segmented bi-revenue-toggle" role="group" aria-label="Revenue calculation">
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            aria-label="Revenue calculation"
+            value={mode}
+            onValueChange={(value) => value && onModeChange(value as BiRevenueMode)}
+          >
             {(['after_refunds', 'before_refunds'] as const).map((value) => (
-              <button key={value} type="button" aria-pressed={mode === value} onClick={() => onModeChange(value)}>
+              <ToggleGroupItem
+                key={value}
+                value={value}
+                className="px-2.5 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              >
                 {value === 'after_refunds' ? 'After refunds' : 'Before refunds'}
-              </button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
         )
       }
     >
       {data.length === 0 || !data.some((row) => row.values.some((value) => value !== null)) ? (
         <EmptyChart />
       ) : (
-        <div className="bi-plot-scroll">
-          <svg className="bi-plot" viewBox="0 0 480 236" role="group" aria-labelledby={titleId}>
+        <div className={PLOT_SCROLL}>
+          <svg className={PLOT_SVG} viewBox="0 0 480 236" role="group" aria-labelledby={titleId}>
             <title id={titleId}>
               {revenue ? 'Revenue per available seat' : 'Bookings and cancellations'} by {group}
             </title>
@@ -398,7 +430,7 @@ export function PeriodBarChart({
                               x={center - (width * row.values.length) / 2 + j * (width + 1) + width / 2}
                               y={y(Math.max(0, value)) - 6}
                               textAnchor="middle"
-                              className="bi-data-label"
+                              className={DATA_LABEL}
                             >
                               {revenue ? '฿' : ''}
                               {short(value)}

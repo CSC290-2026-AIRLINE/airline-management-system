@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { cn } from '@staff-web/lib/utils'
+import { CARD } from '../lib-styles'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { filterQuery, useBiApi, type BiFilters, type BiFlight } from '../api/bi'
@@ -45,20 +47,20 @@ export function DrillPanel({ title, description, filters, onClose }: DrillPanelP
   const shown = showAll ? sorted : sorted.slice(0, PREVIEW_ROWS)
 
   return (
-    <Card ref={panelRef} className="bi-drill-panel" role="region" aria-label={title} tabIndex={-1}>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-        <div className="print:hidden flex gap-2">
+    <Card ref={panelRef} className={cn(CARD, 'scroll-mt-5 gap-3.5')} role="region" aria-label={title} tabIndex={-1}>
+      <CardHeader className="px-0">
+        <CardTitle className="text-base font-bold">{title}</CardTitle>
+        <CardDescription className="text-xs">{description}</CardDescription>
+        <CardAction className="flex gap-2 print:hidden">
           <Button type="button" variant="outline" onClick={() => void exportFlights()}>
             Export CSV
           </Button>
           <Button type="button" variant="ghost" onClick={onClose}>
             Close
           </Button>
-        </div>
+        </CardAction>
       </CardHeader>
-      <CardContent className="overflow-x-auto">
+      <CardContent className="overflow-x-auto px-0 [&_table]:text-xs">
         {exportError && (
           <Alert variant="destructive">
             <AlertDescription>{exportError}</AlertDescription>
@@ -68,7 +70,7 @@ export function DrillPanel({ title, description, filters, onClose }: DrillPanelP
           <Alert variant="destructive">
             <AlertDescription>
               Could not load the flights ({flights.error}).{' '}
-              <Button variant="outline" className="bi-button" onClick={flights.retry}>
+              <Button variant="outline" onClick={flights.retry}>
                 Retry flights
               </Button>
             </AlertDescription>

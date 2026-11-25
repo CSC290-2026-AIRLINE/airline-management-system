@@ -1,8 +1,9 @@
 import { useId } from 'react'
 import { formatMoney } from '../lib-format'
-import { ChartHit } from './InteractiveCharts'
 import { BI_COLORS } from '../chart-colors'
 import { TooltipProvider } from '@staff-web/components/ui/tooltip'
+import { EMPTY_TEXT } from '../lib-styles'
+import { AXIS_TEXT, ChartHit, DATA_LABEL, PLOT_SCROLL } from './InteractiveCharts'
 
 export interface WaterfallStep {
   label: string
@@ -34,19 +35,24 @@ export function FinanceWaterfall({ steps }: { steps: WaterfallStep[] }) {
   const width = Math.min(72, groupWidth * 0.65)
   const short = (v: number) => `${v < 0 ? '−' : ''}${Math.abs(v / 1_000_000).toFixed(1)}M`
   const ticks = Array.from({ length: Math.round((max - min) / step) + 1 }, (_, index) => min + index * step)
-  if (!steps.length) return <div className="bi-chart-empty">No report data for this month.</div>
+  if (!steps.length) return <div className={EMPTY_TEXT}>No report data for this month.</div>
   return (
     <TooltipProvider delayDuration={80}>
-      <div className="bi-plot-scroll">
-        <svg className="bi-waterfall-plot" viewBox="0 0 1017 286" role="group" aria-labelledby={titleId}>
+      <div className={PLOT_SCROLL}>
+        <svg
+          className="block aspect-[1017/286] w-full min-w-[900px] font-sans print:min-w-0"
+          viewBox="0 0 1017 286"
+          role="group"
+          aria-labelledby={titleId}
+        >
           <title id={titleId}>From revenue to profit, THB</title>
-          <g className="bi-chart-axis">
-            <text x={0} y={10} className="bi-axis-title">
+          <g className={AXIS_TEXT}>
+            <text x={0} y={10} className="font-medium">
               THB
             </text>
             {ticks.map((tick) => (
               <g key={tick}>
-                <line x1={left} x2={right} y1={y(tick)} y2={y(tick)} stroke="#e6e9ef" />
+                <line x1={left} x2={right} y1={y(tick)} y2={y(tick)} className="stroke-line" />
                 <text x={left - 10} y={y(tick) + 4} textAnchor="end">
                   {tick === 0 ? '0' : `${Math.round(tick / 1_000_000)}M`}
                 </text>
@@ -70,13 +76,13 @@ export function FinanceWaterfall({ steps }: { steps: WaterfallStep[] }) {
             return (
               <g key={bar.label}>
                 <rect x={x} y={barTop} width={width} height={Math.max(height, 1)} fill={color} />
-                <text x={x + width / 2} y={barTop - 6} textAnchor="middle" className="bi-data-label">
+                <text x={x + width / 2} y={barTop - 6} textAnchor="middle" className={DATA_LABEL}>
                   {short(bar.value)}
                 </text>
                 {index < bars.length - 1 && (
                   <line x1={x + width} x2={x + groupWidth} y1={y(bar.to)} y2={y(bar.to)} stroke="#8fa4ca" strokeDasharray="3 2" />
                 )}
-                <text x={x + width / 2} y={270} textAnchor="middle" className="bi-chart-axis">
+                <text x={x + width / 2} y={270} textAnchor="middle" className={AXIS_TEXT}>
                   {bar.label}
                 </text>
                 <ChartHit

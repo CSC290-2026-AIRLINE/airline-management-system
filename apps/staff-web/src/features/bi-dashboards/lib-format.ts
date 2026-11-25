@@ -1,3 +1,5 @@
+import type { BiRun } from './api/bi'
+
 const percent = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 1 })
 const count = new Intl.NumberFormat('en-US')
 const money = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -26,4 +28,9 @@ export function formatCompact(value: number): string {
 export function formatThb(value: number | null, compact = false): string {
   if (value === null) return '—'
   return `฿${compact ? new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value) : new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value)}`
+}
+
+/** The status pill text for the pages that read the BI copy. */
+export function dataAsOf(latest: BiRun | null): string {
+  return latest ? `Data as of ${formatDateTime(latest.data_as_of)}` : 'No data refreshed yet'
 }

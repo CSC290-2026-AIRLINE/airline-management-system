@@ -1,22 +1,21 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
-import { Button } from '@staff-web/components/ui/button'
+import { useState, type ReactNode } from 'react'
 import { ChartFrame } from '../components/InteractiveCharts'
-import { Skeleton } from '@staff-web/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
-import { useBiApi, type BiFilters as FilterState, type BiGroup } from '../api/bi'
+import { AlertCircle } from 'lucide-react'
+import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { filterQuery, useBiApi, type BiFilters as FilterState, type BiGroup } from '../api/bi'
 import { BiFilters } from '../components/BiFilters'
-import { BiPageHeader } from '../components/BiPageHeader'
+import { BiPageFrame } from '../components/BiPageFrame'
+import { BiSectionState } from '../components/BiSectionState'
 import { KpiCard } from '../components/KpiCard'
 import { BarPanelChart, LinePanelChart } from '../components/PanelCharts'
 import { RankBars } from '../components/RankBars'
 import { MarkForMaintenance } from '../components/MarkForMaintenance'
+import { refreshMessage } from '../hooks/useBiDashboard'
 import { useBiLoad } from '../hooks/useBiLoad'
 import { defaultFilters } from '../lib-comparison'
-import { formatCompact, formatCount, formatDateTime, formatPercent, formatThb } from '../lib-format'
-
-/** How often an open panel re-reads the BI copy. Matches the backend's automatic refresh. */
-const AUTO_RELOAD_MS = 15_000
+import { dataAsOf, formatCompact, formatCount, formatPercent, formatThb } from '../lib-format'
+import { CHART_GRID, KPI_GRID } from '../lib-styles'
 
 /** A period label for the chosen grouping: "5 Oct" for a day or week, "Oct 2026" for a month. */
 function periodLabel(period: string, group: BiGroup): string {
@@ -26,8 +25,8 @@ function periodLabel(period: string, group: BiGroup): string {
 }
 
 /**
- * Shared frame for the panels: the title, the "Data as of" pill and Refresh, then the filter bar. `onReload` reloads the
- * panel's own data after a refresh. The view tabs come from BiPageHeader's context.
+ * The panels on the shared BiPageFrame, with their own status load and Refresh. `onReload` reloads the panel's own
+ * data after a refresh.
  */
 function PanelFrame({
   title,
@@ -36,10 +35,13 @@ function PanelFrame({
   onFiltersChange,
   onReload,
   fleetWide = false,
+  csv,
   children,
 }: {
   title: string
   description: string
+  /** The panel's CSV export, `/api/bi/export/<csv>.csv`, downloaded with the applied filters. */
+  csv: 'no-shows' | 'extra-revenue' | 'aircraft-use'
   /** Figures that are not split by route: the route list is hidden and a note says so. */
   fleetWide?: boolean
   filters: FilterState
@@ -53,18 +55,8 @@ function PanelFrame({
   const status = useBiLoad('bi-status', () => api.getStatus())
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
   const latest = status.data?.latest_success ?? status.previousData?.latest_success ?? null
-
-  // The backend rebuilds the copy every 15 seconds, so the open panel re-reads it on the same beat.
-  useEffect(() => {
-    const timer = setInterval(() => {
-      status.retry()
-      onReload()
-    }, AUTO_RELOAD_MS)
-    return () => clearInterval(timer)
-    // The retry functions only queue a state update, so the closures from the first render keep working.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   async function refresh() {
     setRefreshing(true)
@@ -74,34 +66,53 @@ function PanelFrame({
       status.retry()
       onReload()
     } catch (error) {
-      setRefreshError(error instanceof Error ? error.message : 'Refresh failed')
+      setRefreshError(refreshMessage(error))
     } finally {
       setRefreshing(false)
     }
   }
 
+  async function exportCsv() {
+    setExportError(null)
+    try {
+      await api.downloadCsv(`/api/bi/export/${csv}.csv?${filterQuery(filters)}`, `${csv}.csv`)
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'Export failed. Please try again.')
+    }
+  }
+
+  const lastRun = status.data?.last_run ?? status.previousData?.last_run ?? null
   return (
-    <main className="bi-page">
-      <BiPageHeader
-        title={title}
-        description={description}
-        status={latest ? `Data as of ${formatDateTime(latest.data_as_of)}` : 'No successful refresh yet'}
-        action={
-          <Button type="button" variant="outline" className="bi-button" onClick={() => void refresh()} disabled={refreshing}>
-            {refreshing ? 'Refreshing…' : 'Refresh'}
-          </Button>
-        }
-      />
-      <div className="bi-page-content">
-        <BiFiltersRouted filters={draft} onChange={setDraft} onApply={() => onFiltersChange(draft)} fleetWide={fleetWide} />
-        {refreshError && (
+    <BiPageFrame
+      title={title}
+      description={description}
+      status={dataAsOf(latest)}
+      refresh={{
+        onRefresh: () => void refresh(),
+        refreshing,
+        error: refreshError,
+        lastRunFailed: lastRun?.status === 'failed',
+      }}
+      filters={
+        <BiFiltersRouted
+          filters={draft}
+          onChange={setDraft}
+          onApply={() => onFiltersChange(draft)}
+          onExportCsv={() => void exportCsv()}
+          fleetWide={fleetWide}
+        />
+      }
+      alerts={
+        exportError && (
           <Alert variant="destructive">
-            <AlertDescription>Refresh failed: {refreshError}</AlertDescription>
+            <AlertCircle />
+            <AlertDescription>Export failed: {exportError}</AlertDescription>
           </Alert>
-        )}
-        {children}
-      </div>
-    </main>
+        )
+      }
+    >
+      {children}
+    </BiPageFrame>
   )
 }
 
@@ -110,11 +121,13 @@ function BiFiltersRouted({
   filters,
   onChange,
   onApply,
+  onExportCsv,
   fleetWide,
 }: {
   filters: FilterState
   onChange: (next: FilterState) => void
   onApply: () => void
+  onExportCsv: () => void
   fleetWide: boolean
 }) {
   const api = useBiApi()
@@ -124,42 +137,13 @@ function BiFiltersRouted({
       filters={filters}
       routes={routes.data ?? routes.previousData ?? []}
       onChange={onChange}
+      onExportCsv={onExportCsv}
       onPrint={() => window.print()}
       onApply={onApply}
       showRoute={!fleetWide}
       note={fleetWide ? 'Fleet-wide, not split by route' : undefined}
     />
   )
-}
-
-/** Loading, error and empty states for a panel's data. */
-function PanelState({
-  loading,
-  error,
-  onRetry,
-  empty,
-  emptyText,
-}: {
-  loading: boolean
-  error: string | null
-  onRetry: () => void
-  empty: boolean
-  emptyText: string
-}) {
-  if (loading) return <Skeleton className="h-64 w-full" />
-  if (error)
-    return (
-      <Alert variant="destructive">
-        <AlertDescription>
-          Could not load this panel ({error}).{' '}
-          <button type="button" className="underline" onClick={onRetry}>
-            Try again
-          </button>
-        </AlertDescription>
-      </Alert>
-    )
-  if (empty) return <p className="p-6 text-sm text-muted-foreground">{emptyText}</p>
-  return null
 }
 
 /* ---------------------------------------------------------------- No-shows */
@@ -187,34 +171,29 @@ export function NoShowsView() {
       filters={filters}
       onFiltersChange={setFilters}
       onReload={data.retry}
+      csv="no-shows"
     >
-      <PanelState
+      <BiSectionState
+        label="No-shows"
         loading={data.loading && !body}
         error={data.error}
         onRetry={data.retry}
         empty={!data.loading && !data.error && weeks.length === 0}
-        emptyText="No flights with a closed gate in these dates."
+        emptyTitle="No flights with a closed gate in these dates."
       />
       {body && weeks.length > 0 && (
         <>
-          <section className="bi-kpis">
+          <section className={KPI_GRID}>
             <KpiCard
               label="No-show rate"
               value={formatPercent(totals.booked > 0 ? totals.no_show / totals.booked : null)}
               hint="No-shows ÷ booked passengers"
-              comparison="No previous period data"
             />
-            <KpiCard
-              label="No-shows"
-              value={formatCount(totals.no_show)}
-              hint={`Out of ${formatCount(totals.booked)} booked`}
-              comparison="No previous period data"
-            />
+            <KpiCard label="No-shows" value={formatCount(totals.no_show)} hint={`Out of ${formatCount(totals.booked)} booked`} />
             <KpiCard
               label="Boarded"
               value={formatCount(totals.boarded)}
               hint={totals.booked > 0 ? `${formatPercent(totals.boarded / totals.booked)} of booked` : '—'}
-              comparison="No previous period data"
             />
             <KpiCard
               label="Highest no-show route"
@@ -223,7 +202,7 @@ export function NoShowsView() {
               comparison="Could be overbooked a little"
             />
           </section>
-          <section className="bi-chart-pair">
+          <section className={CHART_GRID}>
             <LinePanelChart
               title={`No-show rate by ${filters.group}`}
               labels={labels}
@@ -299,36 +278,35 @@ export function ExtraRevenueView() {
       filters={filters}
       onFiltersChange={setFilters}
       onReload={data.retry}
+      csv="extra-revenue"
       fleetWide
     >
-      <PanelState
+      <BiSectionState
+        label="Extra revenue"
         loading={data.loading && !data.previousData}
         error={data.error}
         onRetry={data.retry}
         empty={!data.loading && !data.error && periods.length === 0}
-        emptyText="No extra-revenue payments in these dates yet."
+        emptyTitle="No extra-revenue payments in these dates yet."
       />
       {periods.length > 0 && (
         <>
-          <section className="bi-kpis">
-            <KpiCard label="Extra revenue" value={formatThb(net, true)} hint="After refunds" comparison="No previous period data" />
+          <section className={KPI_GRID}>
+            <KpiCard label="Extra revenue" value={formatThb(net, true)} hint="After refunds" />
             <KpiCard
               label="Per passenger"
               value={formatThb(passengers > 0 ? net / passengers : null)}
               hint="Extra revenue ÷ passengers flown"
-              comparison="No previous period data"
             />
             <KpiCard
               label="Biggest type"
               value={biggest.label}
               hint={gross > 0 ? `${formatPercent(typeGross(biggest.key) / gross)} of extra revenue` : '—'}
-              comparison="No previous period data"
             />
             <KpiCard
               label="Refunds"
               value={formatThb(refunds, true)}
               hint={gross > 0 ? `${formatPercent(refunds / gross)} of extra revenue` : '—'}
-              comparison="No previous period data"
             />
           </section>
           <BarPanelChart
@@ -341,7 +319,7 @@ export function ExtraRevenueView() {
             format={(v) => formatThb(v, true)}
             yTitle="THB"
           />
-          <section className="bi-chart-pair">
+          <section className={CHART_GRID}>
             <ChartFrame title="By type" subtitle={monthName}>
               <Table>
                 <TableHeader>
@@ -429,36 +407,31 @@ export function AircraftUseView() {
       filters={filters}
       onFiltersChange={setFilters}
       onReload={data.retry}
+      csv="aircraft-use"
       fleetWide
     >
-      <PanelState
+      <BiSectionState
+        label="Aircraft use"
         loading={data.loading && !body}
         error={data.error}
         onRetry={data.retry}
         empty={!data.loading && !data.error && aircraft.length === 0}
-        emptyText="No aircraft in the copy yet."
+        emptyTitle="No aircraft in the copy yet."
       />
       {body && aircraft.length > 0 && (
         <>
-          <section className="bi-kpis">
+          <section className={KPI_GRID}>
             <KpiCard
               label="Hours per aircraft per day"
               value={availableDays > 0 ? `${(hours / availableDays).toFixed(1)} h` : '—'}
               hint="Hours flown ÷ days it could fly"
-              comparison="No previous period data"
             />
             <KpiCard
               label="Aircraft in fleet"
               value={formatCount(aircraft.length)}
               hint={`${formatCount(Math.round(hours))} hours flown in total`}
-              comparison="No previous period data"
             />
-            <KpiCard
-              label="Days out of service"
-              value={formatCount(outDays)}
-              hint="Maintenance and grounded"
-              comparison="No previous period data"
-            />
+            <KpiCard label="Days out of service" value={formatCount(outDays)} hint="Maintenance and grounded" />
             <KpiCard
               label="Low-use aircraft"
               value={formatCount(lowUse.length)}
@@ -483,7 +456,7 @@ export function AircraftUseView() {
               key: a.aircraft_id,
               label: (
                 <>
-                  {a.tail_number} <small className="bi-rank-type">{a.type_code}</small>
+                  {a.tail_number} <small className="ml-1 text-xs text-muted-foreground">{a.type_code}</small>
                 </>
               ),
               value: a.hours_per_day,
@@ -491,7 +464,7 @@ export function AircraftUseView() {
               alert: a.hours_per_day !== null && a.hours_per_day < IDLE_HOURS_PER_DAY,
             }))}
           />
-          <section className="bi-chart-pair">
+          <section className={CHART_GRID}>
             <BarPanelChart
               title={`Fleet hours by ${filters.group}`}
               subtitle="All aircraft"
@@ -517,7 +490,7 @@ export function AircraftUseView() {
                     return (
                       <TableRow key={`${d.aircraft_id}-${d.start_date}-${i}`}>
                         <TableCell>
-                          {a?.tail_number ?? '—'} <small className="bi-rank-type">{a?.type_code ?? ''}</small>
+                          {a?.tail_number ?? '—'} <small className="ml-1 text-xs text-muted-foreground">{a?.type_code ?? ''}</small>
                         </TableCell>
                         <TableCell>{d.reason ?? (d.status === 'in_maintenance' ? 'In maintenance' : 'Grounded')}</TableCell>
                         <TableCell>{d.start_date === d.end_date ? d.start_date : `${d.start_date} to ${d.end_date}`}</TableCell>

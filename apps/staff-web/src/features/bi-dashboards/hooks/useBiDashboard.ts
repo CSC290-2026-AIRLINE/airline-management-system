@@ -88,7 +88,8 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong'
 }
 
-function refreshMessage(error: unknown): string {
+/** The message for a failed Refresh, the same on every BI view. */
+export function refreshMessage(error: unknown): string {
   const message = messageOf(error)
   if (message.startsWith('409')) return 'A refresh is already running. Wait for it to finish, then try again.'
   if (message.startsWith('403')) return 'Only staff accounts can refresh the dashboards.'

@@ -1,4 +1,4 @@
-import { ChartFrame, ChartHit } from './InteractiveCharts'
+import { AXIS_TEXT, ChartFrame, ChartHit, DATA_LABEL, PLOT_SCROLL } from './InteractiveCharts'
 
 /**
  * SVG charts for the no-show, extra-revenue and aircraft-use panels. Hovering a bar group or a point shows the same
@@ -60,69 +60,76 @@ export function BarPanelChart({
   const y = (value: number) => PAD.top + plotHeight - (value / max) * plotHeight
   const every = labelEvery(labels.length)
   return (
-    <ChartFrame title={title} subtitle={subtitle} legend={series.map((s) => ({ label: s.name, color: s.color }))} wide>
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={title} className="w-full">
-        {[0, 0.25, 0.5, 0.75, 1].map((t) => (
-          <g key={t}>
-            <line x1={PAD.left} x2={WIDTH - PAD.right} y1={y(max * t)} y2={y(max * t)} stroke="#e5e7eb" />
-            <text x={PAD.left - 8} y={y(max * t) + 4} textAnchor="end" fontSize="11" fill="#6b7280">
-              {format(max * t)}
-            </text>
-          </g>
-        ))}
-        {yTitle && (
-          <text x={12} y={PAD.top + plotHeight / 2} fontSize="11" fill="#6b7280" transform={`rotate(-90 12 ${PAD.top + plotHeight / 2})`}>
-            {yTitle}
-          </text>
-        )}
-        {labels.map((label, i) => {
-          const x0 = PAD.left + i * slot
-          let base = 0
-          const details = series.map((s) => `${s.name}: ${format(s.values[i] ?? 0)}`)
-          if (stacked) details.push(`Total: ${format(totals[i])}`)
-          if (labelTotals?.[i] !== undefined) details.push(`Booked: ${format(labelTotals[i])}`)
-          return (
-            <g key={`${label}-${i}`} onClick={onPick ? () => onPick(i) : undefined} style={onPick ? { cursor: 'pointer' } : undefined}>
-              {series.map((s, si) => {
-                const value = s.values[i] ?? 0
-                const top = stacked ? base + value : value
-                const barX = stacked ? x0 + (slot - barWidth) / 2 : x0 + (slot - barWidth * series.length) / 2 + si * barWidth
-                const rect = (
-                  <rect
-                    key={s.name}
-                    x={barX}
-                    y={y(top)}
-                    width={barWidth}
-                    height={Math.max(0, y(stacked ? base : 0) - y(top))}
-                    fill={s.color}
-                  />
-                )
-                if (stacked) base += value
-                return rect
-              })}
-              {labelTotals?.[i] !== undefined && (
-                <text x={x0 + slot / 2} y={y(labelTotals[i]) - 6} textAnchor="middle" fontSize="11" fontWeight="600" fill="#102544">
-                  {format(labelTotals[i])}
-                </text>
-              )}
-              {i % every === 0 && (
-                <text x={x0 + slot / 2} y={HEIGHT - 12} textAnchor="middle" fontSize="11" fill="#6b7280">
-                  {label}
-                </text>
-              )}
-              <ChartHit
-                x={x0}
-                y={PAD.top}
-                width={slot}
-                height={plotHeight}
-                detail={label}
-                description={details.join(' · ')}
-                onPick={onPick ? () => onPick(i) : undefined}
-              />
+    <ChartFrame title={title} subtitle={subtitle} legend={series.map((s) => ({ label: s.name, color: s.color }))}>
+      <div className={PLOT_SCROLL}>
+        <svg
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          role="img"
+          aria-label={title}
+          className="block w-full min-w-[480px] font-sans print:min-w-0"
+        >
+          {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+            <g key={t}>
+              <line x1={PAD.left} x2={WIDTH - PAD.right} y1={y(max * t)} y2={y(max * t)} className="stroke-line" />
+              <text x={PAD.left - 8} y={y(max * t) + 4} textAnchor="end" className={AXIS_TEXT}>
+                {format(max * t)}
+              </text>
             </g>
-          )
-        })}
-      </svg>
+          ))}
+          {yTitle && (
+            <text x={12} y={PAD.top + plotHeight / 2} className={AXIS_TEXT} transform={`rotate(-90 12 ${PAD.top + plotHeight / 2})`}>
+              {yTitle}
+            </text>
+          )}
+          {labels.map((label, i) => {
+            const x0 = PAD.left + i * slot
+            let base = 0
+            const details = series.map((s) => `${s.name}: ${format(s.values[i] ?? 0)}`)
+            if (stacked) details.push(`Total: ${format(totals[i])}`)
+            if (labelTotals?.[i] !== undefined) details.push(`Booked: ${format(labelTotals[i])}`)
+            return (
+              <g key={`${label}-${i}`} onClick={onPick ? () => onPick(i) : undefined} style={onPick ? { cursor: 'pointer' } : undefined}>
+                {series.map((s, si) => {
+                  const value = s.values[i] ?? 0
+                  const top = stacked ? base + value : value
+                  const barX = stacked ? x0 + (slot - barWidth) / 2 : x0 + (slot - barWidth * series.length) / 2 + si * barWidth
+                  const rect = (
+                    <rect
+                      key={s.name}
+                      x={barX}
+                      y={y(top)}
+                      width={barWidth}
+                      height={Math.max(0, y(stacked ? base : 0) - y(top))}
+                      fill={s.color}
+                    />
+                  )
+                  if (stacked) base += value
+                  return rect
+                })}
+                {labelTotals?.[i] !== undefined && (
+                  <text x={x0 + slot / 2} y={y(labelTotals[i]) - 6} textAnchor="middle" className={DATA_LABEL}>
+                    {format(labelTotals[i])}
+                  </text>
+                )}
+                {i % every === 0 && (
+                  <text x={x0 + slot / 2} y={HEIGHT - 12} textAnchor="middle" className={AXIS_TEXT}>
+                    {label}
+                  </text>
+                )}
+                <ChartHit
+                  x={x0}
+                  y={PAD.top}
+                  width={slot}
+                  height={plotHeight}
+                  detail={label}
+                  description={details.join(' · ')}
+                  onPick={onPick ? () => onPick(i) : undefined}
+                />
+              </g>
+            )
+          })}
+        </svg>
+      </div>
     </ChartFrame>
   )
 }
@@ -161,48 +168,55 @@ export function LinePanelChart({
     .join(' ')
   const every = labelEvery(labels.length)
   return (
-    <ChartFrame title={title} subtitle={subtitle} legend={[{ label: title, color }]} wide>
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={title} className="w-full">
-        {[0, 0.25, 0.5, 0.75, 1].map((t) => (
-          <g key={t}>
-            <line x1={PAD.left} x2={WIDTH - PAD.right} y1={y(max * t)} y2={y(max * t)} stroke="#e5e7eb" />
-            <text x={PAD.left - 8} y={y(max * t) + 4} textAnchor="end" fontSize="11" fill="#6b7280">
-              {format(max * t)}
-            </text>
-          </g>
-        ))}
-        {yTitle && (
-          <text x={12} y={PAD.top + plotHeight / 2} fontSize="11" fill="#6b7280" transform={`rotate(-90 12 ${PAD.top + plotHeight / 2})`}>
-            {yTitle}
-          </text>
-        )}
-        {path && <polyline points={path} fill="none" stroke={color} strokeWidth={2} />}
-        {values.map((v, i) =>
-          v === null ? null : (
-            <g key={labels[i]}>
-              <circle cx={x(i)} cy={y(v)} r={3.5} fill={color} />
-              <text x={x(i)} y={y(v) - 8} textAnchor="middle" fontSize="11" fontWeight="600" fill="#102544">
-                {format(v)}
+    <ChartFrame title={title} subtitle={subtitle} legend={[{ label: title, color }]}>
+      <div className={PLOT_SCROLL}>
+        <svg
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          role="img"
+          aria-label={title}
+          className="block w-full min-w-[480px] font-sans print:min-w-0"
+        >
+          {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+            <g key={t}>
+              <line x1={PAD.left} x2={WIDTH - PAD.right} y1={y(max * t)} y2={y(max * t)} className="stroke-line" />
+              <text x={PAD.left - 8} y={y(max * t) + 4} textAnchor="end" className={AXIS_TEXT}>
+                {format(max * t)}
               </text>
-              <ChartHit
-                x={x(i) - hitWidth / 2}
-                y={PAD.top}
-                width={hitWidth}
-                height={plotHeight}
-                detail={labels[i]}
-                description={`${valueLabel ?? title}: ${format(v)}`}
-              />
             </g>
-          ),
-        )}
-        {labels.map((label, i) =>
-          i % every === 0 ? (
-            <text key={`${label}-${i}`} x={x(i)} y={HEIGHT - 12} textAnchor="middle" fontSize="11" fill="#6b7280">
-              {label}
+          ))}
+          {yTitle && (
+            <text x={12} y={PAD.top + plotHeight / 2} className={AXIS_TEXT} transform={`rotate(-90 12 ${PAD.top + plotHeight / 2})`}>
+              {yTitle}
             </text>
-          ) : null,
-        )}
-      </svg>
+          )}
+          {path && <polyline points={path} fill="none" stroke={color} strokeWidth={2} />}
+          {values.map((v, i) =>
+            v === null ? null : (
+              <g key={labels[i]}>
+                <circle cx={x(i)} cy={y(v)} r={3.5} fill={color} />
+                <text x={x(i)} y={y(v) - 8} textAnchor="middle" className={DATA_LABEL}>
+                  {format(v)}
+                </text>
+                <ChartHit
+                  x={x(i) - hitWidth / 2}
+                  y={PAD.top}
+                  width={hitWidth}
+                  height={plotHeight}
+                  detail={labels[i]}
+                  description={`${valueLabel ?? title}: ${format(v)}`}
+                />
+              </g>
+            ),
+          )}
+          {labels.map((label, i) =>
+            i % every === 0 ? (
+              <text key={`${label}-${i}`} x={x(i)} y={HEIGHT - 12} textAnchor="middle" className={AXIS_TEXT}>
+                {label}
+              </text>
+            ) : null,
+          )}
+        </svg>
+      </div>
     </ChartFrame>
   )
 }
