@@ -15,4 +15,6 @@ export interface FlightSearchFormProps {
   onSubmit: (value: FlightSearchFormValue) => void
   isLoading?: boolean
   errorMessage?: string | null
+  /** Leaves out the passenger counts (one adult), for a compact search box. The search page shows them. */
+  hidePassengers?: boolean
 }

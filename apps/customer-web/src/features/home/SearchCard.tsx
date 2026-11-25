@@ -48,7 +48,7 @@ export function SearchCard() {
         </Button>
       </nav>
       <div className="text-left shadow-lg">
-        <FlightSearchForm value={value} onChange={setValue} onSubmit={search} />
+        <FlightSearchForm value={value} onChange={setValue} onSubmit={search} hidePassengers />
       </div>
     </div>
   )
