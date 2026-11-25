@@ -54,6 +54,7 @@ type CatalogState =
       products: Product[]
       setting: CabinSetting
       cutoffAt: string
+      clockOffsetMs?: number
       orderWindowOpen: boolean
       currency: string
     }
@@ -75,24 +76,20 @@ function tabLabel(tab: Tab): string {
   return 'Duty-free'
 }
 
-function tabSubtitle(tab: Tab, mealService: CabinSetting['mealService'] | null): string {
+function tabSubtitle(tab: Tab, setting: CabinSetting | null): string {
+  const mealService = setting?.mealService
   if (tab === 'meals') {
     if (mealService === 'paid') {
       return 'Tap a meal for the selected passenger. Meals are charged in this cabin; tier members get a regular meal free. Premium meals are always charged. Passengers who order nothing can buy a meal on board.'
     }
     return 'Tap a meal for the selected passenger. The included meal is free, and so is a regular meal for tier members. Premium meals are always charged. Passengers who choose nothing get the default meal at no charge.'
   }
-  if (tab === 'snacks') return 'Served in your cabin. Charged at full price, tier or not.'
+  if (tab === 'snacks') {
+    if (!setting?.snacksEnabled) return 'Snacks and drinks are unavailable in this cabin.'
+    return setting.snacksComplimentary ? 'Complimentary in this cabin.' : 'Available for purchase in this cabin.'
+  }
+  if (setting && !setting.dutyFreeEnabled) return 'Duty-free is unavailable in this cabin.'
   return 'Order ahead and collect on board. Alcohol is for adults only and ID is checked at collection.'
-}
-
-function useNow(intervalMs: number = 60_000): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), intervalMs)
-    return () => clearInterval(id)
-  }, [intervalMs])
-  return now
 }
 
 function cartFor(cart: NonNullable<Props['cart']>, somchaiId: string): Cart {
@@ -172,7 +169,6 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
   const [orderConfirmed, setOrderConfirmed] = useState(false)
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null)
   const [alert, setAlert] = useState<string | null>(null)
-  const now = useNow()
   const cartSeededRef = useRef(false)
 
   useEffect(() => {
@@ -222,22 +218,33 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
     if (!selectedFlightId || !readyBooking) return
     const flight = readyBooking.flights.find((f) => f.id === selectedFlightId)
     if (!flight) return
-    let cancelled = false
-    fetchShop(readyBooking, selectedFlightId, flight.cabinClass, fetchWithAuth)
-      .then(({ products, setting, cutoffAt, orderWindowOpen, currency }) => {
-        if (cancelled) return
-        setCatalogState({ kind: 'ready', flightId: selectedFlightId, products, setting, cutoffAt, orderWindowOpen, currency })
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return
-        setCatalogState({
-          kind: 'error',
-          flightId: selectedFlightId,
-          error: e instanceof Error ? e.message : 'Failed to load catalog',
+    let request = 0
+    const refreshCatalog = () => {
+      const currentRequest = ++request
+      fetchShop(readyBooking, flight.id, flight.cabinClass, fetchWithAuth)
+        .then(({ products, setting, cutoffAt, orderWindowOpen, currency, clockOffsetMs }) => {
+          if (request !== currentRequest) return
+          setCatalogState({ kind: 'ready', flightId: flight.id, products, setting, cutoffAt, orderWindowOpen, currency, clockOffsetMs })
         })
-      })
+        .catch((error: unknown) => {
+          if (request !== currentRequest) return
+          setCatalogState({
+            kind: 'error',
+            flightId: flight.id,
+            error: error instanceof Error ? error.message : 'Failed to load catalog',
+          })
+        })
+    }
+
+    refreshCatalog()
+    window.addEventListener('focus', refreshCatalog)
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') refreshCatalog()
+    }, 60_000)
     return () => {
-      cancelled = true
+      request++
+      window.removeEventListener('focus', refreshCatalog)
+      window.clearInterval(timer)
     }
   }, [selectedFlightId, readyBooking, fetchWithAuth])
 
@@ -283,7 +290,7 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
   const shop = catalogState.kind === 'ready' && catalogState.flightId === selectedFlightId ? catalogState : null
   const cutoffAt =
     shop?.cutoffAt || (selectedFlight ? (selectedFlight.cutoffAt ?? defaultCutoffFor(selectedFlight.scheduledDeparture)) : null)
-  const isOpen = shop ? shop.orderWindowOpen && (!cutoffAt || new Date(cutoffAt).getTime() > now) : false
+  const isOpen = Boolean(shop?.setting.preorderEnabled && shop.orderWindowOpen)
 
   const catalog: { kind: 'loading' | 'error' | 'ready'; products: Product[]; setting: CabinSetting | null; error: string | null } =
     catalogState.kind === 'ready' && catalogState.flightId === selectedFlightId
@@ -366,7 +373,7 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
   function handleAddOne(productId: string) {
     if (!selectedPassengerId || catalog.kind !== 'ready') return
     const product = catalog.products.find((p) => p.id === productId)
-    if (!product || product.category === 'meal') return
+    if (!product || product.category === 'meal' || product.unavailableReason || !isOpen) return
     const existing = cart[selectedPassengerId] ?? []
     const found = existing.find((l) => l.productId === productId)
     if (found) {
@@ -541,6 +548,8 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
       <CountdownBanner
         cutoffAt={cutoffAt}
         isOpen={isOpen}
+        clockOffsetMs={shop?.clockOffsetMs}
+        preorderEnabled={shop?.setting.preorderEnabled}
         windowHours={shop?.setting.orderWindowHours ?? null}
         timeZone={selectedFlight?.departureTimeZone}
       />
@@ -565,7 +574,7 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
               <CardTitle>
                 {tabLabel(activeTab)} for {selectedPassenger?.firstName ?? ''}
               </CardTitle>
-              <CardDescription>{tabSubtitle(activeTab, catalog.setting?.mealService ?? null)}</CardDescription>
+              <CardDescription>{tabSubtitle(activeTab, catalog.setting)}</CardDescription>
             </CardHeader>
 
             {catalog.kind === 'loading' ? (
@@ -579,6 +588,8 @@ export function AddExtraServicesPage({ reference, cart: cartPreset, f5: f5Preset
                   <AlertDescription className="col-start-2">{catalog.error}</AlertDescription>
                 </Alert>
               </div>
+            ) : products.length === 0 ? (
+              <p className="px-6 pb-5 text-sm text-muted-foreground">No {tabLabel(activeTab).toLowerCase()} offered on this flight.</p>
             ) : (
               <ProductList
                 products={products}

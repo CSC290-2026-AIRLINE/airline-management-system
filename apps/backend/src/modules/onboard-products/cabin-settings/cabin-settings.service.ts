@@ -32,6 +32,7 @@ export interface CabinSettingDto {
   orderWindowHours: number | null
   premiumMealsAllowed: boolean | null
   snacksEnabled: boolean | null
+  snacksComplimentary?: boolean | null
   dutyFreeEnabled: boolean | null
   onboardBufferPercent: number | null
 }
@@ -48,6 +49,7 @@ export interface CabinSettingInput {
   orderWindowHours?: number | null
   premiumMealsAllowed?: boolean | null
   snacksEnabled?: boolean | null
+  snacksComplimentary?: boolean | null
   dutyFreeEnabled?: boolean | null
   onboardBufferPercent?: number | null
 }
@@ -216,6 +218,7 @@ export class CabinSettingsService {
       order_window_hours: this.coalesceForCreate(input.scope, input.orderWindowHours, 48),
       premium_meals_allowed: this.coalesceForCreate(input.scope, input.premiumMealsAllowed, false),
       snacks_enabled: this.coalesceForCreate(input.scope, input.snacksEnabled, true),
+      snacks_complimentary: input.snacksComplimentary ?? null,
       duty_free_enabled: this.coalesceForCreate(input.scope, input.dutyFreeEnabled, true),
       onboard_buffer_percent: this.coalesceForCreate(input.scope, input.onboardBufferPercent, 10),
       updated_by_staff_id: staffId,
@@ -262,6 +265,9 @@ export class CabinSettingsService {
     else if (input.scope === 'network') data.premium_meals_allowed = existing.premium_meals_allowed ?? false
     if (input.snacksEnabled !== undefined) data.snacks_enabled = input.snacksEnabled
     else if (input.scope === 'network') data.snacks_enabled = existing.snacks_enabled ?? true
+    if (input.snacksComplimentary !== undefined || input.snacksEnabled !== undefined) {
+      data.snacks_complimentary = input.snacksComplimentary ?? null
+    }
     if (input.dutyFreeEnabled !== undefined) data.duty_free_enabled = input.dutyFreeEnabled
     else if (input.scope === 'network') data.duty_free_enabled = existing.duty_free_enabled ?? true
     if (input.onboardBufferPercent !== undefined) data.onboard_buffer_percent = input.onboardBufferPercent
@@ -347,6 +353,7 @@ export class CabinSettingsService {
           orderWindowHours: r.order_window_hours,
           premiumMealsAllowed: r.premium_meals_allowed,
           snacksEnabled: r.snacks_enabled,
+          snacksComplimentary: r.snacks_complimentary ?? null,
           dutyFreeEnabled: r.duty_free_enabled,
           onboardBufferPercent: r.onboard_buffer_percent,
         }))
@@ -423,6 +430,7 @@ export class CabinSettingsService {
     order_window_hours: number | null
     premium_meals_allowed: boolean | null
     snacks_enabled: boolean | null
+    snacks_complimentary?: boolean | null
     duty_free_enabled: boolean | null
     onboard_buffer_percent: number | null
   }): CabinSettingRow => ({
@@ -437,6 +445,7 @@ export class CabinSettingsService {
     orderWindowHours: r.order_window_hours,
     premiumMealsAllowed: r.premium_meals_allowed,
     snacksEnabled: r.snacks_enabled,
+    snacksComplimentary: r.snacks_complimentary ?? null,
     dutyFreeEnabled: r.duty_free_enabled,
     onboardBufferPercent: r.onboard_buffer_percent,
   })
@@ -454,6 +463,7 @@ export class CabinSettingsService {
     order_window_hours: number | null
     premium_meals_allowed: boolean | null
     snacks_enabled: boolean | null
+    snacks_complimentary?: boolean | null
     duty_free_enabled: boolean | null
     onboard_buffer_percent: number | null
   }): CabinSettingDto => ({
@@ -469,6 +479,7 @@ export class CabinSettingsService {
     orderWindowHours: row.order_window_hours,
     premiumMealsAllowed: row.premium_meals_allowed,
     snacksEnabled: row.snacks_enabled,
+    snacksComplimentary: row.snacks_complimentary ?? null,
     dutyFreeEnabled: row.duty_free_enabled,
     onboardBufferPercent: row.onboard_buffer_percent,
   })
@@ -488,6 +499,7 @@ function toWindowRow(r: ResolvedCabinSetting): CabinSettingRow {
     orderWindowHours: r.orderWindowHours,
     premiumMealsAllowed: r.premiumMealsAllowed,
     snacksEnabled: r.snacksEnabled,
+    snacksComplimentary: r.snacksComplimentary,
     dutyFreeEnabled: r.dutyFreeEnabled,
     onboardBufferPercent: r.onboardBufferPercent,
   }

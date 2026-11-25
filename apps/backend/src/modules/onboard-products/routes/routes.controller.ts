@@ -43,6 +43,11 @@ export class RoutesController {
     }))
   }
 
+  @Get('flights')
+  async listNetworkFlights(): Promise<RouteFlightDto[]> {
+    return this.readFlights()
+  }
+
   @Get(':routeId')
   async getOne(@Param('routeId') routeId: string): Promise<RouteDto> {
     const r = await this.db.route.findUnique({
@@ -66,9 +71,13 @@ export class RoutesController {
   async listFlights(@Param('routeId') routeId: string): Promise<RouteFlightDto[]> {
     const route = await this.db.route.findUnique({ where: { id: routeId } })
     if (!route) throw new NotFoundException('Route not found.')
+    return this.readFlights(routeId)
+  }
+
+  private async readFlights(routeId?: string): Promise<RouteFlightDto[]> {
     const rows = await this.db.flight.findMany({
-      where: { route_id: routeId },
-      orderBy: { scheduled_dep_at: 'asc' },
+      where: routeId ? { route_id: routeId } : undefined,
+      orderBy: [{ scheduled_dep_at: 'asc' }, { id: 'asc' }],
     })
     return rows.map((f) => ({
       id: f.id,

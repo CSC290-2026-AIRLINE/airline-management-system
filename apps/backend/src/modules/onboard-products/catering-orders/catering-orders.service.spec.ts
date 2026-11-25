@@ -139,4 +139,28 @@ describe('CateringOrdersService default meals', () => {
     })
     expect((await buildLines()).map((l) => [l.cabin, l.quantityRequired, l.source])).toEqual([['economy', 2, 'default']])
   })
+
+  it('does not load a default meal when the only paid-cabin passenger preordered one', async () => {
+    const buildLines = setup({
+      orders: [
+        {
+          id: 'order-1',
+          cabin: 'economy',
+          product_order_line: [
+            { product_id: 'set-meal', quantity: 1 },
+            { product_id: 'water', quantity: 1 },
+          ],
+        },
+      ],
+      stock: [],
+      transferred: [],
+      resolved: settings({ mealService: 'paid', includedPerPassenger: 0, onboardBufferPercent: 10 }),
+      perCabin: { economy: { passengers: 1, ordered: 1 } },
+      defaults: { economy: 'set-meal' },
+    })
+    expect((await buildLines()).map((line) => [line.productId, line.quantityRequired, line.source])).toEqual([
+      ['set-meal', 1, 'order'],
+      ['water', 1, 'order'],
+    ])
+  })
 })

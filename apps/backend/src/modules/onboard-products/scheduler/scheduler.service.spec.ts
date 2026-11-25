@@ -16,7 +16,7 @@ jest.mock('../../../db/db.service', () => ({ DbService: class {} }))
 const NOW = new Date('2026-11-23T10:00:00Z')
 
 function setup(
-  existingOrder: { id: string } | null,
+  existingOrder: { id: string; status?: string; generated_at?: Date } | null,
   cutoff = new Date('2026-11-23T09:00:00Z'),
   cancelledFlights: Array<{ id: string; catering_order: { status: string } | null }> = [],
 ) {
@@ -28,6 +28,7 @@ function setup(
       ),
     },
     catering_order: { findUnique: jest.fn().mockResolvedValue(existingOrder) },
+    stock_transfer: { findFirst: jest.fn().mockResolvedValue(null) },
   }
   const cateringOrders = {
     cutoffFor: jest.fn().mockResolvedValue(cutoff),
@@ -62,6 +63,17 @@ describe('SchedulerService catering generation', () => {
     const result = await scheduler.tick()
     expect(cateringOrders.generate).not.toHaveBeenCalled()
     expect(result.generated).toBe(0)
+  })
+
+  it('rebuilds an untransferred plan generated before the cutoff', async () => {
+    const { scheduler, cateringOrders } = setup({
+      id: 'early-order',
+      status: 'generated',
+      generated_at: new Date('2026-11-23T08:00:00Z'),
+    })
+    const result = await scheduler.tick()
+    expect(cateringOrders.generate).toHaveBeenCalledWith('flight-1', null)
+    expect(result.generated).toBe(1)
   })
 
   it('waits for the cutoff', async () => {

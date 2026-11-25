@@ -54,8 +54,15 @@ describe('priceBasisFor', () => {
     expect(priceBasisFor(PREMIUM_MEAL, TIER)).toBe('standard')
   })
 
-  it('always charges a snack, even on a complimentary cabin', () => {
+  it('charges a snack when only meals are complimentary', () => {
     expect(priceBasisFor(SNACK, COMPLIMENTARY)).toBe('standard')
+  })
+
+  it('includes snacks and drinks when the cabin makes them complimentary', () => {
+    const policy = { ...PAID, snacksComplimentary: true }
+    expect(priceLine(SNACK, policy)).toMatchObject({ priceBasis: 'included', lineTotal: 0 })
+    expect(priceLine({ ...SNACK, category: 'beverage' }, policy)).toMatchObject({ priceBasis: 'included', lineTotal: 0 })
+    expect(priceBasisFor({ ...SNACK, category: 'duty_free' }, policy)).toBe('standard')
   })
 
   it('never stacks the two free benefits on one line', () => {

@@ -53,6 +53,11 @@ describe('resolveOfferings', () => {
     expect(resolveOfferings(rows, SCOPE).map((r) => r.productId)).toEqual(['p1'])
   })
 
+  it('keeps a route menu empty when all its products are withdrawn', () => {
+    const rows = [row({ productId: 'net-1' }), row({ productId: 'route-1', scope: 'route', routeId: SCOPE.routeId, isActive: false })]
+    expect(resolveOfferings(rows, SCOPE)).toEqual([])
+  })
+
   it('reads the economy menu for premium economy', () => {
     const rows = [row({ productId: 'econ-1' }), row({ productId: 'prem-1', cabin: 'premium_economy' })]
     expect(resolveOfferings(rows, { ...SCOPE, cabin: 'premium_economy' }).map((r) => r.productId)).toEqual(['econ-1'])

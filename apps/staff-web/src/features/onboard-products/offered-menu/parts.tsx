@@ -18,7 +18,7 @@ export interface RulesDraft {
   preorderEnabled: boolean
   orderWindowHours: number
   premiumMealsAllowed: boolean
-  snacksEnabled: boolean
+  snacksService: 'complimentary' | 'paid' | 'none'
   dutyFreeEnabled: boolean
   onboardBufferPercent: number
 }
@@ -150,13 +150,11 @@ export function RulesForm({
         <SettingRow label="Order closes before departure" description="Cutoff for the catering order." error={errors.orderWindowHours}>
           <SegmentedControl
             ariaLabel="Order window"
-            value={[24, 48, 72].includes(draft.orderWindowHours) ? draft.orderWindowHours : 48}
+            value={draft.orderWindowHours}
             onChange={(v) => setField('orderWindowHours', v)}
-            options={[
-              { value: 24, label: '24 hours' },
-              { value: 48, label: '48 hours' },
-              { value: 72, label: '72 hours' },
-            ]}
+            options={[...new Set([draft.orderWindowHours, 24, 48, 72])]
+              .sort((a, b) => a - b)
+              .map((hours) => ({ value: hours, label: `${hours} ${hours === 1 ? 'hour' : 'hours'}` }))}
           />
         </SettingRow>
         <SettingRow label="On-board buffer" description="Extra meals loaded to cover no-shows." error={errors.onboardBufferPercent}>
@@ -177,7 +175,16 @@ export function RulesForm({
 
       <SettingsGroup title="Extras">
         <SettingRow label="Snacks and drinks" description="Light snacks and beverages between meals.">
-          <ToggleSwitch ariaLabel="Snacks" checked={draft.snacksEnabled} onChange={(v) => setField('snacksEnabled', v)} />
+          <SegmentedControl
+            ariaLabel="Snacks and drinks"
+            value={draft.snacksService}
+            onChange={(value) => setField('snacksService', value)}
+            options={[
+              { value: 'complimentary', label: 'Complimentary' },
+              { value: 'paid', label: 'Paid' },
+              { value: 'none', label: 'None' },
+            ]}
+          />
         </SettingRow>
         <SettingRow label="Duty-free" description="Allow duty-free sales in this cabin.">
           <ToggleSwitch ariaLabel="Duty-free" checked={draft.dutyFreeEnabled} onChange={(v) => setField('dutyFreeEnabled', v)} />
@@ -194,68 +201,82 @@ export function RulesForm({
   )
 }
 
-/** The menu of one cabin: a toggle per meal, and the meal a passenger gets when they order nothing. */
+/** The offered items and default meal for one cabin. */
 export function MenuPanel({
-  mealProducts,
+  products,
   menu,
-  offeredCount,
+  disabled,
   defaultOfferingId,
   warning,
   onToggle,
   onSetDefault,
 }: {
-  mealProducts: Product[]
-  menu: ProductOffering[]
-  offeredCount: number
+  products: Product[]
+  menu: Pick<ProductOffering, 'id' | 'productId' | 'isActive' | 'isDefault'>[]
+  disabled: boolean
   defaultOfferingId: string | null
   warning: string | null
   onToggle: (productId: string, offered: boolean) => void
   onSetDefault: (offeringId: string) => void
 }) {
+  const activeProducts = new Set(menu.filter((offering) => offering.isActive).map((offering) => offering.productId))
+  const meals = menu.filter(
+    (offering) => offering.isActive && products.some((product) => product.category === 'meal' && product.id === offering.productId),
+  )
+
   return (
     <div className="flex flex-col gap-4 rounded-lg border p-4">
-      <div className="flex flex-col gap-1">
-        <h3 className="m-0 text-base font-semibold">Menu</h3>
-        <p className="m-0 text-sm text-muted-foreground">
-          {offeredCount === 0
-            ? 'No menu for this cabin — turn meals on below to add them.'
-            : `${offeredCount} of ${mealProducts.length} meals offered. Tap a meal to offer or withdraw it.`}
-        </p>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {mealProducts.map((p) => {
-          const active = menu.some((o) => o.productId === p.id && o.isActive)
-          return (
-            <Toggle
-              key={p.id}
-              variant="outline"
-              pressed={active}
-              onPressedChange={(next) => onToggle(p.id, next)}
-              className="data-[state=on]:border-primary"
-            >
-              <span aria-hidden="true">{active ? '✓' : '+'}</span>
-              {p.name}
-              {p.isPremium ? <Badge variant="secondary">Premium</Badge> : null}
-            </Toggle>
-          )
-        })}
-      </div>
+      <h3 className="m-0 text-base font-semibold">Menu</h3>
+      {[
+        { title: 'Meals', items: products.filter((product) => product.category === 'meal') },
+        {
+          title: 'Snacks and drinks',
+          items: products.filter((product) => product.category === 'snack' || product.category === 'beverage'),
+        },
+        { title: 'Duty-free', items: products.filter((product) => product.category === 'duty_free') },
+      ].map(({ title, items }) => (
+        <div key={title} className="flex flex-col gap-2">
+          <h4 className="text-sm font-medium">{title}</h4>
+          <div className="flex flex-wrap gap-2">
+            {items.map((product) => {
+              const active = activeProducts.has(product.id)
+              return (
+                <Toggle
+                  key={product.id}
+                  variant="outline"
+                  pressed={active}
+                  disabled={disabled}
+                  onPressedChange={(next) => onToggle(product.id, next)}
+                  className="data-[state=on]:border-primary"
+                >
+                  <span aria-hidden="true">{active ? '✓' : '+'}</span>
+                  {product.name}
+                  {product.isPremium ? <Badge variant="secondary">Premium</Badge> : null}
+                </Toggle>
+              )
+            })}
+            {items.length === 0 && <p className="text-sm text-muted-foreground">No products in the catalog.</p>}
+          </div>
+        </div>
+      ))}
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="default-meal">Default meal (if a passenger orders nothing)</Label>
         <NativeSelect
           id="default-meal"
           className="w-full"
-          value={defaultOfferingId ?? ''}
+          value={meals.some((meal) => meal.id === defaultOfferingId) ? (defaultOfferingId ?? '') : ''}
+          disabled={disabled || meals.length === 0}
           onChange={(e) => {
             if (e.target.value) onSetDefault(e.target.value)
           }}
         >
-          {menu.length === 0 && <NativeSelectOption value="">No meals offered</NativeSelectOption>}
-          {menu.map((o) => (
+          <NativeSelectOption value="" disabled>
+            {meals.length === 0 ? 'No meals offered' : 'Select a default meal'}
+          </NativeSelectOption>
+          {meals.map((o) => (
             <NativeSelectOption key={o.id} value={o.id}>
-              {mealProducts.find((mp) => mp.id === o.productId)?.name ?? 'Unknown meal'}
+              {products.find((mp) => mp.id === o.productId)?.name ?? 'Unknown meal'}
             </NativeSelectOption>
           ))}
         </NativeSelect>

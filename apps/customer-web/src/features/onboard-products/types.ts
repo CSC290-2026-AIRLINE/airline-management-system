@@ -161,6 +161,7 @@ export interface Product {
   // Replaces the price text when set (the no-pre-order choice on a
   // paid cabin is not "Free": nothing is served unless bought on board).
   priceLabel?: string
+  unavailableReason?: string
 }
 
 // Cabin's meal policy for a flight. Mirrors the `cabin_setting` row in
@@ -179,6 +180,7 @@ export interface CabinSetting {
   orderWindowHours: number
   premiumMealsAllowed: boolean
   snacksEnabled: boolean
+  snacksComplimentary?: boolean
   dutyFreeEnabled: boolean
 }
 

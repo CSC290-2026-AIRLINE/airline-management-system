@@ -12,7 +12,7 @@
 //   - the two free benefits never stack on one line, so a line has
 //     exactly one basis;
 //   - premium meals are always charged, even for a tier holder;
-//   - snacks, drinks and duty-free are always charged;
+//   - snacks and drinks follow cabin policy, and duty-free is charged;
 //   - a complimentary cabin includes one meal per passenger, so a meal
 //     line on such a cabin costs 0;
 //   - expires_at is the earlier of (created + payment hold) and the
@@ -35,6 +35,7 @@ export interface PricingContext {
   mealService: F12MealService
   includedPerPassenger: number
   hasTier: boolean
+  snacksComplimentary?: boolean
 }
 
 export interface PricedLine {
@@ -74,6 +75,7 @@ export function priceLine(line: OrderLineInput, ctx: PricingContext): PricedLine
 }
 
 export function priceBasisFor(line: OrderLineInput, ctx: PricingContext): F12PriceBasis {
+  if (line.category === 'snack' || line.category === 'beverage') return ctx.snacksComplimentary ? 'included' : 'standard'
   if (line.category !== 'meal') return 'standard'
   if (line.isPremium) return 'standard'
   if (ctx.hasTier) return 'tier_benefit'

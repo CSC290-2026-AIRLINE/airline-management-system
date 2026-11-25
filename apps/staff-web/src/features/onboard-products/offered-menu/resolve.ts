@@ -18,6 +18,7 @@ export type CabinSettingKey =
   | 'orderWindowHours'
   | 'premiumMealsAllowed'
   | 'snacksEnabled'
+  | 'snacksComplimentary'
   | 'dutyFreeEnabled'
   | 'onboardBufferPercent'
 
@@ -113,6 +114,8 @@ function defaultFor(key: CabinSettingKey): CabinSetting[CabinSettingKey] {
       return true
     case 'snacksEnabled':
       return true
+    case 'snacksComplimentary':
+      return false
     case 'dutyFreeEnabled':
       return true
     case 'onboardBufferPercent':
@@ -128,6 +131,7 @@ const ALL_KEYS: CabinSettingKey[] = [
   'orderWindowHours',
   'premiumMealsAllowed',
   'snacksEnabled',
+  'snacksComplimentary',
   'dutyFreeEnabled',
   'onboardBufferPercent',
 ]
@@ -162,12 +166,12 @@ export function resolveMenu(
   for (const level of ['flight', 'route', 'network'] as const) {
     const filtered = offerings.filter((o) => {
       if (o.cabin !== effectiveCabin) return false
-      if (level === 'flight') return o.flightId === flightId
-      if (level === 'route') return o.routeId === routeId
+      if (level === 'flight') return o.scope === 'flight' && o.flightId === flightId
+      if (level === 'route') return o.scope === 'route' && o.routeId === routeId
       return o.scope === 'network'
     })
     if (filtered.length > 0) {
-      const def = filtered.find((o) => o.isDefault) ?? null
+      const def = filtered.find((o) => o.isDefault && o.isActive) ?? null
       return { menu: filtered, defaultOfferingId: def?.id ?? null, menuLevel: level }
     }
   }

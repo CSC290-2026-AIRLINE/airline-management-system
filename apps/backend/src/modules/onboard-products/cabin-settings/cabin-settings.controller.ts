@@ -89,6 +89,12 @@ function parseInput(body: unknown): CabinSettingInput {
     }
     out.snacksEnabled = b.snacksEnabled
   }
+  if (b.snacksComplimentary !== undefined) {
+    if (b.snacksComplimentary !== null && typeof b.snacksComplimentary !== 'boolean') {
+      throw new ApiErrorException('SETTING_INVALID', 'snacksComplimentary must be a boolean or null.', 400)
+    }
+    out.snacksComplimentary = b.snacksComplimentary
+  }
   if (b.dutyFreeEnabled !== undefined) {
     if (b.dutyFreeEnabled !== null && typeof b.dutyFreeEnabled !== 'boolean') {
       throw new ApiErrorException('SETTING_INVALID', 'dutyFreeEnabled must be a boolean or null.', 400)

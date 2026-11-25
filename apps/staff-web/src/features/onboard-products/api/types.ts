@@ -91,6 +91,7 @@ export interface CabinSetting {
   orderWindowHours: number | null
   premiumMealsAllowed: boolean | null
   snacksEnabled: boolean | null
+  snacksComplimentary?: boolean | null
   dutyFreeEnabled: boolean | null
   onboardBufferPercent: number | null
 }
@@ -166,13 +167,15 @@ export interface CateringOrder {
   arrivalAirport: string
   scheduledDeparture: string
   passengerCount: number
-  status: CateringOrderStatus
+  status: CateringOrderStatus | 'open'
   cutoffAt: string
   generatedAt: string
   loadedAt: string | null
   warehouseId: string
   aircraftId: string
   lines: CateringOrderLine[]
+  confirmedPreorders?: Array<{ cabin: Cabin; productId: string; productName: string; quantity: number }>
+  orderingOpen?: boolean
 }
 
 // A flight as the Catering Orders left-list and the right-card header
@@ -439,6 +442,7 @@ export type SettingPatch = {
       | 'orderWindowHours'
       | 'premiumMealsAllowed'
       | 'snacksEnabled'
+      | 'snacksComplimentary'
       | 'dutyFreeEnabled'
       | 'onboardBufferPercent'
   ]?: NonNullable<CabinSetting[K]>

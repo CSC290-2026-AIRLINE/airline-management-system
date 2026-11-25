@@ -90,7 +90,8 @@ export function StockPage() {
   const [movements, setMovements] = useState<StockMovement[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [warehouseId, setWarehouseId] = useState<string | null>(null)
+  const currentWarehouse = warehouses.find((warehouse) => warehouse.code === search.airport) ?? warehouses[0] ?? null
+  const warehouseId = currentWarehouse?.id ?? null
   const [adjusting, setAdjusting] = useState<WarehouseStockRow | null>(null)
   const [airports, setAirports] = useState<AirportOption[]>([])
   const [managingAirports, setManagingAirports] = useState(false)
@@ -142,10 +143,6 @@ export function StockPage() {
       .then((data) => {
         if (cancelled) return
         setWarehouses(data)
-        if (data.length > 0) {
-          const initial = search.airport != null ? (data.find((w) => w.code === search.airport) ?? data[0]) : data[0]
-          setWarehouseId(initial.id)
-        }
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -154,8 +151,7 @@ export function StockPage() {
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only set once from URL
-  }, [])
+  }, [stockApi])
 
   // Load stock + batches + movements for the chosen warehouse.
   useEffect(() => {
@@ -199,13 +195,6 @@ export function StockPage() {
   async function refreshWarehouses() {
     const data = await stockApi.listWarehouses()
     setWarehouses(data)
-    if (data.length > 0) {
-      const stillThere = data.find((w) => w.id === warehouseId)
-      if (!stillThere) setWarehouseId(data[0].id)
-    } else {
-      setWarehouseId(null)
-    }
-    return data
   }
 
   async function handleCreateAirport(input: { name: string; secondary: string }) {
@@ -213,9 +202,8 @@ export function StockPage() {
     try {
       const code = input.secondary === '' ? input.name : input.secondary
       await stockApi.createWarehouse({ code, name: input.name, airportCode: code })
-      const data = await refreshWarehouses()
+      await refreshWarehouses()
       showToast('success', `Added ${code} to the airport list.`)
-      void data
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not add the airport.'
       showToast('error', message)
@@ -230,6 +218,7 @@ export function StockPage() {
     try {
       const code = input.secondary === '' ? input.name : input.secondary
       await stockApi.updateWarehouse(id, { code, name: input.name, airportCode: code })
+      if (id === warehouseId) void navigate({ to: '/catering/stock', search: { airport: code }, replace: true })
       await refreshWarehouses()
       showToast('success', `Updated airport details.`)
     } catch (err) {
@@ -269,8 +258,6 @@ export function StockPage() {
     return { total, low, onHand, reserved }
   }, [stock])
 
-  const currentWarehouse = warehouses.find((w) => w.id === warehouseId) ?? null
-
   if (loadError) {
     return (
       <Alert variant="destructive" role="alert">
@@ -296,7 +283,15 @@ export function StockPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex w-full max-w-xs flex-col gap-2">
           <Label htmlFor="stock-airport">Airport</Label>
-          <NativeSelect id="stock-airport" className="w-full" value={warehouseId ?? ''} onChange={(e) => setWarehouseId(e.target.value)}>
+          <NativeSelect
+            id="stock-airport"
+            className="w-full"
+            value={warehouseId ?? ''}
+            onChange={(e) => {
+              const warehouse = warehouses.find((item) => item.id === e.target.value)
+              if (warehouse) void navigate({ to: '/catering/stock', search: { airport: warehouse.code }, replace: true })
+            }}
+          >
             {warehouses.map((w) => (
               <NativeSelectOption key={w.id} value={w.id}>
                 {w.code}
@@ -310,10 +305,8 @@ export function StockPage() {
           </Button>
           <Button
             type="button"
-            onClick={() => {
-              const code = currentWarehouse?.code ?? 'BKK'
-              void navigate({ to: '/catering/stock/receive', search: { airport: code } })
-            }}
+            disabled={!currentWarehouse}
+            onClick={() => void navigate({ to: '/catering/stock/receive', search: { airport: currentWarehouse?.code } })}
           >
             Receive delivery
           </Button>

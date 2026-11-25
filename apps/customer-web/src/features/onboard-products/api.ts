@@ -193,6 +193,7 @@ export async function cancelProductOrder(
 // --- Shop (catalog + cabin setting) ------------------------------------
 
 interface CatalogWire {
+  catalogTime?: string
   cutoffAt: string
   orderWindowOpen: boolean
   currency?: string
@@ -204,6 +205,7 @@ interface CatalogWire {
     orderWindowHours: number
     premiumMealsAllowed: boolean
     snacksEnabled: boolean
+    snacksComplimentary?: boolean
     dutyFreeEnabled: boolean
   }
   products: Array<{
@@ -260,8 +262,18 @@ export interface ShopData {
   setting: CabinSetting
   cutoffAt: string
   orderWindowOpen: boolean
-  // F4's base currency, the one the backend prices and records orders in.
+  clockOffsetMs?: number
+  // The currency the backend uses for the catalog and new customer orders.
   currency: string
+}
+
+function addonUnavailableReason(product: CatalogWire['products'][number], settings: CatalogWire['settings']): string | undefined {
+  if (product.category === 'meal') return undefined
+  if (product.category === 'duty_free' && !settings.dutyFreeEnabled) return 'Duty-free is unavailable in this cabin'
+  if ((product.category === 'snack' || product.category === 'beverage') && !settings.snacksEnabled) {
+    return 'Snacks and drinks are unavailable in this cabin'
+  }
+  if (product.stockStatus === 'out_of_stock') return 'Out of stock'
 }
 
 export async function fetchShop(booking: Booking, flightId: string, cabin: CabinClass, fetchWithAuth: FetchWithAuth): Promise<ShopData> {
@@ -277,13 +289,13 @@ export async function fetchShop(booking: Booking, flightId: string, cabin: Cabin
     }
   }
   const query = new URLSearchParams({ bookingId: booking.id, flightId, cabin })
-  const res = await fetchWithAuth(`/api/catalog?${query.toString()}`)
+  const res = await fetchWithAuth(`/api/catalog?${query.toString()}`, { cache: 'no-store' })
   if (!res.ok) {
     throw await parseError(res)
   }
   const wire = (await res.json()) as CatalogWire
   const products: Product[] = wire.products
-    .filter((p) => p.stockStatus === 'in_stock' || p.category === 'meal')
+    .filter((p) => p.category !== 'meal' || p.stockStatus === 'in_stock')
     .map((p) => ({
       id: p.id,
       category: p.category,
@@ -296,6 +308,7 @@ export async function fetchShop(booking: Booking, flightId: string, cabin: Cabin
       thumbnailColor: THUMB_COLOR[p.category],
       imageUrl: p.imageKey && (p.imageKey.startsWith('/') || p.imageKey.startsWith('http')) ? p.imageKey : null,
       isDefaultChoice: false,
+      unavailableReason: addonUnavailableReason(p, wire.settings),
     }))
   const hasMeals = products.some((p) => p.category === 'meal')
   return {
@@ -310,9 +323,11 @@ export async function fetchShop(booking: Booking, flightId: string, cabin: Cabin
       orderWindowHours: wire.settings.orderWindowHours,
       premiumMealsAllowed: wire.settings.premiumMealsAllowed,
       snacksEnabled: wire.settings.snacksEnabled,
+      snacksComplimentary: wire.settings.snacksComplimentary,
       dutyFreeEnabled: wire.settings.dutyFreeEnabled,
     },
     cutoffAt: wire.cutoffAt,
+    clockOffsetMs: wire.catalogTime ? Date.parse(wire.catalogTime) - Date.now() : 0,
     orderWindowOpen: wire.orderWindowOpen,
     currency: wire.currency ?? 'USD',
   }

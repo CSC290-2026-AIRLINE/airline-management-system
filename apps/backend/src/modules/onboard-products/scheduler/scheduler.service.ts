@@ -84,14 +84,13 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   }
 
   // Generates the catering order of every flight that is past its
-  // cutoff. An order is written once: re-counting an existing order is
-  // the staff refresh, so the job never rewrites lines that stock has
-  // already moved against.
+  // cutoff. A plan generated before a later cutoff is rebuilt once,
+  // provided nothing has been transferred against it.
   private async generateCateringOrders(): Promise<number> {
     const now = this.clock.now()
     const flights = await this.db.flight.findMany({
       where: {
-        status: { in: ['scheduled', 'boarding'] },
+        status: { in: ['scheduled', 'delayed', 'boarding'] },
         scheduled_dep_at: { gt: now },
       },
       select: { id: true },
@@ -106,9 +105,13 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
         if (now.getTime() < cutoff.getTime()) continue
         const existing = await this.db.catering_order.findUnique({
           where: { flight_id: flight.id },
-          select: { id: true },
+          select: { status: true, generated_at: true },
         })
-        if (existing) continue
+        if (existing) {
+          if (existing.status !== 'generated' || existing.generated_at >= cutoff) continue
+          const transfer = await this.db.stock_transfer.findFirst({ where: { flight_id: flight.id }, select: { id: true } })
+          if (transfer) continue
+        }
         await this.cateringOrders.generate(flight.id, null)
         generated += 1
       } catch (err) {

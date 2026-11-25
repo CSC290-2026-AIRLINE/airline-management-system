@@ -87,6 +87,10 @@ function flightStatusToUi(status: FlightCateringStatus): UiStatus {
   }
 }
 
+function sortFlights(flights: Flight[]): Flight[] {
+  return [...flights].sort((a, b) => b.scheduledDeparture.localeCompare(a.scheduledDeparture) || a.id.localeCompare(b.id))
+}
+
 function uiStatus(flight: Flight, order: CateringOrder | null): UiStatus {
   // The catering order is only fetched for the selected flight, so it is
   // missing for every other row -- reading the status from it alone made
@@ -95,13 +99,17 @@ function uiStatus(flight: Flight, order: CateringOrder | null): UiStatus {
   // them, and prefer the fetched order when there is one: right after an
   // action it is the fresher of the two.
   const base = order
-    ? order.status === 'closed'
-      ? 'closed'
-      : order.status === 'loaded'
-        ? 'loaded'
-        : order.status === 'void'
-          ? 'void'
-          : 'order_ready'
+    ? order.status === 'open'
+      ? order.orderingOpen
+        ? 'ordering_open'
+        : 'no_order'
+      : order.status === 'closed'
+        ? 'closed'
+        : order.status === 'loaded'
+          ? 'loaded'
+          : order.status === 'void'
+            ? 'void'
+            : 'order_ready'
     : flight.status === 'open' && !flight.orderingOpen
       ? 'no_order'
       : flightStatusToUi(flight.status)
@@ -159,7 +167,7 @@ function groupByCabin(lines: CateringOrderLine[]): { cabin: Cabin | 'all'; lines
 
 // The stage changes that need an "are you sure" first. `null` means no
 // dialog is open.
-type PendingAction = 'transfer'
+type PendingAction = 'transfer' | 'simulate-close'
 
 // -- component -------------------------------------------------------------
 
@@ -193,9 +201,10 @@ export function CateringOrdersPage() {
     Promise.all([api.orders.listCateringOrders(), api.stock.listWarehouses()])
       .then(async ([flightsData, warehousesData]) => {
         if (cancelled) return
-        setFlights(flightsData)
+        const sorted = sortFlights(flightsData)
+        setFlights(sorted)
         setWarehouses(warehousesData)
-        const initial = search.flightId != null ? (flightsData.find((f) => f.id === search.flightId) ?? flightsData[0]) : flightsData[0]
+        const initial = sorted.find((flight) => flight.id === search.flightId) ?? sorted[0]
         setSelectedId(initial?.id ?? null)
         if (initial) {
           const o = await api.orders.getCateringOrder(initial.id)
@@ -245,10 +254,48 @@ export function CateringOrdersPage() {
     }
   }, [selectedId, orders, api])
 
+  useEffect(() => {
+    let active = true
+    let request = 0
+    const update = () => {
+      const current = ++request
+      void api.orders
+        .listCateringOrders()
+        .then((rows) => {
+          if (!active || current !== request) return
+          const sorted = sortFlights(rows)
+          setFlights(sorted)
+          setSelectedId((id) => (sorted.some((flight) => flight.id === id) ? id : (sorted[0]?.id ?? null)))
+        })
+        .catch(() => {
+          // Keep the loaded flight list if a background refresh fails.
+        })
+      if (selectedId) {
+        void api.orders
+          .getCateringOrder(selectedId)
+          .then((order) => {
+            if (active && current === request) setOrders((old) => ({ ...old, [selectedId]: order }))
+          })
+          .catch(() => {
+            // Keep the loaded order if a background refresh fails.
+          })
+      }
+    }
+    window.addEventListener('focus', update)
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') update()
+    }, 30_000)
+    return () => {
+      active = false
+      window.removeEventListener('focus', update)
+      window.clearInterval(timer)
+    }
+  }, [selectedId, api])
+
   // Re-fetch the flight list (e.g. after a load/close that flips a chip).
   async function refreshFlights() {
     const data = await api.orders.listCateringOrders()
-    setFlights(data)
+    setFlights(sortFlights(data))
   }
 
   async function refreshSelectedOrder(): Promise<void> {
@@ -283,6 +330,22 @@ export function CateringOrdersPage() {
     }
   }
 
+  async function handleSimulateClose() {
+    if (!selectedId) return
+    setBusy(true)
+    try {
+      const order = await api.orders.simulateOrderingClose(selectedId)
+      setOrders((current) => ({ ...current, [selectedId]: order }))
+      await refreshFlights()
+      showToast('success', 'Ordering closed and catering plan generated.')
+    } catch (error) {
+      showToast('error', error instanceof Error ? error.message : 'Could not simulate closing ordering.')
+    } finally {
+      setBusy(false)
+      setPendingAction(null)
+    }
+  }
+
   async function handleTransfer() {
     if (selectedId == null) return
     setBusy(true)
@@ -307,6 +370,7 @@ export function CateringOrdersPage() {
 
   function confirmPendingAction() {
     if (pendingAction === 'transfer') void handleTransfer()
+    if (pendingAction === 'simulate-close') void handleSimulateClose()
   }
 
   // -- derived state ------------------------------------------------------
@@ -354,6 +418,13 @@ export function CateringOrdersPage() {
           `This loads ${itemCount} item${itemCount === 1 ? '' : 's'} (${formatQuantity(totalUnits)} units) for ${flightNumber} onto the aircraft and takes them out of ` +
           `${selectedWarehouse?.name ?? 'the warehouse'}. The stock leaves the warehouse and cannot be put back from this page.`,
         confirmLabel: 'Transfer to aircraft',
+      }
+    }
+    if (pendingAction === 'simulate-close') {
+      return {
+        title: `Simulate closing ordering for ${flightNumber}?`,
+        body: 'This closes customer preordering for this flight in the development database and generates its catering plan.',
+        confirmLabel: 'Simulate ordering close',
       }
     }
     return null
@@ -516,6 +587,11 @@ export function CateringOrdersPage() {
                 </CardTitle>
                 <CardDescription>Catering order for this flight</CardDescription>
                 <CardAction className="flex flex-wrap items-center justify-end gap-2">
+                  {import.meta.env.DEV && selectedStatus === 'ordering_open' && (
+                    <Button type="button" variant="outline" onClick={() => setPendingAction('simulate-close')} disabled={busy}>
+                      Simulate ordering close
+                    </Button>
+                  )}
                   {selectedStatus === 'order_ready' && (
                     <Button type="button" variant="outline" onClick={handleRefresh} disabled={busy}>
                       Refresh order
@@ -593,13 +669,35 @@ export function CateringOrdersPage() {
                   </Alert>
                 )}
 
-                {selectedStatus === 'ordering_open' && (
-                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                    <strong className="block text-foreground">No lines yet</strong>
-                    The catering order is generated automatically when ordering closes at{' '}
-                    {formatDateTime(selectedFlight.cutoffAt, selectedFlight.departureTimeZone)}. Refresh the page then.
-                  </div>
-                )}
+                {selectedOrder &&
+                  selectedOrder.confirmedPreorders &&
+                  (selectedStatus === 'ordering_open' || selectedStatus === 'order_ready') && (
+                    <section className="space-y-2" aria-label="Confirmed customer orders">
+                      <h3 className="text-sm font-semibold">Confirmed customer orders</h3>
+                      {selectedOrder.confirmedPreorders.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No confirmed customer orders yet.</p>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Item</TableHead>
+                              <TableHead>Cabin</TableHead>
+                              <TableHead className="text-right">Ordered</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {selectedOrder.confirmedPreorders.map((item) => (
+                              <TableRow key={`${item.cabin}:${item.productId}`}>
+                                <TableCell>{item.productName}</TableCell>
+                                <TableCell>{cabinLabel(item.cabin)}</TableCell>
+                                <TableCell className="text-right tabular-nums">{formatQuantity(item.quantity)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </section>
+                  )}
 
                 {selectedStatus === 'not_loaded' && (
                   <Alert variant="destructive">
@@ -625,8 +723,9 @@ export function CateringOrdersPage() {
                   </Alert>
                 )}
 
-                {selectedOrder && selectedStatus !== 'ordering_open' && selectedStatus !== 'void' && (
+                {selectedOrder && selectedOrder.status !== 'open' && selectedStatus !== 'void' && (
                   <>
+                    <h3 className="text-sm font-semibold">Catering plan</h3>
                     <Table>
                       <TableHeader>
                         <TableRow>

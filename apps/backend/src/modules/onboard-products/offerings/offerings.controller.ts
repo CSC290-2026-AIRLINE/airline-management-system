@@ -34,6 +34,8 @@ function parseUpsert(body: unknown): OfferingInput {
     cabin: b.cabin,
     isDefault: b.isDefault,
     isActive: b.isActive,
+    copyInheritedMenu: b.copyInheritedMenu === true,
+    allRouteCabins: b.allRouteCabins === true,
   }
 }
 

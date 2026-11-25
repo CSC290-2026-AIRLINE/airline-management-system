@@ -63,6 +63,7 @@ export interface CateringOrderDto {
   aircraftId: string
   cabin: string
   lines: CateringOrderLineDto[]
+  confirmedPreorders?: Array<{ cabin: string; productId: string; productName: string; quantity: number }>
   // True when the flight already has a submitted flight report. The
   // staff flight-report picker reads this from the same list.
   reportSubmitted: boolean
@@ -104,8 +105,33 @@ export class CateringOrdersService {
   }
 
   async get(flightId: string): Promise<CateringOrderDto> {
-    const [dto] = await this.withDisplayFields([await this.getUnzoned(flightId)])
-    return dto
+    const order = await this.getUnzoned(flightId)
+    const [dto] = await this.withDisplayFields([order])
+    if (dto.status !== 'open' && dto.status !== 'generated') return dto
+    return { ...dto, confirmedPreorders: await this.confirmedPreorders(flightId) }
+  }
+
+  private async confirmedPreorders(flightId: string): Promise<NonNullable<CateringOrderDto['confirmedPreorders']>> {
+    const orders = await this.db.product_order.findMany({
+      where: { flight_id: flightId, status: 'confirmed' },
+      select: {
+        cabin: true,
+        product_order_line: {
+          where: { deleted_at: null },
+          select: { product_id: true, quantity: true, product: { select: { name: true } } },
+        },
+      },
+    })
+    const totals = new Map<string, NonNullable<CateringOrderDto['confirmedPreorders']>[number]>()
+    for (const order of orders) {
+      for (const line of order.product_order_line) {
+        const key = `${order.cabin}:${line.product_id}`
+        const total = totals.get(key)
+        if (total) total.quantity += line.quantity
+        else totals.set(key, { cabin: order.cabin, productId: line.product_id, productName: line.product.name, quantity: line.quantity })
+      }
+    }
+    return [...totals.values()]
   }
 
   // Fills the display fields: the departure airport's time zone, the aircraft's tail number, and whether the flight
@@ -129,7 +155,10 @@ export class CateringOrdersService {
   private async listUnzoned(filter?: { from?: Date; to?: Date }): Promise<CateringOrderDto[]> {
     const flights = await this.db.flight.findMany({
       where: {
-        status: { in: ['scheduled', 'boarding', 'departed', 'arrived', 'closed'] },
+        OR: [
+          { status: { in: ['scheduled', 'delayed', 'boarding', 'departed', 'holding', 'diverted', 'arrived', 'closed'] } },
+          { status: 'cancelled', catering_order: { isNot: null } },
+        ],
         ...(filter?.from || filter?.to
           ? {
               scheduled_dep_at: {
@@ -144,12 +173,12 @@ export class CateringOrdersService {
         flight_report: true,
         catering_order: { include: { catering_order_line: { include: { product: true } } } },
       },
-      orderBy: { scheduled_dep_at: 'asc' },
+      orderBy: [{ scheduled_dep_at: 'desc' }, { id: 'asc' }],
     })
     const passengers = await this.passengerSummary(flights.map((f) => f.id))
     // A flight with no order yet needs its real cutoff (departure minus the shortest cabin window), not the
     // departure. The windows are resolved for every such flight in one query.
-    const open = flights.filter((f) => !f.catering_order)
+    const open = flights.filter((f) => !f.catering_order || f.catering_order.status === 'generated')
     const windows = await this.cabinSettings.orderWindowHoursForFlights(open)
     const cutoffs = new Map<string, Date>(
       open.map((f) => [f.id, new Date(f.scheduled_dep_at.getTime() - (windows.get(f.id) ?? 48) * 3600 * 1000)]),
@@ -157,9 +186,12 @@ export class CateringOrdersService {
     return flights.map((flight) => {
       const order = flight.catering_order
       const summary = passengers.get(flight.id)
-      if (!order) {
-        const cutoff = cutoffs.get(flight.id) ?? flight.scheduled_dep_at
-        return this.openOrder(flight, summary?.passengers ?? 0, cutoff, flight.flight_report != null)
+      const cutoff = order?.simulated_cutoff_at ?? cutoffs.get(flight.id) ?? flight.scheduled_dep_at
+      if (!order || (order.status === 'generated' && this.clock.now().getTime() < cutoff.getTime())) {
+        return {
+          ...this.openOrder(flight, summary?.passengers ?? 0, cutoff, flight.flight_report != null),
+          warehouseId: order?.warehouse_id ?? '',
+        }
       }
       return {
         id: order.id,
@@ -212,6 +244,16 @@ export class CateringOrdersService {
       const summary = await this.passengerSummary([flightId])
       return this.openOrder(flight, summary.get(flightId)?.passengers ?? 0, await this.cutoffFor(flightId), flight.flight_report != null)
     }
+    if (order.status === 'generated') {
+      const cutoff = await this.cutoffFor(flightId)
+      if (this.clock.now().getTime() < cutoff.getTime()) {
+        const summary = await this.passengerSummary([flightId])
+        return {
+          ...this.openOrder(order.flight, summary.get(flightId)?.passengers ?? 0, cutoff, order.flight.flight_report != null),
+          warehouseId: order.warehouse_id,
+        }
+      }
+    }
     const passengers = await this.passengerSummary([flightId])
     const summary = passengers.get(flightId)
     const stock = await this.db.warehouse_stock.findMany({
@@ -250,6 +292,35 @@ export class CateringOrdersService {
     }
   }
 
+  async assertTransferReady(flightId: string): Promise<void> {
+    const order = await this.db.catering_order.findUnique({
+      where: { flight_id: flightId },
+      select: { status: true, generated_at: true },
+    })
+    if (order?.status !== 'generated') return
+    const cutoff = await this.cutoffFor(flightId)
+    if (this.clock.now() < cutoff) {
+      throw new ApiErrorException('ORDER_NOT_YET_DUE', 'Stock can be transferred after ordering closes.', 409)
+    }
+    if (order.generated_at < cutoff) {
+      const transfer = await this.db.stock_transfer.findFirst({ where: { flight_id: flightId }, select: { id: true } })
+      if (!transfer) throw new ApiErrorException('ORDER_NOT_YET_DUE', 'Refresh the catering plan before transferring stock.', 409)
+    }
+  }
+
+  async simulateClose(flightId: string, staffId: string): Promise<CateringOrderDto> {
+    if (process.env.NODE_ENV !== 'development') {
+      throw new ApiErrorException('NOT_FOUND', 'Ordering simulation is only available in development.', 404)
+    }
+    const order = await this.db.catering_order.findUnique({ where: { flight_id: flightId } })
+    if (order?.simulated_cutoff_at) return this.get(flightId)
+    const now = this.clock.now()
+    if (now >= (await this.cutoffFor(flightId))) {
+      throw new ApiErrorException('ORDER_WINDOW_CLOSED', 'Ordering has already closed for this flight.', 409)
+    }
+    return this.generate(flightId, staffId, now)
+  }
+
   // Staff refresh: re-count the order against the current stock. The
   // order only exists after the cutoff, so a refresh before it is
   // refused with ORDER_NOT_YET_DUE.
@@ -268,7 +339,7 @@ export class CateringOrdersService {
   // first generation only) and the staff refresh (staffId set). The
   // lines are replaced; stock already transferred for the flight counts
   // as covered, so a refresh after the transfer does not turn it short.
-  async generate(flightId: string, staffId: string | null): Promise<CateringOrderDto> {
+  async generate(flightId: string, staffId: string | null, simulatedCutoff?: Date): Promise<CateringOrderDto> {
     const flight = await this.db.flight.findUnique({ where: { id: flightId } })
     if (!flight) throw new ApiErrorException('NOT_FOUND', 'Flight not found.', 404)
     if (flight.status === 'cancelled') {
@@ -282,12 +353,13 @@ export class CateringOrdersService {
       throw new ApiErrorException('CATERING_CLOSED', 'Catering order is already loaded or closed.', 409)
     }
 
-    const cutoffAt = await this.cutoffFor(flightId)
+    const cutoffAt = existing?.simulated_cutoff_at ?? simulatedCutoff ?? (await this.cutoffFor(flightId))
     const resolved = await this.cabinSettings.resolveAllForFlight(flightId)
     const warehouse = await this.flightContext.warehouseForFlight(flightId)
     const lines = await this.buildLines(flightId, flight.route_id, warehouse.id, resolved)
 
     const now = this.clock.now()
+    const simulation = simulatedCutoff ? { simulated_cutoff_at: cutoffAt } : {}
     await this.db.$transaction(async (tx) => {
       let row
       if (existing) {
@@ -297,6 +369,7 @@ export class CateringOrdersService {
           data: {
             status: 'generated',
             cutoff_at: cutoffAt,
+            ...simulation,
             generated_at: now,
             generated_by_staff_id: staffId,
             warehouse_id: warehouse.id,
@@ -309,6 +382,7 @@ export class CateringOrdersService {
             warehouse_id: warehouse.id,
             status: 'generated',
             cutoff_at: cutoffAt,
+            ...simulation,
             generated_at: now,
             generated_by_staff_id: staffId,
           },
@@ -454,6 +528,11 @@ export class CateringOrdersService {
   async cutoffFor(flightId: string): Promise<Date> {
     const flight = await this.db.flight.findUnique({ where: { id: flightId } })
     if (!flight) throw new ApiErrorException('NOT_FOUND', 'Flight not found.', 404)
+    const order = await this.db.catering_order.findUnique({
+      where: { flight_id: flightId },
+      select: { simulated_cutoff_at: true },
+    })
+    if (order?.simulated_cutoff_at) return order.simulated_cutoff_at
     const windowHours = await this.cabinSettings.orderWindowHoursForFlight(flightId)
     return new Date(flight.scheduled_dep_at.getTime() - windowHours * 3600 * 1000)
   }
@@ -492,7 +571,7 @@ export class CateringOrdersService {
     // The default meal (doc, ordering step 6). A complimentary cabin
     // plans the included meal for every passenger who ordered none. A
     // paid cabin plans a buffer of default meals for on-board sales:
-    // onboard_buffer_percent of its passengers, rounded up.
+    // onboard_buffer_percent of passengers without a confirmed meal, rounded up.
     const summary = await this.passengerSummary([flightId])
     const passengers = summary.get(flightId)
     const defaults = await this.defaultOfferings(flightId, routeId)
@@ -501,12 +580,12 @@ export class CateringOrdersService {
       const productId = defaults.get(cabin)
       if (!productId) continue
       const counts = passengers?.perCabin.get(cabin)
+      const withoutMeal = Math.max(0, (counts?.passengers ?? 0) - (counts?.ordered ?? 0))
       let required = 0
       if (settings.mealService === 'complimentary') {
-        const withoutMeal = Math.max(0, (counts?.passengers ?? 0) - (counts?.ordered ?? 0))
         required = withoutMeal * Math.max(0, settings.includedPerPassenger)
       } else if (settings.mealService === 'paid') {
-        required = Math.ceil(((counts?.passengers ?? 0) * Math.max(0, settings.onboardBufferPercent ?? 0)) / 100)
+        required = Math.ceil((withoutMeal * Math.max(0, settings.onboardBufferPercent ?? 0)) / 100)
       }
       if (required <= 0) continue
       addLine(cabin, productId, required, 'default')
@@ -552,7 +631,7 @@ export class CateringOrdersService {
   // that has rows for that cabin.
   private async defaultOfferings(flightId: string, routeId: string): Promise<Map<F12Cabin, string>> {
     const rows = await this.db.product_offering.findMany({
-      where: { deleted_at: null, is_active: true },
+      where: { deleted_at: null },
       include: { product: true },
     })
     const mapped: OfferingRow[] = rows.map((r) => ({
