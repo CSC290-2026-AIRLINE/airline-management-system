@@ -124,6 +124,16 @@ export interface Turnaround {
   tasks: TurnaroundTask[]
 }
 
+/** A flight that has landed and waits for its turnaround. */
+export interface LandedFlight {
+  flight_id: string
+  flight_number: string
+  aircraft_id: string
+  tail_number: string
+  airport_code: string
+  arrived_at: string
+}
+
 export interface FleetReserve {
   date: string
   aircraft_needed: number

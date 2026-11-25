@@ -9,14 +9,25 @@ import { CurrentStaffService } from './current-staff.service'
 import { FleetAuditService } from './fleet-audit.service'
 import { FleetController } from './fleet.controller'
 import { FleetService } from './fleet.service'
+import { LandedFlightsService } from './landed-flights.service'
 import { TurnaroundController } from './turnaround.controller'
+import { TurnaroundJob } from './turnaround.job'
 import { TurnaroundService } from './turnaround.service'
 
 @Module({
   // AuditModule (Feature 15) provides the audit writer and the one shared simulation clock.
   imports: [DbModule, AuditModule],
   controllers: [AircraftController, AircraftTypeController, FleetController, TurnaroundController],
-  providers: [AircraftService, AircraftTypeService, FleetService, TurnaroundService, CurrentStaffService, FleetAuditService],
+  providers: [
+    AircraftService,
+    AircraftTypeService,
+    FleetService,
+    TurnaroundService,
+    CurrentStaffService,
+    FleetAuditService,
+    LandedFlightsService,
+    TurnaroundJob,
+  ],
   exports: [AircraftService, AircraftTypeService, FleetService, TurnaroundService],
 })
 export class AircraftManagementModule {}

@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import type { DbService } from '@backend/db/db.service'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import type { FleetAuditService } from './fleet-audit.service'
+import type { LandedFlightsService } from './landed-flights.service'
 import { TurnaroundService } from './turnaround.service'
 
 // ESM-only dependencies that Jest cannot load here; the service under test never calls into them.
@@ -16,6 +18,8 @@ describe('TurnaroundService', () => {
     $transaction: jest.Mock
   }
   let auditRecord: jest.Mock
+  let listWaiting: jest.Mock
+  let clock: SimulationClock
   let service: TurnaroundService
 
   const task = (overrides: Record<string, unknown> = {}) => ({
@@ -38,11 +42,16 @@ describe('TurnaroundService', () => {
     }
     db.$transaction.mockImplementation((callback: (client: typeof db) => unknown) => Promise.resolve(callback(db)))
     auditRecord = jest.fn().mockResolvedValue(undefined)
+    listWaiting = jest.fn().mockResolvedValue([])
+    clock = new SimulationClock()
+    jest.spyOn(clock, 'now').mockReturnValue(new Date('2026-01-01T12:00:00.000Z'))
     service = new TurnaroundService(
       db as unknown as DbService,
       {
         record: auditRecord,
       } as unknown as FleetAuditService,
+      clock,
+      { listWaiting } as unknown as LandedFlightsService,
     )
   })
 
@@ -218,5 +227,55 @@ describe('TurnaroundService', () => {
     db.aircraft_turnaround_task.findFirst.mockResolvedValue(null)
 
     await expect(service.updateTask('t1', 'k9', { status: 'completed' }, 'staff-1')).rejects.toBeInstanceOf(NotFoundException)
+  })
+  it('stamps a completed task with the simulation clock', async () => {
+    db.aircraft_turnaround_task.findFirst.mockResolvedValue(task({ status: 'pending', started_at: null, completed_at: null }))
+    db.aircraft_turnaround_task.update.mockResolvedValue(task({ status: 'completed' }))
+
+    await service.updateTask('t1', 'k1', { status: 'completed' }, 'staff-1')
+
+    const data = db.aircraft_turnaround_task.update.mock.calls[0][0].data
+    expect(data.completed_at).toEqual(new Date('2026-01-01T12:00:00.000Z'))
+  })
+
+  describe('startForLandedFlights', () => {
+    const landed = (flightId: string) => ({
+      flight_id: flightId,
+      flight_number: `TG${flightId}`,
+      aircraft_id: 'a1',
+      tail_number: 'HS-AAA',
+      airport_code: 'BKK',
+      arrived_at: '2026-01-01T09:00:00.000Z',
+    })
+
+    beforeEach(() => {
+      db.flight.findFirst.mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve({ id: where.id, aircraft_id: 'a1' }))
+      db.aircraft_turnaround.findFirst.mockResolvedValue(null)
+      db.aircraft_turnaround.create.mockImplementation(({ data }: { data: { flight_id: string } }) =>
+        Promise.resolve({ ...stored(), flight_id: data.flight_id, aircraft_turnaround_task: [] }),
+      )
+    })
+
+    it('starts a turnaround for each landed flight as the system, on the simulation clock', async () => {
+      listWaiting.mockResolvedValue([landed('f1'), landed('f2')])
+
+      await expect(service.startForLandedFlights()).resolves.toBe(2)
+
+      expect(listWaiting).toHaveBeenCalledWith(new Date('2026-01-01T12:00:00.000Z'))
+      expect(db.aircraft_turnaround.create).toHaveBeenCalledTimes(2)
+      expect(auditRecord).toHaveBeenCalledWith(expect.anything(), null, expect.objectContaining({ action: 'create' }))
+    })
+
+    it('skips a flight that fails and still starts the others', async () => {
+      listWaiting.mockResolvedValue([landed('f1'), landed('f2')])
+      db.airport.findUnique.mockResolvedValueOnce(null)
+
+      await expect(service.startForLandedFlights()).resolves.toBe(1)
+    })
+
+    it('starts nothing when no flight has landed', async () => {
+      await expect(service.startForLandedFlights()).resolves.toBe(0)
+      expect(db.aircraft_turnaround.create).not.toHaveBeenCalled()
+    })
   })
 })

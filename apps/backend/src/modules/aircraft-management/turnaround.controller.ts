@@ -18,6 +18,12 @@ export class TurnaroundController {
     private readonly currentStaff: CurrentStaffService,
   ) {}
 
+  /** Landed flights that have no turnaround yet; each one can be started by hand with the route below. */
+  @Get('turnarounds/landed-flights')
+  listLandedFlights() {
+    return this.turnaroundService.listLandedFlights()
+  }
+
   @Post('aircraft/:id/turnarounds')
   async create(@Param('id', ParseUUIDPipe) aircraftId: string, @Body() dto: CreateTurnaroundDto, @CurrentUser() user: AuthenticatedUser) {
     const staffId = await this.currentStaff.resolveStaffId(user.id)

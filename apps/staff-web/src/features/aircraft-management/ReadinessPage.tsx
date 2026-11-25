@@ -5,7 +5,15 @@ import { Card, CardContent, CardTitle, CardDescription } from '@staff-web/compon
 import { Input } from '@staff-web/components/ui/input'
 import { listAircraft } from './api/aircraft'
 import { errorMessage } from './api/http'
-import { getFleetReserve, getFleetSettings, getLatestTurnaround, setReserveRatio, updateTurnaroundTask } from './api/readiness'
+import {
+  getFleetReserve,
+  getFleetSettings,
+  getLatestTurnaround,
+  listLandedFlights,
+  setReserveRatio,
+  startTurnaround,
+  updateTurnaroundTask,
+} from './api/readiness'
 import { BADGE_TONES } from './components/badgeTones'
 import { Field } from './components/Field'
 import { FeatureErrorBoundary } from './components/FeatureErrorBoundary'
@@ -17,6 +25,7 @@ import {
   TURNAROUND_TASK_STATUSES,
   type Aircraft,
   type FleetReserve,
+  type LandedFlight,
   type Turnaround,
   type TurnaroundTask,
   type TurnaroundTaskStatus,
@@ -85,6 +94,8 @@ export function ReadinessPage() {
   const [turnaroundsState, setTurnaroundsState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [turnaroundsError, setTurnaroundsError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [landed, setLanded] = useState<LandedFlight[]>([])
+  const [turnaroundsToken, setTurnaroundsToken] = useState(0)
 
   useEffect(() => {
     if (!ready) {
@@ -153,13 +164,15 @@ export function ReadinessPage() {
           (item) => item.entry_into_service_date <= selectedDate && (!item.retired_on || item.retired_on >= selectedDate),
         )
 
-        const turnarounds = await Promise.all(
-          inFleet.map(async (item) => ({ aircraft: item, turnaround: await getLatestTurnaround(fetcher.current, item.id) })),
-        )
+        const [turnarounds, waiting] = await Promise.all([
+          Promise.all(inFleet.map(async (item) => ({ aircraft: item, turnaround: await getLatestTurnaround(fetcher.current, item.id) }))),
+          listLandedFlights(fetcher.current),
+        ])
 
         if (cancelled) {
           return
         }
+        setLanded(waiting)
         setRows(turnarounds.filter((row): row is TurnaroundRow => row.turnaround !== null))
         setTurnaroundsState('ready')
       } catch (err) {
@@ -167,6 +180,7 @@ export function ReadinessPage() {
           return
         }
         setRows([])
+        setLanded([])
         setTurnaroundsError(errorMessage(err, 'Failed to load the turnarounds'))
         setTurnaroundsState('error')
       }
@@ -176,7 +190,21 @@ export function ReadinessPage() {
     return () => {
       cancelled = true
     }
-  }, [ready, fetcher, selectedDate])
+  }, [ready, fetcher, selectedDate, turnaroundsToken])
+
+  const handleStartTurnaround = async (flight: LandedFlight) => {
+    setActionError(null)
+    setIsSaving(true)
+    try {
+      await startTurnaround(fetcher.current, flight)
+      // The new turnaround becomes the aircraft's latest one, so reload the list rather than guess where it goes.
+      setTurnaroundsToken((token) => token + 1)
+    } catch (err) {
+      setActionError(errorMessage(err, 'Failed to start the turnaround'))
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   const handleCycleTaskStatus = async (turnaroundId: string, taskId: string, current: TurnaroundTaskStatus) => {
     setActionError(null)
@@ -328,6 +356,30 @@ export function ReadinessPage() {
                 </p>
               </div>
             </div>
+
+            {turnaroundsState === 'ready' && landed.length > 0 && (
+              <Card className="mb-4">
+                <CardContent className="flex flex-col gap-3">
+                  <CardTitle>Landed, waiting for a turnaround</CardTitle>
+                  <CardDescription>
+                    The clock starts these on its own within a minute; start one now if the crew is already on it.
+                  </CardDescription>
+                  {landed.map((flight) => (
+                    <div key={flight.flight_id} className="f9-turnaround__head">
+                      <div>
+                        <span className="f9-turnaround__tail">{flight.tail_number}</span>{' '}
+                        <span className="f9-turnaround__meta">
+                          {flight.flight_number} landed {flight.airport_code} · {formatTime(flight.arrived_at)}
+                        </span>
+                      </div>
+                      <Button type="button" size="sm" disabled={isSaving} onClick={() => void handleStartTurnaround(flight)}>
+                        Start turnaround
+                      </Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
             {turnaroundsState === 'loading' ? (
               <LoadingMessage>Loading turnarounds...</LoadingMessage>

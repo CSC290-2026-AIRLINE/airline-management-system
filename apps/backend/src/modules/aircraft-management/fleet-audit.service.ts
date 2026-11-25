@@ -23,8 +23,9 @@ export interface FleetAuditEntry {
 export class FleetAuditService {
   constructor(private readonly audit: AuditService) {}
 
-  async record(tx: Prisma.TransactionClient, staffId: string, entry: FleetAuditEntry): Promise<void> {
-    const actor = await this.staffActor(tx, staffId)
+  /** `staffId` is null for a change the system makes on its own, such as the landing job starting a turnaround. */
+  async record(tx: Prisma.TransactionClient, staffId: string | null, entry: FleetAuditEntry): Promise<void> {
+    const actor = staffId === null ? AuditService.systemActor() : await this.staffActor(tx, staffId)
     await this.audit.write({ actor, sourceFeature: FLEET_AUDIT_FEATURE, ...entry }, tx)
   }
 

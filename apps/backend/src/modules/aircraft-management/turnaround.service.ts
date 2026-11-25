@@ -1,7 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
+import { SimulationClock } from '@backend/modules/admin-console/simulation-clock'
 import { CreateTurnaroundDto, TURNAROUND_TASK_TYPES, UpdateTaskStatusDto } from './dto/turnaround.dto'
 import { FleetAuditService } from './fleet-audit.service'
+import { LandedFlightsService, type LandedFlight } from './landed-flights.service'
 import { hasPrismaErrorCode, PRISMA_UNIQUE_VIOLATION } from './prisma-error'
 
 export type TurnaroundTaskSummary = {
@@ -25,13 +27,49 @@ export type TurnaroundSummary = {
 
 @Injectable()
 export class TurnaroundService {
+  private readonly logger = new Logger(TurnaroundService.name)
+
   constructor(
     private readonly db: DbService,
     private readonly audit: FleetAuditService,
+    private readonly clock: SimulationClock,
+    private readonly landed: LandedFlightsService,
   ) {}
 
-  /** Starts the ground-service session of a landed flight with the standard task set; staff start it by hand. */
-  async create(aircraftId: string, dto: CreateTurnaroundDto, staffId: string): Promise<TurnaroundSummary> {
+  /** The landed flights that still wait for their turnaround, for the Start Turnaround button. */
+  listLandedFlights(): Promise<LandedFlight[]> {
+    return this.landed.listWaiting(this.clock.now())
+  }
+
+  /**
+   * The job of the simulation clock: starts a turnaround for each flight whose arrival time has passed. One flight that
+   * fails (its airport is unknown, say) is logged and skipped, so it does not hold back the others. Returns how many started.
+   */
+  async startForLandedFlights(): Promise<number> {
+    const flights = await this.landed.listWaiting(this.clock.now())
+    let started = 0
+    for (const flight of flights) {
+      try {
+        await this.create(
+          flight.aircraft_id,
+          { flight_id: flight.flight_id, airport_code: flight.airport_code, arrived_at: flight.arrived_at },
+          null,
+        )
+        started++
+      } catch (error) {
+        this.logger.warn(
+          `Could not start the turnaround of flight ${flight.flight_number}: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    }
+    return started
+  }
+
+  /**
+   * Starts the ground-service session of a landed flight with the standard task set. `staffId` is the staff member who
+   * pressed Start Turnaround, or null when the landing job starts it.
+   */
+  async create(aircraftId: string, dto: CreateTurnaroundDto, staffId: string | null): Promise<TurnaroundSummary> {
     const [aircraft, airport, flight] = await Promise.all([
       this.db.aircraft.findFirst({ where: { id: aircraftId, deleted_at: null }, select: { id: true } }),
       this.db.airport.findUnique({ where: { iata_code: dto.airport_code.trim().toUpperCase() }, select: { iata_code: true } }),
@@ -148,13 +186,13 @@ export class TurnaroundService {
     if (dto.started_at !== undefined) {
       updateData.started_at = dto.started_at ? new Date(dto.started_at) : null
     } else if (dto.status === 'in_progress' && !task.started_at) {
-      updateData.started_at = new Date()
+      updateData.started_at = this.clock.now()
     }
 
     if (dto.completed_at !== undefined) {
       updateData.completed_at = dto.completed_at ? new Date(dto.completed_at) : null
     } else if ((dto.status === 'completed' || dto.status === 'skipped') && !task.completed_at) {
-      updateData.completed_at = new Date()
+      updateData.completed_at = this.clock.now()
     }
 
     const updated = await this.db.$transaction(async (tx) => {
