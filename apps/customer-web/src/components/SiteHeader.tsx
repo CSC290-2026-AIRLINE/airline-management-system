@@ -59,8 +59,8 @@ function UserAvatar({ className }: { className: string }) {
 export default function SiteHeader() {
   const [open, setOpen] = useState(false)
   return (
-    <header className="sticky top-0 z-40 border-b bg-background/60 backdrop-blur-lg supports-[backdrop-filter]:bg-background/60">
-      <div className={cn(pageContainer, 'flex h-12 items-center justify-between')}>
+    <header className="[view-transition-name:site-header] sticky top-0 z-40 border-b bg-background/60 backdrop-blur-lg supports-[backdrop-filter]:bg-background/60">
+      <div className={cn(pageContainer, 'flex h-14 items-center justify-between')}>
         <Link to="/" aria-label="Flython Airline home">
           <BrandLogo />
         </Link>
