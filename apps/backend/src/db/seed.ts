@@ -7153,6 +7153,23 @@ async function seedFeature14BI(
     })
   }
 
+  // Copy the aircraft those flights use (bi_flight.aircraft_id points here), as the refresh copies them from feature 9.
+  const biAircraftIds = [...new Set([...flights.values()].map((fl) => fl.aircraftId))]
+  const biAircraft = await prisma.aircraft.findMany({ where: { id: { in: biAircraftIds } }, include: { aircraft_type: true } })
+  for (const a of biAircraft) {
+    await prisma.bi_aircraft.upsert({
+      where: { aircraft_id: a.id },
+      update: {},
+      create: {
+        aircraft_id: a.id,
+        tail_number: a.tail_number,
+        type_code: a.aircraft_type.code,
+        in_service_from: a.entry_into_service_date,
+        retired_on: a.retired_on,
+      },
+    })
+  }
+
   // Copy flights + cabins
   const biFlightSpecs = [
     { key: 'past_bkk_cnx_1', delayMin: 0, rev: 342000, ref: 0, seatAvail: 180, seatSold: 152 },
@@ -7167,6 +7184,11 @@ async function seedFeature14BI(
     const fl = flights.get(bfs.key)
     if (!fl) continue
     const departed = fl.status === 'arrived' || fl.status === 'departed'
+    // Boarding results once the gate has closed (booked = boarded + denied + no-shows); none for a cancelled flight.
+    const noShows = departed ? Math.round(bfs.seatSold * 0.04) : 0
+    const boarding = departed
+      ? { booked_count: bfs.seatSold, boarded_count: bfs.seatSold - noShows, denied_count: 0, no_show_count: noShows }
+      : { booked_count: null, boarded_count: null, denied_count: null, no_show_count: null }
     await prisma.bi_flight.upsert({
       where: { flight_id: fl.id },
       update: {},
@@ -7181,6 +7203,8 @@ async function seedFeature14BI(
         delay_minutes: departed ? (bfs.delayMin ?? 0) : null,
         revenue_amount: bfs.rev,
         refund_amount: bfs.ref,
+        aircraft_id: fl.aircraftId,
+        ...boarding,
       },
     })
     await prisma.bi_flight_cabin.upsert({
@@ -7229,6 +7253,9 @@ async function seedFeature14BI(
       const seatSold = Math.round(seatAvailable * (0.76 + ((rIdx + d) % 15) / 100))
       const revAmount = seatSold * (routeKey === 'BKK-NRT' ? 11200 : routeKey === 'BKK-SIN' ? 5400 : 2350)
       const refAmount = Math.round(revAmount * 0.025)
+      // Boarding results for the route's day: booked = boarded + denied + no-shows.
+      const noShowCount = Math.round(seatSold * 0.04)
+      const deniedCount = (rIdx + d) % 4 === 0 ? 1 : 0
 
       await prisma.bi_metric_day.upsert({
         where: { route_id_flight_date: { route_id: route.id, flight_date: day } },
@@ -7245,6 +7272,10 @@ async function seedFeature14BI(
           seat_sold: seatSold,
           revenue_amount: revAmount,
           refund_amount: refAmount,
+          booked_count: seatSold,
+          boarded_count: seatSold - noShowCount - deniedCount,
+          denied_count: deniedCount,
+          no_show_count: noShowCount,
         },
       })
     }
