@@ -173,15 +173,20 @@ export class BiEtlService implements OnModuleInit {
              ELSE COALESCE(gate.booked_count - gate.boarded_count - gate.denied_count, 0)
         END
       FROM flight f
+      -- Feature 2's simulation-clock job that writes the departed and arrived events does not exist yet, so a flight can
+      -- be 'departed' or 'arrived' with no event (seeds and dev tools set the status directly). Those fall back to the
+      -- timetable dep_at and arr_at, the times the job will write; otherwise the departed CHECK on bi_flight fails the run.
       LEFT JOIN LATERAL (
-        SELECT e.occurred_at FROM flight_event e
-        WHERE e.flight_id = f.id AND e.type = 'departed'
-        ORDER BY e.seq LIMIT 1
+        SELECT COALESCE(
+          (SELECT e.occurred_at FROM flight_event e WHERE e.flight_id = f.id AND e.type = 'departed' ORDER BY e.seq LIMIT 1),
+          CASE WHEN f.status IN ('departed', 'arrived') THEN f.dep_at END
+        ) AS occurred_at
       ) departed ON true
       LEFT JOIN LATERAL (
-        SELECT e.occurred_at FROM flight_event e
-        WHERE e.flight_id = f.id AND e.type = 'arrived'
-        ORDER BY e.seq LIMIT 1
+        SELECT COALESCE(
+          (SELECT e.occurred_at FROM flight_event e WHERE e.flight_id = f.id AND e.type = 'arrived' ORDER BY e.seq LIMIT 1),
+          CASE WHEN f.status = 'arrived' THEN f.arr_at END
+        ) AS occurred_at
       ) arrived ON true
       LEFT JOIN flight_boarding fb ON fb.flight_id = f.id
       LEFT JOIN (
