@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
-import { BiPageHeader } from './BiPageHeader'
+import { BiPageHeader, type BiStatusTone } from './BiPageHeader'
 
 /** The Refresh button's state. Pages that read the BI copy pass it; the Financial report, which reads Feature 4, does not. */
 export interface BiRefreshControl {
@@ -21,6 +21,7 @@ export function BiPageFrame({
   title,
   description,
   status,
+  tone,
   refresh,
   action,
   filters,
@@ -31,6 +32,8 @@ export function BiPageFrame({
   title: string
   description: string
   status: string
+  /** The status dot. Left out, it follows the refresh: amber after a failed refresh, green otherwise. */
+  tone?: BiStatusTone
   refresh?: BiRefreshControl
   /** A page-specific button beside Refresh. */
   action?: ReactNode
@@ -46,6 +49,7 @@ export function BiPageFrame({
         title={title}
         description={description}
         status={status}
+        tone={tone ?? (refresh?.lastRunFailed ? 'warning' : 'ok')}
         action={
           <>
             {action}

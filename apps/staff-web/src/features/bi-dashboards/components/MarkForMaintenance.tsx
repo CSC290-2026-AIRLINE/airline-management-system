@@ -1,17 +1,13 @@
 import { useState } from 'react'
 import { Button } from '@staff-web/components/ui/button'
-import { Input } from '@staff-web/components/ui/input'
+import { Card } from '@staff-web/components/ui/card'
 import { NativeSelect, NativeSelectOption } from '@staff-web/components/ui/native-select'
 import { useBiApi } from '../api/bi'
 import { useBiLoad } from '../hooks/useBiLoad'
-
-const TYPES: { value: string; label: string }[] = [
-  { value: 'a_check', label: 'A-check' },
-  { value: 'b_check', label: 'B-check' },
-  { value: 'c_check', label: 'C-check' },
-  { value: 'd_check', label: 'D-check' },
-  { value: 'unscheduled', label: 'Unscheduled' },
-]
+import { formatDateRange } from '../lib-format'
+import { MAINTENANCE_TYPES } from '../lib-maintenance'
+import { CARD, CARD_TITLE } from '../lib-styles'
+import { DateField, FilterField } from './BiFilters'
 
 /**
  * "Mark for maintenance": one small form on the Aircraft use page. It schedules a maintenance period through Feature 9,
@@ -21,7 +17,7 @@ export function MarkForMaintenance({ aircraft, onDone }: { aircraft: { aircraft_
   const api = useBiApi()
   const access = useBiLoad('maintenance-access', () => api.getMaintenanceAccess())
   const [aircraftId, setAircraftId] = useState(aircraft[0]?.aircraft_id ?? '')
-  const [type, setType] = useState(TYPES[2].value)
+  const [type, setType] = useState(MAINTENANCE_TYPES[2].value)
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
   const [message, setMessage] = useState<string | null>(null)
@@ -37,9 +33,9 @@ export function MarkForMaintenance({ aircraft, onDone }: { aircraft: { aircraft_
     try {
       await api.markMaintenance(aircraftId, { maintenance_type: type, planned_start_date: start, planned_end_date: end })
       const tail = aircraft.find((a) => a.aircraft_id === aircraftId)?.tail_number ?? aircraftId
-      const label = TYPES.find((x) => x.value === type)?.label ?? type
+      const label = MAINTENANCE_TYPES.find((x) => x.value === type)?.label ?? type
       setAdded((list) => [{ key: `${Date.now()}-${aircraftId}`, tail, type: label, start, end }, ...list])
-      setMessage(`Scheduled ${label} for ${tail}, ${start} to ${end}.`)
+      setMessage(`Scheduled ${label} for ${tail}, ${formatDateRange(start, end)}.`)
       onDone()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not schedule the maintenance.')
@@ -52,36 +48,52 @@ export function MarkForMaintenance({ aircraft, onDone }: { aircraft: { aircraft_
   if (access.data?.allowed !== true) return null
 
   return (
-    <div className="flex flex-wrap items-center gap-2.5 rounded-xl border bg-card px-4 py-3 text-sm print:hidden">
-      <NativeSelect aria-label="Aircraft" value={aircraftId} onChange={(e) => setAircraftId(e.target.value)} className="h-9 w-full sm:w-36">
-        {aircraft.map((a) => (
-          <NativeSelectOption key={a.aircraft_id} value={a.aircraft_id}>
-            {a.tail_number}
-          </NativeSelectOption>
-        ))}
-      </NativeSelect>
-      <NativeSelect aria-label="Maintenance type" value={type} onChange={(e) => setType(e.target.value)} className="h-9 w-full sm:w-36">
-        {TYPES.map((t) => (
-          <NativeSelectOption key={t.value} value={t.value}>
-            {t.label}
-          </NativeSelectOption>
-        ))}
-      </NativeSelect>
-      <Input aria-label="Start date" type="date" value={start} onChange={(e) => setStart(e.target.value)} className="w-full sm:w-40" />
-      <Input aria-label="End date" type="date" value={end} onChange={(e) => setEnd(e.target.value)} className="w-full sm:w-40" />
-      <Button type="button" onClick={() => void submit()} disabled={busy}>
-        {busy ? 'Scheduling…' : 'Mark for maintenance'}
-      </Button>
-      {message && <span className="text-muted-foreground">{message}</span>}
+    <Card className={`${CARD} print:hidden`}>
+      <div className="flex flex-col gap-1">
+        <h2 className={CARD_TITLE}>Mark for maintenance</h2>
+        <p className="text-xs text-muted-foreground">
+          Schedules a maintenance period for the aircraft. It shows in Days out of service at once.
+        </p>
+      </div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">
+        <FilterField label="Aircraft" htmlFor="bi-mx-aircraft">
+          <NativeSelect id="bi-mx-aircraft" value={aircraftId} onChange={(e) => setAircraftId(e.target.value)} className="w-full sm:w-36">
+            {aircraft.map((a) => (
+              <NativeSelectOption key={a.aircraft_id} value={a.aircraft_id}>
+                {a.tail_number}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </FilterField>
+        <FilterField label="Maintenance type" htmlFor="bi-mx-type">
+          <NativeSelect id="bi-mx-type" value={type} onChange={(e) => setType(e.target.value)} className="w-full sm:w-36">
+            {MAINTENANCE_TYPES.map((t) => (
+              <NativeSelectOption key={t.value} value={t.value}>
+                {t.label}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </FilterField>
+        <DateField id="bi-mx-start" label="Start date" value={start} onChange={setStart} placeholder="Choose a date" />
+        <DateField id="bi-mx-end" label="End date" value={end} onChange={setEnd} placeholder="Choose a date" />
+        <Button type="button" onClick={() => void submit()} disabled={busy}>
+          {busy ? 'Scheduling…' : 'Mark for maintenance'}
+        </Button>
+      </div>
+      {message && (
+        <p className="text-sm text-muted-foreground" role="status">
+          {message}
+        </p>
+      )}
       {added.length > 0 && (
-        <ul className="m-0 basis-full list-disc pl-5 text-primary" aria-label="Maintenance added in this session">
+        <ul className="m-0 list-disc pl-5 text-sm text-primary" aria-label="Maintenance added in this session">
           {added.map((item) => (
             <li key={item.key}>
-              <strong>{item.tail}</strong> · {item.type} · {item.start} to {item.end}
+              <strong>{item.tail}</strong> · {item.type} · {formatDateRange(item.start, item.end)}
             </li>
           ))}
         </ul>
       )}
-    </div>
+    </Card>
   )
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { AlertCircle } from 'lucide-react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
@@ -48,7 +49,6 @@ export function FinancePage() {
   // The report is monthly: the chosen month loads as soon as it is picked. Empty means the latest computed month.
   const [chosen, setChosen] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
-  const [showReport, setShowReport] = useState(false)
   const finance = useBiLoad(`finance|${chosen ?? ''}`, () => api.getFinance(chosen))
   const payments = useBiLoad('finance-payments', () => api.getFinancePayments())
   const current = finance.data?.current ?? null
@@ -84,7 +84,7 @@ export function FinancePage() {
 
   return (
     <BiPageFrame
-      title="Financial report"
+      title="Business intelligence"
       description="Monthly revenue, costs and profit from the Pricing & Finance monthly report. Read only."
       status={
         finance.loading
@@ -95,21 +95,11 @@ export function FinancePage() {
               ? `Figures computed ${formatDateTime(current.computed_at)}`
               : 'Figures not computed yet'
       }
-      action={
-        <Button
-          variant="outline"
-          disabled={!current}
-          onClick={() => {
-            setShowReport(true)
-            window.setTimeout(() => document.getElementById('bi-report-lines')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
-          }}
-        >
-          View report lines
-        </Button>
-      }
+      tone={finance.loading ? 'pending' : finance.error ? 'error' : current ? 'ok' : 'warning'}
       busy={finance.loading}
       filters={
         <BiFilterCard
+          note="Pricing & Finance keeps whole months for the whole airline, so this report is picked by month, not by route or dates."
           fields={
             <FilterField label="Month" htmlFor="bi-month">
               <BiMonthPicker id="bi-month" value={month} months={months} onChange={setChosen} />
@@ -147,7 +137,12 @@ export function FinancePage() {
       {finance.data && !current && (
         <SectionEmpty
           title="This month has not been computed yet"
-          description="Once Pricing & Finance computes the monthly report, the figures will appear here."
+          description="Pricing & Finance computes these figures. Recompute the month on its Monthly report page, then come back here."
+          action={
+            <Button variant="outline" asChild>
+              <Link to="/pricing/monthly-report">Open Monthly report</Link>
+            </Button>
+          }
         />
       )}
       {current && (
@@ -163,7 +158,7 @@ export function FinancePage() {
             <KpiCard
               label="Revenue"
               value={formatThb(current.revenue, true)}
-              hint="Feature 4 monthly revenue"
+              hint="Money received this month"
               comparison={comparison(delta('revenue'), '%', suffix)}
               trend={trend(delta('revenue'))}
             />
@@ -195,7 +190,7 @@ export function FinancePage() {
           </section>
           <ChartFrame
             title="From revenue to profit"
-            subtitle={`All routes · ${monthLabel(month)} · THB millions`}
+            subtitle={`All routes · ${monthLabel(month)} · THB`}
             legend={[
               { label: 'Revenue', color: BI_COLORS.navy },
               { label: 'Taxes, surcharges and refunds', color: '#8fa4ca' },
@@ -206,47 +201,46 @@ export function FinancePage() {
             <FinanceWaterfall steps={steps} />
           </ChartFrame>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,690fr)_minmax(0,350fr)]">
-            <Card className={cn(CARD, 'scroll-mt-5')} id="bi-report-lines">
-              <ChartHeading title="Report lines" subtitle={showReport ? `${monthLabel(month, true)} monthly report` : undefined} />
-              <div className="overflow-x-auto">
-                <Table className="min-w-[590px] text-[13px] md:min-w-0">
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent [&>th]:text-[11px] [&>th]:font-semibold [&>th]:text-muted-foreground">
-                      <TableHead scope="col">LINE</TableHead>
-                      <TableHead scope="col" className="text-right">
-                        AMOUNT (THB)
-                      </TableHead>
-                      <TableHead scope="col" className="text-right">
-                        {suffix.toUpperCase()}
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {LINES.map((line) => {
-                      const value = current[line.key] as number
-                      const difference = delta(line.key)
-                      return (
-                        <TableRow
-                          key={line.key}
-                          className={cn(
-                            'hover:bg-transparent',
-                            line.key === 'profit' && 'border-t-2 border-t-muted-foreground/40 font-semibold',
-                            line.key === 'revenue' && 'font-semibold',
-                          )}
-                        >
-                          <TableCell>{line.label}</TableCell>
-                          <TableCell className="text-right">
-                            {new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value)}
-                          </TableCell>
-                          <TableCell className={cn('text-right', trendClass(trend(difference, line.deduct)))}>
-                            {difference === null ? '—' : `${difference >= 0 ? '+' : ''}${(difference * 100).toFixed(1)}%`}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+            <Card className={CARD}>
+              <ChartHeading title="Report lines" subtitle={`${monthLabel(month, true)} monthly report`} />
+              {/* On a phone the line names wrap, so the amount and change columns stay on screen. */}
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead scope="col">Line</TableHead>
+                    <TableHead scope="col" className="text-right">
+                      Amount (THB)
+                    </TableHead>
+                    <TableHead scope="col" className="text-right whitespace-normal">
+                      Change {suffix}
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {LINES.map((line) => {
+                    const value = current[line.key] as number
+                    const difference = delta(line.key)
+                    return (
+                      <TableRow
+                        key={line.key}
+                        className={cn(
+                          'hover:bg-transparent',
+                          line.key === 'profit' && 'border-t-2 border-t-muted-foreground/40 font-semibold',
+                          line.key === 'revenue' && 'font-semibold',
+                        )}
+                      >
+                        <TableCell className="whitespace-normal">{line.label}</TableCell>
+                        <TableCell className="text-right">
+                          {new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value)}
+                        </TableCell>
+                        <TableCell className={cn('text-right', trendClass(trend(difference, line.deduct)))}>
+                          {difference === null ? '—' : `${difference >= 0 ? '+' : ''}${(difference * 100).toFixed(1)}%`}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
             </Card>
             <Card className={cn(CARD, 'lg:h-full')}>
               <div className="flex flex-col gap-1">

@@ -8,6 +8,7 @@ import { Label } from '@staff-web/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@staff-web/components/ui/select'
 import { ToggleGroup, ToggleGroupItem } from '@staff-web/components/ui/toggle-group'
 import type { BiFilters as Filters, BiGroup, BiRouteRow } from '../api/bi'
+import { formatDate } from '../lib-format'
 
 const GROUPS: BiGroup[] = ['day', 'week', 'month']
 
@@ -30,15 +31,23 @@ export function FilterField({ label, htmlFor, id, children }: { label: string; h
  * A native date input that shows the date as "01 Oct 2026" until it is focused. The native picker stays, so keyboard
  * entry and the browser's calendar both work.
  */
-function DateField({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (value: string) => void }) {
-  const readable = value
-    ? new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
-        .format(new Date(`${value}T00:00:00Z`))
-        .replace('Sept', 'Sep')
-    : 'Any date'
+export function DateField({
+  id,
+  label,
+  value,
+  onChange,
+  placeholder = 'Any date',
+}: {
+  id: string
+  label: string
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+}) {
+  const readable = value ? formatDate(value) : placeholder
   return (
     <FilterField label={label} htmlFor={id}>
-      <div className="group relative w-full sm:w-36">
+      <div className="group relative w-full sm:w-34">
         <Input
           id={id}
           type="date"
@@ -90,12 +99,17 @@ export function BiExportMenu({
   )
 }
 
-/** The filter card: fields on the left, Apply and Export on the right. It wraps, then stacks on a phone. */
-export function BiFilterCard({ fields, actions }: { fields: ReactNode; actions: ReactNode }) {
+/**
+ * The filter card: fields on the left, Apply and Export on the right, and an optional note on its own line under them.
+ * From laptop width it is two columns, so Apply and Export stay on the first row on every view however many fields
+ * there are (the fields wrap inside their column instead). Narrower, it wraps, then stacks on a phone.
+ */
+export function BiFilterCard({ fields, actions, note }: { fields: ReactNode; actions: ReactNode; note?: string }) {
   return (
-    <Card className="flex-col gap-4 px-5 py-4 shadow-none sm:flex-row sm:flex-wrap sm:items-end sm:justify-between print:hidden">
-      <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">{fields}</div>
+    <Card className="flex-col gap-4 px-5 py-4 shadow-none sm:flex-row sm:flex-wrap sm:items-end sm:justify-between lg:grid lg:grid-cols-[minmax(0,1fr)_auto] print:hidden">
+      <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">{fields}</div>
       <div className="flex flex-wrap items-center gap-2">{actions}</div>
+      {note && <p className="basis-full text-xs text-muted-foreground lg:col-span-2">{note}</p>}
     </Card>
   )
 }
@@ -109,6 +123,7 @@ export function BiFilters({
   showRoute = true,
   note,
   onApply,
+  exportDisabled = false,
 }: {
   filters: Filters
   routes: BiRouteRow[]
@@ -120,6 +135,8 @@ export function BiFilters({
   note?: string
   /** When given, the filter values are a draft until Apply is clicked; the page loads them only then. */
   onApply?: () => void
+  /** No figures to export for the applied filters. */
+  exportDisabled?: boolean
 }) {
   return (
     <BiFilterCard
@@ -131,7 +148,7 @@ export function BiFilters({
                 value={filters.routeId || 'all'}
                 onValueChange={(value) => onChange({ ...filters, routeId: value === 'all' ? '' : value })}
               >
-                <SelectTrigger id="bi-route" className="w-full sm:w-40">
+                <SelectTrigger id="bi-route" className="w-full sm:w-36">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -159,18 +176,16 @@ export function BiFilters({
                 <ToggleGroupItem
                   key={group}
                   value={group}
-                  className="px-3.5 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                  className="px-3 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
                 >
                   {group[0].toUpperCase() + group.slice(1)}
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>
           </FilterField>
-          {note && (
-            <span className="self-start rounded-md border border-dashed px-2.5 py-2 text-xs text-muted-foreground sm:self-end">{note}</span>
-          )}
         </>
       }
+      note={note}
       actions={
         <>
           {onApply && (
@@ -178,7 +193,7 @@ export function BiFilters({
               Apply
             </Button>
           )}
-          <BiExportMenu onExportCsv={onExportCsv} onPrint={onPrint} />
+          <BiExportMenu onExportCsv={onExportCsv} onPrint={onPrint} disabled={exportDisabled} />
         </>
       }
     />

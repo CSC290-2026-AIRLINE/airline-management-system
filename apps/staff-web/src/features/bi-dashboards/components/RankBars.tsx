@@ -41,13 +41,14 @@ export function RankBars({
             <TooltipTrigger asChild>
               <li
                 tabIndex={0}
-                className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 rounded-md text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:grid-cols-[1.5rem_6rem_minmax(0,1fr)_11rem]"
+                className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 rounded-md text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 lg:grid-cols-[1.5rem_10rem_minmax(0,1fr)_11rem]"
               >
                 <span className="text-muted-foreground">{i + 1}.</span>
-                <span className="min-w-0">{row.label}</span>
+                {/* One line per row: a long label (an aircraft type) is cut with an ellipsis; the tooltip shows it whole. */}
+                <span className="min-w-0 truncate">{row.label}</span>
                 <span
                   aria-hidden="true"
-                  className="col-span-full row-start-2 h-2 overflow-hidden rounded-full bg-muted md:col-span-1 md:row-start-auto"
+                  className="col-span-full row-start-2 h-2 overflow-hidden rounded-full bg-muted lg:col-span-1 lg:row-start-auto"
                 >
                   <span
                     className="block h-full rounded-full"

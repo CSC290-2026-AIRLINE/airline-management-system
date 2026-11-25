@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react'
 import { ChartFrame } from '../components/InteractiveCharts'
+import { groupLabel } from '../lib-chart'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { AlertCircle } from 'lucide-react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
-import { filterQuery, useBiApi, type BiFilters as FilterState, type BiGroup } from '../api/bi'
+import { filterQuery, useBiApi, type BiFilters as FilterState } from '../api/bi'
 import { BiFilters } from '../components/BiFilters'
 import { BiPageFrame } from '../components/BiPageFrame'
 import { BiSectionState } from '../components/BiSectionState'
@@ -11,18 +12,12 @@ import { KpiCard } from '../components/KpiCard'
 import { BarPanelChart, LinePanelChart } from '../components/PanelCharts'
 import { RankBars } from '../components/RankBars'
 import { MarkForMaintenance } from '../components/MarkForMaintenance'
-import { refreshMessage } from '../hooks/useBiDashboard'
 import { useBiLoad } from '../hooks/useBiLoad'
+import { useBiRefresh } from '../hooks/useBiRefresh'
 import { defaultFilters } from '../lib-comparison'
-import { dataAsOf, formatCompact, formatCount, formatPercent, formatThb } from '../lib-format'
-import { CHART_GRID, KPI_GRID } from '../lib-styles'
-
-/** A period label for the chosen grouping: "5 Oct" for a day or week, "Oct 2026" for a month. */
-function periodLabel(period: string, group: BiGroup): string {
-  const options: Intl.DateTimeFormatOptions =
-    group === 'month' ? { month: 'short', year: 'numeric', timeZone: 'UTC' } : { day: 'numeric', month: 'short', timeZone: 'UTC' }
-  return new Intl.DateTimeFormat('en-GB', options).format(new Date(`${period}T00:00:00Z`))
-}
+import { dataAsOf, formatCompact, formatCount, formatDateRange, formatPercent, formatThb, periodLabel } from '../lib-format'
+import { maintenanceReason } from '../lib-maintenance'
+import { CHART_GRID, KPI_GRID, TABLE_GRID } from '../lib-styles'
 
 /**
  * The panels on the shared BiPageFrame, with their own status load and Refresh. `onReload` reloads the panel's own
@@ -36,12 +31,15 @@ function PanelFrame({
   onReload,
   fleetWide = false,
   csv,
+  hasData,
   children,
 }: {
   title: string
   description: string
   /** The panel's CSV export, `/api/bi/export/<csv>.csv`, downloaded with the applied filters. */
   csv: 'no-shows' | 'extra-revenue' | 'aircraft-use'
+  /** The applied filters returned figures; without them Export is turned off. */
+  hasData: boolean
   /** Figures that are not split by route: the route list is hidden and a note says so. */
   fleetWide?: boolean
   filters: FilterState
@@ -52,25 +50,8 @@ function PanelFrame({
   const api = useBiApi()
   // The filter bar edits a draft; the page loads the applied filters, which change only when Apply is clicked.
   const [draft, setDraft] = useState<FilterState>(filters)
-  const status = useBiLoad('bi-status', () => api.getStatus())
-  const [refreshing, setRefreshing] = useState(false)
-  const [refreshError, setRefreshError] = useState<string | null>(null)
+  const { latest, refresh } = useBiRefresh(onReload)
   const [exportError, setExportError] = useState<string | null>(null)
-  const latest = status.data?.latest_success ?? status.previousData?.latest_success ?? null
-
-  async function refresh() {
-    setRefreshing(true)
-    setRefreshError(null)
-    try {
-      await api.refresh()
-      status.retry()
-      onReload()
-    } catch (error) {
-      setRefreshError(refreshMessage(error))
-    } finally {
-      setRefreshing(false)
-    }
-  }
 
   async function exportCsv() {
     setExportError(null)
@@ -81,24 +62,20 @@ function PanelFrame({
     }
   }
 
-  const lastRun = status.data?.last_run ?? status.previousData?.last_run ?? null
   return (
     <BiPageFrame
       title={title}
       description={description}
       status={dataAsOf(latest)}
-      refresh={{
-        onRefresh: () => void refresh(),
-        refreshing,
-        error: refreshError,
-        lastRunFailed: lastRun?.status === 'failed',
-      }}
+      tone={latest ? undefined : 'warning'}
+      refresh={refresh}
       filters={
         <BiFiltersRouted
           filters={draft}
           onChange={setDraft}
           onApply={() => onFiltersChange(draft)}
           onExportCsv={() => void exportCsv()}
+          exportDisabled={!hasData}
           fleetWide={fleetWide}
         />
       }
@@ -122,12 +99,14 @@ function BiFiltersRouted({
   onChange,
   onApply,
   onExportCsv,
+  exportDisabled,
   fleetWide,
 }: {
   filters: FilterState
   onChange: (next: FilterState) => void
   onApply: () => void
   onExportCsv: () => void
+  exportDisabled: boolean
   fleetWide: boolean
 }) {
   const api = useBiApi()
@@ -140,8 +119,9 @@ function BiFiltersRouted({
       onExportCsv={onExportCsv}
       onPrint={() => window.print()}
       onApply={onApply}
+      exportDisabled={exportDisabled}
       showRoute={!fleetWide}
-      note={fleetWide ? 'Fleet-wide, not split by route' : undefined}
+      note={fleetWide ? 'These figures are fleet-wide, so they are not split by route.' : undefined}
     />
   )
 }
@@ -172,6 +152,7 @@ export function NoShowsView() {
       onFiltersChange={setFilters}
       onReload={data.retry}
       csv="no-shows"
+      hasData={weeks.length > 0}
     >
       <BiSectionState
         label="No-shows"
@@ -209,7 +190,9 @@ export function NoShowsView() {
               values={rateRows}
               color="#d92d20"
               format={(v) => `${v.toFixed(1)}%`}
-              yTitle="No-show %"
+              unit="No-show %"
+              xLabel={groupLabel(filters.group)}
+              valueLabel="No-show rate"
             />
             <BarPanelChart
               title="Passengers by boarding result"
@@ -217,13 +200,16 @@ export function NoShowsView() {
               labels={labels}
               stacked
               labelTotals={weeks.map((w) => w.booked)}
+              totalsLabel="Booked"
               series={[
                 { name: 'Boarded', color: '#102544', values: weeks.map((w) => w.boarded) },
                 { name: 'Denied', color: '#64748b', values: weeks.map((w) => w.denied) },
                 { name: 'No-show', color: '#d92d20', values: weeks.map((w) => w.no_show) },
               ]}
-              format={(v) => formatCompact(v)}
-              yTitle="Passengers"
+              format={formatCompact}
+              detailFormat={formatCount}
+              unit="Passengers"
+              xLabel={groupLabel(filters.group)}
             />
           </section>
           <RankBars
@@ -267,9 +253,7 @@ export function ExtraRevenueView() {
   const typeRefunds = (key: string) => periods.reduce((t, p) => t + (p.refunds_by_type?.[key] ?? 0), 0)
   const biggest = EXTRA_TYPES.reduce((best, t) => (typeGross(t.key) > typeGross(best.key) ? t : best), EXTRA_TYPES[0])
   const labels = periods.map((p) => periodLabel(p.period, filters.group))
-  const monthName = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
-    new Date(`${filters.from}T00:00:00Z`),
-  )
+  const range = formatDateRange(filters.from, filters.to)
 
   return (
     <PanelFrame
@@ -279,6 +263,7 @@ export function ExtraRevenueView() {
       onFiltersChange={setFilters}
       onReload={data.retry}
       csv="extra-revenue"
+      hasData={periods.length > 0}
       fleetWide
     >
       <BiSectionState
@@ -316,11 +301,14 @@ export function ExtraRevenueView() {
             stacked
             series={EXTRA_TYPES.map((t) => ({ name: t.label, color: t.color, values: periods.map((p) => p.by_type[t.key] ?? 0) }))}
             labelTotals={periods.map((p) => p.net)}
+            totalsLabel="After refunds"
             format={(v) => formatThb(v, true)}
-            yTitle="THB"
+            detailFormat={(v) => formatThb(v)}
+            unit="THB"
+            xLabel={groupLabel(filters.group)}
           />
-          <section className={CHART_GRID}>
-            <ChartFrame title="By type" subtitle={monthName}>
+          <section className={TABLE_GRID}>
+            <ChartFrame title="By type" subtitle={range}>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -350,7 +338,7 @@ export function ExtraRevenueView() {
                     <TableCell className="text-right">{formatCount(Math.round(gross))}</TableCell>
                     <TableCell className="text-right">{formatCount(Math.round(refunds))}</TableCell>
                     <TableCell className="text-right">{formatCount(Math.round(net))}</TableCell>
-                    <TableCell className="text-right">{gross > 0 ? '100%' : '—'}</TableCell>
+                    <TableCell className="text-right">{gross > 0 ? formatPercent(1) : '—'}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -362,7 +350,9 @@ export function ExtraRevenueView() {
               values={periods.map((p) => p.per_passenger)}
               color="#2a7f84"
               format={(v) => formatThb(v)}
-              yTitle="THB"
+              unit="THB"
+              xLabel={groupLabel(filters.group)}
+              valueLabel="Per passenger"
             />
           </section>
         </>
@@ -396,9 +386,15 @@ export function AircraftUseView() {
   const lowUse = aircraft.filter((a) => a.hours_per_day !== null && a.hours_per_day < IDLE_HOURS_PER_DAY)
   const weeks = body?.weeks ?? []
   const tailOf = (id: string) => aircraft.find((a) => a.aircraft_id === id)
-  const monthName = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
-    new Date(`${filters.from}T00:00:00Z`),
-  )
+  const range = formatDateRange(filters.from, filters.to)
+  // The low-use card names a few tails; the ranked list below shows all of them.
+  const lowUseNames =
+    lowUse.length > 3
+      ? `${lowUse
+          .slice(0, 3)
+          .map((a) => a.tail_number)
+          .join(', ')} and ${formatCount(lowUse.length - 3)} more`
+      : lowUse.map((a) => a.tail_number).join(', ')
 
   return (
     <PanelFrame
@@ -408,6 +404,7 @@ export function AircraftUseView() {
       onFiltersChange={setFilters}
       onReload={data.retry}
       csv="aircraft-use"
+      hasData={aircraft.length > 0}
       fleetWide
     >
       <BiSectionState
@@ -436,9 +433,7 @@ export function AircraftUseView() {
               label="Low-use aircraft"
               value={formatCount(lowUse.length)}
               hint={
-                lowUse.length > 0
-                  ? `${lowUse.map((a) => a.tail_number).join(', ')} under ${IDLE_HOURS_PER_DAY} h per day`
-                  : `None under ${IDLE_HOURS_PER_DAY} h per day`
+                lowUse.length > 0 ? `${lowUseNames} under ${IDLE_HOURS_PER_DAY} h per day` : `None under ${IDLE_HOURS_PER_DAY} h per day`
               }
               comparison={lowUse.length > 0 ? 'Could take more flights' : 'No aircraft to rebalance'}
             />
@@ -464,23 +459,24 @@ export function AircraftUseView() {
               alert: a.hours_per_day !== null && a.hours_per_day < IDLE_HOURS_PER_DAY,
             }))}
           />
-          <section className={CHART_GRID}>
+          <section className={TABLE_GRID}>
             <BarPanelChart
               title={`Fleet hours by ${filters.group}`}
               subtitle="All aircraft"
               labels={weeks.map((w) => periodLabel(w.period, filters.group))}
               series={[{ name: 'Hours flown', color: '#2a7f84', values: weeks.map((w) => w.hours_flown) }]}
               labelTotals={weeks.map((w) => w.hours_flown)}
-              format={(v) => `${Math.round(v)} h`}
-              yTitle="Hours"
+              format={(v) => `${formatCount(Math.round(v))} h`}
+              unit="Hours"
+              xLabel={groupLabel(filters.group)}
             />
-            <ChartFrame title="Days out of service" subtitle={monthName}>
+            <ChartFrame title="Days out of service" subtitle={range}>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Aircraft</TableHead>
                     <TableHead>Reason</TableHead>
-                    <TableHead>Dates</TableHead>
+                    <TableHead className="hidden lg:table-cell">Dates</TableHead>
                     <TableHead className="text-right">Days</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -489,11 +485,17 @@ export function AircraftUseView() {
                     const a = tailOf(d.aircraft_id)
                     return (
                       <TableRow key={`${d.aircraft_id}-${d.start_date}-${i}`}>
-                        <TableCell>
-                          {a?.tail_number ?? '—'} <small className="ml-1 text-xs text-muted-foreground">{a?.type_code ?? ''}</small>
+                        <TableCell className="whitespace-normal">
+                          {a?.tail_number ?? '—'} <small className="text-xs text-muted-foreground">{a?.type_code ?? ''}</small>
                         </TableCell>
-                        <TableCell>{d.reason ?? (d.status === 'in_maintenance' ? 'In maintenance' : 'Grounded')}</TableCell>
-                        <TableCell>{d.start_date === d.end_date ? d.start_date : `${d.start_date} to ${d.end_date}`}</TableCell>
+                        {/* Below laptop width the dates go under the reason, so the table fits a phone without scrolling. */}
+                        <TableCell className="whitespace-normal">
+                          {maintenanceReason(d.reason, d.status)}
+                          <span className="block text-xs text-muted-foreground lg:hidden">{formatDateRange(d.start_date, d.end_date)}</span>
+                        </TableCell>
+                        <TableCell className="hidden whitespace-nowrap lg:table-cell">
+                          {formatDateRange(d.start_date, d.end_date)}
+                        </TableCell>
                         <TableCell className="text-right">
                           {formatCount(daysInRange(d.start_date, d.end_date, filters.from, filters.to))}
                         </TableCell>

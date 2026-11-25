@@ -133,6 +133,7 @@ export function OperationsView() {
       title="Business intelligence"
       description="On-time performance, load factor, revenue per seat and bookings by route and date. Read only."
       status={dataAsOf(latest)}
+      tone={latest ? undefined : 'warning'}
       refresh={{
         onRefresh: () => void refresh(),
         refreshing: isRefreshing,
@@ -148,6 +149,7 @@ export function OperationsView() {
           onApply={() => changeFilters(draft)}
           onExportCsv={() => void exportCsv()}
           onPrint={() => window.print()}
+          exportDisabled={badDates || empty}
         />
       }
       alerts={
@@ -304,7 +306,7 @@ export function OperationsView() {
                             <TooltipTrigger asChild>
                               <button
                                 type="button"
-                                className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 rounded-lg px-2.5 py-2 text-left outline-none hover:bg-page focus-visible:ring-[3px] focus-visible:ring-ring/50 md:grid-cols-[12rem_minmax(0,1fr)_9rem]"
+                                className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 rounded-lg px-2.5 py-2 text-left outline-none hover:bg-page focus-visible:ring-[3px] focus-visible:ring-ring/50 lg:grid-cols-[12rem_minmax(0,1fr)_9rem]"
                                 onClick={() => drillCause(cause.category)}
                                 aria-label={`${cause.category.replaceAll('_', ' ')}: ${formatCount(cause.delay_minutes)} minutes across ${formatCount(cause.events)} delays. Show flights.`}
                               >
@@ -312,7 +314,7 @@ export function OperationsView() {
                                   <span className="w-4 text-muted-foreground">{index + 1}.</span>
                                   <strong className="font-semibold">{cause.category.replaceAll('_', ' ')}</strong>
                                 </span>
-                                <span className="col-span-full row-start-2 h-2 overflow-hidden rounded-full bg-muted md:col-span-1 md:row-start-auto md:h-2.5">
+                                <span className="col-span-full row-start-2 h-2 overflow-hidden rounded-full bg-muted lg:col-span-1 lg:row-start-auto lg:h-2.5">
                                   <span
                                     className="block h-full"
                                     style={{
@@ -354,8 +356,8 @@ export function OperationsView() {
         </>
       )}
       <p className={FOOTNOTE}>
-        Only flights that have departed are counted. Revenue here is counted by flight date; the financial report counts by payment month
-        (Feature 4), so the totals can differ.
+        Only flights that have departed are counted. Revenue here is counted by flight date; the Financial report counts by payment month,
+        so the totals can differ.
       </p>
       {previous.error && (
         <p className={FOOTNOTE} role="status">
