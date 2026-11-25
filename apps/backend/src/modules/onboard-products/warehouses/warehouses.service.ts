@@ -1,3 +1,4 @@
+import { provisionAirportWarehouses } from '../common/airport-warehouses'
 // WarehousesService: CRUD over the warehouse table. PUT-only mutations,
 // soft delete via deleted_at, and an "in-use" check (WAREHOUSE_IN_USE)
 // that blocks deletion when stock / batches / catering orders are
@@ -26,6 +27,7 @@ export class WarehousesService {
   constructor(private readonly db: DbService) {}
 
   async list(): Promise<WarehouseDto[]> {
+    await provisionAirportWarehouses(this.db)
     const rows = await this.db.warehouse.findMany({ where: { deleted_at: null }, orderBy: { code: 'asc' } })
     return rows.map((r) => ({ id: r.id, code: r.code, name: r.name, airportCode: r.airport_code }))
   }

@@ -1,3 +1,4 @@
+import { provisionAirportWarehouses } from './airport-warehouses'
 // FlightContextService: the few facts about a flight that the F12
 // rules need — the flight itself, its route, and the warehouse at its
 // departure airport.
@@ -55,6 +56,7 @@ export class FlightContextService {
   // none cannot be loaded.
   async warehouseForFlight(flightId: string): Promise<WarehouseContext> {
     const flight = await this.getFlight(flightId)
+    await provisionAirportWarehouses(this.db, [flight.origin])
     const warehouse = await this.db.warehouse.findFirst({
       where: { airport_code: flight.origin, deleted_at: null },
       orderBy: { id: 'asc' },

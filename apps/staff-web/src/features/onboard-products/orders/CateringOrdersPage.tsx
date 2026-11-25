@@ -156,6 +156,7 @@ export function CateringOrdersPage() {
   const [searchText, setSearchText] = useState('')
   const [airportFilter, setAirportFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [sortByDeparture, setSortByDeparture] = useState(false)
 
   function showToast(kind: ToastKind, message: string) {
     setToast({ id: nextToastId(), kind, message })
@@ -348,8 +349,12 @@ export function CateringOrdersPage() {
         if (!hay.includes(q)) return false
       }
       return true
+    }).sort((a, b) => {
+      const aDate = sortByDeparture ? a.scheduledDeparture : a.flightCreatedAt || a.scheduledDeparture
+      const bDate = sortByDeparture ? b.scheduledDeparture : b.flightCreatedAt || b.scheduledDeparture
+      return bDate.localeCompare(aDate) || b.scheduledDeparture.localeCompare(a.scheduledDeparture) || b.id.localeCompare(a.id)
     })
-  }, [flights, orders, searchText, airportFilter, statusFilter])
+  }, [flights, orders, searchText, airportFilter, statusFilter, sortByDeparture])
 
   const visibleFlights = filteredFlights.slice(0, pageSize)
   const canShowMore = filteredFlights.length > pageSize
@@ -456,6 +461,18 @@ export function CateringOrdersPage() {
           <div className={styles.filtersRow}>
             <select
               className={styles.filterSelect}
+              aria-label="Sort flights"
+              value={sortByDeparture ? 'departure' : 'created'}
+              onChange={(e) => {
+                setSortByDeparture(e.target.value === 'departure')
+                setPageSize(8)
+              }}
+            >
+              <option value="created">Newest added first</option>
+              <option value="departure">Latest departure first</option>
+            </select>
+            <select
+              className={styles.filterSelect}
               value={airportFilter}
               onChange={(e) => {
                 setAirportFilter(e.target.value)
@@ -518,7 +535,7 @@ export function CateringOrdersPage() {
                     </span>
                     <span className={styles.flightMeta}>
                       <span>{formatDateTime(f.scheduledDeparture)}</span>
-                      <span>{f.passengerCount} pax</span>
+                      <span>{f.passengerCount} preorder passenger{f.passengerCount === 1 ? '' : 's'}</span>
                     </span>
                   </button>
                 )
@@ -557,9 +574,14 @@ export function CateringOrdersPage() {
                       Generate catering order
                     </button>
                   )}
-                  {selectedStatus === 'ordering_open' && selectedOrder?.simulationAvailable && selectedOrder.warehouseId &&
-                    Date.parse(selectedFlight.scheduledDeparture) > Date.now() && (
-                    <button type="button" className={styles.actionButton} disabled={busy} onClick={() => void simulateOrderingClosed()}>
+                  {(selectedOrder?.simulationAvailable || selectedFlight.simulationAvailable) && (
+                    <button
+                      type="button"
+                      className={styles.actionButton}
+                      disabled={busy || selectedStatus !== 'ordering_open' || !selectedOrder?.canSimulateClose}
+                      title="Available for an upcoming flight with an open catering order and a departure warehouse"
+                      onClick={() => void simulateOrderingClosed()}
+                    >
                       Simulate orders closed
                     </button>
                   )}
@@ -583,8 +605,8 @@ export function CateringOrdersPage() {
                   <p className={styles.factValue}>{formatDateTime(selectedFlight.scheduledDeparture)}</p>
                 </div>
                 <div className={styles.factCard}>
-                  <p className={styles.factLabel}>Passengers</p>
-                  <p className={styles.factValue}>{formatQuantity(selectedFlight.passengerCount)}</p>
+                  <p className={styles.factLabel}>Preorder passengers</p>
+                  <p className={styles.factValue}>{formatQuantity(selectedOrder?.passengerCount ?? selectedFlight.passengerCount)}</p>
                 </div>
                 <div className={styles.factCard}>
                   <p className={styles.factLabel}>Loads from</p>

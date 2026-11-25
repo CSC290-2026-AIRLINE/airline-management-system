@@ -167,6 +167,7 @@ export interface CateringOrder {
   passengerCount: number
   status: FlightCateringStatus
   simulationAvailable?: boolean
+  canSimulateClose?: boolean
   cutoffAt: string
   generatedAt: string
   loadedAt: string | null
@@ -182,6 +183,9 @@ export interface CateringOrder {
 export type FlightCateringStatus = 'open' | CateringOrderStatus
 
 export interface Flight {
+  flightCreatedAt?: string
+  simulationAvailable?: boolean
+  canSimulateClose?: boolean
   id: string
   flightNumber: string
   routeId: string

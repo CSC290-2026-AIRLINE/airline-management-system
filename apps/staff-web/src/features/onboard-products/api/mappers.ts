@@ -627,6 +627,7 @@ interface WireCateringOrder {
   passengerCount?: number
   status: string
   simulationAvailable?: boolean
+  canSimulateClose?: boolean
   cutoffAt: string
   generatedAt: string
   loadedAt: string | null
@@ -659,6 +660,7 @@ export function mapCateringOrder(wire: WireCateringOrder): CateringOrder {
     passengerCount: wire.passengerCount == null ? 0 : Number(wire.passengerCount),
     status: required('GET /api/staff/flights/:flightId/catering-order', 'status', wire.status) as CateringOrder['status'],
     simulationAvailable: wire.simulationAvailable === true,
+    canSimulateClose: wire.canSimulateClose === true,
     cutoffAt: toIsoString(wire.cutoffAt),
     generatedAt: toIsoString(wire.generatedAt),
     loadedAt: toNullableIsoString(wire.loadedAt),
@@ -674,6 +676,9 @@ export function mapCateringOrder(wire: WireCateringOrder): CateringOrder {
 // -- Flight (offered menu / picker) ------------------------------------------
 
 interface WireFlight {
+  flightCreatedAt?: string
+  simulationAvailable?: boolean
+  canSimulateClose?: boolean
   id: string
   flightId: string
   flightNumber: string
@@ -696,6 +701,9 @@ export function mapFlight(wire: WireFlight): Flight {
     // order id and `flightId` is the flight. The page keys the flight list by
     // flight id (it loads the order for it), so that is what `id` has to be.
     id: required('GET /api/staff/catering-orders', 'flightId', wire.flightId),
+    flightCreatedAt: wire.flightCreatedAt,
+    simulationAvailable: wire.simulationAvailable === true,
+    canSimulateClose: wire.canSimulateClose === true,
     flightNumber: required('GET /api/staff/catering-orders', 'flightNumber', wire.flightNumber),
     routeId: required('GET /api/staff/catering-orders', 'routeId', wire.routeId),
     scheduledDeparture: toIsoString(wire.scheduledDeparture),

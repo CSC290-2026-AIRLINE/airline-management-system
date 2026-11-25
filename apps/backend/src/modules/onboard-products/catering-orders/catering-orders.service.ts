@@ -1,3 +1,4 @@
+import { provisionAirportWarehouses } from '../common/airport-warehouses'
 // CateringOrdersService: per-flight catering order lifecycle.
 //
 // The flow the doc describes:
@@ -50,6 +51,8 @@ export interface CateringOrderDto {
   passengerCount: number
   status: 'open' | 'generated' | 'loaded' | 'closed' | 'void'
   simulationAvailable?: boolean
+  canSimulateClose?: boolean
+  flightCreatedAt?: string
   cutoffAt: string
   generatedAt: string
   loadedAt: string | null
@@ -115,8 +118,10 @@ export class CateringOrdersService {
       orderBy: [{ created_at: 'desc' }, { scheduled_dep_at: 'desc' }, { id: 'desc' }],
     })
     const passengers = await this.passengerSummary(flights.map((f) => f.id))
+    const origins = [...new Set(flights.map((flight) => flight.route.origin))]
+    await provisionAirportWarehouses(this.db, origins)
     const warehouses = await this.db.warehouse.findMany({
-      where: { airport_code: { in: [...new Set(flights.map((flight) => flight.route.origin))] }, deleted_at: null },
+      where: { airport_code: { in: origins }, deleted_at: null },
       orderBy: { id: 'asc' },
       select: { id: true, airport_code: true },
     })
@@ -125,14 +130,16 @@ export class CateringOrdersService {
       const order = flight.catering_order
       const summary = passengers.get(flight.id)
       if (!order) {
-        return this.openOrder(
+        return { ...this.openOrder(
           flight, summary?.passengers ?? 0, await this.cutoffFor(flight.id), flight.flight_report != null,
           warehouseByAirport.get(flight.route.origin) ?? '',
-        )
+        ), flightCreatedAt: flight.created_at.toISOString() }
       }
       return {
         id: order.id,
         flightId: flight.id,
+        flightCreatedAt: flight.created_at.toISOString(),
+        simulationAvailable: demoEnabled(),
         flightNumber: flight.flight_number,
         routeId: flight.route_id,
         route: `${flight.route.origin} → ${flight.route.destination}`,
@@ -179,6 +186,7 @@ export class CateringOrdersService {
       })
       if (!flight) throw new ApiErrorException('NOT_FOUND', 'Flight not found.', 404)
       const summary = await this.passengerSummary([flightId])
+      await provisionAirportWarehouses(this.db, [flight.route.origin])
       const warehouse = await this.db.warehouse.findFirst({
         where: { airport_code: flight.route.origin, deleted_at: null },
         orderBy: { id: 'asc' },
@@ -418,6 +426,7 @@ export class CateringOrdersService {
       id: string
       flight_number: string
       route_id: string
+      status: string
       scheduled_dep_at: Date
       aircraft_id: string
       route: { origin: string; destination: string }
@@ -439,6 +448,8 @@ export class CateringOrdersService {
       passengerCount,
       status: 'open',
       simulationAvailable: demoEnabled(),
+      canSimulateClose: demoEnabled() && Boolean(warehouseId) &&
+        ['scheduled', 'boarding'].includes(flight.status) && flight.scheduled_dep_at > this.clock.now(),
       cutoffAt: cutoffAt.toISOString(),
       generatedAt: '',
       loadedAt: null,
@@ -607,8 +618,9 @@ export class CateringOrdersService {
     for (const order of orders) {
       const passengers = flightPassengers.get(order.flight_id) ?? new Set<string>()
       const ordered = flightOrdered.get(order.flight_id) ?? new Set<string>()
-      const cabinPeople = cabinPassengers.get(order.cabin) ?? new Set<string>()
-      const cabinMeals = cabinOrdered.get(order.cabin) ?? new Set<string>()
+      const cabinKey = `${order.flight_id}:${order.cabin}`
+      const cabinPeople = cabinPassengers.get(cabinKey) ?? new Set<string>()
+      const cabinMeals = cabinOrdered.get(cabinKey) ?? new Set<string>()
       const bookingPassengers =
         order.flight_id === DEMO_FLIGHT_ID ? [order.customer.passenger_id] : (perCustomer.get(order.customer_id) ?? [])
       for (const passengerId of bookingPassengers) {
@@ -622,16 +634,18 @@ export class CateringOrdersService {
       }
       flightPassengers.set(order.flight_id, passengers)
       flightOrdered.set(order.flight_id, ordered)
-      cabinPassengers.set(order.cabin, cabinPeople)
-      cabinOrdered.set(order.cabin, cabinMeals)
+      cabinPassengers.set(cabinKey, cabinPeople)
+      cabinOrdered.set(cabinKey, cabinMeals)
     }
 
     for (const flightId of flightIds) {
       const passengers = flightPassengers.get(flightId) ?? new Set<string>()
       const ordered = flightOrdered.get(flightId) ?? new Set<string>()
       const perCabin = new Map<string, { passengers: number; ordered: number }>()
-      for (const [cabin, people] of cabinPassengers) {
-        const meals = cabinOrdered.get(cabin) ?? new Set<string>()
+      for (const cabin of CABINS) {
+        const cabinKey = `${flightId}:${cabin}`
+        const people = cabinPassengers.get(cabinKey) ?? new Set<string>()
+        const meals = cabinOrdered.get(cabinKey) ?? new Set<string>()
         perCabin.set(cabin, { passengers: people.size, ordered: Math.min(meals.size, people.size) })
       }
       out.set(flightId, {
