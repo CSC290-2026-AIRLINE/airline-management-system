@@ -3,6 +3,7 @@ import { faker } from '@faker-js/faker'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/prisma/client'
 import { seedFeature6 } from './seed-f6'
+import { seedF12 } from './seed-f12'
 
 try {
   process.loadEnvFile(path.join(__dirname, '..', '..', '.env'))
@@ -56,12 +57,17 @@ const DISRUPTION_REASONS = [
   { code: 'OTH', category: 'other', description: 'Other' },
 ]
 const AIRLINE_CODE = 'XX'
+// Layouts use Feature 9's cabin format (docs/f9-g3.md, "Seat map layout JSON"): one all-economy cabin each, 180 and 72 seats.
+const A320_LAYOUT = {
+  cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 30, columns: ['A', 'B', 'C', 'D', 'E', 'F'], aisle_after: ['C'] }],
+}
+const ATR72_LAYOUT = { cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 18, columns: ['A', 'B', 'C', 'D'], aisle_after: ['B'] }] }
 const AIRCRAFT_TYPES = [
   {
     code: 'A320',
     manufacturer: 'Airbus',
     model: 'A320-200',
-    layout: { rows: 30, seats_per_row: 6 },
+    layout: A320_LAYOUT,
     hold_weight_limit_kg: 20000,
     max_takeoff_weight_kg: 78000,
     max_range_km: 6100,
@@ -73,7 +79,7 @@ const AIRCRAFT_TYPES = [
     code: 'ATR72',
     manufacturer: 'ATR',
     model: 'ATR 72-600',
-    layout: { rows: 18, seats_per_row: 4 },
+    layout: ATR72_LAYOUT,
     hold_weight_limit_kg: 6000,
     max_takeoff_weight_kg: 23000,
     max_range_km: 1500,
@@ -436,6 +442,167 @@ async function seedRefreshTokens(userId: string) {
   })
 }
 
+async function seedCustomerService() {
+  console.log('Seeding Feature 13 (Customer Service)...')
+  const csSupRole = await prisma.role.findFirst({ where: { code: 'cs-supervisor' } })
+  const csAgentRole = await prisma.role.findFirst({ where: { code: 'cs-agent' } })
+  if (!csSupRole || !csAgentRole) return
+
+  const staffSeeds = [
+    { email: 'tong.c@flython.com', first_name: 'Tong', last_name: 'Charoen', role_id: csSupRole.id },
+    { email: 'ploy.w@flython.com', first_name: 'Ploy', last_name: 'Wong', role_id: csAgentRole.id },
+    { email: 'mali.r@flython.com', first_name: 'Mali', last_name: 'Rattana', role_id: csAgentRole.id },
+    { email: 'somsak.j@flython.com', first_name: 'Somsak', last_name: 'Jaidee', role_id: csAgentRole.id },
+    { email: 'kenji.s@flython.com', first_name: 'Kenji', last_name: 'Sato', role_id: csAgentRole.id },
+  ]
+  const staffByName = new Map<string, string>()
+  for (const s of staffSeeds) {
+    let staffRow = await prisma.staff.findFirst({
+      where: { user: { email: s.email } },
+      select: { id: true },
+    })
+    if (!staffRow) {
+      const user = await prisma.user.create({
+        data: { type: 'staff', email: s.email, clerk_user_id: `user_${faker.string.alphanumeric(24)}` },
+      })
+      staffRow = await prisma.staff.create({
+        data: { user_id: user.id, first_name: s.first_name, last_name: s.last_name, role_id: s.role_id },
+        select: { id: true },
+      })
+    }
+    staffByName.set(`${s.first_name} ${s.last_name}`, staffRow.id)
+  }
+
+  // Extra demo flights
+  const flightFY308 = await prisma.flight.findFirst({ where: { flight_number: 'FY308' } })
+  let flightFY308Id = flightFY308?.id
+  if (!flightFY308Id) {
+    const route = await prisma.route.findFirst()
+    const aircraft = await prisma.aircraft.findFirst()
+    if (route && aircraft) {
+      const f = await prisma.flight.create({
+        data: {
+          flight_number: 'FY308',
+          route_id: route.id,
+          aircraft_id: aircraft.id,
+          scheduled_dep_at: new Date('2026-10-12T08:00:00Z'),
+          scheduled_arr_at: new Date('2026-10-12T14:00:00Z'),
+          dep_at: new Date('2026-10-12T08:00:00Z'),
+          arr_at: new Date('2026-10-12T14:00:00Z'),
+          status: 'scheduled',
+          service_date: new Date('2026-10-12'),
+        },
+      })
+      flightFY308Id = f.id
+    }
+  }
+  // A booking_segment points at its flight's seat_inventory row (flight_id, cabin), so the economy cabin must exist first.
+  if (flightFY308Id) {
+    await prisma.seat_inventory.upsert({
+      where: { flight_id_cabin: { flight_id: flightFY308Id, cabin: 'economy' } },
+      create: { flight_id: flightFY308Id, cabin: 'economy', capacity: 180 },
+      update: {},
+    })
+  }
+
+  // Demo customers and bookings
+  const demoCustomers = [
+    { email: 'somchai.w@example.com', first_name: 'Somchai', last_name: 'Wongsakul', booking_ref: 'FLY7K2' },
+    { email: 'ananda.s@example.com', first_name: 'Ananda', last_name: 'Silva', booking_ref: 'K8N2P4' },
+    { email: 'niran.k@example.com', first_name: 'Niran', last_name: 'Kittisup', booking_ref: 'M2R9Q3' },
+    { email: 'anna.lee@example.com', first_name: 'Anna', last_name: 'Lee', booking_ref: 'W9X4B2' },
+    { email: 'mai.t@example.com', first_name: 'Mai', last_name: 'Tran', booking_ref: 'C5D8J3' },
+    { email: 'tom.b@example.com', first_name: 'Tom', last_name: 'Baker', booking_ref: 'R4V8Z3' },
+    { email: 'david.chen@example.com', first_name: 'David', last_name: 'Chen', booking_ref: 'T6Y2M8' },
+  ]
+  for (const c of demoCustomers) {
+    let customer = await prisma.customer.findFirst({
+      where: { user: { email: c.email } },
+      include: { passenger: true },
+    })
+    if (!customer) {
+      const u = await prisma.user.create({ data: { type: 'customer', email: c.email } })
+      const p = await prisma.passenger.create({ data: { first_name: c.first_name, last_name: c.last_name } })
+      customer = await prisma.customer.create({
+        data: { user_id: u.id, passenger_id: p.id },
+        include: { passenger: true },
+      })
+    }
+    const existingBooking = await prisma.booking.findUnique({ where: { booking_reference: c.booking_ref } })
+    if (!existingBooking) {
+      const b = await prisma.booking.create({
+        data: {
+          booking_reference: c.booking_ref,
+          customer_id: customer.id,
+          trip_type: 'one_way',
+          status: 'confirmed',
+          currency: 'USD',
+          contact_email: c.email,
+          idempotency_key: faker.string.uuid(),
+          booked_at: new Date('2026-10-01T00:00:00Z'),
+          hold_expires_at: new Date('2026-10-01T00:15:00Z'),
+          // booking's CHECK requires confirmed_at exactly when status is confirmed or cancelled
+          confirmed_at: new Date('2026-10-01T00:05:00Z'),
+        },
+      })
+      await prisma.booking_passenger.create({
+        data: { booking_id: b.id, passenger_id: customer.passenger_id, passenger_type: 'adult' },
+      })
+      if (flightFY308Id) {
+        await prisma.booking_segment.create({
+          data: { booking_id: b.id, flight_id: flightFY308Id, segment_order: 1, cabin: 'economy' },
+        })
+        // A confirmed booking holds a sold seat.
+        await prisma.seat_inventory.update({
+          where: { flight_id_cabin: { flight_id: flightFY308Id, cabin: 'economy' } },
+          data: { sold_count: { increment: 1 } },
+        })
+      }
+    }
+  }
+
+  // Demo customer bookings
+  const guestBookings = [
+    { booking_ref: 'P4LM8T', first_name: 'Somchai', last_name: 'Prasert', email: 's.prasert@example.com' },
+    { booking_ref: 'H7L3N6', first_name: 'Kanda', last_name: 'Srisuk', email: 'kanda.s@example.com' },
+  ]
+  for (const g of guestBookings) {
+    const existing = await prisma.booking.findUnique({ where: { booking_reference: g.booking_ref } })
+    if (!existing) {
+      const u = await prisma.user.create({ data: { type: 'customer', email: g.email } })
+      const p = await prisma.passenger.create({ data: { first_name: g.first_name, last_name: g.last_name } })
+      const c = await prisma.customer.create({ data: { user_id: u.id, passenger_id: p.id } })
+
+      const b = await prisma.booking.create({
+        data: {
+          booking_reference: g.booking_ref,
+          customer_id: c.id,
+          trip_type: 'one_way',
+          status: 'confirmed',
+          currency: 'USD',
+          contact_email: g.email,
+          idempotency_key: faker.string.uuid(),
+          booked_at: new Date('2026-10-01T00:00:00Z'),
+          hold_expires_at: new Date('2026-10-01T00:15:00Z'),
+          // booking's CHECK requires confirmed_at exactly when status is confirmed or cancelled
+          confirmed_at: new Date('2026-10-01T00:05:00Z'),
+        },
+      })
+      await prisma.booking_passenger.create({ data: { booking_id: b.id, passenger_id: p.id, passenger_type: 'adult' } })
+      if (flightFY308Id) {
+        await prisma.booking_segment.create({
+          data: { booking_id: b.id, flight_id: flightFY308Id, segment_order: 1, cabin: 'economy' },
+        })
+        // A confirmed booking holds a sold seat.
+        await prisma.seat_inventory.update({
+          where: { flight_id_cabin: { flight_id: flightFY308Id, cabin: 'economy' } },
+          data: { sold_count: { increment: 1 } },
+        })
+      }
+    }
+  }
+}
+
 async function main() {
   console.log(
     `Seeding ${STAFF_ROLES.length} roles, the Feature 2, 4, 5, 6, 10 and 11 demo data, the Feature 6 demo flights and bookings, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`,
@@ -463,7 +630,9 @@ async function main() {
     await seedRefreshTokens(user.id)
   }
 
+  await seedCustomerService()
   await seedCurrencyRates()
+  await seedF12(prisma)
 
   console.log('Seeding complete.')
 }

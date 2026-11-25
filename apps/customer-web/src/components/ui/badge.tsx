@@ -15,6 +15,12 @@ const badgeVariants = cva(
         outline: 'border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
         ghost: '[a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 [a&]:hover:underline',
+        // F12 variants
+        success: 'border-[oklch(0.88_0.10_148)] bg-[oklch(0.95_0.06_148)] text-[oklch(0.48_0.15_148)]',
+        warning: 'border-[oklch(0.88_0.10_85)] bg-[oklch(0.96_0.05_85)] text-[oklch(0.45_0.12_60)]',
+        pending: 'border-[#fedf89] bg-[#fffaeb] text-[#b54708]',
+        cancelled: 'border-[#dbe2ea] bg-[#eef2f7] text-[#475569]',
+        muted: 'border-[#dbe2ea] bg-[#f5f5f7] text-[#525866]',
       },
     },
     defaultVariants: {

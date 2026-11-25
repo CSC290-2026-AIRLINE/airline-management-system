@@ -21,8 +21,8 @@ function LoginPage() {
   const { redirect: redirectTo } = Route.useSearch()
 
   return (
-    <section id="center">
+    <main className="bg-muted min-h-svh flex items-center justify-center px-6 py-12 font-sans">
       <SignIn fallbackRedirectUrl={redirectTo ?? '/dashboard'} />
-    </section>
+    </main>
   )
 }

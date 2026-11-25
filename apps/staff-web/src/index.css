@@ -1,5 +1,9 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+/* Book for customer (feature 3) renders customer-web's flight search and booking steps, so Tailwind scans them too. */
+@source '../../customer-web/src/features/booking-search';
+@source '../../customer-web/src/features/booking-pnr';
+@source '../../customer-web/src/components/ui';
 /* Crew rostering (F8) palette and fonts; Tailwind itself is imported once, above. */
 @import './features/crew-rostering/build-pairings/types/tokens.css';
 
@@ -102,24 +106,29 @@
     @apply border-border outline-ring/50;
   }
 
-  /* Tailwind v4 resets buttons to `cursor: default`; restore the pointer on everything clickable. */
-  button:not(:disabled),
-  a[href],
-  summary,
-  label[for],
-  [role='button']:not([aria-disabled='true']),
-  [role='tab'],
-  [role='checkbox'],
-  [role='switch'],
-  [role='combobox'],
-  [role='menuitem'],
-  [role='menuitemradio'],
-  [role='option'] {
+  /* Tailwind v4's reset leaves buttons with `cursor: default`. Clickable things get a pointer, disabled ones a not-allowed cursor. */
+  :is(
+    button,
+    select,
+    summary,
+    label[for],
+    a[href],
+    input:is([type='checkbox'], [type='radio'], [type='submit'], [type='button'], [type='reset'], [type='file']),
+    [role='button'],
+    [role='tab'],
+    [role='radio'],
+    [role='checkbox'],
+    [role='switch'],
+    [role='combobox'],
+    [role='option'],
+    [role='menuitem'],
+    [role='menuitemcheckbox'],
+    [role='menuitemradio']
+  ):not(:disabled, [aria-disabled='true'], [data-disabled]) {
     cursor: pointer;
   }
 
-  button:disabled,
-  button[aria-disabled='true'],
+  :is(button, select, input, textarea):disabled,
   [aria-disabled='true'],
   [data-disabled] {
     cursor: not-allowed;

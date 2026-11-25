@@ -86,6 +86,8 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
   const [reason, setReason] = useState('')
   const [minutes, setMinutes] = useState('45')
   const [resolution, setResolution] = useState<'refund' | 'rebook_partner'>('refund')
+  // Cancelling a flight cannot be undone, so the button asks once before it sends anything.
+  const [confirmingCancel, setConfirmingCancel] = useState(false)
   const [partner, setPartner] = useState('')
   const [note, setNote] = useState('')
   const [aircraft, setAircraft] = useState('')
@@ -489,7 +491,10 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
                           cancel: 'Cancel flight',
                         }}
                         value={mode}
-                        onChange={setMode}
+                        onChange={(m) => {
+                          setMode(m)
+                          setConfirmingCancel(false)
+                        }}
                       />
                       <div className="fs-form-grid fs-form-grid-2">
                         {!(mode === 'hold' && f.status === 'holding') && (
@@ -587,21 +592,37 @@ export function FlightDetailPage({ flightId }: { flightId: string }) {
                         >
                           Record delay
                         </Button>
-                      ) : (
+                      ) : !confirmingCancel ? (
                         <Button
                           variant="destructive"
                           type="button"
                           disabled={busy || !reason || (resolution === 'rebook_partner' && !partner)}
-                          onClick={() =>
-                            void record(
-                              'cancel',
-                              { resolution, ...(resolution === 'rebook_partner' && { partner_airline: partner }) },
-                              'Flight cancelled.',
-                            )
-                          }
+                          onClick={() => setConfirmingCancel(true)}
                         >
                           Cancel this flight
                         </Button>
+                      ) : (
+                        <div role="alert" className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm">Cancel this flight? This cannot be undone.</span>
+                          <Button
+                            variant="destructive"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setConfirmingCancel(false)
+                              void record(
+                                'cancel',
+                                { resolution, ...(resolution === 'rebook_partner' && { partner_airline: partner }) },
+                                'Flight cancelled.',
+                              )
+                            }}
+                          >
+                            Yes, cancel the flight
+                          </Button>
+                          <Button variant="outline" type="button" disabled={busy} onClick={() => setConfirmingCancel(false)}>
+                            Keep the flight
+                          </Button>
+                        </div>
                       )}
                     </Card>
                   </div>

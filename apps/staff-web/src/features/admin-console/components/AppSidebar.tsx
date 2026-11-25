@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
-import { ChevronRight, LogOut } from 'lucide-react'
+import { Banknote, ChevronRight, Gift, LogOut, Search, TriangleAlert, Undo2, Wallet } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@staff-web/components/ui/collapsible'
 import { ScrollArea } from '@staff-web/components/ui/scroll-area'
 import {
@@ -23,32 +23,19 @@ import sidebarPattern from '../assets/sidebar-pattern.png'
 import { groupKey, readOpen, writeOpen } from '../hooks/persisted-open'
 import {
   ADMIN_ITEMS,
+  CARGO_ITEMS,
+  CATERING_ITEMS,
   CHECKIN_ITEMS,
   CREW_ITEMS,
+  CUSTOMER_SERVICE_ITEMS,
   FLIGHT_SCHEDULING_ITEMS,
   GROUPS,
   LOYALTY_ITEMS,
+  BAGGAGE_ITEMS,
   PRICING_ITEMS,
   BI_ITEM,
   type NavItem,
 } from '../nav-items'
-
-/**
- * These screens belong to other feature teams and have no routes in this app yet, so they are listed as disabled
- * buttons (dimmed, not focusable) instead of links that go nowhere. When a team registers its route, swap its entry for
- * a `<SidebarMenuButton asChild><Link/></SidebarMenuButton>`.
- */
-// `indent` is for items inside a group: the padding sits on the button, so its hover block spans the full width.
-function PendingItem({ item, indent = false }: { item: NavItem; indent?: boolean }) {
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton disabled className={indent ? 'pl-4' : undefined}>
-        <item.icon />
-        <span>{item.label}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  )
-}
 
 /** A screen whose team has registered a route. A plain link, so the page swaps in without remounting the sidebar frame. */
 function LinkedItem({
@@ -82,10 +69,10 @@ function LinkedItem({
  * A sidebar group whose header opens and closes it. Closed = quiet and chevron right; open = bright and chevron down.
  * In the collapsed icon rail the header is hidden, a bar closes the group, and every item's icon shows, even in a closed group.
  */
-function NavGroup({ label, children }: { label: string; children: ReactNode }) {
+function NavGroup({ label, defaultOpen = true, children }: { label: string; defaultOpen?: boolean; children: ReactNode }) {
   return (
     <Collapsible
-      defaultOpen={readOpen(groupKey(label), true)}
+      defaultOpen={readOpen(groupKey(label), defaultOpen)}
       onOpenChange={(open) => writeOpen(groupKey(label), open)}
       className="group/collapsible"
     >
@@ -108,13 +95,27 @@ function NavGroup({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
+/** The Payments & Refunds screens (Feature 5), in the F5 frames' order. Pay Runs and My Pay are Feature 5c's (crew pay). */
+const PAYMENTS_ITEMS: (NavItem & { to: NonNullable<NavItem['to']> })[] = [
+  { label: 'Payment Lookup', icon: Search, to: '/payments/lookup' },
+  { label: 'Refund Queue', icon: Undo2, to: '/payments/refunds' },
+  { label: 'Compensation & Vouchers', icon: Gift, to: '/payments/compensation' },
+  { label: 'Payment Exceptions', icon: TriangleAlert, to: '/payments/exceptions' },
+  { label: 'Pay Runs', icon: Banknote, to: '/payments/pay-runs' },
+  { label: 'My Pay', icon: Wallet, to: '/payments/my-pay' },
+]
+
 /**
  * The admin workspace sidebar: the shadcn `Sidebar` (icon-collapsible on desktop, a sheet on a phone). Administration
- * comes first — its three screens are the only live links — then the F15 menu of the other teams' screens.
+ * comes first — its three screens are live links — then the pricing screens and the F15 menu of the other teams' screens.
+ *
+ * `expandedGroup` names the one group that starts open, for the pages whose design shows a single group expanded. The
+ * admin console passes nothing and keeps every group open.
  */
-export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOut: () => void }) {
+export function AppSidebar({ roleName, onSignOut, expandedGroup }: { roleName: string; onSignOut: () => void; expandedGroup?: string }) {
   const { toggleSidebar } = useSidebar()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const groupIsOpen = (label: string) => (expandedGroup === undefined ? true : label === expandedGroup)
 
   return (
     <Sidebar collapsible="icon">
@@ -149,7 +150,7 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
           type="scroll"
           className="min-h-0 flex-1 [&_[data-slot=scroll-area-scrollbar]]:w-1.5 [&_[data-slot=scroll-area-thumb]]:bg-sidebar-foreground/30 [&_[data-slot=scroll-area-viewport]>div]:block!"
         >
-          <NavGroup label="Administration">
+          <NavGroup label="Administration" defaultOpen={groupIsOpen('Administration')}>
             {ADMIN_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton
@@ -167,7 +168,7 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
             ))}
           </NavGroup>
 
-          <NavGroup label="Pricing & Fare Rules">
+          <NavGroup label="Pricing & Fare Rules" defaultOpen={groupIsOpen('Pricing & Fare Rules')}>
             {PRICING_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton asChild isActive={pathname === item.to} tooltip={item.label} className="pl-4">
@@ -180,7 +181,7 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
             ))}
           </NavGroup>
 
-          <NavGroup label="Crew & Rostering">
+          <NavGroup label="Crew & Rostering" defaultOpen={groupIsOpen('Crew & Rostering')}>
             {CREW_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton
@@ -198,7 +199,7 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
             ))}
           </NavGroup>
 
-          <NavGroup label="Check-in & Boarding">
+          <NavGroup label="Check-in & Boarding" defaultOpen={groupIsOpen('Check-in & Boarding')}>
             {CHECKIN_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton asChild isActive={pathname.startsWith(item.to)} tooltip={item.label} className="pl-4">
@@ -211,7 +212,7 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
             ))}
           </NavGroup>
 
-          <NavGroup label="Flight Scheduling">
+          <NavGroup label="Flight Scheduling" defaultOpen={groupIsOpen('Flight Scheduling')}>
             {FLIGHT_SCHEDULING_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton
@@ -231,7 +232,20 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
             ))}
           </NavGroup>
 
-          <NavGroup label="Loyalty Programme">
+          <NavGroup label="Service & Compensation" defaultOpen={groupIsOpen('Service & Compensation')}>
+            {CUSTOMER_SERVICE_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton asChild isActive={pathname === item.to} tooltip={item.label} className="pl-4">
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Loyalty Programme" defaultOpen={groupIsOpen('Loyalty Programme')}>
             {LOYALTY_ITEMS.map((item) => (
               <SidebarMenuItem key={item.to}>
                 <SidebarMenuButton
@@ -249,18 +263,74 @@ export function AppSidebar({ roleName, onSignOut }: { roleName: string; onSignOu
             ))}
           </NavGroup>
 
+          <NavGroup label="Cargo & Air Freight" defaultOpen={groupIsOpen('Cargo & Air Freight')}>
+            {CARGO_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === item.to || pathname.startsWith(item.to + '/')}
+                  tooltip={item.label}
+                  className="pl-4"
+                >
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Lost & Found Baggage" defaultOpen={groupIsOpen('Lost & Found Baggage')}>
+            {BAGGAGE_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === item.to || pathname.startsWith(item.to + '/')}
+                  tooltip={item.label}
+                  className="pl-4"
+                >
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Onboard Products" defaultOpen={groupIsOpen('Onboard Products')}>
+            {CATERING_ITEMS.map((item) => (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === item.to || pathname.startsWith(item.to + '/')}
+                  tooltip={item.label}
+                  className="pl-4"
+                >
+                  <Link to={item.to}>
+                    <item.icon />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </NavGroup>
+
+          <NavGroup label="Payments & Refunds" defaultOpen={groupIsOpen('Payments & Refunds')}>
+            {PAYMENTS_ITEMS.map((item) => (
+              <LinkedItem key={item.label} item={item} pathname={pathname} indent />
+            ))}
+          </NavGroup>
+
           {GROUPS.map((group) => (
-            <NavGroup key={group.label} label={group.label}>
-              {group.items.map((item) =>
-                item.to ? (
-                  <LinkedItem key={item.label} item={{ ...item, to: item.to }} pathname={pathname} indent />
-                ) : (
-                  <PendingItem key={item.label} item={item} indent />
-                ),
-              )}
+            <NavGroup key={group.label} label={group.label} defaultOpen={groupIsOpen(group.label)}>
+              {group.items.map((item) => (
+                <LinkedItem key={item.label} item={item} pathname={pathname} indent />
+              ))}
             </NavGroup>
           ))}
-          <NavGroup label="Reports">
+          <NavGroup label="Reports" defaultOpen={groupIsOpen('Reports')}>
             <LinkedItem item={BI_ITEM} pathname={pathname} indent />
           </NavGroup>
         </ScrollArea>

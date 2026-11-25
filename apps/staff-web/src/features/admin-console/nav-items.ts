@@ -1,64 +1,87 @@
 import {
-  Calendar,
+  Accessibility,
   CalendarClock,
+  ChartColumn,
   Globe,
   Gauge,
-  ChartColumn,
   ClipboardCheck,
-  CreditCard,
   DoorOpen,
   FileText,
+  GitCompareArrows,
   IdCard,
+  Inbox,
   KeyRound,
   ListChecks,
   Luggage,
-  MessageSquare,
-  Monitor,
+  MailCheck,
   Package,
+  PackageSearch,
   Percent,
+  Plane,
   PlaneLanding,
   PlaneTakeoff,
   Receipt,
   Route,
   ScrollText,
   Search,
+  Settings,
+  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   Sofa,
   Star,
   Tag,
   Ticket,
-  User,
+  Truck,
   UserCheck,
+  UserPlus,
   Users,
   Utensils,
   type LucideIcon,
 } from 'lucide-react'
 
-/** Sidebar contents, shared by the live sidebar and the Role access "Preview as user". `code` is the registered screen code. */
+/** The routes this sidebar links to. Every one of them is registered in the router. */
+export type NavRoute =
+  | '/customer-search'
+  | '/security-screening/screening-queue'
+  | '/aircraft'
+  | '/aircraft-types'
+  | '/readiness'
+  | '/booking-lookup'
+  | '/book-for-customer'
+  | '/assistance'
+  // Feature 5 (Payments & Refunds), a top-level group in the sidebar.
+  | '/payments/lookup'
+  | '/payments/refunds'
+  | '/payments/compensation'
+  | '/payments/exceptions'
+  | '/payments/pay-runs'
+  | '/payments/my-pay'
+  // Feature 14 (Business intelligence).
+  | '/bi'
 
+/** Sidebar contents, shared by the live sidebar and the Role access "Preview as user". `code` is the registered screen code. */
 export interface NavItem {
   label: string
   icon: LucideIcon
-  /** Set once the owning team has a route. Items without one stay disabled in the live sidebar. */
-  to?: '/customer-search' | '/security-screening/screening-queue' | '/aircraft' | '/aircraft-types' | '/readiness' | '/bi'
+  to: NavRoute
   /** Path prefix that keeps the item highlighted on the feature's other pages. */
   activePrefix?: string
 }
 
-export const REPORTS_ITEM: NavItem = { label: 'Reports & Analytics', icon: ChartColumn }
-
 /** Feature 14: the Business intelligence page (`/bi`), with its own tabs for each report. */
-export const BI_ITEM: NavItem & { to: '/bi' } = { label: 'Business intelligence', icon: ChartColumn, to: '/bi', activePrefix: '/bi' }
+export const BI_ITEM: NavItem = { label: 'Business intelligence', icon: ChartColumn, to: '/bi', activePrefix: '/bi' }
 
 export const GROUPS: { label: string; items: NavItem[] }[] = [
-  // Groups with live links come first; the rest are disabled placeholders until their teams add routes.
+  // Only screens with a page behind them are listed. A team adds its group here when its routes exist.
   {
     label: 'Customer Management',
     items: [
       { label: 'Customer Search', icon: Search, to: '/customer-search', activePrefix: '/customer-search' },
+      { label: 'Bookings', icon: Ticket, to: '/booking-lookup' },
+      { label: 'Book for Customer', icon: UserPlus, to: '/book-for-customer' },
+      { label: 'Assistance Queue', icon: Accessibility, to: '/assistance' },
       { label: 'Security Screening', icon: ShieldCheck, to: '/security-screening/screening-queue', activePrefix: '/security-screening' },
-      { label: 'Service & Compensation', icon: MessageSquare },
     ],
   },
   {
@@ -67,24 +90,6 @@ export const GROUPS: { label: string; items: NavItem[] }[] = [
       { label: 'Fleet & Aircraft', icon: PlaneLanding, to: '/aircraft', activePrefix: '/aircraft' },
       { label: 'Aircraft Types', icon: PlaneTakeoff, to: '/aircraft-types', activePrefix: '/aircraft-types' },
       { label: 'Aircraft Readiness', icon: ClipboardCheck, to: '/readiness' },
-      { label: 'Crew Scheduling', icon: Calendar },
-      { label: 'My Roster', icon: User },
-    ],
-  },
-  {
-    label: 'Commercial',
-    items: [
-      { label: 'Bookings & Inventory', icon: Ticket },
-      { label: 'Payments & Refunds', icon: CreditCard },
-      { label: 'Cargo & Air Freight', icon: Package },
-    ],
-  },
-  {
-    label: 'Airport & Onboard',
-    items: [
-      { label: 'Gate Counter & Devices', icon: Monitor },
-      { label: 'Baggage Tracking', icon: Luggage },
-      { label: 'Onboard Products', icon: Utensils },
     ],
   },
 ]
@@ -121,6 +126,14 @@ export const CREW_ITEMS = [
   { to: '/setup-rule', code: 'f08.rules', label: 'Rules', icon: ListChecks, match: ['/setup-rule'] },
 ] as const
 
+/** The Feature 13 (customer service) staff pages: the complaint queue plus its reporting and notification screens. */
+export const CUSTOMER_SERVICE_ITEMS = [
+  { to: '/complaints', label: 'Complaint queue', icon: Inbox },
+  { to: '/complaints/charts', label: 'Complaint charts', icon: ChartColumn },
+  { to: '/complaints/delivery-log', label: 'Delivery log', icon: MailCheck },
+  { to: '/complaints/templates', label: 'Templates', icon: FileText },
+] as const
+
 /** The check-in and gate screens of the Check-in & Boarding feature (F6). */
 export const CHECKIN_ITEMS = [
   { to: '/check-in/counter', code: 'f06.counter', label: 'Check-in counter', icon: UserCheck },
@@ -141,10 +154,35 @@ export const FLIGHT_SCHEDULING_ITEMS: readonly {
   { to: '/congestion', label: 'Congestion', icon: Gauge },
 ]
 
+/** The Feature 10 (lost and found baggage) staff pages. */
+export const BAGGAGE_ITEMS = [
+  { to: '/baggage/lost-bag-cases', label: 'Lost bag cases', icon: Luggage },
+  { to: '/baggage/found-bags', label: 'Found bags', icon: PackageSearch },
+  { to: '/baggage/match-review', label: 'Match review', icon: GitCompareArrows },
+  { to: '/baggage/deliveries', label: 'Deliveries', icon: Truck },
+] as const
+
 /** The Feature 11 (loyalty programme) staff pages. */
 export const LOYALTY_ITEMS = [
   { to: '/loyalty/members', label: 'Member Lookup', icon: Search },
   { to: '/loyalty/rules', label: 'Loyalty Rules', icon: SlidersHorizontal },
   { to: '/loyalty/award-release', label: 'Award Release', icon: Star },
   { to: '/loyalty/lounge', label: 'Lounge Desk', icon: Sofa },
+] as const
+
+/** The Feature 17 (cargo and air freight) staff pages. */
+export const CARGO_ITEMS = [
+  { to: '/cargo/bookings', label: 'Cargo desk', icon: Package },
+  { to: '/cargo/flights', label: 'Flight cargo', icon: Plane },
+  { to: '/cargo/claims', label: 'Claims', icon: ShieldAlert },
+  { to: '/cargo/settings', label: 'Rates and settings', icon: Settings },
+] as const
+
+/** The Feature 12 (onboard products) staff pages: catalog, menus, catering orders, warehouse stock and the flight report. */
+export const CATERING_ITEMS = [
+  { to: '/catering/catalog', label: 'Product Catalog', icon: Utensils },
+  { to: '/catering/offered-menu', label: 'Offered Menu', icon: ListChecks },
+  { to: '/catering/orders', label: 'Catering Orders', icon: ClipboardCheck },
+  { to: '/catering/stock', label: 'Stock', icon: Package },
+  { to: '/catering/flight-report', label: 'Flight Report', icon: FileText },
 ] as const
