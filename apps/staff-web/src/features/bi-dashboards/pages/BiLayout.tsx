@@ -52,7 +52,8 @@ export function BiLayout() {
   if (views.length === 0) return <NoAccessScreen screenName="Business intelligence" roleName={access.role?.name} recorded={false} />
 
   if (!current) {
-    // No child route: the address is `/bi` itself. Links saved before the views had their own URLs used the hash (`/bi#finance`); they still open that view.
+    // No child route: the address is `/bi` itself. Links saved before the views had their own URLs used the hash
+    // (`/bi#finance`); they still open that view.
     const target = views.find((view) => view.id === hash.replace(/^#/, '')) ?? views[0]
     return <Navigate to={target.path} replace />
   }

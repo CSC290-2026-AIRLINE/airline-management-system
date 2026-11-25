@@ -30,7 +30,7 @@ export function niceTicks(min: number, max: number, count = 4): number[] {
   return Array.from({ length: Math.round((high - low) / step) + 1 }, (_, i) => Number((low + i * step).toFixed(10)))
 }
 
-/** Show every `n`th x label so labels about `spacing` pixels wide never overlap. */
+/** Show every `n`th x label so labels about `spacing` pixels apart never overlap (52 fits a date like "28 Sep"). */
 export function labelEvery(count: number, plotWidth: number, spacing = 52): number {
   return Math.max(1, Math.ceil(count / Math.max(1, Math.floor(plotWidth / spacing))))
 }

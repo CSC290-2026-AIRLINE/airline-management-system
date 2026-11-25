@@ -156,6 +156,7 @@ export function Axis({
   unit,
   labels,
   xLabel,
+  labelSpacing,
 }: {
   plot: PlotArea
   ticks: number[]
@@ -164,8 +165,10 @@ export function Axis({
   unit: string
   labels: string[]
   xLabel: string
+  /** The room one x label needs, in pixels; the default suits dates. */
+  labelSpacing?: number
 }) {
-  const every = labelEvery(labels.length, plot.width)
+  const every = labelEvery(labels.length, plot.width, labelSpacing)
   return (
     <g className={AXIS_TEXT}>
       <text x={0} y={10} className="font-medium">
@@ -334,6 +337,7 @@ export function CabinChart({
                   unit="Seats sold %"
                   labels={labels}
                   xLabel="Cabin"
+                  labelSpacing={44}
                 />
                 {CABINS.map((cabin, i) => {
                   const row = rows.find((r) => r.cabin === cabin.cabin)
