@@ -21,8 +21,8 @@ export const BI_VIEWS: BiViewInfo[] = [
   { id: 'aircraft-use', label: 'Aircraft use', path: '/bi/aircraft-use', screen: 'f14.operations' },
 ]
 
-/** The view a `/bi/...` path shows, or null for `/bi` itself (and anything unknown). */
-export function viewFromPath(pathname: string): BiViewInfo | null {
-  const segment = pathname.replace(/\/+$/, '').split('/')[2] ?? ''
+/** The view a child route of `/bi` shows (`/_authenticated/bi/finance` → finance), or null when no view route matched. */
+export function viewFromRouteId(routeId: string | undefined): BiViewInfo | null {
+  const segment = routeId?.match(/^\/_authenticated\/bi\/([^/]+)$/)?.[1]
   return BI_VIEWS.find((view) => view.id === segment) ?? null
 }
