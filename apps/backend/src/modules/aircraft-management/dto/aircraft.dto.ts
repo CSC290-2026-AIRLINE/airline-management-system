@@ -96,6 +96,11 @@ export class CreateAircraftMaintenanceDto {
   planned_end_date!: string
 }
 
+export class DecideAircraftMaintenanceDto {
+  @IsIn(['confirm', 'reject'])
+  decision!: 'confirm' | 'reject'
+}
+
 /** `in_progress` is derived from the simulation clock and `planned` is the starting state, so staff can only complete or cancel. */
 export const MAINTENANCE_ACTION_STATUSES = ['completed', 'cancelled'] as const
 

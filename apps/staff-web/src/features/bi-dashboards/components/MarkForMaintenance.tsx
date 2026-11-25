@@ -9,11 +9,7 @@ import { MAINTENANCE_TYPES } from '../lib-maintenance'
 import { CARD, CARD_TITLE } from '../lib-styles'
 import { DateField, FilterField } from './BiFilters'
 
-/**
- * "Mark for maintenance": one small form on the Aircraft use page. It schedules a maintenance period through Feature 9,
- * and `onDone` reloads the page so the new period shows in Days out of service at once.
- */
-export function MarkForMaintenance({ aircraft, onDone }: { aircraft: { aircraft_id: string; tail_number: string }[]; onDone: () => void }) {
+export function MarkForMaintenance({ aircraft }: { aircraft: { aircraft_id: string; tail_number: string }[] }) {
   const api = useBiApi()
   const access = useBiLoad('maintenance-access', () => api.getMaintenanceAccess())
   const [aircraftId, setAircraftId] = useState(aircraft[0]?.aircraft_id ?? '')
@@ -21,8 +17,6 @@ export function MarkForMaintenance({ aircraft, onDone }: { aircraft: { aircraft_
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
   const [message, setMessage] = useState<string | null>(null)
-  // The maintenance added in this session, listed under the form so the result is visible at once.
-  const [added, setAdded] = useState<{ key: string; tail: string; type: string; start: string; end: string }[]>([])
   const [busy, setBusy] = useState(false)
 
   async function submit() {
@@ -34,11 +28,11 @@ export function MarkForMaintenance({ aircraft, onDone }: { aircraft: { aircraft_
       await api.markMaintenance(aircraftId, { maintenance_type: type, planned_start_date: start, planned_end_date: end })
       const tail = aircraft.find((a) => a.aircraft_id === aircraftId)?.tail_number ?? aircraftId
       const label = MAINTENANCE_TYPES.find((x) => x.value === type)?.label ?? type
-      setAdded((list) => [{ key: `${Date.now()}-${aircraftId}`, tail, type: label, start, end }, ...list])
-      setMessage(`Scheduled ${label} for ${tail}, ${formatDateRange(start, end)}.`)
-      onDone()
+      setMessage(
+        `Requested ${label} for ${tail}, ${formatDateRange(start, end)}. Review it in Operations → Fleet & Aircraft → Maintenance.`,
+      )
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not schedule the maintenance.')
+      setMessage(error instanceof Error ? error.message : 'Could not send the maintenance request.')
     } finally {
       setBusy(false)
     }
@@ -50,10 +44,8 @@ export function MarkForMaintenance({ aircraft, onDone }: { aircraft: { aircraft_
   return (
     <Card className={`${CARD} print:hidden`}>
       <div className="flex flex-col gap-1">
-        <h2 className={CARD_TITLE}>Mark for maintenance</h2>
-        <p className="text-xs text-muted-foreground">
-          Schedules a maintenance period for the aircraft. It shows in Days out of service at once.
-        </p>
+        <h2 className={CARD_TITLE}>Request maintenance</h2>
+        <p className="text-xs text-muted-foreground">Sends a request to Fleet & Aircraft for approval.</p>
       </div>
       <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">
         <FilterField label="Aircraft" htmlFor="bi-mx-aircraft">
@@ -77,22 +69,13 @@ export function MarkForMaintenance({ aircraft, onDone }: { aircraft: { aircraft_
         <DateField id="bi-mx-start" label="Start date" value={start} onChange={setStart} placeholder="Choose a date" />
         <DateField id="bi-mx-end" label="End date" value={end} onChange={setEnd} placeholder="Choose a date" />
         <Button type="button" onClick={() => void submit()} disabled={busy}>
-          {busy ? 'Scheduling…' : 'Mark for maintenance'}
+          {busy ? 'Sending…' : 'Send request'}
         </Button>
       </div>
       {message && (
         <p className="text-sm text-muted-foreground" role="status">
           {message}
         </p>
-      )}
-      {added.length > 0 && (
-        <ul className="m-0 list-disc pl-5 text-sm text-primary" aria-label="Maintenance added in this session">
-          {added.map((item) => (
-            <li key={item.key}>
-              <strong>{item.tail}</strong> · {item.type} · {formatDateRange(item.start, item.end)}
-            </li>
-          ))}
-        </ul>
       )}
     </Card>
   )

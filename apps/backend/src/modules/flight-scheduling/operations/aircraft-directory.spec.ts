@@ -64,10 +64,29 @@ describe('DbAircraftDirectory', () => {
             deleted_at: null,
             status: { not: 'in_service' },
             start_date: { lte: day('2026-11-02') },
-            OR: [{ end_date: null }, { end_date: { gte: day('2026-11-02') } }],
+            OR: [
+              { end_date: null },
+              { end_date: { gte: day('2026-11-02') } },
+              { status: 'in_maintenance', aircraft_maintenance: { is: { deleted_at: null, status: { in: ['planned', 'in_progress'] } } } },
+            ],
           },
         }),
       )
+    })
+
+    it('reports unfinished maintenance as unavailable until completion', async () => {
+      db.aircraft_status_period.findFirst.mockResolvedValue({
+        status: 'in_maintenance',
+        reason: null,
+        start_date: day('2026-11-01'),
+        end_date: day('2026-11-01'),
+        aircraft_maintenance: { status: 'planned', deleted_at: null },
+      })
+      expect(await directory.availability(AIRCRAFT, FROM, TO)).toEqual({
+        kind: 'unavailable',
+        rule: 'in_maintenance',
+        detail: 'ZZ-AAA is in maintenance from 2026-11-01 to completion',
+      })
     })
 
     it('reports a grounded or in-maintenance period with its own rule and reason', async () => {

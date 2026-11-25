@@ -108,6 +108,20 @@ function makeHarness() {
 }
 
 describe('ConfirmService.confirmBooking', () => {
+  it('refunds a captured payment when maintenance prevents ticket confirmation', async () => {
+    const h = makeHarness()
+    h.tx.booking_coupon.update.mockRejectedValue(new Error('The aircraft is unavailable because of maintenance'))
+
+    await expect(h.service.confirmBooking('ABC123')).rejects.toMatchObject({ code: 'FLIGHT_NOT_FOR_SALE', status: 409 })
+    expect(h.refunds.record).toHaveBeenCalledWith({
+      bookingId: 'booking-1',
+      amount: 297,
+      currency: 'USD',
+      reason: 'flight_not_for_sale',
+    })
+    expect(h.events.publish).not.toHaveBeenCalled()
+  })
+
   it('sells the held seats, confirms, assigns seats, issues tickets and publishes after commit', async () => {
     const h = makeHarness()
 

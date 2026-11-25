@@ -134,7 +134,8 @@ describe('BiEtlService', () => {
       const statements = await rebuildStatements(new Date('2026-11-07T23:30:00Z'))
 
       const downtime = statements[indexOf(statements, 'INSERT INTO bi_aircraft_downtime')]
-      expect(downtime.values).toEqual(['2026-11-07', '2026-11-07', '2026-11-07'])
+      expect(downtime.sql).toContain("CASE WHEN m.status IN ('planned', 'in_progress')")
+      expect(downtime.values).toEqual(['2026-11-07', '2026-11-07', '2026-11-07', '2026-11-07'])
     })
   })
 

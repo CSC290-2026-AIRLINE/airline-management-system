@@ -17,18 +17,18 @@ function setup(staffId: string | null, isAdmin = true) {
     refreshWhenFree: jest.fn().mockResolvedValue({ id: 'run-1' }),
     simulationNow: () => '2026-11-25T00:00:00Z',
   }
-  const aircraft = { createMaintenance: jest.fn().mockResolvedValue({ id: 'maintenance-1' }) }
+  const aircraft = { createMaintenance: jest.fn().mockResolvedValue({ id: 'maintenance-1', status: 'pending_approval' }) }
   const controller = new BiDashboardsController(etl as never, {} as never, {} as never, {} as never, aircraft as never)
   return { controller, etl, aircraft }
 }
 
 describe('BiDashboardsController.markMaintenance', () => {
-  it('creates the period through Feature 9, then refreshes the copy as the same staff member', async () => {
+  it('submits a pending request to Feature 9 without refreshing the copy', async () => {
     const { controller, etl, aircraft } = setup('staff-1')
     const result = await controller.markMaintenance('aircraft-1', body, { id: 'user-1', email: 'staff@example.test' })
-    expect(aircraft.createMaintenance).toHaveBeenCalledWith('aircraft-1', body, 'staff-1')
-    expect(etl.refreshWhenFree).toHaveBeenCalledWith('manual', 'staff-1')
-    expect(result).toEqual({ id: 'maintenance-1' })
+    expect(aircraft.createMaintenance).toHaveBeenCalledWith('aircraft-1', body, 'staff-1', 'pending_approval')
+    expect(etl.refreshWhenFree).not.toHaveBeenCalled()
+    expect(result).toEqual({ id: 'maintenance-1', status: 'pending_approval' })
   })
 
   it('refuses a staff member whose role is not an admin role, and writes nothing', async () => {

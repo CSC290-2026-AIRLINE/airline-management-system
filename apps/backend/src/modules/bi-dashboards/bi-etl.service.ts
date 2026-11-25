@@ -134,7 +134,9 @@ export class BiEtlService implements OnModuleInit {
     await tx.$executeRaw`
       INSERT INTO bi_aircraft_downtime (period_id, aircraft_id, status, reason, start_date, end_date)
       SELECT p.id, p.aircraft_id, p.status, COALESCE(m.maintenance_type, p.reason), p.start_date,
-             LEAST(COALESCE(p.end_date, ${dataAsOfDate}::date), ${dataAsOfDate}::date)
+             CASE WHEN m.status IN ('planned', 'in_progress') THEN ${dataAsOfDate}::date
+                  ELSE LEAST(COALESCE(p.end_date, ${dataAsOfDate}::date), ${dataAsOfDate}::date)
+             END
       FROM aircraft_status_period p
       JOIN bi_aircraft b ON b.aircraft_id = p.aircraft_id
       LEFT JOIN aircraft_maintenance m ON m.status_period_id = p.id AND m.deleted_at IS NULL

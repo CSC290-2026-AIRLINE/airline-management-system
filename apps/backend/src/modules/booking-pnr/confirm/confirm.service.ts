@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import type { Prisma } from '@backend/db/generated/prisma/client'
-import { BookingError } from '../common/booking-error'
+import { BookingError, isAircraftMaintenanceConflict } from '../common/booking-error'
 import { BookingStatusService } from '../common/booking-status.service'
 import { AIRLINE_TICKET_NUMBER, nextTicketNumber } from '../common/ticket-number'
 import {
@@ -179,6 +179,14 @@ export class ConfirmService {
         return { alreadyConfirmed: false, bookingId: locked.id, confirmedAt: now }
       })
       .catch(async (error: unknown): Promise<never> => {
+        if (isAircraftMaintenanceConflict(error)) {
+          if (total > 0) {
+            await this.refunds.record({ bookingId: booking.id, amount: total, currency: booking.currency, reason: 'flight_not_for_sale' })
+          }
+          throw new BookingError('FLIGHT_NOT_FOR_SALE', 'A selected flight is unavailable because of aircraft maintenance.', 409, {
+            flightIds,
+          })
+        }
         if (!(error instanceof LatePaymentSeatsGoneError)) {
           throw error
         }

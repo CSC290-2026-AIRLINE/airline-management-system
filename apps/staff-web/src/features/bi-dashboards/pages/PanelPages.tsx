@@ -438,7 +438,7 @@ export function AircraftUseView() {
               comparison={lowUse.length > 0 ? 'Could take more flights' : 'No aircraft to rebalance'}
             />
           </section>
-          <MarkForMaintenance aircraft={aircraft} onDone={data.retry} />
+          <MarkForMaintenance aircraft={aircraft} />
           <RankBars
             title="Hours flown per available day"
             subtitle="Ranked, lowest first. Click an aircraft for details."

@@ -226,6 +226,19 @@ export function useBiApi() {
     })
     if (!res.ok) {
       const body = await res.text().catch(() => '')
+      let payload: { message?: unknown; details?: { conflicting_period?: unknown } } | null = null
+      try {
+        payload = JSON.parse(body)
+      } catch {
+        // Proxy or network errors can return plain text.
+      }
+      if (typeof payload?.message === 'string') {
+        const guidance =
+          res.status === 409 && payload.details?.conflicting_period
+            ? '. Choose dates outside that period, or open Aircraft Management to update the existing maintenance window.'
+            : ''
+        throw new Error(payload.message + guidance)
+      }
       throw new Error(`${res.status}${body ? `: ${body}` : ''}`)
     }
     return res
@@ -249,9 +262,9 @@ export function useBiApi() {
     getNoShows: (filters: BiFilters) => getJson<BiNoShows>(`/api/bi/no-shows?${filterQuery(filters)}`),
     getExtraRevenue: (filters: BiFilters) => getJson<BiExtraRevenuePeriod[]>(`/api/bi/extra-revenue?${filterQuery(filters)}`),
     getAircraftUse: (filters: BiFilters) => getJson<BiAircraftUse>(`/api/bi/aircraft-use?${filterQuery(filters)}`),
-    /** Whether the signed-in user is an admin, and so may schedule maintenance. */
+    /** Whether the signed-in user may request maintenance. */
     getMaintenanceAccess: () => getJson<{ allowed: boolean }>('/api/bi/maintenance-access'),
-    /** Feature 14 → Feature 9: schedules a maintenance period, and the copy refreshes before this resolves. */
+    /** Feature 14 → Feature 9: sends a maintenance request for review. */
     markMaintenance: (aircraftId: string, body: { maintenance_type: string; planned_start_date: string; planned_end_date: string }) =>
       getJson<unknown>(`/api/bi/aircraft/${aircraftId}/maintenance`, { method: 'POST', body: JSON.stringify(body) }),
     getFinanceRange: (from: string, to: string) => getJson<BiFinanceResponse>(`/api/bi/finance/range?from=${from}&to=${to}`),

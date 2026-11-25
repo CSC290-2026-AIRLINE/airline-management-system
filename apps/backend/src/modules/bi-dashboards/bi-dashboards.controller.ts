@@ -238,17 +238,14 @@ export class BiDashboardsController {
     return this.financeService.forMonth(query.month)
   }
 
-  /** Whether the signed-in user may schedule maintenance (admins only). The page hides the form when this is false. */
+  /** Whether the signed-in user may request maintenance (admins only). The page hides the form when this is false. */
   @Get('maintenance-access')
   async maintenanceAccess(@CurrentUser() user: AuthenticatedUser): Promise<{ allowed: boolean }> {
     const staffId = await this.etl.staffIdForUser(user.id)
     return { allowed: staffId !== null && (await this.etl.isAdminStaff(staffId)) }
   }
 
-  /**
-   * Feature 14 → Feature 9: schedules a maintenance period through Feature 9's own service, so its rules (valid dates,
-   * no overlap) still apply. Then it refreshes the copy, so this page shows the new period at once.
-   */
+  /** Feature 14 submits a request. Feature 9 checks availability and schedules it on confirmation. */
   @Post('aircraft/:id/maintenance')
   async markMaintenance(
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -258,9 +255,7 @@ export class BiDashboardsController {
     const staffId = await this.etl.staffIdForUser(user.id)
     if (!staffId) throw new ForbiddenException('STAFF_REQUIRED')
     if (!(await this.etl.isAdminStaff(staffId))) throw new ForbiddenException('ADMIN_REQUIRED')
-    const maintenance = await this.aircraft.createMaintenance(id, dto, staffId)
-    await this.etl.refreshWhenFree('manual', staffId)
-    return maintenance
+    return this.aircraft.createMaintenance(id, dto, staffId, 'pending_approval')
   }
 
   /** The finance figures summed over every month that overlaps `from`..`to`. The Financial report's date filter. */

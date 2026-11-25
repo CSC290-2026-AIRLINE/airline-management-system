@@ -68,14 +68,14 @@ model aircraft_maintenance {
   planned_end_date       DateTime               @db.Date
   actual_end_date        DateTime?              @db.Date
   status                 String                 @default("planned")
-  status_period_id       String                 @unique @db.Uuid
+  status_period_id       String?                @unique @db.Uuid
   created_by             String                 @db.Uuid
   created_at             DateTime               @default(now()) @db.Timestamptz(6)
   updated_at             DateTime               @default(now()) @db.Timestamptz(6)
   deleted_at             DateTime?              @db.Timestamptz(6)
   aircraft               aircraft               @relation(fields: [aircraft_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   staff                  staff                  @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  aircraft_status_period aircraft_status_period @relation(fields: [status_period_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  aircraft_status_period aircraft_status_period? @relation(fields: [status_period_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([aircraft_id, planned_start_date(sort: Desc)], map: "aircraft_maintenance_aircraft_idx")
 }
