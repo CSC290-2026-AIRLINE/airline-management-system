@@ -3,15 +3,13 @@
 //
 //   npm run db:seed:f12-booking -w apps/backend -- you@example.com
 //
-// The email is the one you sign in with. Sign in once first, so the customer row exists. The script runs the F12 seed
-// first (airports, aircraft, products, stock and menus; safe to repeat, but it resets the warehouse stock reservations),
-// then adds the booking. Both flights leave in more than 48 hours, so the
+// The email is the one you sign in with. Sign in once first, so the customer row exists. Run `npm run db:seed` once
+// first (it creates the airports, aircraft, products, stock and menus); this script then adds the booking. Both flights leave in more than 48 hours, so the
 // default order window is still open. Booking reference: FTEST2.
 
 import path from 'node:path'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from './generated/prisma/client'
-import { seedF12 } from './seed-f12'
 
 try {
   process.loadEnvFile(path.join(__dirname, '..', '..', '.env'))
@@ -19,7 +17,7 @@ try {
   // .env is optional (DATABASE_URL may come from the shell)
 }
 
-// The same stable ids seed-f12.ts uses.
+// The same stable ids the F12 section of seed.ts uses.
 const id = (s: string): string => `00000000-0000-0000-0000-${s.padStart(12, '0')}`
 
 const TEST = {
@@ -56,9 +54,10 @@ async function main() {
       throw new Error(`No customer with email ${email}. Sign in to the customer web app once, then run this again.`)
     }
 
-    await seedF12(prisma)
-    // The seed reuses the rows that were already there, so look them up by name rather than by id.
-    const aircraft = await prisma.aircraft.findFirstOrThrow({ where: { tail_number: 'HS-FYA' } })
+    // The F12 demo data (airports, aircraft, products, stock and menus) comes from `npm run db:seed`. Look its rows up by
+    // name rather than by id.
+    const aircraft = await prisma.aircraft.findFirst({ where: { tail_number: 'HS-FYA' } })
+    if (!aircraft) throw new Error('The F12 demo data is missing. Run `npm run db:seed -w apps/backend` first, then run this again.')
     const bkkNrt = await prisma.route.findFirstOrThrow({ where: { origin: 'BKK', destination: 'NRT' } })
     const nrtBkk = await prisma.route.findFirstOrThrow({ where: { origin: 'NRT', destination: 'BKK' } })
 

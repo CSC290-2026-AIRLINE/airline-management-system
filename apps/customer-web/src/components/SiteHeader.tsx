@@ -3,18 +3,21 @@ import { Link, useRouterState } from '@tanstack/react-router'
 import { SignedIn, SignedOut, useUser } from '@clerk/clerk-react'
 import { Menu } from 'lucide-react'
 import BrandLogo from '@customer-web/components/BrandLogo'
+import { pageContainer } from '@customer-web/components/Page'
+import { cn } from '@customer-web/lib/utils'
+import LogoutButton from '@customer-web/components/LogoutButton'
 import { Avatar, AvatarFallback, AvatarImage } from '@customer-web/components/ui/avatar'
 import { Button } from '@customer-web/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@customer-web/components/ui/sheet'
 
-const links = ['Book', 'My Trips', 'Receipts', 'Cargo', 'Membership', 'Help']
+const links = ['Book', 'My Trips', 'Payments', 'Cargo', 'Membership', 'Help']
 
 // Labels with a page behind them. The others stay plain text until their pages exist.
 const linkTo: Partial<Record<(typeof links)[number], '/search' | '/bookings' | '/receipts' | '/loyalty' | '/cargo' | '/complaints'>> = {
   Book: '/search',
   'My Trips': '/bookings',
   // Receipts, refunds and vouchers (Feature 5): the page has tabs for the other two.
-  Receipts: '/receipts',
+  Payments: '/receipts',
   Cargo: '/cargo',
   Membership: '/loyalty',
   // Customer service (Feature 13): make a complaint, check a case, notification preferences.
@@ -56,8 +59,8 @@ function UserAvatar({ className }: { className: string }) {
 export default function SiteHeader() {
   const [open, setOpen] = useState(false)
   return (
-    <header className="sticky top-0 z-40 border-b bg-background/60 backdrop-blur-lg supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto flex h-12 max-w-5xl items-center justify-between px-4">
+    <header className="[view-transition-name:site-header] sticky top-0 z-40 border-b bg-background/60 backdrop-blur-lg supports-[backdrop-filter]:bg-background/60">
+      <div className={cn(pageContainer, 'flex h-14 items-center justify-between')}>
         <Link to="/" aria-label="Flython Airline home">
           <BrandLogo />
         </Link>
@@ -77,6 +80,7 @@ export default function SiteHeader() {
                 Profile
               </Link>
             </Button>
+            <LogoutButton className="-ml-2" />
           </nav>
           <div className="flex items-center gap-1 md:hidden">
             <Button asChild variant="ghost" size="icon">
@@ -84,6 +88,7 @@ export default function SiteHeader() {
                 <UserAvatar className="size-7" />
               </Link>
             </Button>
+            <LogoutButton />
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="Open navigation">

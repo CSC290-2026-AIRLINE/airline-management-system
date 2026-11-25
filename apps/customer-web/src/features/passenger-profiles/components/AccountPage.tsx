@@ -1,11 +1,35 @@
 import type { ReactNode } from 'react'
-import { cn } from '@customer-web/lib/utils'
+import { Page, PageCanvas, PageContent, type PageWidth } from '@customer-web/components/Page'
 
-/** Page frame shared by every account screen: a centered content column below. */
-export default function AccountPage({ className, children }: { className?: string; children: ReactNode }) {
+/**
+ * Page frame shared by every account screen, on the shared page shell. With a `title` it gets the navy banner (Profile);
+ * without one it is just the content column (the first sign-in card).
+ */
+export default function AccountPage({
+  className,
+  width = 'standard',
+  title,
+  description,
+  children,
+}: {
+  className?: string
+  width?: PageWidth
+  title?: string
+  description?: string
+  children: ReactNode
+}) {
+  if (title !== undefined) {
+    return (
+      <Page width={width} title={title} description={description} className={className}>
+        {children}
+      </Page>
+    )
+  }
   return (
-    <main className="flex-1 bg-muted/40 text-left">
-      <div className={cn('mx-auto w-full max-w-3xl space-y-6 px-4 py-6 md:py-10', className)}>{children}</div>
-    </main>
+    <PageCanvas>
+      <PageContent width={width} className={className}>
+        {children}
+      </PageContent>
+    </PageCanvas>
   )
 }

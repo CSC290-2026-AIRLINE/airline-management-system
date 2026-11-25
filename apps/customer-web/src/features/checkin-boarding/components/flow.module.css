@@ -1,41 +1,15 @@
 /* Feature 6 customer check-in on the final F6 design. Desktop first (1440), one column from 720 px. */
 
+/* The body of the check-in page, under the shared page title: the window strip, the stepper, then the form and its side panel. */
 .flow {
   font-family: var(--f6-ui);
   font-size: 16px;
   line-height: 1.5;
   color: var(--f6-ink);
-  /* 1200 px column + 45 px of page padding on each side. */
-  max-width: 1290px;
-  margin: 0 auto;
-  padding: 24px 45px 64px;
-  box-sizing: border-box;
   text-align: left;
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-
-.head {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.title {
-  font-family: var(--f6-ui);
-  font-size: 36px;
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  color: var(--f6-ink);
-  margin: 0;
-}
-
-.subtitle {
-  margin: 0;
-  color: var(--f6-muted);
-  font-size: 16px;
 }
 
 /* The window strip: green while check-in is open, amber once it is not. */
@@ -59,80 +33,6 @@
 
 .stripLabel {
   font-weight: 600;
-  white-space: nowrap;
-}
-
-/* The progress stepper: a white card with the five steps in a row. */
-.steps {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  list-style: none;
-  margin: 0;
-  padding: 13px 20px;
-  width: fit-content;
-  max-width: 100%;
-  overflow-x: auto;
-  box-sizing: border-box;
-  background: var(--f6-paper);
-  border: 1px solid var(--f6-line);
-  border-radius: 16px;
-}
-
-.step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--f6-muted);
-  font-size: 14px;
-  white-space: nowrap;
-}
-
-.step[data-state='current'],
-.step[data-state='done'] {
-  color: var(--f6-ink);
-}
-
-.step[data-state='current'] {
-  font-weight: 600;
-}
-
-.dot {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1.5px solid var(--f6-line);
-  background: var(--f6-paper);
-  color: var(--f6-muted);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.step[data-state='current'] .dot {
-  background: var(--f6-amber);
-  border-color: var(--f6-amber);
-  color: var(--f6-navy);
-}
-
-.step[data-state='done'] .dot {
-  background: var(--f6-navy);
-  border-color: var(--f6-navy);
-  color: #fff;
-}
-
-.connector {
-  flex: none;
-  width: 40px;
-  height: 2px;
-  margin-left: 5px;
-  background: var(--f6-line);
-}
-
-.stepLabel {
   white-space: nowrap;
 }
 
@@ -301,11 +201,7 @@
 }
 
 /* The form's own button sits at the right of the card; the button rows use .actions. */
-.form > .button {
-  align-self: flex-end;
-}
-
-.panelTitle {
+.form > .panelTitle {
   font-family: var(--f6-ui);
   font-size: 22px;
   font-weight: 600;
@@ -441,55 +337,6 @@
   flex-wrap: wrap;
 }
 
-.button {
-  font-family: var(--f6-ui);
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
-  background: var(--f6-navy);
-  border: 1px solid var(--f6-navy);
-  border-radius: 6px;
-  padding: 11px 18px;
-  cursor: pointer;
-}
-
-.button:hover:not(:disabled) {
-  background: #0a1f44;
-  border-color: #0a1f44;
-}
-
-.button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.ghostButton {
-  font-family: var(--f6-ui);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--f6-ink);
-  background: var(--f6-paper);
-  border: 1px solid var(--f6-line);
-  border-radius: 6px;
-  padding: 11px 18px;
-  cursor: pointer;
-}
-
-.ghostButton:hover:not(:disabled) {
-  border-color: var(--f6-navy);
-}
-
-.ghostButton:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.button:focus-visible,
-.ghostButton:focus-visible {
-  outline: 2px solid var(--f6-navy);
-  outline-offset: 2px;
-}
-
 /* The two allowance tiles of the baggage step. */
 .tiles {
   display: grid;
@@ -525,7 +372,7 @@
   color: var(--f6-muted);
 }
 
-/* The bag counter: a 40 px button on each side of the number. */
+/* The bag counter: a button on each side of the number. */
 .countRow {
   display: flex;
   flex-direction: column;
@@ -536,37 +383,6 @@
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.countButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  font-family: var(--f6-ui);
-  font-size: 22px;
-  font-weight: 600;
-  color: var(--f6-navy);
-  background: var(--f6-paper);
-  border: 1px solid var(--f6-line);
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.countButton:hover:not(:disabled) {
-  background: #f3f4f6;
-}
-
-.countButton:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.countButton:focus-visible {
-  outline: 2px solid var(--f6-navy);
-  outline-offset: 2px;
 }
 
 .countValue {
@@ -637,8 +453,7 @@
     justify-content: stretch;
   }
 
-  .button,
-  .ghostButton {
+  .actions > button {
     flex: 1 1 auto;
   }
 

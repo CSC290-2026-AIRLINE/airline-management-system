@@ -1,13 +1,14 @@
 import { Link } from '@tanstack/react-router'
 import { useCallback, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Clock, PlaneTakeoff, Plus } from 'lucide-react'
 import { Badge } from '@customer-web/components/ui/badge'
 import { Button } from '@customer-web/components/ui/button'
+import { EmptyState as EmptyList } from '@customer-web/components/ui/empty-state'
 import { Tabs, TabsList, TabsTrigger } from '@customer-web/components/ui/tabs'
 import type { ApiError } from '../api/client'
 import { useCustomerTrips } from '../api/useCustomerTrips'
 import { ApiErrorBanner } from '../components/ApiErrorBanner'
-import { MessageCard, PageShell, PageTitle } from '../components/PageShell'
+import { MessageCard, PageShell } from '../components/PageShell'
 import { BookingCard } from './BookingCard'
 import type { TripTab } from './booking-card-model'
 
@@ -32,43 +33,43 @@ export function MyBookingsPage({ tab }: { tab: TripTab }) {
   const items = tab === 'upcoming' ? trips.upcoming : trips.past
 
   return (
-    <PageShell className="max-w-3xl">
-      <PageTitle
-        title="My Trips"
-        subtitle="Your bookings, most recently booked first."
-        actions={
-          <Button asChild>
-            <Link to="/search">
-              <Plus />
-              Book a flight
-            </Link>
-          </Button>
-        }
-      />
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* The tab lives in the URL, so each trigger is a link. */}
-        <Tabs value={tab}>
-          <TabsList aria-label="Bookings">
-            <TabsTrigger value="upcoming" asChild>
-              <Link to="/bookings" search={{ tab: 'upcoming' }}>
-                Upcoming
-              </Link>
-            </TabsTrigger>
-            <TabsTrigger value="past" asChild>
-              <Link to="/bookings" search={{ tab: 'past' }}>
-                Past
-              </Link>
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          {tab === 'upcoming' ? 'Upcoming bookings' : 'Past bookings'}
-          <Badge variant="secondary" className="tabular-nums">
-            {items.length}
-          </Badge>
-        </p>
-      </div>
+    <PageShell
+      title="My Trips"
+      subtitle="Your bookings, most recently booked first."
+      actions={
+        <Button asChild>
+          <Link to="/search">
+            <Plus />
+            Book a flight
+          </Link>
+        </Button>
+      }
+      tabs={
+        <>
+          {/* The tab lives in the URL, so each trigger is a link. */}
+          <Tabs value={tab}>
+            <TabsList aria-label="Bookings">
+              <TabsTrigger value="upcoming" asChild>
+                <Link to="/bookings" search={{ tab: 'upcoming' }}>
+                  Upcoming
+                </Link>
+              </TabsTrigger>
+              <TabsTrigger value="past" asChild>
+                <Link to="/bookings" search={{ tab: 'past' }}>
+                  Past
+                </Link>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </>
+      }
+    >
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        {tab === 'upcoming' ? 'Upcoming bookings' : 'Past bookings'}
+        <Badge variant="secondary" className="tabular-nums">
+          {items.length}
+        </Badge>
+      </p>
 
       <div className="space-y-3">
         {isLoading ? <LoadingState /> : null}
@@ -104,18 +105,21 @@ function LoadingState() {
 
 function EmptyState({ tab }: { tab: TripTab }) {
   return (
-    <MessageCard title={tab === 'upcoming' ? 'No upcoming bookings' : 'No past bookings yet'}>
-      <p className="text-sm text-muted-foreground">
-        {tab === 'upcoming'
-          ? 'Book a flight to plan your next trip.'
-          : 'The flights you have flown and the bookings you cancelled will show up here.'}
-      </p>
-      {tab === 'upcoming' ? (
-        <Button asChild>
-          <Link to="/search">Book a flight</Link>
-        </Button>
-      ) : null}
-    </MessageCard>
+    <EmptyList
+      icon={tab === 'upcoming' ? PlaneTakeoff : Clock}
+      title={tab === 'upcoming' ? 'No upcoming bookings' : 'No past bookings yet'}
+      action={
+        tab === 'upcoming' ? (
+          <Button asChild>
+            <Link to="/search">Book a flight</Link>
+          </Button>
+        ) : undefined
+      }
+    >
+      {tab === 'upcoming'
+        ? 'Book a flight to plan your next trip.'
+        : 'The flights you have flown and the bookings you cancelled will show up here.'}
+    </EmptyList>
   )
 }
 

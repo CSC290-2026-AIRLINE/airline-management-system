@@ -1,9 +1,7 @@
 import type { ReactNode } from 'react'
+import { PageCanvas } from '@customer-web/components/Page'
 
-/**
- * The page frame of the booking pages, the same as the account pages': a muted canvas under the shared header. Each
- * page centres its own column. The class name lets index.css give #root its full width.
- */
+/** The canvas under the shared header for the booking pages. Each page builds its own content with PageShell or Page. */
 export function BookingLayout({ children }: { children: ReactNode }) {
-  return <div className="f3-customer-layout flex flex-1 flex-col bg-muted/40 text-left text-sm">{children}</div>
+  return <PageCanvas>{children}</PageCanvas>
 }

@@ -152,7 +152,7 @@ function Progress({ label, have, need, note, bar }: { label: string; have: numbe
           {formatMiles(have)} / {formatMiles(need)}
         </span>
       </div>
-      <ProgressBar value={pct} aria-label={label} className={cx('h-1.5 bg-divider', bar)} />
+      <ProgressBar value={pct} aria-label={label} className={cx('h-1.5 bg-line', bar)} />
       <span className="text-[11px] text-muted-foreground">{note}</span>
     </div>
   )
@@ -172,7 +172,7 @@ function Updates({ member }: { member: MemberSummary }) {
         <ul className="m-0 flex list-none flex-col gap-6 p-0 sm:pl-3">
           {renewedToday && member.tier && (
             <li className="flex gap-3">
-              <span className="grid size-7 flex-none place-items-center rounded-full bg-[#e0faeb] text-ok" aria-hidden="true">
+              <span className="grid size-7 flex-none place-items-center rounded-full bg-ok-tint text-ok" aria-hidden="true">
                 <Check size={14} strokeWidth={3} />
               </span>
               <div className="flex flex-col">
@@ -185,7 +185,7 @@ function Updates({ member }: { member: MemberSummary }) {
           )}
           {expiring && (
             <li className="flex gap-3">
-              <span className="grid size-7 flex-none place-items-center rounded-full bg-[#fff3db] text-warn" aria-hidden="true">
+              <span className="grid size-7 flex-none place-items-center rounded-full bg-warn-tint text-warn" aria-hidden="true">
                 <Clock size={14} strokeWidth={2.5} />
               </span>
               <div className="flex flex-col">
@@ -218,7 +218,7 @@ function BenefitsCard({ member, tiers }: { member: MemberSummary; tiers: TierInf
   return (
     <Card className="gap-4 p-5 shadow-none sm:p-6" aria-labelledby="benefits">
       <div className={cx('flex items-center gap-3 rounded-lg px-5 py-4', tier ? TIER_BAND[tier.code] : NO_TIER_ART)}>
-        <span className="grid size-9 place-items-center rounded-md bg-white text-ink" aria-hidden="true">
+        <span className="grid size-9 place-items-center rounded-md bg-white text-primary-pressed" aria-hidden="true">
           <Star size={18} />
         </span>
         <h2 id="benefits" className="text-base font-bold">
@@ -238,18 +238,18 @@ function BenefitsCard({ member, tiers }: { member: MemberSummary; tiers: TierInf
 }
 
 const ACTIVITY_ICON: Record<TransactionType, { icon: ComponentType<LucideProps>; tone: string }> = {
-  earn: { icon: PlaneTakeoff, tone: 'bg-[#e8eef7] text-link' },
-  redeem: { icon: Ticket, tone: 'bg-[#fff3db] text-warn' },
-  redeem_reversal: { icon: Undo2, tone: 'bg-[#fff3db] text-warn' },
-  expire: { icon: Clock, tone: 'bg-[#eef0f3] text-[#5c6678]' },
-  adjust: { icon: Pencil, tone: 'bg-transparent text-[#5c6678]' },
+  earn: { icon: PlaneTakeoff, tone: 'bg-info-tint text-link' },
+  redeem: { icon: Ticket, tone: 'bg-warn-tint text-warn' },
+  redeem_reversal: { icon: Undo2, tone: 'bg-warn-tint text-warn' },
+  expire: { icon: Clock, tone: 'bg-disabled text-muted-foreground' },
+  adjust: { icon: Pencil, tone: 'bg-transparent text-muted-foreground' },
 }
 
 function LatestActivity({ rows }: { rows: StatementRow[] }) {
   return (
     <Card className="gap-0 p-5 shadow-none sm:p-6" aria-labelledby="latest">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
-        <h2 id="latest" className="text-lg font-bold text-ink sm:text-xl">
+        <h2 id="latest" className="text-lg font-bold text-primary-pressed sm:text-xl">
           Latest activity
         </h2>
         {rows.length > 0 && (
@@ -271,7 +271,7 @@ function LatestActivity({ rows }: { rows: StatementRow[] }) {
           {rows.map((r) => {
             const { icon: Icon, tone } = ACTIVITY_ICON[r.type]
             return (
-              <li key={r.seq} className="flex items-center gap-3 border-b border-divider py-3 last:border-0">
+              <li key={r.seq} className="flex items-center gap-3 border-b border-line py-3 last:border-0">
                 <span className={cx('grid size-9 flex-none place-items-center rounded-full', tone)} aria-hidden="true">
                   <Icon size={16} />
                 </span>

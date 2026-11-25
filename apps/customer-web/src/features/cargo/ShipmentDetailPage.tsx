@@ -12,7 +12,8 @@ import { Skeleton } from '@customer-web/components/ui/skeleton'
 import { Textarea } from '@customer-web/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@customer-web/components/ui/toggle-group'
 import { useCustomerCargoApi, CargoApiError, type BookingDetail } from './cargo-api'
-import CargoHero from './CargoHero'
+import CargoPage from './CargoPage'
+import { PageCanvas, PageContent } from '@customer-web/components/Page'
 import { CancelDialog } from './ReviewAndPayPage'
 
 /* ── Formatting helpers ─────────────────────────────────────────── */
@@ -573,25 +574,29 @@ export default function ShipmentDetailPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto grid max-w-6xl gap-4 px-6 py-8">
-        <Skeleton className="h-8 w-56" />
-        <Skeleton className="h-40 w-full" />
-        <Skeleton className="h-64 w-full" />
-      </div>
+      <PageCanvas>
+        <PageContent width="wide" className="gap-4">
+          <Skeleton className="h-8 w-56" />
+          <Skeleton className="h-40 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </PageContent>
+      </PageCanvas>
     )
   }
 
   if (error || !detail) {
     return (
-      <div className="mx-auto max-w-6xl px-6 py-8 text-left">
-        <Alert variant="destructive">
-          <AlertCircle />
-          <AlertDescription>{error || 'Booking not found'}</AlertDescription>
-        </Alert>
-        <Button asChild variant="link" className="mt-4 px-0">
-          <Link to="/cargo">← Back to My Cargo</Link>
-        </Button>
-      </div>
+      <PageCanvas>
+        <PageContent width="wide" className="gap-4">
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertDescription>{error || 'Booking not found'}</AlertDescription>
+          </Alert>
+          <Button asChild variant="link" className="mt-4 px-0">
+            <Link to="/cargo">← Back to My Cargo</Link>
+          </Button>
+        </PageContent>
+      </PageCanvas>
     )
   }
 
@@ -611,127 +616,120 @@ export default function ShipmentDetailPage() {
       : `${f.flightNumber} · ${f.origin} → ${f.destination} · the Air Waybill is issued when you pay`
 
   return (
-    <div className="text-left">
-      {/* Hero */}
-      <CargoHero
-        title={d.bookingRef}
-        titleRight={<Badge className={statusPill(d.status)}>{statusLabel(d.status)}</Badge>}
-        subtitle={subtitle}
-        activeTab="mycargo"
-      />
+    <CargoPage
+      title={d.bookingRef}
+      titleRight={<Badge className={statusPill(d.status)}>{statusLabel(d.status)}</Badge>}
+      subtitle={subtitle}
+      activeTab="mycargo"
+    >
+      {/* Confirmed banner */}
+      {confirmed && d.awbNumber && (
+        <Alert className="mb-6 border-emerald-200 bg-emerald-50 text-emerald-900">
+          <Check />
+          <AlertTitle>Booking confirmed</AlertTitle>
+          <AlertDescription className="text-emerald-800">
+            {fmtMoney(d.quote.currency, d.quote.charge)} was paid. Your Air Waybill {fmtAwb(d.awbNumber)} is issued and you can print it
+            now.
+          </AlertDescription>
+        </Alert>
+      )}
 
-      <div className="bg-muted/40 py-8">
-        <div className="mx-auto w-full max-w-6xl px-6">
-          {/* Confirmed banner */}
-          {confirmed && d.awbNumber && (
-            <Alert className="mb-6 border-emerald-200 bg-emerald-50 text-emerald-900">
-              <Check />
-              <AlertTitle>Booking confirmed</AlertTitle>
-              <AlertDescription className="text-emerald-800">
-                {fmtMoney(d.quote.currency, d.quote.charge)} was paid. Your Air Waybill {fmtAwb(d.awbNumber)} is issued and you can print it
-                now.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Action row */}
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-            <Button asChild variant="link" className="px-0">
-              <Link to="/cargo">← My cargo</Link>
+      {/* Action row */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <Button asChild variant="link" className="px-0">
+          <Link to="/cargo">← My cargo</Link>
+        </Button>
+        <div className="flex flex-wrap gap-2">
+          {isHeld && (
+            <Button asChild>
+              <Link to="/cargo/bookings/$id/pay" params={{ id: d.id }}>
+                Pay now · {fmtMoney(d.quote.currency, d.quote.charge)}
+              </Link>
             </Button>
-            <div className="flex flex-wrap gap-2">
-              {isHeld && (
-                <Button asChild>
-                  <Link to="/cargo/bookings/$id/pay" params={{ id: d.id }}>
-                    Pay now · {fmtMoney(d.quote.currency, d.quote.charge)}
-                  </Link>
-                </Button>
-              )}
-              {d.awbNumber && !CLOSED_STATUSES.has(d.status) && (
-                <Button asChild variant="outline">
-                  <Link to="/cargo/bookings/$id/waybill" params={{ id: d.id }}>
-                    <Printer className="mr-1.5 h-4 w-4" />
-                    Print Air Waybill
-                  </Link>
-                </Button>
-              )}
-              {canCancel && (
-                <Button
-                  variant="outline"
-                  className="border-destructive/30 text-destructive hover:bg-destructive/10"
-                  onClick={() => setShowCancel(true)}
-                >
-                  Cancel booking
-                </Button>
-              )}
-              {canClaim && !showClaim && (
-                <Button variant="outline" onClick={() => setShowClaim(true)}>
-                  File a claim
-                </Button>
-              )}
+          )}
+          {d.awbNumber && !CLOSED_STATUSES.has(d.status) && (
+            <Button asChild variant="outline">
+              <Link to="/cargo/bookings/$id/waybill" params={{ id: d.id }}>
+                <Printer className="mr-1.5 h-4 w-4" />
+                Print Air Waybill
+              </Link>
+            </Button>
+          )}
+          {canCancel && (
+            <Button
+              variant="outline"
+              className="border-destructive/30 text-destructive hover:bg-destructive/10"
+              onClick={() => setShowCancel(true)}
+            >
+              Cancel booking
+            </Button>
+          )}
+          {canClaim && !showClaim && (
+            <Button variant="outline" onClick={() => setShowClaim(true)}>
+              File a claim
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Shipment status card */}
+      <Card className="mb-6">
+        <CardContent>
+          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Shipment status</p>
+          <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <span className="text-2xl font-bold">{statusLabel(d.status)}</span>
+                <Badge className="bg-blue-100 text-blue-800">
+                  {f.flightNumber} · {f.origin} → {f.destination}
+                </Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">{statusMessage(d)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">Departs</p>
+              <p className="text-sm font-semibold">{fmtDateTime(f.depAt)}</p>
             </div>
           </div>
+          {showStepper && <StatusStepper current={d.status} />}
+        </CardContent>
+      </Card>
 
-          {/* Shipment status card */}
-          <Card className="mb-6">
-            <CardContent>
-              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Shipment status</p>
-              <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl font-bold">{statusLabel(d.status)}</span>
-                    <Badge className="bg-blue-100 text-blue-800">
-                      {f.flightNumber} · {f.origin} → {f.destination}
-                    </Badge>
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{statusMessage(d)}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Departs</p>
-                  <p className="text-sm font-semibold">{fmtDateTime(f.depAt)}</p>
-                </div>
-              </div>
-              {showStepper && <StatusStepper current={d.status} />}
-            </CardContent>
-          </Card>
+      {/* Cancelled box */}
+      {isCancelledOrExpired && (
+        <div className="mb-6">
+          <CancelledBox detail={d} />
+        </div>
+      )}
 
-          {/* Cancelled box */}
-          {isCancelledOrExpired && (
-            <div className="mb-6">
-              <CancelledBox detail={d} />
-            </div>
+      {/* Two-column layout */}
+      <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+        {/* Left column */}
+        <div className="space-y-6">
+          {/* Activity timeline */}
+          {d.timeline.length > 0 && <ActivityTimeline detail={d} />}
+
+          {/* Claim form */}
+          {showClaim && canClaim && (
+            <ClaimForm
+              bookingId={d.id}
+              pieces={d.goods.pieces}
+              onDone={async () => {
+                setShowClaim(false)
+                await load()
+              }}
+              onCancel={() => setShowClaim(false)}
+            />
           )}
 
-          {/* Two-column layout */}
-          <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-            {/* Left column */}
-            <div className="space-y-6">
-              {/* Activity timeline */}
-              {d.timeline.length > 0 && <ActivityTimeline detail={d} />}
+          {/* Claim card */}
+          {d.claim && <ClaimCard claim={d.claim} />}
+        </div>
 
-              {/* Claim form */}
-              {showClaim && canClaim && (
-                <ClaimForm
-                  bookingId={d.id}
-                  pieces={d.goods.pieces}
-                  onDone={async () => {
-                    setShowClaim(false)
-                    await load()
-                  }}
-                  onCancel={() => setShowClaim(false)}
-                />
-              )}
-
-              {/* Claim card */}
-              {d.claim && <ClaimCard claim={d.claim} />}
-            </div>
-
-            {/* Right column */}
-            <div>
-              <AwbCard detail={d} />
-              <StatusInfoBox detail={d} />
-            </div>
-          </div>
+        {/* Right column */}
+        <div>
+          <AwbCard detail={d} />
+          <StatusInfoBox detail={d} />
         </div>
       </div>
 
@@ -746,7 +744,7 @@ export default function ShipmentDetailPage() {
           }}
         />
       )}
-    </div>
+    </CargoPage>
   )
 }
 

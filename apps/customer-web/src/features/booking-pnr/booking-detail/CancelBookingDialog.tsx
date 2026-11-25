@@ -5,7 +5,6 @@ import { ApiErrorBanner } from '../components/ApiErrorBanner'
 import { Dialog } from '../components/Dialog'
 import { toApiError } from '../lib/errors'
 import { formatMoney } from '../lib/format'
-import controls from '../styles/controls'
 import { seatCount } from './booking-detail-model'
 import { Skeleton } from '@customer-web/components/ui/skeleton'
 import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
@@ -130,22 +129,23 @@ export function CancelBookingDialog({ booking, onClose, onCancelled, onInvalidSt
       onClose={handleClose}
       footer={
         isClosed ? (
-          <button type="button" className={controls.secondary} onClick={handleClose} disabled={isCancelling}>
+          <Button variant="outline" type="button" onClick={handleClose} disabled={isCancelling}>
             Keep booking
-          </button>
+          </Button>
         ) : (
           <>
-            <button type="button" className={controls.secondary} onClick={handleClose} disabled={isCancelling}>
+            <Button variant="outline" type="button" onClick={handleClose} disabled={isCancelling}>
               Keep booking
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="destructive"
               type="button"
-              className={controls.danger}
+
               onClick={() => void handleConfirm()}
               disabled={(!unpaid && !preview) || isCancelling}
             >
               {isCancelling ? 'Cancelling…' : unpaid ? 'Yes, cancel' : 'Yes, cancel booking'}
-            </button>
+            </Button>
           </>
         )
       }

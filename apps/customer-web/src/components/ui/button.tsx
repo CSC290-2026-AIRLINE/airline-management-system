@@ -1,40 +1,54 @@
 import * as React from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
+import { Loader2Icon } from 'lucide-react'
 import { cn } from '@customer-web/lib/utils'
 import { Slot } from 'radix-ui'
 
+/*
+ * The one button (redesign board 6). 44 px tall, 8 px radius, label in the body step at weight 600, one focus ring.
+ * Four looks: primary (navy), secondary (white with a border), ghost (link blue on a tint) and destructive. A page has
+ * one primary action. Orange is not a button colour.
+ *
+ * The older names stay so existing pages keep working: default and primary are the primary look, outline and tertiary the
+ * secondary look, danger the destructive look.
+ */
+const primary =
+  'bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-pressed disabled:bg-disabled disabled:text-control'
+const secondary =
+  'border-input bg-secondary text-secondary-foreground hover:border-navy hover:bg-muted active:border-navy active:bg-accent disabled:border-line disabled:bg-secondary disabled:text-control'
+const destructive = 'bg-destructive text-white hover:bg-danger-hover active:bg-danger-pressed disabled:bg-disabled disabled:text-control'
+
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-transparent text-base font-semibold whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none aria-busy:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        destructive:
-          'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40',
-        outline:
-          'border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        ghost: 'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
-        link: 'text-primary underline-offset-4 hover:underline',
-        // F12 variants
-        primary: 'bg-primary text-primary-foreground hover:bg-[#1c3556]',
-        tertiary: 'border border-border bg-white text-foreground hover:bg-[#f5f5f7]',
-        'ghost-danger': 'border border-destructive bg-transparent text-destructive hover:bg-destructive/10',
-        danger: 'border border-destructive bg-destructive text-white hover:border-[#9a1f10] hover:bg-[#9a1f10]',
+        default: primary,
+        primary,
+        secondary,
+        outline: secondary,
+        tertiary: secondary,
+        ghost: 'bg-transparent text-link hover:bg-accent active:bg-info-tint-pressed disabled:text-control',
+        destructive,
+        danger: destructive,
+        'ghost-danger':
+          'border-destructive bg-transparent text-destructive hover:bg-danger-tint disabled:border-line disabled:text-control',
+        link: 'text-link underline-offset-4 hover:underline disabled:text-control',
       },
       size: {
-        // F12 sizes
-        f12: 'h-10 gap-1.5 px-[18px] text-sm font-semibold',
-        pill: 'h-auto gap-1.5 rounded-full px-[18px] py-2 text-sm font-semibold',
-        block: 'h-10 w-full gap-1.5 px-[22px] text-sm font-semibold',
-        default: 'h-9 px-4 py-2 has-[>svg]:px-3',
-        xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: 'h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5',
-        lg: 'h-10 rounded-md px-6 has-[>svg]:px-4',
-        icon: 'size-9',
-        'icon-xs': "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
-        'icon-sm': 'size-8',
-        'icon-lg': 'size-10',
+        default: 'h-11 px-5 has-[>svg]:px-4',
+        lg: 'h-11 px-6 has-[>svg]:px-5',
+        // Compact: 36 px on a desktop table or toolbar, back to 44 px below 768 px.
+        sm: 'h-11 gap-1.5 px-3 text-sm md:h-9',
+        xs: "h-11 gap-1 px-2 text-xs md:h-7 [&_svg:not([class*='size-'])]:size-3",
+        icon: 'size-11',
+        'icon-lg': 'size-11',
+        'icon-sm': 'size-11 md:size-9',
+        'icon-xs': "size-11 md:size-7 [&_svg:not([class*='size-'])]:size-3",
+        // Older F12 sizes, now on the same 44 px target.
+        f12: 'h-11 gap-1.5 px-5 text-sm',
+        pill: 'h-auto min-h-11 gap-1.5 rounded-full px-5 py-2 text-sm',
+        block: 'h-11 w-full gap-1.5 px-5 text-sm',
       },
     },
     defaultVariants: {
@@ -49,21 +63,36 @@ function Button({
   variant = 'default',
   size = 'default',
   asChild = false,
+  loading = false,
+  children,
   ...props
 }: React.ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    /** Keeps the label (and so the width), shows a spinner, sets aria-busy and ignores clicks. Not available with asChild. */
+    loading?: boolean
   }) {
-  const Comp = asChild ? Slot.Root : 'button'
+  const common = {
+    'data-slot': 'button',
+    'data-variant': variant,
+    'data-size': size,
+    className: cn(buttonVariants({ variant, size, className })),
+  }
+
+  // Slot needs exactly one child, so the spinner only exists on the plain button.
+  if (asChild) {
+    return (
+      <Slot.Root {...common} {...props}>
+        {children}
+      </Slot.Root>
+    )
+  }
 
   return (
-    <Comp
-      data-slot="button"
-      data-variant={variant}
-      data-size={size}
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
+    <button {...common} aria-busy={loading || undefined} {...props}>
+      {loading ? <Loader2Icon className="animate-spin" aria-hidden /> : null}
+      {children}
+    </button>
   )
 }
 

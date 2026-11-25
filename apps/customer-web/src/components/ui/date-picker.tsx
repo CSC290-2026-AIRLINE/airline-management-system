@@ -17,6 +17,7 @@ import {
   weekdayIndex,
 } from './date-keys'
 import { cn } from '@customer-web/lib/utils'
+import { controlClass } from './control'
 
 /**
  * The shared date field. It replaces the browser's own `input[type="date"]`, whose text box and calendar popup cannot
@@ -203,10 +204,7 @@ export function DatePicker({
         id={id}
         type="text"
         data-slot="date-picker-static"
-        className={cn(
-          'flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 cursor-default bg-muted/40',
-          className,
-        )}
+        className={cn(controlClass, 'flex h-11 items-center gap-2 text-left cursor-default bg-muted', className)}
         value={label}
         readOnly
         aria-label={triggerLabel}
@@ -224,10 +222,7 @@ export function DatePicker({
           id={id}
           type="button"
           data-slot="date-picker-trigger"
-          className={cn(
-            'flex h-9 w-full min-w-0 items-center gap-2 rounded-md border border-input bg-background px-3 text-left text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 cursor-pointer',
-            className,
-          )}
+          className={cn(controlClass, 'flex h-11 items-center gap-2 text-left cursor-pointer', className)}
           aria-label={triggerLabel}
           aria-labelledby={triggerName}
           aria-invalid={invalid || undefined}

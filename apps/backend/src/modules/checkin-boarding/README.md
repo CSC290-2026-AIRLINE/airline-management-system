@@ -183,8 +183,7 @@ inject the token and nothing else.
 
 ### The seed
 
-`npm run db:seed` runs `apps/backend/src/db/seed.ts`, which calls `seedFeature6(prisma)` from
-`apps/backend/src/db/seed-f6.ts`. The seed writes the demo network and the demo bookings, and it is idempotent:
+`npm run db:seed` runs `apps/backend/src/db/seed.ts`, whose Feature 6 section (`seedFeature6`) writes this data. The seed writes the demo network and the demo bookings, and it is idempotent:
 every row is looked up on its natural key first, so a second run changes nothing.
 
 - Airports `NRT` and `ICN` (BKK comes from the shared seed), the routes BKK→NRT and BKK→ICN, the aircraft type

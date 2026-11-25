@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react'
+import { Button } from '@customer-web/components/ui/button'
 import { Input } from '@customer-web/components/ui/input'
-import { Field } from '@customer-web/components/ui/cw-field'
+import { Field } from '@customer-web/components/ui/field'
 import { ApiError } from '../api/client'
 import { Dialog } from '../components/Dialog'
-import controls from '../styles/controls'
 
 interface EditContactDialogProps {
   open: boolean
@@ -101,12 +101,12 @@ export function EditContactDialog({ open, contactEmail, contactPhone, onClose, o
           </p>
         ) : null}
         <div className="flex flex-wrap justify-end gap-2 pt-1">
-          <button type="button" className={controls.secondary} onClick={onClose} disabled={saving}>
+          <Button variant="outline" type="button" onClick={onClose} disabled={saving}>
             Cancel
-          </button>
-          <button type="submit" className={controls.primary} disabled={saving}>
+          </Button>
+          <Button type="submit" disabled={saving}>
             {saving ? 'Saving…' : 'Save details'}
-          </button>
+          </Button>
         </div>
       </form>
     </Dialog>

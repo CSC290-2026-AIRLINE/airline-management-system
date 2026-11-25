@@ -1,23 +1,8 @@
-import styles from './flow.module.css'
+import { Stepper as FlowStepper } from '@customer-web/components/ui/stepper'
 
-const STEPS = ['Find booking', 'Passport', 'Seat', 'Bags', 'Boarding pass']
+const STEPS = ['Find booking', 'Passport', 'Seat', 'Bags', 'Boarding pass'] as const
 
+/** The check-in progress, on the shared stepper. `step` counts from 1. */
 export function Stepper({ step }: { step: number }) {
-  return (
-    <ol className={styles.steps} aria-label="Check-in progress">
-      {STEPS.map((label, index) => {
-        const number = index + 1
-        const state = number < step ? 'done' : number === step ? 'current' : 'todo'
-        return (
-          <li key={label} className={styles.step} data-state={state} aria-current={number === step ? 'step' : undefined}>
-            <span className={styles.dot} aria-hidden="true">
-              {number < step ? '✓' : number}
-            </span>
-            <span className={styles.stepLabel}>{label}</span>
-            {number < STEPS.length ? <span className={styles.connector} aria-hidden="true" /> : null}
-          </li>
-        )
-      })}
-    </ol>
-  )
+  return <FlowStepper steps={STEPS} current={step - 1} aria-label="Check-in progress" />
 }

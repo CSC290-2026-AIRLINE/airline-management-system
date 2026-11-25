@@ -3,6 +3,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * The customer-web design tokens, from the redesign canvas (board 5, "Foundations: the new system").
+ * Two layers: the shadcn semantic variables in :root (what the components read), and named brand and status tokens in
+ * @theme (what pages can use directly as Tailwind classes). Change a value here and the whole app follows.
+ */
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -29,54 +35,129 @@
 }
 
 @theme {
+  /* Type. Inter for everything; Merriweather for display moments only (the logo, the Home hero, prices). */
   --font-sans: Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
-  --font-serif: Georgia, 'Times New Roman', serif;
+  --font-serif: Merriweather, Georgia, 'Times New Roman', serif;
   --font-mono: ui-monospace, 'SF Mono', Consolas, monospace;
 
-  /* Flython / FlySmiles palette, from the F11 Figma file. Grey text uses shadcn's text-muted-foreground: a --color-muted
-     here would override shadcn's muted background colour app-wide. */
-  --color-ink: #0a1424;
-  --color-line: #e0e5ed;
-  --color-divider: #e8edf3;
-  --color-field: #dbe2ea;
+  /* Six named type steps on a 16 px root. `text-display`, `text-title` and so on set size, line height, tracking and
+     weight together. Phones step the two largest down in the page title and the hero (see the h1 rule below). */
+  --text-display: 2.5rem;
+  --text-display--line-height: 3rem;
+  --text-display--letter-spacing: -0.02em;
+  --text-display--font-weight: 700;
+  --text-title: 1.875rem;
+  --text-title--line-height: 2.25rem;
+  --text-title--letter-spacing: -0.015em;
+  --text-title--font-weight: 700;
+  --text-heading: 1.375rem;
+  --text-heading--line-height: 1.75rem;
+  --text-heading--font-weight: 600;
+  --text-subheading: 1.125rem;
+  --text-subheading--line-height: 1.625rem;
+  --text-subheading--font-weight: 600;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
+  --text-small: 0.875rem;
+  --text-small--line-height: 1.25rem;
+
+  /* Page shell: three content widths, as maximums inside one centred container. */
+  --container-narrow: 40rem;
+  --container-standard: 60rem;
+  --container-wide: 75rem;
+
+  /* Elevation. Structure comes from borders first; shadow only for things that float or are hovered. */
+  --shadow-raised: 0 1px 3px rgb(20 33 61 / 0.1), 0 1px 2px rgb(20 33 61 / 0.06);
+  --shadow-overlay: 0 8px 24px rgb(20 33 61 / 0.14);
+
+  /* Brand. One primary, navy. */
   --color-navy: #13264a;
+  --color-primary-hover: #1d3866;
+  --color-primary-pressed: #0a1424;
   --color-link: #1f408c;
-  --color-teal: #0e7490;
-  --color-mint: #d5f1f2;
-  --color-soft: #f7f9fc;
+  --color-info-tint: #e8eef7;
+  --color-info-tint-pressed: #d9e3f3;
+  --color-info-line: #c7d3e8;
+
+  /* Accent: highlights and progress only. Orange is 2.1:1 on white, so it is never text; navy on orange is 7.3:1.
+     (Named brand-accent because shadcn's own --accent is the hover fill, which must stay a quiet tint.) */
+  --color-brand-accent: #ff9f00;
+  --color-brand-accent-tint: #fff3db;
+  --color-on-brand-accent: #13264a;
+
+  /* Neutrals. Body copy is --color-copy: Tailwind would read a --color-body as the same class as the text-body size.
+     Grey helper text is shadcn's text-muted-foreground. */
+  --color-copy: #3b4256;
+  --color-control: #76819a;
+  --color-disabled: #eef1f6;
+  --color-line: #e0e5ed;
   --color-canvas: #f6f8fc;
-  --color-gold: #c9a227;
-  --color-gold-ink: #6b4e00;
+
+  /* Status: the colour is for text and icons on its tint, and is never the only signal. */
   --color-ok: #087338;
+  --color-ok-tint: #e6f4ec;
   --color-warn: #995c05;
+  --color-warn-tint: #fff3db;
   --color-danger: #b42318;
+  --color-danger-tint: #fdecea;
+  --color-danger-hover: #8f1c13;
+  --color-danger-pressed: #6e130c;
+
+  /* Loyalty only: the FlySmiles member card and tier benefits. Not part of the shared palette. */
+  --color-gold: #f2a800;
+  --color-gold-ink: #6b4e00;
+
+  /* Feature 5 (receipts, refunds, vouchers, payment result): the breakpoints those pages use. */
+  --breakpoint-phone: 37.5625rem; /* max-phone: is 600px and below */
+  --breakpoint-tablet: 48.0625rem; /* max-tablet: is 768px and below */
+  --breakpoint-laptop: 64.0625rem;
+  --breakpoint-wide: 68.8125rem;
 }
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --background: #ffffff;
+  --foreground: #14213d;
+  --card: #ffffff;
+  --card-foreground: #14213d;
+  --popover: #ffffff;
+  --popover-foreground: #14213d;
+  --primary: var(--color-navy);
+  --primary-foreground: #ffffff;
+  /* Secondary is the white, navy-text button. Ghost and hover fills use --accent, the info tint. */
+  --secondary: #ffffff;
+  --secondary-foreground: var(--color-navy);
+  --muted: var(--color-canvas);
+  --muted-foreground: #5b6478;
+  --accent: var(--color-info-tint);
+  --accent-foreground: var(--color-navy);
+  --destructive: var(--color-danger);
+  --border: var(--color-line);
+  /* The border of every control (input, select, checkbox): 3.9:1 on white, so it passes as a non-text element. */
+  --input: var(--color-control);
+  --ring: var(--color-link);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+
+  :root {
+    color-scheme: light;
+    font-size: 16px;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    color: var(--color-copy);
+    background: var(--background);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   /* Tailwind v4's reset leaves buttons with `cursor: default`. Clickable things get a pointer, disabled ones a not-allowed cursor. */
@@ -106,135 +187,86 @@
   [data-disabled] {
     cursor: not-allowed;
   }
-}
 
-/* Starter-template styles from before shadcn. Kept in the base layer so Tailwind utilities override them. */
-@layer base {
-  :root {
-    --text: #6b6375;
-    --text-h: #08060d;
-    --bg: #fff;
-    --legacy-border: #e5e4e7;
-    --code-bg: #f4f3ec;
-    --legacy-accent: #aa3bff;
-    --accent-bg: rgba(170, 59, 255, 0.1);
-    --accent-border: rgba(170, 59, 255, 0.5);
-    --social-bg: rgba(244, 243, 236, 0.5);
-    --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
-
-    --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-    --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-    --mono: ui-monospace, Consolas, monospace;
-
-    font: 18px/145% var(--sans);
-    letter-spacing: 0.18px;
-    color-scheme: light;
-    color: var(--text);
-    background: var(--bg);
-    font-synthesis: none;
-    text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-
-    @media (max-width: 1024px) {
-      font-size: 16px;
-    }
-  }
-
+  /* The app root fills the window and lays out from the left. Pages sit on the shared page shell (components/Page.tsx). */
   #root {
     width: 100%;
-    text-align: center;
+    text-align: left;
     min-height: 100svh;
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
   }
 
-  /* Pages marked data-full-bleed (the Feature 11 loyalty pages) fill the window and lay out from the left. */
-  #root:has([data-full-bleed]) {
-    width: auto;
-    border-inline: 0;
-    text-align: left;
-  }
-
-  /* Customer pages that own their own full-bleed shell, like the staff shell does. */
-  #root:has(.f3-customer-layout) {
-    width: 100%;
-    border-inline: 0;
-    text-align: left;
-  }
-
-  body {
-    margin: 0;
-  }
-
+  /* Page title (title step) and section heading (heading step). The shared PageHeader zeroes the h1 margin; the old margins
+     stay for any heading outside it. */
   h1,
   h2 {
-    font-family: var(--heading);
-    font-weight: 500;
-    color: var(--text-h);
+    color: var(--foreground);
   }
 
   h1 {
-    font-size: 56px;
-    letter-spacing: -1.68px;
+    font-size: var(--text-title);
+    line-height: var(--text-title--line-height);
+    font-weight: 700;
+    letter-spacing: -0.015em;
     margin: 32px 0;
-    @media (max-width: 1024px) {
-      font-size: 36px;
+    @media (max-width: 639px) {
+      font-size: 1.625rem;
+      line-height: 2rem;
       margin: 20px 0;
     }
   }
-  h2 {
-    font-size: 24px;
-    line-height: 118%;
-    letter-spacing: -0.24px;
-    margin: 0 0 8px;
-    @media (max-width: 1024px) {
-      font-size: 20px;
-    }
-  }
-  p {
-    margin: 0;
-  }
 
-  code,
-  .counter {
-    font-family: var(--mono);
-    display: inline-flex;
-    border-radius: 4px;
-    color: var(--text-h);
+  h2 {
+    font-size: var(--text-heading);
+    line-height: var(--text-heading--line-height);
+    font-weight: 600;
+    margin: 0 0 8px;
   }
 
   code {
-    font-size: 15px;
-    line-height: 135%;
-    padding: 4px 8px;
-    background: var(--code-bg);
+    font-family: var(--font-mono);
+    font-size: 0.9375rem;
+    line-height: 1.35;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--foreground);
+    background: var(--color-canvas);
+  }
+
+  /* The dev sitemap component (components/Sitemap.tsx). */
+  .sitemap {
+    margin-top: 32px;
+
+    ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    li {
+      padding: 2px 0;
+    }
+
+    a {
+      color: var(--color-link);
+    }
   }
 }
 
-/*
- * Feature 5 (the receipts, refunds, vouchers and payment result pages): the brand colours and breakpoints those pages use.
- * Additive on purpose: these are names the rest of the theme does not define, so no other page changes.
- */
-@theme {
-  --breakpoint-phone: 37.5625rem; /* max-phone: is 600px and below */
-  --breakpoint-tablet: 48.0625rem; /* max-tablet: is 768px and below */
-  --breakpoint-laptop: 64.0625rem;
-  --breakpoint-wide: 68.8125rem;
+/* Page changes: a short cross-fade of the page (see defaultViewTransition in router.tsx). The header has its own
+   transition name, so it stays put while the page under it fades. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 200ms;
+  animation-timing-function: ease-out;
+}
 
-  --color-navy: #14213d;
-  --color-navy-active: #2a4372;
-  --color-ink: #0a1424;
-  --color-page: #f7f9fc;
-  --color-line: #e6e8ef;
-  --color-gold: #f2a800;
-  --color-success: #2fa568;
-  --color-success-strong: #1f8a4c;
-  --color-success-soft: #e4f5e9;
-  --color-warning: #94651c;
-  --color-warning-soft: #fef4de;
-  --color-danger: #b8171f;
-  --color-danger-soft: #fdecec;
-  --color-danger-line: #e5484d;
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
 }

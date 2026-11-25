@@ -1,12 +1,3 @@
-/* Full-width page: overrides the app's centred #root column while this page is mounted. */
-#root:has(.passenger-report-page) {
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
-  border-inline: 0;
-  background: var(--muted);
-}
-
 .passenger-report-page {
   --report-ink: var(--foreground);
   --report-muted: var(--muted-foreground);
@@ -14,38 +5,11 @@
   --report-orange: var(--primary);
   --report-orange-soft: var(--muted);
 
-  width: 100%;
-  min-height: 100svh;
-  box-sizing: border-box;
-  margin: 0;
-  padding: 2rem 8.3% 4rem;
-  background: var(--muted);
   color: var(--report-ink);
   font-family: var(--font-sans);
   letter-spacing: normal;
   color-scheme: light;
   text-align: left;
-}
-
-.passenger-report-page__intro {
-  margin-bottom: 1.4rem;
-}
-
-.passenger-report-page__intro h1 {
-  margin: 0 0 0.4rem;
-  color: var(--report-ink);
-  font-family: var(--font-sans);
-  font-size: clamp(1.875rem, 4vw, 2.25rem);
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  line-height: 1.2;
-}
-
-.passenger-report-page__intro p {
-  max-width: 54rem;
-  margin: 0;
-  color: var(--report-muted);
-  line-height: 1.45;
 }
 
 .passenger-report-layout,
@@ -414,11 +378,6 @@
 }
 
 @media (max-width: 760px) {
-  .passenger-report-page {
-    padding: 1.25rem 1.5rem 2.5rem;
-    background: var(--muted);
-  }
-
   .passenger-report-layout,
   .passenger-report-success-layout {
     grid-template-columns: minmax(0, 1fr);

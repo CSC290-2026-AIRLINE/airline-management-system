@@ -111,30 +111,24 @@ function BookingDetailView({ booking, onReload }: { booking: BookingDetail; onRe
 
   return (
     <>
-      <PageShell>
-        <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" asChild>
-          <Link to="/bookings">
-            <ArrowLeft aria-hidden="true" />
-            My Trips
-          </Link>
-        </Button>
-
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="m-0 text-2xl font-semibold tracking-tight">Booking {booking.reference}</h1>
+      <PageShell
+        title={
+          <span className="inline-flex flex-wrap items-center gap-3">
+            Booking {booking.reference}
+            <span className="rounded-md bg-white">
               <StatusChip label={chip.label} tone={chip.tone} />
-            </div>
-            <p className="text-muted-foreground">
-              Booked {formatDateWithYear(booking.bookedAt)} · {partyLabel(booking.passengers)} ·{' '}
-              {formatMoney(booking.total, booking.currency)}
-            </p>
-            {booking.cancelledAt ? (
-              <p className="text-sm text-muted-foreground">Cancelled on {formatDateWithYear(booking.cancelledAt)}.</p>
-            ) : null}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
+            </span>
+          </span>
+        }
+        subtitle={
+          <>
+            Booked {formatDateWithYear(booking.bookedAt)} · {partyLabel(booking.passengers)} ·{' '}
+            {formatMoney(booking.total, booking.currency)}
+            {booking.cancelledAt ? <> · Cancelled on {formatDateWithYear(booking.cancelledAt)}.</> : null}
+          </>
+        }
+        actions={
+          <>
             {status === 'held' ? (
               <Button asChild>
                 <Link to="/review-pay/$reference" params={{ reference: booking.reference }}>
@@ -153,8 +147,15 @@ function BookingDetailView({ booking, onReload }: { booking: BookingDetail; onRe
                 Cancel booking
               </Button>
             ) : null}
-          </div>
-        </header>
+          </>
+        }
+      >
+        <Button variant="ghost" size="sm" className="-ml-2 self-start text-muted-foreground" asChild>
+          <Link to="/bookings">
+            <ArrowLeft aria-hidden="true" />
+            My Trips
+          </Link>
+        </Button>
 
         {status === 'held' ? (
           <HoldBanner

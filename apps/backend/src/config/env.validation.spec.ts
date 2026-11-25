@@ -83,6 +83,18 @@ describe('validateEnv', () => {
     expect(validateEnv({ ...validEnv, NODE_ENV: 'production' }).PAYMENT_DEV_TOOLS).toBe(false)
   })
 
+  it('keeps the seed route off unless it is asked for', () => {
+    expect(validateEnv(validEnv).DEV_SEED_ENABLED).toBe(false)
+    expect(validateEnv({ ...validEnv, DEV_SEED_ENABLED: 'true' }).DEV_SEED_ENABLED).toBe(true)
+  })
+
+  it('allows the seed route in production, with an optional token', () => {
+    const production = { ...validEnv, NODE_ENV: 'production', DEV_SEED_ENABLED: 'true' }
+
+    expect(validateEnv(production)).toMatchObject({ DEV_SEED_ENABLED: true, DEV_SEED_TOKEN: '' })
+    expect(validateEnv({ ...production, DEV_SEED_TOKEN: 'secret' }).DEV_SEED_TOKEN).toBe('secret')
+  })
+
   it('refuses a live Stripe key', () => {
     const env = { ...validEnv, PAYMENT_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_live_x', STRIPE_WEBHOOK_SECRET: 'whsec_x' }
 

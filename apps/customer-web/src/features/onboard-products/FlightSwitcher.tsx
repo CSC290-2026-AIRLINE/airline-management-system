@@ -1,5 +1,6 @@
 // Segmented control at the top of the Add Extra Services page. Each option shows the flight number, route and departure.
 
+import { SelectTile } from '@customer-web/components/ui/select-tile'
 import { cn } from '@customer-web/lib/utils'
 import type { FlightRef } from './types'
 import { formatDate, formatTime } from './format'
@@ -16,16 +17,12 @@ export function FlightSwitcher({ flights, selectedId, onSelect }: Props) {
       {flights.map((flight) => {
         const isActive = flight.id === selectedId
         return (
-          <button
+          <SelectTile
             key={flight.id}
-            type="button"
             role="tab"
             aria-selected={isActive}
-            className={cn(
-              'flex cursor-pointer flex-col gap-0.5 rounded-lg border bg-card px-4 py-3 text-left transition-colors outline-none',
-              'hover:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
-              isActive && 'border-primary bg-secondary',
-            )}
+            selected={isActive}
+            className={cn('flex-col gap-0.5 px-4 py-3', isActive && 'bg-secondary')}
             onClick={() => onSelect(flight.id)}
           >
             <span className="text-base font-semibold">
@@ -35,7 +32,7 @@ export function FlightSwitcher({ flights, selectedId, onSelect }: Props) {
               Departs {formatDate(flight.scheduledDeparture, flight.departureTimeZone)},{' '}
               {formatTime(flight.scheduledDeparture, flight.departureTimeZone)}
             </span>
-          </button>
+          </SelectTile>
         )
       })}
     </div>

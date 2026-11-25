@@ -1,7 +1,7 @@
 import type { PriceChangedDialogProps } from './contracts'
+import { Button } from '@customer-web/components/ui/button'
 import { Dialog } from './Dialog'
 import { formatMoney } from '../lib/format'
-import controls from '../styles/controls'
 
 export function PriceChangedDialog({ open, previousTotal, newTotal, currency, onContinue, onCancel }: PriceChangedDialogProps) {
   return (
@@ -12,12 +12,12 @@ export function PriceChangedDialog({ open, previousTotal, newTotal, currency, on
       onClose={onCancel}
       footer={
         <>
-          <button type="button" className={controls.secondary} onClick={onCancel}>
+          <Button variant="outline" type="button" onClick={onCancel}>
             Back to search
-          </button>
-          <button type="button" className={controls.primary} onClick={onContinue}>
+          </Button>
+          <Button type="button" onClick={onContinue}>
             Continue at {formatMoney(newTotal, currency)}
-          </button>
+          </Button>
         </>
       }
     >

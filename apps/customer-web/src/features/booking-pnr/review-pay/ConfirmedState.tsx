@@ -41,7 +41,7 @@ export function ConfirmedState({
   const segments = [...booking.segments].sort((a, b) => a.segmentOrder - b.segmentOrder)
 
   return (
-    <PageShell className="max-w-2xl">
+    <PageShell width="narrow">
       <Card>
         <CardContent className="space-y-6">
           <header className="flex gap-4">
@@ -50,7 +50,7 @@ export function ConfirmedState({
             </span>
             <div className="space-y-1">
               <StatusChip label="Confirmed" tone="confirmed" />
-              <h1 className="m-0 text-2xl font-semibold tracking-tight">Your booking is confirmed</h1>
+              <h1 className="m-0">Your booking is confirmed</h1>
               <p className="text-muted-foreground">Payment received and tickets issued.</p>
               <p className="text-xs text-muted-foreground">
                 {booking.confirmedAt ? `Confirmed ${formatDateTime(booking.confirmedAt)}. ` : ''}A confirmation was sent to{' '}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button } from '@customer-web/components/ui/button'
 import type { CarryOnAllowance, CheckInView } from '../api/types.ts'
 import { cabinName } from '../format.ts'
 import { Message } from './Message.tsx'
@@ -58,39 +59,41 @@ export function BagsStep({
       <div className={styles.countRow}>
         <span className={styles.label}>How many bags will you check in?</span>
         <div className={styles.countGroup}>
-          <button
+          <Button
             type="button"
-            className={styles.countButton}
+            variant="outline"
+            size="icon"
             onClick={() => setCount((value) => Math.max(0, value - 1))}
             disabled={count <= 0 || busy}
             aria-label="One bag less"
           >
             −
-          </button>
+          </Button>
           <output className={styles.countValue} aria-live="polite">
             {count}
           </output>
-          <button
+          <Button
             type="button"
-            className={styles.countButton}
+            variant="outline"
+            size="icon"
             onClick={() => setCount((value) => Math.min(MAX_BAGS, value + 1))}
             disabled={count >= MAX_BAGS || busy}
             aria-label="One bag more"
           >
             +
-          </button>
+          </Button>
         </div>
       </div>
 
       <Message tone="warn">{warning}</Message>
 
       <div className={styles.actions}>
-        <button className={styles.ghostButton} type="button" onClick={onBack} disabled={busy}>
+        <Button variant="outline" type="button" onClick={onBack} disabled={busy}>
           Back
-        </button>
-        <button className={styles.button} type="submit" disabled={busy}>
+        </Button>
+        <Button type="submit" disabled={busy}>
           {busy ? 'Finishing…' : 'Finish check-in'}
-        </button>
+        </Button>
       </div>
     </form>
   )

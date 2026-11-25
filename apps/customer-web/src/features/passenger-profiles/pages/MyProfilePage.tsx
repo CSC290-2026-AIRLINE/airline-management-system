@@ -38,11 +38,7 @@ export default function MyProfilePage() {
   ]
   const localName = [profile.localFirstName, profile.localLastName].filter(Boolean).join(' ')
   return (
-    <AccountPage>
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">My Profile</h1>
-        <p className="text-muted-foreground">Manage your details, saved passengers and profile photo.</p>
-      </header>
+    <AccountPage width="wide" title="My Profile" description="Manage your details, saved passengers and profile photo.">
       <Card aria-labelledby="profile-title">
         <CardHeader>
           <CardTitle id="profile-title" role="heading" aria-level={2}>

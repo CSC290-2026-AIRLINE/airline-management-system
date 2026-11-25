@@ -1,3 +1,4 @@
+import { Page } from '@customer-web/components/Page'
 import { useEffect, useReducer, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useAppAuth } from '../../../auth/AuthProvider'
@@ -28,8 +29,8 @@ import { Alert, AlertDescription } from '@customer-web/components/ui/alert'
 import { Button } from '@customer-web/components/ui/button'
 import { Card } from '@customer-web/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@customer-web/components/ui/dialog'
-import { Field } from '@customer-web/components/ui/cw-field'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/cw-select'
+import { Field } from '@customer-web/components/ui/field'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
 import { Input } from '@customer-web/components/ui/input'
 import { Label } from '@customer-web/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@customer-web/components/ui/radio-group'
@@ -309,454 +310,457 @@ export function PassengerLostBagReportPage() {
   const bookingFlightSummary = buildBookingFlightSummary(values.bookingReference, selectedFlight)
 
   return (
-    <main className="passenger-report-page">
-      <header className="passenger-report-page__intro">
-        <h1>Report a lost bag</h1>
-        <p>Tell us about the bag. Staff at every airport search for it, and you can follow the case online.</p>
-      </header>
-
-      {pageState.submitState === 'success' ? (
-        <div className="passenger-report-success-layout">
-          <section className="passenger-report-card passenger-report-success" aria-labelledby="report-success-title">
-            <p className="passenger-report-success__eyebrow">Report sent</p>
-            <h2 id="report-success-title">You’re all set</h2>
-            <p>We’ve opened a case for your bag. Keep your case number to follow the search.</p>
-            <div className="passenger-report-success__case-number" aria-label={`Case number ${pageState.caseNumber}`}>
-              {pageState.caseNumber}
-            </div>
-            <dl className="passenger-report-success__summary">
+    <Page
+      width="wide"
+      title="Report a lost bag"
+      description="Tell us about the bag. Staff at every airport search for it, and you can follow the case online."
+    >
+      <div className="passenger-report-page">
+        {pageState.submitState === 'success' ? (
+          <div className="passenger-report-success-layout">
+            <section className="passenger-report-card passenger-report-success" aria-labelledby="report-success-title">
+              <p className="passenger-report-success__eyebrow">Report sent</p>
+              <h2 id="report-success-title">You’re all set</h2>
+              <p>We’ve opened a case for your bag. Keep your case number to follow the search.</p>
+              <div className="passenger-report-success__case-number" aria-label={`Case number ${pageState.caseNumber}`}>
+                {pageState.caseNumber}
+              </div>
+              <dl className="passenger-report-success__summary">
+                {bagOwnerName && (
+                  <>
+                    <dt>Passenger</dt>
+                    <dd>{bagOwnerName}</dd>
+                  </>
+                )}
+                <dt>Flight</dt>
+                <dd>
+                  {selectedFlight
+                    ? `${selectedFlight.flightNumber} · ${selectedFlight.origin} to ${selectedFlight.destination} · ${formatFlightDate(selectedFlight.serviceDate)}`
+                    : 'Selected flight'}
+                </dd>
+                <dt>Bag</dt>
+                <dd>
+                  {PASSENGER_BAG_TYPES.find(([type]) => type === values.bagType)?.[1]} ·{' '}
+                  {PASSENGER_BAG_COLOURS.find(([colour]) => colour === values.colour)?.[1]}
+                </dd>
+                {values.tagNumber.trim() && (
+                  <>
+                    <dt>Tag</dt>
+                    <dd>{values.tagNumber.trim()}</dd>
+                  </>
+                )}
+              </dl>
               {bagOwnerName && (
-                <>
-                  <dt>Passenger</dt>
-                  <dd>{bagOwnerName}</dd>
-                </>
-              )}
-              <dt>Flight</dt>
-              <dd>
-                {selectedFlight
-                  ? `${selectedFlight.flightNumber} · ${selectedFlight.origin} to ${selectedFlight.destination} · ${formatFlightDate(selectedFlight.serviceDate)}`
-                  : 'Selected flight'}
-              </dd>
-              <dt>Bag</dt>
-              <dd>
-                {PASSENGER_BAG_TYPES.find(([type]) => type === values.bagType)?.[1]} ·{' '}
-                {PASSENGER_BAG_COLOURS.find(([colour]) => colour === values.colour)?.[1]}
-              </dd>
-              {values.tagNumber.trim() && (
-                <>
-                  <dt>Tag</dt>
-                  <dd>{values.tagNumber.trim()}</dd>
-                </>
-              )}
-            </dl>
-            {bagOwnerName && (
-              <p className="passenger-report-success__note">
-                Save this case number. You can follow this case under Find my cases with your booking reference and surname, and you can
-                cancel it or choose where the bag goes.
-              </p>
-            )}
-            <div className="passenger-report-success__actions">
-              <Button type="button" onClick={openCreatedCase}>
-                {bagOwnerName ? 'Open the case' : 'Open my case'}
-              </Button>
-              <Button variant="outline" type="button" onClick={reportAnotherBag}>
-                Report another bag
-              </Button>
-            </div>
-          </section>
-          <WhatHappensNext />
-        </div>
-      ) : (
-        <div className="passenger-report-layout">
-          <form className="passenger-report-card passenger-report-form" onSubmit={(event) => void submitReport(event)} noValidate>
-            <section className="passenger-report-form__section" aria-labelledby="report-booking-title">
-              <div className="passenger-report-form__section-heading">
-                <h2 id="report-booking-title">1. Find your booking</h2>
-              </div>
-              <div className="passenger-report-booking-lookup">
-                <div className="passenger-report-fields passenger-report-fields--booking">
-                  <Field id="report-booking-reference" label="Booking reference" error={fieldErrors.bookingReference}>
-                    <Input
-                      disabled={pageState.submitState === 'submitting'}
-                      autoComplete="off"
-                      maxLength={6}
-                      value={values.bookingReference}
-                      onChange={(event) => updateValue('bookingReference', event.currentTarget.value.toUpperCase())}
-                      id="report-booking-reference"
-                      aria-invalid={Boolean(fieldErrors.bookingReference)}
-                      aria-describedby={fieldErrors.bookingReference ? 'report-booking-reference-error' : undefined}
-                    />
-                  </Field>
-                  <Field id="report-surname" label="Surname" error={fieldErrors.surname}>
-                    <Input
-                      disabled={pageState.submitState === 'submitting'}
-                      autoComplete="family-name"
-                      maxLength={100}
-                      value={values.surname}
-                      onChange={(event) => updateValue('surname', event.currentTarget.value)}
-                      id="report-surname"
-                      aria-invalid={Boolean(fieldErrors.surname)}
-                      aria-describedby={fieldErrors.surname ? 'report-surname-error' : undefined}
-                    />
-                  </Field>
-                </div>
-                <div className="passenger-report-booking-lookup__actions">
-                  <Button
-                    variant="secondary"
-                    type="button"
-                    disabled={pageState.flightState === 'loading' || pageState.submitState === 'submitting'}
-                    onClick={() => void findFlights()}
-                  >
-                    {pageState.flightState === 'loading' ? 'Finding…' : 'Find booking'}
-                  </Button>
-                  <p>Find your booking first. We check the reference and surname on every step.</p>
-                </div>
-              </div>
-              {pageState.flightState === 'error' && (
-                <Alert variant="destructive">
-                  <AlertDescription>{pageState.flightError}</AlertDescription>
-                </Alert>
-              )}
-              {pageState.flightState === 'loaded' && pageState.flights.length === 0 && (
-                <Alert role="status">
-                  <AlertDescription>
-                    No eligible flights were found for those booking details. A lost bag can be reported once the flight has departed.
-                  </AlertDescription>
-                </Alert>
-              )}
-              {pageState.flights.length > 0 && (
-                <>
-                  {!bookingFlightSummary && (
-                    <p className="passenger-report-booking-found" role="status">
-                      Booking {values.bookingReference} found. Select a flight to continue.
-                    </p>
-                  )}
-                  {showWhoseBag && (
-                    <fieldset className="grid gap-2" disabled={pageState.submitState === 'submitting'}>
-                      <legend className="mb-1 text-sm font-medium">Whose bag is it?</legend>
-                      {fieldErrors.traveller && (
-                        <p className="text-xs text-destructive" role="alert">
-                          {fieldErrors.traveller}
-                        </p>
-                      )}
-                      <RadioGroup
-                        value={pageState.selectedTravellerId ?? ''}
-                        onValueChange={(value) => selectTraveller(String(value))}
-                        disabled={pageState.submitState === 'submitting'}
-                        aria-label="Whose bag is it?"
-                      >
-                        {pageState.travellers.map((traveller) => {
-                          const itemId = `report-traveller-${traveller.bookingPassengerId}`
-                          return (
-                            <Label
-                              key={traveller.bookingPassengerId}
-                              htmlFor={itemId}
-                              className="cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 has-data-checked:border-primary has-data-checked:bg-accent"
-                            >
-                              <RadioGroupItem id={itemId} value={traveller.bookingPassengerId} />
-                              <span className="flex-1 font-medium">
-                                {traveller.displayName}
-                                {traveller.isYou && <span className="font-normal text-muted-foreground"> (you)</span>}
-                              </span>
-                              <span className="text-xs font-normal text-muted-foreground">
-                                {traveller.flights.map((flight) => flight.flightNumber).join(', ')}
-                              </span>
-                            </Label>
-                          )
-                        })}
-                      </RadioGroup>
-                    </fieldset>
-                  )}
-                  <div className="passenger-report-fields passenger-report-fields--flight">
-                    <Field id="report-flight" label="Flight" error={fieldErrors.flightId}>
-                      <Select
-                        value={values.flightId}
-                        onValueChange={(value) => updateValue('flightId', value)}
-                        disabled={pageState.submitState === 'submitting'}
-                        required
-                      >
-                        <SelectTrigger
-                          id="report-flight"
-                          aria-labelledby="report-flight-label"
-                          aria-invalid={Boolean(fieldErrors.flightId)}
-                          aria-describedby={fieldErrors.flightId ? 'report-flight-error' : undefined}
-                        >
-                          <SelectValue placeholder="Choose a flight" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="">Choose a flight</SelectItem>
-                          {availableFlights.map((flight) => (
-                            <SelectItem key={flight.flightId} value={flight.flightId}>
-                              {flight.flightNumber} · {flight.origin} to {flight.destination} · {formatFlightDate(flight.serviceDate)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                  </div>
-                  {bookingFlightSummary && (
-                    <p className="passenger-report-booking-summary" role="status">
-                      Booking {bookingFlightSummary.bookingReference} · {bookingFlightSummary.flightNumber} · {bookingFlightSummary.origin}{' '}
-                      to {bookingFlightSummary.destination} ·{' '}
-                      {new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(
-                        new Date(bookingFlightSummary.serviceDate),
-                      )}
-                    </p>
-                  )}
-                </>
-              )}
-            </section>
-
-            <section className="passenger-report-form__section" aria-labelledby="report-bag-title">
-              <div className="passenger-report-form__section-heading">
-                <h2 id="report-bag-title">2. Your bag</h2>
-              </div>
-              <div className="passenger-report-fields">
-                <Field id="report-bag-type" label="Bag type" error={fieldErrors.bagType}>
-                  <Select
-                    value={values.bagType}
-                    onValueChange={(value) => updateValue('bagType', value)}
-                    disabled={pageState.submitState === 'submitting'}
-                    required
-                  >
-                    <SelectTrigger
-                      id="report-bag-type"
-                      aria-labelledby="report-bag-type-label"
-                      aria-invalid={Boolean(fieldErrors.bagType)}
-                      aria-describedby={fieldErrors.bagType ? 'report-bag-type-error' : undefined}
-                    >
-                      <SelectValue placeholder="Choose a bag type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">Choose a bag type</SelectItem>
-                      {PASSENGER_BAG_TYPES.map(([type, label]) => (
-                        <SelectItem key={type} value={type}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field id="report-colour" label="Main colour" error={fieldErrors.colour}>
-                  <Select
-                    value={values.colour}
-                    onValueChange={(value) => updateValue('colour', value)}
-                    disabled={pageState.submitState === 'submitting'}
-                    required
-                  >
-                    <SelectTrigger
-                      id="report-colour"
-                      aria-labelledby="report-colour-label"
-                      aria-invalid={Boolean(fieldErrors.colour)}
-                      aria-describedby={fieldErrors.colour ? 'report-colour-error' : undefined}
-                    >
-                      <SelectValue placeholder="Choose a colour" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">Choose a colour</SelectItem>
-                      {PASSENGER_BAG_COLOURS.map(([colour, label]) => (
-                        <SelectItem key={colour} value={colour}>
-                          <span
-                            aria-hidden="true"
-                            className="size-3.5 rounded-full border"
-                            style={{ background: BAG_COLOUR_SWATCH[colour] }}
-                          />
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field id="report-brand" label="Brand (if known)" error={fieldErrors.brand}>
-                  <Input
-                    disabled={pageState.submitState === 'submitting'}
-                    maxLength={100}
-                    placeholder="e.g. Samsonite"
-                    value={values.brand}
-                    onChange={(event) => updateValue('brand', event.currentTarget.value)}
-                    id="report-brand"
-                    aria-invalid={Boolean(fieldErrors.brand)}
-                    aria-describedby={fieldErrors.brand ? 'report-brand-error' : undefined}
-                  />
-                </Field>
-                <Field id="report-tag" label="Bag tag number (if you have it)" error={fieldErrors.tagNumber}>
-                  <Input
-                    disabled={pageState.submitState === 'submitting'}
-                    autoComplete="off"
-                    inputMode="numeric"
-                    maxLength={10}
-                    placeholder="10 digits, e.g. 0789204578"
-                    value={values.tagNumber}
-                    onChange={(event) => updateValue('tagNumber', event.currentTarget.value.trim())}
-                    id="report-tag"
-                    aria-invalid={Boolean(fieldErrors.tagNumber)}
-                    aria-describedby={fieldErrors.tagNumber ? 'report-tag-error' : undefined}
-                  />
-                </Field>
-                <Field
-                  className="passenger-report-fields__wide"
-                  id="report-description"
-                  label="Anything that makes it stand out"
-                  error={fieldErrors.description}
-                >
-                  <Textarea
-                    disabled={pageState.submitState === 'submitting'}
-                    maxLength={1000}
-                    rows={4}
-                    value={values.description}
-                    placeholder="Stickers, ribbons, a broken wheel, what was inside"
-                    onChange={(event) => updateValue('description', event.currentTarget.value)}
-                    id="report-description"
-                    aria-invalid={Boolean(fieldErrors.description)}
-                    aria-describedby={fieldErrors.description ? 'report-description-error' : undefined}
-                  />
-                </Field>
-                <div className="passenger-report-photo passenger-report-fields__wide">
-                  <label
-                    className={`passenger-report-photo__dropzone${pageState.submitState === 'submitting' ? ' is-disabled' : ''}`}
-                    htmlFor="lost-report-photo"
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={handlePhotoDrop}
-                  >
-                    <input
-                      ref={photoInput}
-                      id="lost-report-photo"
-                      className="passenger-report-photo__input"
-                      type="file"
-                      accept={LOST_REPORT_PHOTO_ACCEPT}
-                      disabled={pageState.submitState === 'submitting'}
-                      onChange={(event) => selectPhoto(event.currentTarget.files?.[0])}
-                      aria-describedby="lost-report-photo-help"
-                    />
-                    <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
-                      <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 15v4h14v-4" />
-                    </svg>
-                    <strong>Photo (optional)</strong>
-                    <span id="lost-report-photo-help">
-                      <span className="passenger-report-photo__desktop-help">
-                        Drag a photo here or <span className="passenger-report-photo__browse">browse</span>. JPG or PNG, up to 10 MB.
-                      </span>
-                      <span className="passenger-report-photo__mobile-help">Tap to take or choose a photo. JPG or PNG, up to 10 MB.</span>
-                    </span>
-                  </label>
-                  {photo && (
-                    <div className="passenger-report-photo__selected" aria-live="polite">
-                      {photoPreviewUrl && (
-                        <Button
-                          variant="outline"
-                          size="icon-lg"
-                          className="overflow-hidden p-0"
-                          type="button"
-                          aria-label="Enlarge selected photo"
-                          aria-haspopup="dialog"
-                          onClick={() => setIsPhotoEnlarged(true)}
-                        >
-                          <img className="passenger-report-photo__preview" src={photoPreviewUrl} alt="" />
-                        </Button>
-                      )}
-                      <span title={photo.name}>{photo.name}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        type="button"
-                        disabled={pageState.submitState === 'submitting'}
-                        onClick={() => {
-                          setPhoto(null)
-                          showPhotoPreview(null)
-                          setPhotoError('')
-                          if (photoInput.current) photoInput.current.value = ''
-                        }}
-                      >
-                        Remove photo
-                      </Button>
-                    </div>
-                  )}
-                  {photoError && (
-                    <p className="passenger-report-photo__error" role="alert">
-                      {photoError}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            <section className="passenger-report-form__section" aria-labelledby="report-contact-title">
-              <div className="passenger-report-form__section-heading">
-                <h2 id="report-contact-title">3. How we reach you</h2>
-              </div>
-              <div className="passenger-report-fields">
-                <Field id="report-email" label="Email" error={fieldErrors.contactEmail}>
-                  <Input
-                    disabled={pageState.submitState === 'submitting'}
-                    type="email"
-                    autoComplete="email"
-                    maxLength={254}
-                    placeholder="you@example.com"
-                    value={values.contactEmail}
-                    onChange={(event) => updateValue('contactEmail', event.currentTarget.value)}
-                    id="report-email"
-                    aria-invalid={Boolean(fieldErrors.contactEmail)}
-                    aria-describedby={fieldErrors.contactEmail ? 'report-email-error' : undefined}
-                  />
-                </Field>
-                <Field id="report-phone" label="Phone" error={fieldErrors.contactPhone}>
-                  <Input
-                    disabled={pageState.submitState === 'submitting'}
-                    type="tel"
-                    autoComplete="tel"
-                    maxLength={30}
-                    placeholder="+66 …"
-                    value={values.contactPhone}
-                    onChange={(event) => updateValue('contactPhone', event.currentTarget.value)}
-                    id="report-phone"
-                    aria-invalid={Boolean(fieldErrors.contactPhone)}
-                    aria-describedby={fieldErrors.contactPhone ? 'report-phone-error' : undefined}
-                  />
-                </Field>
-              </div>
-              {fieldErrors.contact && (
-                <p className="passenger-report-field__error" role="alert">
-                  {fieldErrors.contact}
+                <p className="passenger-report-success__note">
+                  Save this case number. You can follow this case under Find my cases with your booking reference and surname, and you can
+                  cancel it or choose where the bag goes.
                 </p>
               )}
-              <p className="passenger-report-form__hint">Give at least one. We only use it for this case.</p>
-              {pageState.submitError && (
-                <Alert variant="destructive">
-                  <AlertDescription>{pageState.submitError}</AlertDescription>
-                </Alert>
-              )}
-              <div className="passenger-report-form__submit-row">
-                <Button
-                  type="submit"
-                  disabled={pageState.submitState === 'submitting' || pageState.flightState !== 'loaded' || pageState.flights.length === 0}
-                >
-                  {pageState.submitState === 'submitting' ? (photo ? 'Sending photo and report…' : 'Sending report…') : 'Send report'}
+              <div className="passenger-report-success__actions">
+                <Button type="button" onClick={openCreatedCase}>
+                  {bagOwnerName ? 'Open the case' : 'Open my case'}
+                </Button>
+                <Button variant="outline" type="button" onClick={reportAnotherBag}>
+                  Report another bag
                 </Button>
               </div>
             </section>
-          </form>
-          <aside className="passenger-report-sidebar">
             <WhatHappensNext />
-            <Card className="passenger-report-card passenger-report-existing gap-0 py-0">
-              <h2>Already reported?</h2>
-              <p>Open My bag case with your case number, booking reference and surname.</p>
-              <Button asChild variant="outline">
-                <Link to="/lost-bag-case">Check my case</Link>
-              </Button>
-            </Card>
-          </aside>
-        </div>
-      )}
-      {photoPreviewUrl && (
-        <Dialog open={isPhotoEnlarged} onOpenChange={setIsPhotoEnlarged}>
-          <DialogContent className="sm:max-w-3xl">
-            <DialogTitle>Selected photo</DialogTitle>
-            <DialogDescription className="sr-only">Enlarged preview of the photo you selected.</DialogDescription>
-            <img className="max-h-[70vh] w-full rounded-md object-contain" src={photoPreviewUrl} alt="Selected photo, enlarged" />
-          </DialogContent>
-        </Dialog>
-      )}
-    </main>
+          </div>
+        ) : (
+          <div className="passenger-report-layout">
+            <form className="passenger-report-card passenger-report-form" onSubmit={(event) => void submitReport(event)} noValidate>
+              <section className="passenger-report-form__section" aria-labelledby="report-booking-title">
+                <div className="passenger-report-form__section-heading">
+                  <h2 id="report-booking-title">1. Find your booking</h2>
+                </div>
+                <div className="passenger-report-booking-lookup">
+                  <div className="passenger-report-fields passenger-report-fields--booking">
+                    <Field id="report-booking-reference" label="Booking reference" error={fieldErrors.bookingReference}>
+                      <Input
+                        disabled={pageState.submitState === 'submitting'}
+                        autoComplete="off"
+                        maxLength={6}
+                        value={values.bookingReference}
+                        onChange={(event) => updateValue('bookingReference', event.currentTarget.value.toUpperCase())}
+                        id="report-booking-reference"
+                        aria-invalid={Boolean(fieldErrors.bookingReference)}
+                        aria-describedby={fieldErrors.bookingReference ? 'report-booking-reference-error' : undefined}
+                      />
+                    </Field>
+                    <Field id="report-surname" label="Surname" error={fieldErrors.surname}>
+                      <Input
+                        disabled={pageState.submitState === 'submitting'}
+                        autoComplete="family-name"
+                        maxLength={100}
+                        value={values.surname}
+                        onChange={(event) => updateValue('surname', event.currentTarget.value)}
+                        id="report-surname"
+                        aria-invalid={Boolean(fieldErrors.surname)}
+                        aria-describedby={fieldErrors.surname ? 'report-surname-error' : undefined}
+                      />
+                    </Field>
+                  </div>
+                  <div className="passenger-report-booking-lookup__actions">
+                    <Button
+                      variant="secondary"
+                      type="button"
+                      disabled={pageState.flightState === 'loading' || pageState.submitState === 'submitting'}
+                      onClick={() => void findFlights()}
+                    >
+                      {pageState.flightState === 'loading' ? 'Finding…' : 'Find booking'}
+                    </Button>
+                    <p>Find your booking first. We check the reference and surname on every step.</p>
+                  </div>
+                </div>
+                {pageState.flightState === 'error' && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{pageState.flightError}</AlertDescription>
+                  </Alert>
+                )}
+                {pageState.flightState === 'loaded' && pageState.flights.length === 0 && (
+                  <Alert role="status">
+                    <AlertDescription>
+                      No eligible flights were found for those booking details. A lost bag can be reported once the flight has departed.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {pageState.flights.length > 0 && (
+                  <>
+                    {!bookingFlightSummary && (
+                      <p className="passenger-report-booking-found" role="status">
+                        Booking {values.bookingReference} found. Select a flight to continue.
+                      </p>
+                    )}
+                    {showWhoseBag && (
+                      <fieldset className="grid gap-2" disabled={pageState.submitState === 'submitting'}>
+                        <legend className="mb-1 text-sm font-medium">Whose bag is it?</legend>
+                        {fieldErrors.traveller && (
+                          <p className="text-xs text-destructive" role="alert">
+                            {fieldErrors.traveller}
+                          </p>
+                        )}
+                        <RadioGroup
+                          value={pageState.selectedTravellerId ?? ''}
+                          onValueChange={(value) => selectTraveller(String(value))}
+                          disabled={pageState.submitState === 'submitting'}
+                          aria-label="Whose bag is it?"
+                        >
+                          {pageState.travellers.map((traveller) => {
+                            const itemId = `report-traveller-${traveller.bookingPassengerId}`
+                            return (
+                              <Label
+                                key={traveller.bookingPassengerId}
+                                htmlFor={itemId}
+                                className="cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 has-data-checked:border-primary has-data-checked:bg-accent"
+                              >
+                                <RadioGroupItem id={itemId} value={traveller.bookingPassengerId} />
+                                <span className="flex-1 font-medium">
+                                  {traveller.displayName}
+                                  {traveller.isYou && <span className="font-normal text-muted-foreground"> (you)</span>}
+                                </span>
+                                <span className="text-xs font-normal text-muted-foreground">
+                                  {traveller.flights.map((flight) => flight.flightNumber).join(', ')}
+                                </span>
+                              </Label>
+                            )
+                          })}
+                        </RadioGroup>
+                      </fieldset>
+                    )}
+                    <div className="passenger-report-fields passenger-report-fields--flight">
+                      <Field id="report-flight" label="Flight" error={fieldErrors.flightId}>
+                        <Select
+                          value={values.flightId}
+                          onValueChange={(value) => updateValue('flightId', value)}
+                          disabled={pageState.submitState === 'submitting'}
+                          required
+                        >
+                          <SelectTrigger
+                            id="report-flight"
+                            aria-labelledby="report-flight-label"
+                            aria-invalid={Boolean(fieldErrors.flightId)}
+                            aria-describedby={fieldErrors.flightId ? 'report-flight-error' : undefined}
+                          >
+                            <SelectValue placeholder="Choose a flight" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">Choose a flight</SelectItem>
+                            {availableFlights.map((flight) => (
+                              <SelectItem key={flight.flightId} value={flight.flightId}>
+                                {flight.flightNumber} · {flight.origin} to {flight.destination} · {formatFlightDate(flight.serviceDate)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    </div>
+                    {bookingFlightSummary && (
+                      <p className="passenger-report-booking-summary" role="status">
+                        Booking {bookingFlightSummary.bookingReference} · {bookingFlightSummary.flightNumber} ·{' '}
+                        {bookingFlightSummary.origin} to {bookingFlightSummary.destination} ·{' '}
+                        {new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(
+                          new Date(bookingFlightSummary.serviceDate),
+                        )}
+                      </p>
+                    )}
+                  </>
+                )}
+              </section>
+
+              <section className="passenger-report-form__section" aria-labelledby="report-bag-title">
+                <div className="passenger-report-form__section-heading">
+                  <h2 id="report-bag-title">2. Your bag</h2>
+                </div>
+                <div className="passenger-report-fields">
+                  <Field id="report-bag-type" label="Bag type" error={fieldErrors.bagType}>
+                    <Select
+                      value={values.bagType}
+                      onValueChange={(value) => updateValue('bagType', value)}
+                      disabled={pageState.submitState === 'submitting'}
+                      required
+                    >
+                      <SelectTrigger
+                        id="report-bag-type"
+                        aria-labelledby="report-bag-type-label"
+                        aria-invalid={Boolean(fieldErrors.bagType)}
+                        aria-describedby={fieldErrors.bagType ? 'report-bag-type-error' : undefined}
+                      >
+                        <SelectValue placeholder="Choose a bag type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Choose a bag type</SelectItem>
+                        {PASSENGER_BAG_TYPES.map(([type, label]) => (
+                          <SelectItem key={type} value={type}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field id="report-colour" label="Main colour" error={fieldErrors.colour}>
+                    <Select
+                      value={values.colour}
+                      onValueChange={(value) => updateValue('colour', value)}
+                      disabled={pageState.submitState === 'submitting'}
+                      required
+                    >
+                      <SelectTrigger
+                        id="report-colour"
+                        aria-labelledby="report-colour-label"
+                        aria-invalid={Boolean(fieldErrors.colour)}
+                        aria-describedby={fieldErrors.colour ? 'report-colour-error' : undefined}
+                      >
+                        <SelectValue placeholder="Choose a colour" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Choose a colour</SelectItem>
+                        {PASSENGER_BAG_COLOURS.map(([colour, label]) => (
+                          <SelectItem key={colour} value={colour}>
+                            <span
+                              aria-hidden="true"
+                              className="size-3.5 rounded-full border"
+                              style={{ background: BAG_COLOUR_SWATCH[colour] }}
+                            />
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field id="report-brand" label="Brand (if known)" error={fieldErrors.brand}>
+                    <Input
+                      disabled={pageState.submitState === 'submitting'}
+                      maxLength={100}
+                      placeholder="e.g. Samsonite"
+                      value={values.brand}
+                      onChange={(event) => updateValue('brand', event.currentTarget.value)}
+                      id="report-brand"
+                      aria-invalid={Boolean(fieldErrors.brand)}
+                      aria-describedby={fieldErrors.brand ? 'report-brand-error' : undefined}
+                    />
+                  </Field>
+                  <Field id="report-tag" label="Bag tag number (if you have it)" error={fieldErrors.tagNumber}>
+                    <Input
+                      disabled={pageState.submitState === 'submitting'}
+                      autoComplete="off"
+                      inputMode="numeric"
+                      maxLength={10}
+                      placeholder="10 digits, e.g. 0789204578"
+                      value={values.tagNumber}
+                      onChange={(event) => updateValue('tagNumber', event.currentTarget.value.trim())}
+                      id="report-tag"
+                      aria-invalid={Boolean(fieldErrors.tagNumber)}
+                      aria-describedby={fieldErrors.tagNumber ? 'report-tag-error' : undefined}
+                    />
+                  </Field>
+                  <Field
+                    className="passenger-report-fields__wide"
+                    id="report-description"
+                    label="Anything that makes it stand out"
+                    error={fieldErrors.description}
+                  >
+                    <Textarea
+                      disabled={pageState.submitState === 'submitting'}
+                      maxLength={1000}
+                      rows={4}
+                      value={values.description}
+                      placeholder="Stickers, ribbons, a broken wheel, what was inside"
+                      onChange={(event) => updateValue('description', event.currentTarget.value)}
+                      id="report-description"
+                      aria-invalid={Boolean(fieldErrors.description)}
+                      aria-describedby={fieldErrors.description ? 'report-description-error' : undefined}
+                    />
+                  </Field>
+                  <div className="passenger-report-photo passenger-report-fields__wide">
+                    <label
+                      className={`passenger-report-photo__dropzone${pageState.submitState === 'submitting' ? ' is-disabled' : ''}`}
+                      htmlFor="lost-report-photo"
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={handlePhotoDrop}
+                    >
+                      <input
+                        ref={photoInput}
+                        id="lost-report-photo"
+                        className="passenger-report-photo__input"
+                        type="file"
+                        accept={LOST_REPORT_PHOTO_ACCEPT}
+                        disabled={pageState.submitState === 'submitting'}
+                        onChange={(event) => selectPhoto(event.currentTarget.files?.[0])}
+                        aria-describedby="lost-report-photo-help"
+                      />
+                      <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+                        <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 15v4h14v-4" />
+                      </svg>
+                      <strong>Photo (optional)</strong>
+                      <span id="lost-report-photo-help">
+                        <span className="passenger-report-photo__desktop-help">
+                          Drag a photo here or <span className="passenger-report-photo__browse">browse</span>. JPG or PNG, up to 10 MB.
+                        </span>
+                        <span className="passenger-report-photo__mobile-help">Tap to take or choose a photo. JPG or PNG, up to 10 MB.</span>
+                      </span>
+                    </label>
+                    {photo && (
+                      <div className="passenger-report-photo__selected" aria-live="polite">
+                        {photoPreviewUrl && (
+                          <Button
+                            variant="outline"
+                            size="icon-lg"
+                            className="overflow-hidden p-0"
+                            type="button"
+                            aria-label="Enlarge selected photo"
+                            aria-haspopup="dialog"
+                            onClick={() => setIsPhotoEnlarged(true)}
+                          >
+                            <img className="passenger-report-photo__preview" src={photoPreviewUrl} alt="" />
+                          </Button>
+                        )}
+                        <span title={photo.name}>{photo.name}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          type="button"
+                          disabled={pageState.submitState === 'submitting'}
+                          onClick={() => {
+                            setPhoto(null)
+                            showPhotoPreview(null)
+                            setPhotoError('')
+                            if (photoInput.current) photoInput.current.value = ''
+                          }}
+                        >
+                          Remove photo
+                        </Button>
+                      </div>
+                    )}
+                    {photoError && (
+                      <p className="passenger-report-photo__error" role="alert">
+                        {photoError}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              <section className="passenger-report-form__section" aria-labelledby="report-contact-title">
+                <div className="passenger-report-form__section-heading">
+                  <h2 id="report-contact-title">3. How we reach you</h2>
+                </div>
+                <div className="passenger-report-fields">
+                  <Field id="report-email" label="Email" error={fieldErrors.contactEmail}>
+                    <Input
+                      disabled={pageState.submitState === 'submitting'}
+                      type="email"
+                      autoComplete="email"
+                      maxLength={254}
+                      placeholder="you@example.com"
+                      value={values.contactEmail}
+                      onChange={(event) => updateValue('contactEmail', event.currentTarget.value)}
+                      id="report-email"
+                      aria-invalid={Boolean(fieldErrors.contactEmail)}
+                      aria-describedby={fieldErrors.contactEmail ? 'report-email-error' : undefined}
+                    />
+                  </Field>
+                  <Field id="report-phone" label="Phone" error={fieldErrors.contactPhone}>
+                    <Input
+                      disabled={pageState.submitState === 'submitting'}
+                      type="tel"
+                      autoComplete="tel"
+                      maxLength={30}
+                      placeholder="+66 …"
+                      value={values.contactPhone}
+                      onChange={(event) => updateValue('contactPhone', event.currentTarget.value)}
+                      id="report-phone"
+                      aria-invalid={Boolean(fieldErrors.contactPhone)}
+                      aria-describedby={fieldErrors.contactPhone ? 'report-phone-error' : undefined}
+                    />
+                  </Field>
+                </div>
+                {fieldErrors.contact && (
+                  <p className="passenger-report-field__error" role="alert">
+                    {fieldErrors.contact}
+                  </p>
+                )}
+                <p className="passenger-report-form__hint">Give at least one. We only use it for this case.</p>
+                {pageState.submitError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{pageState.submitError}</AlertDescription>
+                  </Alert>
+                )}
+                <div className="passenger-report-form__submit-row">
+                  <Button
+                    type="submit"
+                    disabled={
+                      pageState.submitState === 'submitting' || pageState.flightState !== 'loaded' || pageState.flights.length === 0
+                    }
+                  >
+                    {pageState.submitState === 'submitting' ? (photo ? 'Sending photo and report…' : 'Sending report…') : 'Send report'}
+                  </Button>
+                </div>
+              </section>
+            </form>
+            <aside className="passenger-report-sidebar">
+              <WhatHappensNext />
+              <Card className="passenger-report-card passenger-report-existing gap-0 py-0">
+                <h2>Already reported?</h2>
+                <p>Open My bag case with your case number, booking reference and surname.</p>
+                <Button asChild variant="outline">
+                  <Link to="/lost-bag-case">Check my case</Link>
+                </Button>
+              </Card>
+            </aside>
+          </div>
+        )}
+        {photoPreviewUrl && (
+          <Dialog open={isPhotoEnlarged} onOpenChange={setIsPhotoEnlarged}>
+            <DialogContent className="sm:max-w-3xl">
+              <DialogTitle>Selected photo</DialogTitle>
+              <DialogDescription className="sr-only">Enlarged preview of the photo you selected.</DialogDescription>
+              <img className="max-h-[70vh] w-full rounded-md object-contain" src={photoPreviewUrl} alt="Selected photo, enlarged" />
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
+    </Page>
   )
 }
 

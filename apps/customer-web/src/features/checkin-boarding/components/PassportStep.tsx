@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button } from '@customer-web/components/ui/button'
 import type { FlowError } from './flow-error.ts'
 import { MRZ_CHECKS, inlineMrzChecks, mrzLineReady } from './mrz-input.ts'
 import { Message } from './Message.tsx'
@@ -96,12 +97,12 @@ export function PassportStep({
       ) : null}
 
       <div className={styles.actions}>
-        <button className={styles.ghostButton} type="button" onClick={onBack} disabled={busy}>
+        <Button variant="outline" type="button" onClick={onBack} disabled={busy}>
           Back
-        </button>
-        <button className={styles.button} type="submit" disabled={busy || !ready}>
+        </Button>
+        <Button type="submit" disabled={busy || !ready}>
           {busy ? 'Checking…' : 'Check passport'}
-        </button>
+        </Button>
       </div>
     </form>
   )

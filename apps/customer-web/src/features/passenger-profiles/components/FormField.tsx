@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from 'react'
-import { Field, FieldDescription, FieldLabel } from '@customer-web/components/ui/field'
+import { Field } from '@customer-web/components/ui/field'
 
 /** A labelled control: wires the label's `htmlFor` and the optional hint's id to the control rendered by `children`. */
 export default function FormField({
@@ -16,10 +16,8 @@ export default function FormField({
   const id = useId()
   const hintId = hint ? `${id}-hint` : undefined
   return (
-    <Field className={className}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+    <Field id={id} label={label} hint={hint} className={className}>
       {children({ id, hintId })}
-      {hint && <FieldDescription id={hintId}>{hint}</FieldDescription>}
     </Field>
   )
 }

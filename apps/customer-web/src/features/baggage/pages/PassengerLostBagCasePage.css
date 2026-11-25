@@ -1,43 +1,9 @@
-/* Full-width page: overrides the app's centred #root column while this page is mounted. */
-#root:has(.passenger-case-page) {
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
-  border-inline: 0;
-  background: var(--muted);
-}
-
 .passenger-case-page {
-  width: 100%;
-  min-height: 100svh;
-  margin: 0;
-  padding: 2rem 8.3% 4rem;
-  box-sizing: border-box;
-  background: var(--muted);
   color: var(--foreground);
   color-scheme: light;
   font-family: var(--font-sans);
   letter-spacing: normal;
   text-align: left;
-}
-
-.passenger-case-page__intro {
-  margin-bottom: 1.25rem;
-}
-
-.passenger-case-page__intro h1 {
-  margin: 0 0 0.35rem;
-  color: var(--foreground);
-  font-family: var(--font-sans);
-  font-size: clamp(1.875rem, 4vw, 2.25rem);
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  line-height: 1.2;
-}
-
-.passenger-case-page__intro p {
-  color: var(--muted-foreground);
-  line-height: 1.4;
 }
 
 .passenger-case-access,
@@ -394,10 +360,6 @@
 }
 
 @media (max-width: 760px) {
-  .passenger-case-page {
-    padding: 1.25rem 1.5rem 2.5rem;
-  }
-
   .passenger-case-access {
     padding: 1rem;
   }

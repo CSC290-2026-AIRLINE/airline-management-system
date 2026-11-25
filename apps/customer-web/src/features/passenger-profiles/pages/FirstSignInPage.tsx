@@ -70,7 +70,7 @@ export default function FirstSignInPage() {
     }
   }
   return (
-    <AccountPage className="max-w-xl">
+    <AccountPage width="narrow">
       <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground" aria-label="Account setup progress">
         {steps.map((step, index) => (
           <li key={step.label} className="flex items-center gap-2" aria-current={step.state === 'current' ? 'step' : undefined}>

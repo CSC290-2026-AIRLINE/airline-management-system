@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client'
 import { ClerkProvider, useAuth } from '@clerk/clerk-react'
 import { RouterProvider } from '@tanstack/react-router'
 import './index.css'
-import './App.css'
 import { router } from './router'
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined

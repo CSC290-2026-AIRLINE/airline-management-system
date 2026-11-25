@@ -17,7 +17,7 @@ const TABS: { id: CategoryTab; label: string }[] = [
 export function CategoryTabs({ active, onSelect }: Props) {
   return (
     <Tabs value={active} onValueChange={(value) => onSelect(value as CategoryTab)}>
-      <TabsList aria-label="Product category" className="h-auto w-full flex-wrap justify-start sm:w-fit">
+      <TabsList variant="pill" aria-label="Product category" className="h-auto w-full flex-wrap justify-start sm:w-fit">
         {TABS.map((t) => (
           <TabsTrigger key={t.id} value={t.id} className="px-4 py-2">
             {t.label}

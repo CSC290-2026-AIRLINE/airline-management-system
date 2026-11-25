@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Button } from '@customer-web/components/ui/button'
 import type { CheckInApi } from '../api/client.ts'
 import type { CheckInView, SeatLock, SeatMap as SeatMapModel, SeatType } from '../api/types.ts'
 import { formatBaht } from '../format.ts'
@@ -163,21 +164,16 @@ export function SeatStep({
       ) : null}
 
       <div className={`${styles.actions} ${styles.actionsSplit}`}>
-        <button className={styles.ghostButton} type="button" onClick={onBack} disabled={busy || holding}>
+        <Button variant="outline" type="button" onClick={onBack} disabled={busy || holding}>
           Back
-        </button>
+        </Button>
         <div className={styles.actionGroup}>
-          <button className={styles.ghostButton} type="button" onClick={onSkip} disabled={busy || holding}>
+          <Button variant="outline" type="button" onClick={onSkip} disabled={busy || holding}>
             Skip, give me a free seat
-          </button>
-          <button
-            className={styles.button}
-            type="button"
-            onClick={() => activeLock && onConfirm(activeLock.id)}
-            disabled={busy || !activeLock}
-          >
+          </Button>
+          <Button type="button" onClick={() => activeLock && onConfirm(activeLock.id)} disabled={busy || !activeLock}>
             {activeLock && activeLock.fee > 0 ? `Pay ${formatBaht(activeLock.fee)} and continue` : 'Keep this seat'}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

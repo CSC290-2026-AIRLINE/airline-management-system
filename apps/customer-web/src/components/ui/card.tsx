@@ -1,11 +1,28 @@
 import * as React from 'react'
 import { cn } from '@customer-web/lib/utils'
 
-function Card({ className, ...props }: React.ComponentProps<'div'>) {
+/*
+ * The one card (redesign board 7): white surface, 1 px line border, 14 px radius, 24 px padding, no shadow at rest.
+ * A card that is a link or a choice is `interactive` (raised on hover) and shows `selected` with a navy border and tint;
+ * a card that is only a container stays flat.
+ */
+function Card({
+  className,
+  interactive = false,
+  selected = false,
+  ...props
+}: React.ComponentProps<'div'> & { interactive?: boolean; selected?: boolean }) {
   return (
     <div
       data-slot="card"
-      className={cn('flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm', className)}
+      data-interactive={interactive || undefined}
+      data-selected={selected || undefined}
+      className={cn(
+        'flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground transition-shadow',
+        'data-[interactive]:cursor-pointer data-[interactive]:hover:shadow-raised',
+        'data-[selected]:border-navy data-[selected]:bg-info-tint',
+        className,
+      )}
       {...props}
     />
   )

@@ -1,10 +1,11 @@
 import { GENDER_OPTIONS, fillFromSaved, type SavedTraveller } from './saved-travellers'
+import { Button } from '@customer-web/components/ui/button'
 import { Input } from '@customer-web/components/ui/input'
 import type { FormEvent, ReactNode } from 'react'
 import type { SearchItinerary } from '../../booking-search/pages/FlightSearchPage'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/cw-select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@customer-web/components/ui/select'
 import { DatePicker } from '@customer-web/components/ui/date-picker'
-import { Field } from '@customer-web/components/ui/cw-field'
+import { Field } from '@customer-web/components/ui/field'
 import {
   ageAt,
   contactFieldId,
@@ -314,19 +315,10 @@ export function PassengersPage({
         </p>
       )}
       <div className="flex flex-col-reverse items-stretch justify-between gap-3 sm:flex-row sm:items-center">
-        <button
-          type="button"
-          className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border bg-background px-4 text-sm font-medium whitespace-nowrap shadow-xs transition-all outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-          onClick={onBack}
-        >
+        <Button variant="outline" type="button" onClick={onBack}>
           Back to flights
-        </button>
-        <button
-          type="submit"
-          className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-medium whitespace-nowrap text-primary-foreground shadow-xs transition-all outline-none hover:bg-primary/90 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-        >
-          Continue to seats
-        </button>
+        </Button>
+        <Button type="submit">Continue to seats</Button>
       </div>
     </form>
   )
