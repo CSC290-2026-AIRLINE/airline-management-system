@@ -23,6 +23,13 @@ const CABINS = [
   { cabin: 'first', seats: 4, fare: 36000 },
 ]
 const CAUSES = ['weather', 'technical', 'crew', 'air_traffic_control', 'airport_operations']
+// Extra revenue lines: [line type, sales per day range, average price].
+const EXTRA_LINES: [string, number, number, number][] = [
+  ['baggage', 40, 120, 1200],
+  ['upgrade', 3, 15, 6500],
+  ['onboard_order', 60, 200, 280],
+  ['insurance', 10, 45, 450],
+]
 
 // A small seeded random generator, so the same numbers come out on every run.
 let seed = 20261101
@@ -54,6 +61,7 @@ async function main(): Promise<void> {
       'bi_flight_delay',
       'bi_flight_cabin',
       'bi_flight',
+      'bi_extra_revenue_day',
       'bi_aircraft_downtime',
       'bi_aircraft',
       'bi_route',
@@ -102,11 +110,18 @@ async function main(): Promise<void> {
         }
         revenue = money(revenue)
         const refund = !cancelled && rand() < 0.2 ? money(revenue * 0.03) : 0
+        // Gate-close counts (NULL for a cancelled flight, as the refresh leaves them). Booked is the seats sold.
+        const booked = cancelled ? null : cabinRows.reduce((sum, [, , sold]) => sum + sold, 0)
+        const denied = booked === null ? null : rand() < 0.1 ? between(1, 2) : 0
+        const noShow = booked === null ? null : Math.round(booked * (0.02 + rand() * 0.08))
+        const boarded = booked === null ? null : booked - denied! - noShow!
+        const blockMinutes = cancelled ? null : between(75, 180)
 
         await db.query(
           `INSERT INTO bi_flight (flight_id, route_id, flight_number, flight_date, status, scheduled_departure_at,
-             actual_departure_at, delay_minutes, revenue_amount, refund_amount, aircraft_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+             actual_departure_at, delay_minutes, revenue_amount, refund_amount, aircraft_id, block_minutes,
+             booked_count, boarded_count, denied_count, no_show_count)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
           [
             flightId,
             route.route_id,
@@ -119,6 +134,11 @@ async function main(): Promise<void> {
             revenue,
             refund,
             aircraft[flights % aircraft.length].aircraft_id,
+            blockMinutes,
+            booked,
+            boarded,
+            denied,
+            noShow,
           ],
         )
         for (const [cabin, available, sold] of cabinRows) {
@@ -150,6 +170,34 @@ async function main(): Promise<void> {
           between(2, 12),
         ])
       }
+    }
+
+    for (const day of days) {
+      for (const [lineType, lo, hi, price] of EXTRA_LINES) {
+        const count = between(lo, hi)
+        const amount = money(count * price * (0.9 + rand() * 0.2))
+        const refund = rand() < 0.3 ? money(amount * (0.01 + rand() * 0.05)) : 0
+        await db.query(
+          'INSERT INTO bi_extra_revenue_day (revenue_date, line_type, line_count, amount, refund_amount) VALUES ($1, $2, $3, $4, $5)',
+          [day, lineType, count, amount, refund],
+        )
+      }
+    }
+
+    // A few grounded and maintenance periods, spread over the fleet and the date range.
+    const DOWNTIME: [number, 'grounded' | 'in_maintenance', string, number, number][] = [
+      [0, 'in_maintenance', 'a_check', 3, 5],
+      [2, 'grounded', 'Bird strike inspection', 10, 11],
+      [4, 'in_maintenance', 'c_check', 14, 27],
+      [7, 'in_maintenance', 'a_check', 20, 21],
+      [9, 'grounded', 'Awaiting spare part', 28, 33],
+    ]
+    for (const [index, status, reason, startDay, endDay] of DOWNTIME) {
+      if (index >= aircraft.length) continue
+      await db.query(
+        'INSERT INTO bi_aircraft_downtime (period_id, aircraft_id, status, reason, start_date, end_date) VALUES ($1, $2, $3, $4, $5, $6)',
+        [randomUUID(), aircraft[index].aircraft_id, status, reason, days[startDay], days[Math.min(endDay, days.length - 1)]],
+      )
     }
 
     // The same aggregation the refresh runs, so the daily figures agree with a real refresh.
