@@ -1,6 +1,15 @@
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { faker } from '@faker-js/faker'
 import { PrismaPg } from '@prisma/adapter-pg'
+import { SELF_REGISTER_SCREENS } from '@backend/modules/admin-console/self-register'
+import { F06_SCREENS } from '@backend/modules/checkin-boarding/checkin-boarding.screens'
+import { F08_SCREENS } from '@backend/modules/crew-rostering/crew-rostering.screens'
+import { seedCrewRosteringDemo } from '@backend/modules/crew-rostering/seed/crew-rostering-demo.seed'
+import { F13_SCREENS } from '@backend/modules/customer-service/customer-service.constants'
+import { F11_SCREENS } from '@backend/modules/loyalty/screens'
+import { F5_SCREENS } from '@backend/modules/payments-checkout/guards/f5-screens'
+import { F04_SCREENS } from '@backend/modules/pricing/pricing.screens'
 import { PrismaClient } from './generated/prisma/client'
 import { seedFeature6 } from './seed-f6'
 import { seedF12 } from './seed-f12'
@@ -11,9 +20,32 @@ try {
   // .env is optional (e.g. DATABASE_URL provided by the shell/CI)
 }
 
-const CUSTOMER_COUNT = 3
-const STAFF_COUNT = 2
-const REFRESH_TOKENS_PER_USER = 2
+faker.seed(2026)
+
+// Deterministic RFC-4122 UUID helper so every demo/reference row stays idempotent across reruns.
+const sid = (prefix: string, n: number): string => {
+  const h = createHash('sha256').update(`flython-seed:${prefix}:${n}`).digest('hex')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`
+}
+
+const HOUR_MS = 3_600_000
+const DAY_MS = 86_400_000
+const NOW = new Date()
+const TODAY_UTC = new Date(Date.UTC(NOW.getUTCFullYear(), NOW.getUTCMonth(), NOW.getUTCDate()))
+
+const utcDate = (offsetDays: number): Date => new Date(TODAY_UTC.getTime() + offsetDays * DAY_MS)
+const utcDateTime = (offsetDays: number, hourUtc: number, minuteUtc = 0): Date =>
+  new Date(TODAY_UTC.getTime() + offsetDays * DAY_MS + hourUtc * HOUR_MS + minuteUtc * 60_000)
+const addMinutes = (d: Date, minutes: number): Date => new Date(d.getTime() + minutes * 60_000)
+const timeOfDay = (hhmm: string): Date => new Date(`1970-01-01T${hhmm}:00Z`)
+const monthStart = (monthsAgo: number): Date => new Date(Date.UTC(NOW.getUTCFullYear(), NOW.getUTCMonth() - monthsAgo, 1))
+
+// Valid 11-digit AWB number: 3-digit airline prefix + 7-digit serial + (serial % 7) check digit.
+const makeAwb = (serial: number): string => {
+  const s = String(serial).padStart(7, '0')
+  return `${BAG_TAG_AIRLINE_NUMBER}${s}${serial % 7}`
+}
+
 const STAFF_ROLES = [
   { code: 'check-in', name: 'Check-in', is_admin: false },
   { code: 'gate', name: 'Gate', is_admin: false },
@@ -21,32 +53,218 @@ const STAFF_ROLES = [
   { code: 'admin', name: 'Admin', is_admin: true },
   { code: 'cs-agent', name: 'CS Agent', is_admin: false },
   { code: 'cs-supervisor', name: 'CS Supervisor', is_admin: false },
+  { code: 'security', name: 'Security', is_admin: false },
+  { code: 'loyalty-admin', name: 'Loyalty Admin', is_admin: false },
+  { code: 'ops', name: 'Operations', is_admin: false },
+  { code: 'finance', name: 'Finance', is_admin: false },
+  { code: 'cargo', name: 'Cargo', is_admin: false },
 ]
-const GENDERS = ['M', 'F', 'X']
+
+const CORE_STAFF_SEEDS = [
+  { email: 'admin@flython.com', first_name: 'Arthit', last_name: 'Srisuk', role: 'admin' },
+  { email: 'ops@flython.com', first_name: 'Nattapong', last_name: 'Charoen', role: 'ops' },
+  { email: 'security@flython.com', first_name: 'Vichai', last_name: 'Phanit', role: 'security' },
+  { email: 'finance@flython.com', first_name: 'Siriporn', last_name: 'Rattana', role: 'finance' },
+  { email: 'checkin@flython.com', first_name: 'Pimchanok', last_name: 'Wongsa', role: 'check-in' },
+  { email: 'gate@flython.com', first_name: 'Teerapat', last_name: 'Boonmee', role: 'gate' },
+  { email: 'baggage@flython.com', first_name: 'Supaporn', last_name: 'Kaewsai', role: 'baggage' },
+  { email: 'loyalty@flython.com', first_name: 'Kanokwan', last_name: 'Maneerat', role: 'loyalty-admin' },
+  { email: 'cargo@flython.com', first_name: 'Chaiwat', last_name: 'Thongdee', role: 'cargo' },
+]
+
+const DEMO_CUSTOMER_PROFILES = [
+  {
+    key: 'arun',
+    email: 'arun.s@example.com',
+    first_name: 'Arun',
+    last_name: 'Sawatdee',
+    local_first_name: 'อรุณ',
+    local_last_name: 'สวัสดี',
+    dob: '1988-05-14',
+    gender: 'M',
+    nationality: 'th',
+    passport: 'AA4019283',
+    phone: '+66 81 100 0001',
+  },
+  {
+    key: 'nattaya',
+    email: 'nattaya.p@example.com',
+    first_name: 'Nattaya',
+    last_name: 'Prasert',
+    local_first_name: 'ณัฐยา',
+    local_last_name: 'ประเสริฐ',
+    dob: '1992-09-21',
+    gender: 'F',
+    nationality: 'th',
+    passport: 'AA5129384',
+    phone: '+66 81 100 0002',
+  },
+  {
+    key: 'hiroshi',
+    email: 'hiroshi.t@example.com',
+    first_name: 'Hiroshi',
+    last_name: 'Tanaka',
+    local_first_name: '博',
+    local_last_name: '田中',
+    dob: '1984-03-08',
+    gender: 'M',
+    nationality: 'jp',
+    passport: 'JP8839201',
+    phone: '+81 90 1234 5678',
+  },
+  {
+    key: 'claire',
+    email: 'claire.m@example.com',
+    first_name: 'Claire',
+    last_name: 'Martin',
+    local_first_name: null,
+    local_last_name: null,
+    dob: '1995-11-30',
+    gender: 'F',
+    nationality: 'fr',
+    passport: 'FR7748291',
+    phone: '+33 6 12 34 56 78',
+  },
+  {
+    key: 'wei',
+    email: 'wei.lim@example.com',
+    first_name: 'Wei',
+    last_name: 'Lim',
+    local_first_name: null,
+    local_last_name: null,
+    dob: '1990-07-19',
+    gender: 'M',
+    nationality: 'sg',
+    passport: 'SG3928174',
+    phone: '+65 9123 4567',
+  },
+  {
+    key: 'chidi',
+    email: 'chidi.o@example.com',
+    first_name: 'Chidi',
+    last_name: 'Okafor',
+    local_first_name: null,
+    local_last_name: null,
+    dob: '1987-01-25',
+    gender: 'M',
+    nationality: 'ng',
+    passport: 'NG6612390',
+    phone: '+234 803 123 4567',
+  },
+  {
+    key: 'viktor',
+    email: 'viktor.k@example.com',
+    first_name: 'Viktor',
+    last_name: 'Kovalenko',
+    local_first_name: null,
+    local_last_name: null,
+    dob: '1982-08-12',
+    gender: 'M',
+    nationality: 'ua',
+    passport: 'UA9045123',
+    phone: '+380 50 123 4567',
+  },
+  {
+    key: 'elena',
+    email: 'elena.v@example.com',
+    first_name: 'Elena',
+    last_name: 'Vance',
+    local_first_name: null,
+    local_last_name: null,
+    dob: '1991-04-03',
+    gender: 'F',
+    nationality: 'gb',
+    passport: 'GB5512904',
+    phone: '+44 7700 900123',
+  },
+] as const
 
 // Feature 2's demo network. HKT has no approval policy and its routes have no partner, so both cases can be tried.
 const AIRPORTS = [
-  { iata_code: 'BKK', icao_code: 'VTBS', name: 'Suvarnabhumi', city: 'Bangkok', min_turnaround_min: 45 },
-  { iata_code: 'CNX', icao_code: 'VTCC', name: 'Chiang Mai', city: 'Chiang Mai', min_turnaround_min: 40 },
-  { iata_code: 'HKT', icao_code: 'VTSP', name: 'Phuket', city: 'Phuket', min_turnaround_min: 40 },
-].map((airport) => ({ ...airport, country: 'th', timezone: 'Asia/Bangkok' }))
+  {
+    iata_code: 'BKK',
+    icao_code: 'VTBS',
+    name: 'Suvarnabhumi',
+    city: 'Bangkok',
+    country: 'th',
+    timezone: 'Asia/Bangkok',
+    min_turnaround_min: 45,
+  },
+  {
+    iata_code: 'CNX',
+    icao_code: 'VTCC',
+    name: 'Chiang Mai',
+    city: 'Chiang Mai',
+    country: 'th',
+    timezone: 'Asia/Bangkok',
+    min_turnaround_min: 40,
+  },
+  { iata_code: 'HKT', icao_code: 'VTSP', name: 'Phuket', city: 'Phuket', country: 'th', timezone: 'Asia/Bangkok', min_turnaround_min: 40 },
+  {
+    iata_code: 'DMK',
+    icao_code: 'VTBD',
+    name: 'Don Mueang',
+    city: 'Bangkok',
+    country: 'th',
+    timezone: 'Asia/Bangkok',
+    min_turnaround_min: 40,
+  },
+  { iata_code: 'NRT', icao_code: 'RJAA', name: 'Narita', city: 'Tokyo', country: 'jp', timezone: 'Asia/Tokyo', min_turnaround_min: 60 },
+  { iata_code: 'ICN', icao_code: 'RKSI', name: 'Incheon', city: 'Seoul', country: 'kr', timezone: 'Asia/Seoul', min_turnaround_min: 60 },
+  {
+    iata_code: 'SIN',
+    icao_code: 'WSSS',
+    name: 'Changi',
+    city: 'Singapore',
+    country: 'sg',
+    timezone: 'Asia/Singapore',
+    min_turnaround_min: 45,
+  },
+  {
+    iata_code: 'HKG',
+    icao_code: 'VHHH',
+    name: 'Hong Kong Intl',
+    city: 'Hong Kong',
+    country: 'hk',
+    timezone: 'Asia/Hong_Kong',
+    min_turnaround_min: 45,
+  },
+  {
+    iata_code: 'KIX',
+    icao_code: 'RJBB',
+    name: 'Kansai Intl',
+    city: 'Osaka',
+    country: 'jp',
+    timezone: 'Asia/Tokyo',
+    min_turnaround_min: 50,
+  },
+]
 const PARTNER_AIRLINES = [
   { code: 'PA', name: 'Partner Air' },
   { code: 'SC', name: 'Sky Connect' },
+  { code: 'JL', name: 'Japan Partner Air' },
+  { code: 'SQ', name: 'Lion City Wings' },
 ]
 const ROUTES = [
   { origin: 'BKK', destination: 'CNX', distance_km: 596, block_time_min: 75, partners: ['PA'] },
   { origin: 'CNX', destination: 'BKK', distance_km: 596, block_time_min: 75, partners: ['PA', 'SC'] },
   { origin: 'BKK', destination: 'HKT', distance_km: 675, block_time_min: 85, partners: [] },
   { origin: 'HKT', destination: 'BKK', distance_km: 675, block_time_min: 85, partners: [] },
+  { origin: 'BKK', destination: 'SIN', distance_km: 1418, block_time_min: 140, partners: ['SQ'] },
+  { origin: 'SIN', destination: 'BKK', distance_km: 1418, block_time_min: 140, partners: ['SQ'] },
+  { origin: 'BKK', destination: 'HKG', distance_km: 1689, block_time_min: 165, partners: ['PA'] },
+  { origin: 'HKG', destination: 'BKK', distance_km: 1689, block_time_min: 165, partners: ['PA'] },
+  { origin: 'BKK', destination: 'NRT', distance_km: 4600, block_time_min: 390, partners: ['JL'] },
+  { origin: 'NRT', destination: 'BKK', distance_km: 4600, block_time_min: 410, partners: ['JL'] },
+  { origin: 'BKK', destination: 'ICN', distance_km: 3700, block_time_min: 330, partners: ['SC'] },
+  { origin: 'ICN', destination: 'BKK', distance_km: 3700, block_time_min: 330, partners: ['SC'] },
 ]
 const APPROVAL_POLICIES = [
   { airport: 'BKK', curfew_start_local: '00:00', curfew_end_local: '05:00', max_departure_per_hour: 20, offer_style: 'slots' },
   { airport: 'CNX', curfew_start_local: '23:00', curfew_end_local: '06:00', max_departure_per_hour: 8, offer_style: 'window' },
+  { airport: 'NRT', curfew_start_local: '23:00', curfew_end_local: '06:00', max_departure_per_hour: 15, offer_style: 'slots' },
+  { airport: 'SIN', curfew_start_local: '01:00', curfew_end_local: '05:00', max_departure_per_hour: 25, offer_style: 'window' },
 ]
-// Feature 2's demo reference data, so the staff screens can be tried straight after a seed: the fixed disruption reasons (one per category),
-// the airline code, two aircraft types, four aircraft and the four repeat patterns of the demo network. The aircraft belong to Feature 9;
-// they are upserted by their tail number, so its own seed can replace them. Currency rates for the cost estimate are seeded with the staff.
 const DISRUPTION_REASONS = [
   { code: 'WX', category: 'weather', description: 'Weather' },
   { code: 'TECH', category: 'technical', description: 'Technical fault' },
@@ -57,11 +275,58 @@ const DISRUPTION_REASONS = [
   { code: 'OTH', category: 'other', description: 'Other' },
 ]
 const AIRLINE_CODE = 'XX'
-// Layouts use Feature 9's cabin format (docs/f9-g3.md, "Seat map layout JSON"): one all-economy cabin each, 180 and 72 seats.
+
+// Layouts use Feature 9's cabin format (docs/f9-g3.md, "Seat map layout JSON").
 const A320_LAYOUT = {
   cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 30, columns: ['A', 'B', 'C', 'D', 'E', 'F'], aisle_after: ['C'] }],
 }
-const ATR72_LAYOUT = { cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 18, columns: ['A', 'B', 'C', 'D'], aisle_after: ['B'] }] }
+const ATR72_LAYOUT = {
+  cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 18, columns: ['A', 'B', 'C', 'D'], aisle_after: ['B'] }],
+}
+const A321NEO_LAYOUT = {
+  cabins: [
+    { cabin_class: 'business', first_row: 1, last_row: 4, columns: ['A', 'C', 'D', 'F'], aisle_after: ['C'] },
+    {
+      cabin_class: 'premium_economy',
+      first_row: 5,
+      last_row: 8,
+      columns: ['A', 'B', 'C', 'D', 'E', 'F'],
+      aisle_after: ['C'],
+      row_types: { extra_legroom: [5] },
+    },
+    {
+      cabin_class: 'economy',
+      first_row: 9,
+      last_row: 32,
+      columns: ['A', 'B', 'C', 'D', 'E', 'F'],
+      aisle_after: ['C'],
+      row_types: { exit_row: [14, 15], extra_legroom: [9, 10] },
+    },
+  ],
+}
+const B777_LAYOUT = {
+  cabins: [
+    { cabin_class: 'first', first_row: 1, last_row: 2, columns: ['A', 'D', 'G', 'K'], aisle_after: ['A', 'G'] },
+    { cabin_class: 'business', first_row: 3, last_row: 10, columns: ['A', 'C', 'D', 'G', 'H', 'K'], aisle_after: ['C', 'G'] },
+    {
+      cabin_class: 'premium_economy',
+      first_row: 11,
+      last_row: 15,
+      columns: ['A', 'B', 'D', 'E', 'F', 'G', 'J', 'K'],
+      aisle_after: ['B', 'G'],
+      row_types: { extra_legroom: [11] },
+    },
+    {
+      cabin_class: 'economy',
+      first_row: 16,
+      last_row: 40,
+      columns: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'K'],
+      aisle_after: ['C', 'G'],
+      row_types: { exit_row: [25], extra_legroom: [16, 17] },
+    },
+  ],
+}
+
 const AIRCRAFT_TYPES = [
   {
     code: 'A320',
@@ -87,60 +352,115 @@ const AIRCRAFT_TYPES = [
     operating_cost_per_hour: 1800,
     cost_currency: 'USD',
   },
+  {
+    code: 'A321NEO',
+    manufacturer: 'Airbus',
+    model: 'A321neo',
+    layout: A321NEO_LAYOUT,
+    hold_weight_limit_kg: 22000,
+    max_takeoff_weight_kg: 97000,
+    max_range_km: 7400,
+    min_turnaround_minutes: 50,
+    operating_cost_per_hour: 5200,
+    cost_currency: 'USD',
+  },
+  {
+    code: 'B777',
+    manufacturer: 'Boeing',
+    model: '777-300ER',
+    layout: B777_LAYOUT,
+    hold_weight_limit_kg: 32000,
+    max_takeoff_weight_kg: 351500,
+    max_range_km: 13650,
+    min_turnaround_minutes: 75,
+    operating_cost_per_hour: 11800,
+    cost_currency: 'USD',
+  },
 ]
+
 const AIRCRAFT = [
-  { tail_number: 'HS-XA1', type: 'A320', base_airport_code: 'BKK' },
-  { tail_number: 'HS-XA2', type: 'A320', base_airport_code: 'BKK' },
-  { tail_number: 'HS-XA3', type: 'A320', base_airport_code: 'CNX' },
-  { tail_number: 'HS-XT1', type: 'ATR72', base_airport_code: 'HKT' },
+  { tail_number: 'HS-XA1', type: 'A320', base_airport_code: 'BKK', entry_date: '2024-01-15' },
+  { tail_number: 'HS-XA2', type: 'A320', base_airport_code: 'BKK', entry_date: '2024-01-15' },
+  { tail_number: 'HS-XA3', type: 'A320', base_airport_code: 'CNX', entry_date: '2024-01-15' },
+  { tail_number: 'HS-XT1', type: 'ATR72', base_airport_code: 'HKT', entry_date: '2024-01-15' },
+  { tail_number: 'HS-XT2', type: 'ATR72', base_airport_code: 'CNX', entry_date: '2023-06-01' },
+  { tail_number: 'HS-XN1', type: 'A321NEO', base_airport_code: 'BKK', entry_date: '2024-06-10' },
+  { tail_number: 'HS-XN2', type: 'A321NEO', base_airport_code: 'BKK', entry_date: '2024-09-20' },
+  { tail_number: 'HS-XW1', type: 'B777', base_airport_code: 'BKK', entry_date: '2023-03-15' },
 ]
+
 const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7]
 const PATTERNS = [
   { flight_number: 'XX101', origin: 'BKK', destination: 'CNX', dep_time_local: '08:00', days_of_week: ALL_DAYS },
   { flight_number: 'XX102', origin: 'CNX', destination: 'BKK', dep_time_local: '10:30', days_of_week: ALL_DAYS },
   { flight_number: 'XX201', origin: 'BKK', destination: 'HKT', dep_time_local: '13:00', days_of_week: [1, 3, 5] },
   { flight_number: 'XX202', origin: 'HKT', destination: 'BKK', dep_time_local: '15:30', days_of_week: [1, 3, 5] },
+  { flight_number: 'XX301', origin: 'BKK', destination: 'SIN', dep_time_local: '09:00', days_of_week: ALL_DAYS },
+  { flight_number: 'XX302', origin: 'SIN', destination: 'BKK', dep_time_local: '13:00', days_of_week: ALL_DAYS },
+  { flight_number: 'XX401', origin: 'BKK', destination: 'HKG', dep_time_local: '10:00', days_of_week: [1, 2, 4, 6, 7] },
+  { flight_number: 'XX402', origin: 'HKG', destination: 'BKK', dep_time_local: '14:30', days_of_week: [1, 2, 4, 6, 7] },
 ]
 const PATTERN_DAYS = 75
+
 // 1 USD is about 35 THB; the table holds units of the currency per unit of the base (THB).
-const CURRENCY_RATES = [{ currency_code: 'USD', rate_per_base: 0.028571 }]
+const CURRENCY_RATES = [
+  { currency_code: 'USD', rate_per_base: 0.028571 },
+  { currency_code: 'EUR', rate_per_base: 0.0265 },
+  { currency_code: 'JPY', rate_per_base: 4.35 },
+  { currency_code: 'SGD', rate_per_base: 0.0385 },
+  { currency_code: 'GBP', rate_per_base: 0.0225 },
+  { currency_code: 'HKD', rate_per_base: 0.2225 },
+]
 
 const PRICING_SETTINGS = [
   { key: 'quote_hold_minutes', value: '15' },
   { key: 'base_currency', value: 'THB' },
 ]
 
-// Feature 6: the final demo needs two gates at one airport. The visa rows are examples, not real visa policy
-// (no row means no visa is needed), and the bag tag airline number is the doc's placeholder.
+// Feature 6: gates, visa examples, and bag tag airline number.
 const GATES = [
   { airport_code: 'BKK', code: 'A1' },
   { airport_code: 'BKK', code: 'A2' },
+  { airport_code: 'BKK', code: 'A3' },
+  { airport_code: 'BKK', code: 'B1' },
+  { airport_code: 'CNX', code: 'C1' },
+  { airport_code: 'CNX', code: 'C2' },
+  { airport_code: 'HKT', code: 'D1' },
+  { airport_code: 'NRT', code: 'N1' },
+  { airport_code: 'SIN', code: 'S1' },
 ]
 const VISA_REQUIREMENTS = [
   { nationality: 'ng', destination_country: 'th', visa_required: true },
   { nationality: 'jp', destination_country: 'th', visa_required: false },
+  { nationality: 'in', destination_country: 'th', visa_required: true },
+  { nationality: 'th', destination_country: 'jp', visa_required: false },
+  { nationality: 'fr', destination_country: 'th', visa_required: false },
+  { nationality: 'ng', destination_country: 'jp', visa_required: true },
 ]
 const BAG_TAG_AIRLINE_NUMBER = '999'
 
-// Feature 10: a baggage desk at each demo airport. Placeholder numbers and example.com addresses, not real contacts.
+// Feature 10: a baggage desk at each airport.
 const STATION_CONTACTS = [
   { airport_code: 'BKK', desk_name: 'BKK Baggage Services', phone: '+66 2 000 0001', email: 'baggage.bkk@example.com' },
   { airport_code: 'CNX', desk_name: 'CNX Baggage Services', phone: '+66 53 000 001', email: 'baggage.cnx@example.com' },
   { airport_code: 'HKT', desk_name: 'HKT Baggage Services', phone: '+66 76 000 001', email: 'baggage.hkt@example.com' },
+  { airport_code: 'NRT', desk_name: 'NRT Baggage Services', phone: '+81 476 00 0001', email: 'baggage.nrt@example.com' },
+  { airport_code: 'SIN', desk_name: 'SIN Baggage Services', phone: '+65 6595 0001', email: 'baggage.sin@example.com' },
+  { airport_code: 'HKG', desk_name: 'HKG Baggage Services', phone: '+852 2181 0001', email: 'baggage.hkg@example.com' },
 ]
 
-// Feature 11: placeholder miles multipliers for Feature 4's demo fare classes, by fare class code. Feature 4's seed
-// creates the classes; a class that is not there yet gets no rule.
+// Feature 11: miles multipliers by fare class code.
 const EARN_MULTIPLIERS: Record<string, number> = { Y: 1, Q: 0.5, W: 1.25, J: 1.5, F: 2 }
 
-// Feature 5: placeholder crew pay per Feature 8 crew role, in the base currency. Staff maintain the real rates.
+// Feature 5: crew pay per Feature 8 crew role, in the base currency.
 const CREW_PAY_RATES = [
   { crew_role: 'captain', hourly_rate: 85, per_diem: 40 },
   { crew_role: 'first_officer', hourly_rate: 60, per_diem: 40 },
   { crew_role: 'cabin_crew', hourly_rate: 25, per_diem: 30 },
   { crew_role: 'police', hourly_rate: 30, per_diem: 30 },
 ]
-// Feature 4's test data. Amounts are in the base currency. docs/feature-04-test-cases.md uses these codes.
+
+// Feature 4's test data. Amounts are in the base currency.
 const FARE_CLASSES = [
   {
     code: 'Y',
@@ -157,7 +477,6 @@ const FARE_CLASSES = [
   { code: 'J', cabin: 'business', name: 'Business', refundable: true, changeable: true },
   { code: 'F', cabin: 'first', name: 'First', refundable: true, changeable: true },
 ]
-// Quotes look a seat fee up by cabin and seat type, so every pair needs a row, even when it is free.
 const SEAT_FEE_GRID = {
   economy: { normal: 0, exit_row: 300, extra_legroom: 400 },
   premium_economy: { normal: 0, exit_row: 200, extra_legroom: 300 },
@@ -169,7 +488,6 @@ const TAX_FEES = [
   { code: 'APT_FEE', name: 'Airport fee', kind: 'fee', calc_type: 'flat', value: 700 },
   { code: 'FUEL', name: 'Fuel surcharge', kind: 'surcharge', calc_type: 'flat', value: 250 },
 ]
-// The API refuses a free allowance at or above the maximum bag.
 const BAGGAGE_BY_CABIN = {
   economy: { free_allowance_kg: 20, rate_per_kg: 200, max_bag_kg: 32 },
   premium_economy: { free_allowance_kg: 25, rate_per_kg: 180, max_bag_kg: 32 },
@@ -184,45 +502,377 @@ const BAGGAGE_ROUTE_OVERRIDE = {
   rate_per_kg: 250,
   max_bag_kg: 32,
 }
-const DAY_MS = 86_400_000
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
 })
 
-// Roles are reference data (the sign-in flow looks up 'admin'), so upsert them rather than create:
-// running the seed twice, or after the Level 1 seed file, must not fail on the unique code.
-async function seedRoles(): Promise<string[]> {
-  const ids: string[] = []
+// ── F1: Roles, Staff, Customers & Sessions ───────────────────────────────────────────────────────────────────
+
+async function seedRoles(): Promise<Map<string, string>> {
+  const roleByCode = new Map<string, string>()
   for (const role of STAFF_ROLES) {
     const row = await prisma.role.upsert({ where: { code: role.code }, update: {}, create: role })
-    ids.push(row.id)
+    roleByCode.set(role.code, row.id)
   }
-  return ids
+  return roleByCode
 }
 
-// Prisma maps TIME columns to a Date and keeps only its UTC time of day.
-const timeOfDay = (hhmm: string) => new Date(`1970-01-01T${hhmm}:00Z`)
+async function ensureStaffAccount(input: {
+  email: string
+  first_name: string
+  last_name: string
+  role_id: string
+}): Promise<{ staffId: string; userId: string }> {
+  const existing = await prisma.staff.findFirst({
+    where: { user: { email: input.email, type: 'staff', deleted_at: null }, deleted_at: null },
+    select: { id: true, user_id: true },
+  })
+  if (existing) return { staffId: existing.id, userId: existing.user_id }
 
-// Upserted like the roles, with no update, so running the seed again keeps any edits made in the app.
-async function seedFlightNetwork() {
+  const user = await prisma.user.create({
+    data: {
+      type: 'staff',
+      email: input.email,
+      clerk_user_id: `user_seed_${input.email.replace(/[^a-z0-9]/gi, '_')}`,
+    },
+  })
+  const staff = await prisma.staff.create({
+    data: {
+      user_id: user.id,
+      first_name: input.first_name,
+      last_name: input.last_name,
+      role_id: input.role_id,
+      last_sign_in_at: utcDateTime(-1, 2),
+    },
+    select: { id: true, user_id: true },
+  })
+  return { staffId: staff.id, userId: staff.user_id }
+}
+
+async function seedCoreStaff(roleByCode: Map<string, string>): Promise<Map<string, { staffId: string; userId: string }>> {
+  const staffByRole = new Map<string, { staffId: string; userId: string }>()
+  for (const s of CORE_STAFF_SEEDS) {
+    const roleId = roleByCode.get(s.role)
+    if (!roleId) continue
+    const account = await ensureStaffAccount({
+      email: s.email,
+      first_name: s.first_name,
+      last_name: s.last_name,
+      role_id: roleId,
+    })
+    staffByRole.set(s.role, account)
+    const tokenCount = await prisma.refresh_token.count({ where: { user_id: account.userId } })
+    if (tokenCount === 0) {
+      await prisma.refresh_token.create({
+        data: {
+          user_id: account.userId,
+          token_hash: `seed_tok_staff_${s.role}_${faker.string.alphanumeric(24)}`,
+          expires_at: utcDate(30),
+        },
+      })
+    }
+  }
+  return staffByRole
+}
+
+interface CustomerHandle {
+  key: string
+  customerId: string
+  userId: string
+  passengerId: string
+  email: string
+  firstName: string
+  lastName: string
+}
+
+async function seedDemoCustomers(): Promise<Map<string, CustomerHandle>> {
+  const map = new Map<string, CustomerHandle>()
+  for (const c of DEMO_CUSTOMER_PROFILES) {
+    const existing = await prisma.customer.findFirst({
+      where: { user: { email: c.email, type: 'customer', deleted_at: null }, deleted_at: null },
+      select: { id: true, user_id: true, passenger_id: true },
+    })
+    if (existing) {
+      map.set(c.key, {
+        key: c.key,
+        customerId: existing.id,
+        userId: existing.user_id,
+        passengerId: existing.passenger_id,
+        email: c.email,
+        firstName: c.first_name,
+        lastName: c.last_name,
+      })
+      continue
+    }
+
+    const user = await prisma.user.create({
+      data: {
+        type: 'customer',
+        email: c.email,
+        clerk_user_id: `user_seed_cust_${c.key}`,
+      },
+    })
+    const passenger = await prisma.passenger.create({
+      data: {
+        first_name: c.first_name,
+        last_name: c.last_name,
+        local_first_name: c.local_first_name,
+        local_last_name: c.local_last_name,
+        date_of_birth: new Date(`${c.dob}T00:00:00Z`),
+        gender: c.gender,
+        nationality: c.nationality,
+        passport_number: c.passport,
+      },
+    })
+    const customer = await prisma.customer.create({
+      data: {
+        user_id: user.id,
+        passenger_id: passenger.id,
+        phone: c.phone,
+      },
+    })
+    await prisma.refresh_token.create({
+      data: {
+        user_id: user.id,
+        token_hash: `seed_tok_cust_${c.key}_${faker.string.alphanumeric(24)}`,
+        expires_at: utcDate(30),
+      },
+    })
+    map.set(c.key, {
+      key: c.key,
+      customerId: customer.id,
+      userId: user.id,
+      passengerId: passenger.id,
+      email: c.email,
+      firstName: c.first_name,
+      lastName: c.last_name,
+    })
+  }
+  return map
+}
+
+// ── F15: Screens, Role Permissions & Audit Log ───────────────────────────────────────────────────────────────
+
+async function seedAdminConsole(
+  roleByCode: Map<string, string>,
+  staffByRole: Map<string, { staffId: string; userId: string }>,
+): Promise<{ loyaltyAdjustAuditId: string; payRunAuditId: string; refundAuditId: string }> {
+  const allScreens = [
+    ...SELF_REGISTER_SCREENS,
+    ...F04_SCREENS,
+    ...F5_SCREENS,
+    ...F06_SCREENS,
+    ...F08_SCREENS,
+    ...F11_SCREENS,
+    ...F13_SCREENS,
+  ]
+  const screenByCode = new Map<string, { id: string; kind: string }>()
+  for (const s of allScreens) {
+    const kind = s.kind ?? 'assignable'
+    const featureNo = s.feature_no ?? s.code.split('.')[0].replace(/^f0?/, '')
+    const row = await prisma.screen.upsert({
+      where: { code: s.code },
+      update: {},
+      create: { code: s.code, name: s.name, kind, feature_no: featureNo, is_active: true },
+      select: { id: true, kind: true },
+    })
+    screenByCode.set(s.code, row)
+  }
+
+  const grants: Array<{ role: string; screens: string[] }> = [
+    { role: 'check-in', screens: ['f06.counter', 'f06.issues'] },
+    { role: 'gate', screens: ['f06.gate'] },
+    { role: 'cs-agent', screens: ['f13.service_compensation'] },
+    { role: 'cs-supervisor', screens: ['f13.service_compensation'] },
+    { role: 'ops', screens: ['f08.roster_runs', 'f08.crew', 'f08.rules'] },
+    { role: 'loyalty-admin', screens: ['f11.member_lookup', 'f11.loyalty_rules', 'f11.award_release', 'f11.lounge_desk'] },
+    {
+      role: 'finance',
+      screens: [
+        'f04.fare_setup',
+        'f04.pricing_rules',
+        'f04.taxes_promos',
+        'f04.expenses_payments',
+        'f04.monthly_report',
+        'f5.payment_lookup',
+        'f5.payment_exceptions',
+        'f5.refund_queue',
+        'f5.compensation_vouchers',
+      ],
+    },
+  ]
+  for (const g of grants) {
+    const roleId = roleByCode.get(g.role)
+    if (!roleId) continue
+    for (const code of g.screens) {
+      const screen = screenByCode.get(code)
+      if (!screen || screen.kind !== 'assignable') continue
+      await prisma.role_screen.upsert({
+        where: { role_id_screen_id: { role_id: roleId, screen_id: screen.id } },
+        update: {},
+        create: { role_id: roleId, screen_id: screen.id, screen_kind: 'assignable' },
+      })
+    }
+  }
+
+  const admin = staffByRole.get('admin')!
+  const finance = staffByRole.get('finance')!
+  const security = staffByRole.get('security')!
+  const loyaltyStaff = staffByRole.get('loyalty-admin')!
+  const ops = staffByRole.get('ops')!
+
+  const loyaltyAdjustAuditId = sid('a15', 1)
+  const payRunAuditId = sid('a15', 2)
+  const refundAuditId = sid('a15', 3)
+
+  const auditRows = [
+    {
+      id: loyaltyAdjustAuditId,
+      occurred_at: utcDateTime(-10, 3),
+      actor_type: 'staff',
+      actor_id: loyaltyStaff.userId,
+      actor_role: 'loyalty-admin',
+      source_feature: '11',
+      action: 'create',
+      entity_type: 'loyalty_transaction',
+      entity_id: sid('b11', 1),
+      summary: 'Credited welcome and status adjustment miles',
+      reason: 'Tier migration welcome credit',
+      after: { miles: 25000, type: 'adjust' },
+      is_sensitive: false,
+    },
+    {
+      id: payRunAuditId,
+      occurred_at: utcDateTime(-3, 9),
+      actor_type: 'staff',
+      actor_id: admin.userId,
+      actor_role: 'admin',
+      source_feature: '5',
+      action: 'status_change',
+      entity_type: 'pay_run',
+      entity_id: sid('a05', 1),
+      summary: 'Approved monthly crew pay run',
+      reason: 'Verified crew flight hours and per-diem totals',
+      before: { status: 'draft' },
+      after: { status: 'approved' },
+      is_sensitive: false,
+    },
+    {
+      id: refundAuditId,
+      occurred_at: utcDateTime(-2, 11),
+      actor_type: 'staff',
+      actor_id: admin.userId,
+      actor_role: 'admin',
+      source_feature: '5',
+      action: 'status_change',
+      entity_type: 'refund',
+      entity_id: sid('a05', 52),
+      summary: 'Approved goodwill refund outside fare rule window',
+      reason: 'Severe operational disruption exception',
+      before: { status: 'pending_approval' },
+      after: { status: 'succeeded' },
+      is_sensitive: false,
+    },
+    {
+      id: sid('a15', 4),
+      occurred_at: utcDateTime(-6, 4),
+      actor_type: 'staff',
+      actor_id: admin.userId,
+      actor_role: 'admin',
+      source_feature: '15',
+      action: 'screen_access_change',
+      entity_type: 'role',
+      entity_id: roleByCode.get('finance') ?? 'finance',
+      summary: 'Granted Finance role access to F4 and F5 screens',
+      reason: 'Initial role matrix configuration',
+      after: { screens_added: 9 },
+      is_sensitive: false,
+    },
+    {
+      id: sid('a15', 5),
+      occurred_at: utcDateTime(-4, 6),
+      actor_type: 'staff',
+      actor_id: security.userId,
+      actor_role: 'security',
+      source_feature: '7',
+      action: 'view_sensitive',
+      entity_type: 'passenger',
+      entity_id: 'watchlist-review',
+      summary: 'Viewed full passport details during screening review',
+      reason: 'Confirmed probable watchlist match against passenger document',
+      is_sensitive: true,
+    },
+    {
+      id: sid('a15', 6),
+      occurred_at: utcDateTime(-2, 7),
+      actor_type: 'staff',
+      actor_id: ops.userId,
+      actor_role: 'ops',
+      source_feature: '8',
+      action: 'update',
+      entity_type: 'rule_break',
+      entity_id: sid('a08', 90),
+      summary: 'Overrode NO_LOCAL_CREW company rule on BKK-NRT pairing',
+      reason: 'Bilingual cabin supervisor standby unavailable; approved by duty manager',
+      is_sensitive: false,
+    },
+    {
+      id: sid('a15', 7),
+      occurred_at: utcDateTime(-1, 5),
+      actor_type: 'staff',
+      actor_id: finance.userId,
+      actor_role: 'finance',
+      source_feature: '4',
+      action: 'update',
+      entity_type: 'pricing_rule',
+      entity_id: sid('a04', 1),
+      summary: 'Updated close-in urgency pricing rule (+25%)',
+      reason: 'High season yield tuning',
+      is_sensitive: false,
+    },
+    {
+      id: sid('a15', 8),
+      occurred_at: utcDateTime(-1, 2),
+      actor_type: 'staff',
+      actor_id: admin.userId,
+      actor_role: 'admin',
+      source_feature: '1',
+      action: 'sign_in',
+      entity_type: 'user',
+      entity_id: admin.userId,
+      summary: 'Admin signed in to staff console',
+      is_sensitive: false,
+    },
+  ]
+
+  await prisma.audit_log.createMany({ data: auditRows, skipDuplicates: true })
+  return { loyaltyAdjustAuditId, payRunAuditId, refundAuditId }
+}
+
+// ── F2: Flight Network, Airport Fees, Patterns ───────────────────────────────────────────────────────────────
+
+async function seedFlightNetwork(): Promise<Map<string, { id: string; distance_km: number; block_time_min: number }>> {
   for (const airport of AIRPORTS) {
     await prisma.airport.upsert({ where: { iata_code: airport.iata_code }, update: {}, create: airport })
   }
   for (const partner of PARTNER_AIRLINES) {
     await prisma.partner_airline.upsert({ where: { code: partner.code }, update: {}, create: partner })
   }
+  const routeMap = new Map<string, { id: string; distance_km: number; block_time_min: number }>()
   for (const { partners, ...route } of ROUTES) {
-    const { id } = await prisma.route.upsert({
+    const row = await prisma.route.upsert({
       where: { origin_destination: { origin: route.origin, destination: route.destination } },
       update: {},
       create: route,
+      select: { id: true, distance_km: true, block_time_min: true },
     })
+    routeMap.set(`${route.origin}-${route.destination}`, row)
     for (const partner_airline of partners) {
       await prisma.partner_airline_route.upsert({
-        where: { partner_airline_route_id: { partner_airline, route_id: id } },
+        where: { partner_airline_route_id: { partner_airline, route_id: row.id } },
         update: {},
-        create: { partner_airline, route_id: id },
+        create: { partner_airline, route_id: row.id },
       })
     }
   }
@@ -233,11 +883,47 @@ async function seedFlightNetwork() {
       create: { ...policy, curfew_start_local: timeOfDay(curfew_start_local), curfew_end_local: timeOfDay(curfew_end_local) },
     })
   }
+
+  // Airport fees (F2/F4 cost estimator)
+  const fees = [
+    { id: sid('a02', 1), airport: 'BKK', fee_type: 'landing', applies_on: 'arrival', amount: 18500, unit: 'per_flight', currency: 'THB' },
+    { id: sid('a02', 2), airport: 'BKK', fee_type: 'parking', applies_on: 'departure', amount: 3200, unit: 'per_hour', currency: 'THB' },
+    {
+      id: sid('a02', 3),
+      airport: 'BKK',
+      fee_type: 'handling',
+      applies_on: 'departure',
+      amount: 12000,
+      unit: 'per_flight',
+      currency: 'THB',
+    },
+    { id: sid('a02', 4), airport: 'CNX', fee_type: 'landing', applies_on: 'arrival', amount: 11000, unit: 'per_flight', currency: 'THB' },
+    { id: sid('a02', 5), airport: 'CNX', fee_type: 'handling', applies_on: 'departure', amount: 7500, unit: 'per_flight', currency: 'THB' },
+    { id: sid('a02', 6), airport: 'HKT', fee_type: 'landing', applies_on: 'arrival', amount: 12500, unit: 'per_flight', currency: 'THB' },
+    { id: sid('a02', 7), airport: 'NRT', fee_type: 'landing', applies_on: 'arrival', amount: 22, unit: 'per_tonne', currency: 'USD' },
+    { id: sid('a02', 8), airport: 'NRT', fee_type: 'navigation', applies_on: 'arrival', amount: 650, unit: 'per_flight', currency: 'USD' },
+    { id: sid('a02', 9), airport: 'SIN', fee_type: 'landing', applies_on: 'arrival', amount: 18, unit: 'per_tonne', currency: 'USD' },
+    { id: sid('a02', 10), airport: 'HKG', fee_type: 'landing', applies_on: 'arrival', amount: 20, unit: 'per_tonne', currency: 'USD' },
+  ]
+  for (const fee of fees) {
+    await prisma.airport_fee.upsert({
+      where: { id: fee.id },
+      update: {},
+      create: { ...fee, effective_from: new Date('2025-01-01T00:00:00Z') },
+    })
+  }
+  return routeMap
 }
 
-// Upserted like the flight network, and needs it: the patterns point at the routes. The partial unique indexes on aircraft cannot back a Prisma
-// upsert, so those use skipDuplicates like the pricing catalog below.
-async function seedFlightSchedulingDemo() {
+// ── F9: Aircraft Types, Fleet, Maintenance & Operating Days ──────────────────────────────────────────────────
+
+async function seedFleetAndPatterns(
+  routeMap: Map<string, { id: string; distance_km: number; block_time_min: number }>,
+  opsStaffId: string,
+): Promise<{
+  aircraftByTail: Map<string, string>
+  patternByNumber: Map<string, string>
+}> {
   for (const reason of DISRUPTION_REASONS) {
     await prisma.disruption_reason.upsert({ where: { code: reason.code }, update: {}, create: reason })
   }
@@ -246,46 +932,1397 @@ async function seedFlightSchedulingDemo() {
     update: {},
     create: { key: 'airline_code', value: AIRLINE_CODE },
   })
+
   await prisma.aircraft_type.createMany({ data: AIRCRAFT_TYPES, skipDuplicates: true })
   const types = await prisma.aircraft_type.findMany({ where: { deleted_at: null }, select: { id: true, code: true } })
   const typeId = new Map(types.map((t) => [t.code, t.id]))
+
   await prisma.aircraft.createMany({
-    data: AIRCRAFT.map(({ type, ...aircraft }) => ({
+    data: AIRCRAFT.map(({ type, entry_date, ...aircraft }) => ({
       ...aircraft,
       aircraft_type_id: typeId.get(type) as string,
-      entry_into_service_date: new Date('2024-01-15T00:00:00Z'),
+      entry_into_service_date: new Date(`${entry_date}T00:00:00Z`),
     })),
     skipDuplicates: true,
   })
+  const aircraftRows = await prisma.aircraft.findMany({ where: { deleted_at: null }, select: { id: true, tail_number: true } })
+  const aircraftByTail = new Map(aircraftRows.map((a) => [a.tail_number, a.id]))
 
-  // From today (UTC) for a while, so the demo always has dates ahead of it.
-  const from = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z')
-  const to = new Date(from.getTime() + PATTERN_DAYS * 24 * 60 * 60 * 1000)
+  // Operating days for regional fleet subsets
+  const xt1Id = aircraftByTail.get('HS-XT1')
+  if (xt1Id) {
+    await prisma.aircraft_operating_day.createMany({
+      data: [1, 3, 5, 7].map((day_of_week) => ({ aircraft_id: xt1Id, day_of_week })),
+      skipDuplicates: true,
+    })
+  }
+  const xa3Id = aircraftByTail.get('HS-XA3')
+  if (xa3Id) {
+    await prisma.aircraft_operating_day.createMany({
+      data: [1, 2, 3, 4, 5, 6].map((day_of_week) => ({ aircraft_id: xa3Id, day_of_week })),
+      skipDuplicates: true,
+    })
+  }
+
+  // Maintenance windows & status periods (non-overlapping per aircraft, idempotent across days)
+  const ensureStatusPeriod = async (spec: {
+    periodId: string
+    aircraftId: string | undefined
+    status: 'in_service' | 'grounded' | 'in_maintenance'
+    origin: 'manual' | 'maintenance'
+    reason: string
+    startDate: Date
+    endDate: Date
+    maintenance?: {
+      id: string
+      type: 'a_check' | 'b_check' | 'c_check' | 'd_check' | 'unscheduled'
+      status: 'planned' | 'in_progress' | 'completed' | 'cancelled'
+      actualEndDate?: Date
+    }
+  }) => {
+    if (!spec.aircraftId) return
+    const existing = await prisma.aircraft_status_period.findFirst({
+      where: {
+        OR: [
+          { id: spec.periodId },
+          {
+            aircraft_id: spec.aircraftId,
+            deleted_at: null,
+            start_date: { lte: spec.endDate },
+            OR: [{ end_date: null }, { end_date: { gte: spec.startDate } }],
+          },
+        ],
+      },
+    })
+    if (existing) return
+    await prisma.aircraft_status_period.create({
+      data: {
+        id: spec.periodId,
+        aircraft_id: spec.aircraftId,
+        status: spec.status,
+        origin: spec.origin,
+        reason: spec.reason,
+        start_date: spec.startDate,
+        end_date: spec.endDate,
+        created_by: opsStaffId,
+      },
+    })
+    if (spec.maintenance) {
+      await prisma.aircraft_maintenance.create({
+        data: {
+          id: spec.maintenance.id,
+          aircraft_id: spec.aircraftId,
+          maintenance_type: spec.maintenance.type,
+          planned_start_date: spec.startDate,
+          planned_end_date: spec.endDate,
+          actual_end_date: spec.maintenance.actualEndDate ?? null,
+          status: spec.maintenance.status,
+          status_period_id: spec.periodId,
+          created_by: opsStaffId,
+        },
+      })
+    }
+  }
+
+  await ensureStatusPeriod({
+    periodId: sid('a09', 1),
+    aircraftId: aircraftByTail.get('HS-XA2'),
+    status: 'in_maintenance',
+    origin: 'maintenance',
+    reason: 'Scheduled A-check inspection',
+    startDate: utcDate(-25),
+    endDate: utcDate(-22),
+    maintenance: { id: sid('a09', 11), type: 'a_check', status: 'completed', actualEndDate: utcDate(-22) },
+  })
+  await ensureStatusPeriod({
+    periodId: sid('a09', 2),
+    aircraftId: aircraftByTail.get('HS-XT2'),
+    status: 'in_maintenance',
+    origin: 'maintenance',
+    reason: 'Landing gear hydraulic actuator replacement',
+    startDate: utcDate(-1),
+    endDate: utcDate(2),
+    maintenance: { id: sid('a09', 12), type: 'unscheduled', status: 'in_progress' },
+  })
+  await ensureStatusPeriod({
+    periodId: sid('a09', 3),
+    aircraftId: xa3Id,
+    status: 'in_maintenance',
+    origin: 'maintenance',
+    reason: 'Planned C-check heavy maintenance',
+    startDate: utcDate(20),
+    endDate: utcDate(27),
+    maintenance: { id: sid('a09', 13), type: 'c_check', status: 'planned' },
+  })
+  await ensureStatusPeriod({
+    periodId: sid('a09', 4),
+    aircraftId: xt1Id,
+    status: 'grounded',
+    origin: 'manual',
+    reason: 'Weather advisory grounding at HKT',
+    startDate: utcDate(-15),
+    endDate: utcDate(-14),
+  })
+
+  // Flight patterns
+  const from = utcDate(0)
+  const to = utcDate(PATTERN_DAYS)
+  const patternByNumber = new Map<string, string>()
   for (const { origin, destination, dep_time_local, ...pattern } of PATTERNS) {
-    const route = await prisma.route.findUnique({ where: { origin_destination: { origin, destination } }, select: { id: true } })
+    const route = routeMap.get(`${origin}-${destination}`)
     if (!route) continue
-    await prisma.flight_pattern.upsert({
+    const row = await prisma.flight_pattern.upsert({
       where: { flight_number: pattern.flight_number },
       update: {},
       create: { ...pattern, route_id: route.id, dep_time_local: timeOfDay(dep_time_local), valid_from: from, valid_to: to },
+      select: { id: true },
     })
+    patternByNumber.set(pattern.flight_number, row.id)
+  }
+
+  return { aircraftByTail, patternByNumber }
+}
+
+// ── F2 & F9: Operational Flights, Events, Turnarounds, Congestion, Approvals & Conflicts ─────────────────────
+
+interface SeededFlightInfo {
+  id: string
+  flightNumber: string
+  routeKey: string
+  routeId: string
+  distanceKm: number
+  serviceDate: Date
+  depAt: Date
+  arrAt: Date
+  aircraftId: string
+  status: string
+}
+
+async function seedOperationalFlights(
+  routeMap: Map<string, { id: string; distance_km: number; block_time_min: number }>,
+  aircraftByTail: Map<string, string>,
+  patternByNumber: Map<string, string>,
+  opsStaffId: string,
+): Promise<Map<string, SeededFlightInfo>> {
+  const flights = new Map<string, SeededFlightInfo>()
+
+  const specs: Array<{
+    key: string
+    id: string
+    flightNumber: string
+    routeKey: string
+    tail: string
+    dayOffset: number
+    depHourUtc: number
+    depMinUtc?: number
+    status: 'scheduled' | 'delayed' | 'holding' | 'diverted' | 'cancelled' | 'departed' | 'arrived'
+    delayMin?: number
+    actualDest?: string
+    cabins: Array<{ cabin: string; capacity: number; awardLimit: number }>
+  }> = [
+    // Past arrived flights (feed F6 check-ins/boarding, F8 completed pairings, F9 turnarounds, F10 lost bags, F11 earn, F13 complaints, F14 BI, F17 delivered cargo)
+    {
+      key: 'past_bkk_cnx_1',
+      id: sid('f02', 1),
+      flightNumber: 'XX101',
+      routeKey: 'BKK-CNX',
+      tail: 'HS-XA1',
+      dayOffset: -4,
+      depHourUtc: 1,
+      status: 'arrived',
+      cabins: [{ cabin: 'economy', capacity: 180, awardLimit: 12 }],
+    },
+    {
+      key: 'past_cnx_bkk_1',
+      id: sid('f02', 2),
+      flightNumber: 'XX102',
+      routeKey: 'CNX-BKK',
+      tail: 'HS-XA1',
+      dayOffset: -4,
+      depHourUtc: 3,
+      depMinUtc: 30,
+      status: 'arrived',
+      delayMin: 35,
+      cabins: [{ cabin: 'economy', capacity: 180, awardLimit: 12 }],
+    },
+    {
+      key: 'past_bkk_hkt_1',
+      id: sid('f02', 3),
+      flightNumber: 'XX201',
+      routeKey: 'BKK-HKT',
+      tail: 'HS-XA2',
+      dayOffset: -3,
+      depHourUtc: 6,
+      status: 'arrived',
+      cabins: [{ cabin: 'economy', capacity: 180, awardLimit: 10 }],
+    },
+    {
+      key: 'past_hkt_bkk_1',
+      id: sid('f02', 4),
+      flightNumber: 'XX202',
+      routeKey: 'HKT-BKK',
+      tail: 'HS-XA2',
+      dayOffset: -3,
+      depHourUtc: 8,
+      depMinUtc: 30,
+      status: 'diverted',
+      actualDest: 'DMK',
+      cabins: [{ cabin: 'economy', capacity: 180, awardLimit: 10 }],
+    },
+    {
+      key: 'past_bkk_sin_1',
+      id: sid('f02', 5),
+      flightNumber: 'XX301',
+      routeKey: 'BKK-SIN',
+      tail: 'HS-XN1',
+      dayOffset: -2,
+      depHourUtc: 2,
+      status: 'arrived',
+      cabins: [
+        { cabin: 'business', capacity: 16, awardLimit: 4 },
+        { cabin: 'premium_economy', capacity: 24, awardLimit: 4 },
+        { cabin: 'economy', capacity: 144, awardLimit: 14 },
+      ],
+    },
+    {
+      key: 'past_sin_bkk_1',
+      id: sid('f02', 6),
+      flightNumber: 'XX302',
+      routeKey: 'SIN-BKK',
+      tail: 'HS-XN1',
+      dayOffset: -2,
+      depHourUtc: 6,
+      status: 'arrived',
+      delayMin: 25,
+      cabins: [
+        { cabin: 'business', capacity: 16, awardLimit: 4 },
+        { cabin: 'premium_economy', capacity: 24, awardLimit: 4 },
+        { cabin: 'economy', capacity: 144, awardLimit: 14 },
+      ],
+    },
+    {
+      key: 'past_bkk_nrt_1',
+      id: sid('f02', 7),
+      flightNumber: 'XX501',
+      routeKey: 'BKK-NRT',
+      tail: 'HS-XW1',
+      dayOffset: -2,
+      depHourUtc: 0,
+      status: 'arrived',
+      cabins: [
+        { cabin: 'first', capacity: 8, awardLimit: 2 },
+        { cabin: 'business', capacity: 48, awardLimit: 6 },
+        { cabin: 'premium_economy', capacity: 40, awardLimit: 6 },
+        { cabin: 'economy', capacity: 225, awardLimit: 20 },
+      ],
+    },
+    {
+      key: 'past_cancelled_1',
+      id: sid('f02', 8),
+      flightNumber: 'XX401',
+      routeKey: 'BKK-HKG',
+      tail: 'HS-XN2',
+      dayOffset: -1,
+      depHourUtc: 3,
+      status: 'cancelled',
+      cabins: [
+        { cabin: 'business', capacity: 16, awardLimit: 2 },
+        { cabin: 'premium_economy', capacity: 24, awardLimit: 4 },
+        { cabin: 'economy', capacity: 144, awardLimit: 10 },
+      ],
+    },
+    // Today / active operations
+    {
+      key: 'today_delayed_bkk_cnx',
+      id: sid('f02', 9),
+      flightNumber: 'XX101',
+      routeKey: 'BKK-CNX',
+      tail: 'HS-XA1',
+      dayOffset: 0,
+      depHourUtc: 1,
+      status: 'delayed',
+      delayMin: 40,
+      cabins: [{ cabin: 'economy', capacity: 180, awardLimit: 12 }],
+    },
+    {
+      key: 'today_holding_cnx_bkk',
+      id: sid('f02', 10),
+      flightNumber: 'XX102',
+      routeKey: 'CNX-BKK',
+      tail: 'HS-XA1',
+      dayOffset: 0,
+      depHourUtc: 4,
+      status: 'holding',
+      delayMin: 20,
+      cabins: [{ cabin: 'economy', capacity: 180, awardLimit: 12 }],
+    },
+    // Upcoming searchable multi-cabin flights (+2 to +11 days, powering F3 search/booking, F4 quotes, F7 screening queue, F11 award seats, F12 pre-orders, F17 cargo)
+    {
+      key: 'up_bkk_cnx_d2',
+      id: sid('f02', 11),
+      flightNumber: 'XX101',
+      routeKey: 'BKK-CNX',
+      tail: 'HS-XA1',
+      dayOffset: 2,
+      depHourUtc: 1,
+      status: 'scheduled',
+      cabins: [{ cabin: 'economy', capacity: 180, awardLimit: 15 }],
+    },
+    {
+      key: 'up_cnx_bkk_d2',
+      id: sid('f02', 12),
+      flightNumber: 'XX102',
+      routeKey: 'CNX-BKK',
+      tail: 'HS-XA1',
+      dayOffset: 2,
+      depHourUtc: 3,
+      depMinUtc: 30,
+      status: 'scheduled',
+      cabins: [{ cabin: 'economy', capacity: 180, awardLimit: 15 }],
+    },
+    {
+      key: 'up_bkk_hkt_d3',
+      id: sid('f02', 13),
+      flightNumber: 'XX201',
+      routeKey: 'BKK-HKT',
+      tail: 'HS-XN1',
+      dayOffset: 3,
+      depHourUtc: 6,
+      status: 'scheduled',
+      cabins: [
+        { cabin: 'business', capacity: 16, awardLimit: 4 },
+        { cabin: 'premium_economy', capacity: 24, awardLimit: 4 },
+        { cabin: 'economy', capacity: 144, awardLimit: 15 },
+      ],
+    },
+    {
+      key: 'up_hkt_bkk_d3',
+      id: sid('f02', 14),
+      flightNumber: 'XX202',
+      routeKey: 'HKT-BKK',
+      tail: 'HS-XN1',
+      dayOffset: 3,
+      depHourUtc: 8,
+      depMinUtc: 30,
+      status: 'scheduled',
+      cabins: [
+        { cabin: 'business', capacity: 16, awardLimit: 4 },
+        { cabin: 'premium_economy', capacity: 24, awardLimit: 4 },
+        { cabin: 'economy', capacity: 144, awardLimit: 15 },
+      ],
+    },
+    {
+      key: 'up_bkk_sin_d4',
+      id: sid('f02', 15),
+      flightNumber: 'XX301',
+      routeKey: 'BKK-SIN',
+      tail: 'HS-XN1',
+      dayOffset: 4,
+      depHourUtc: 2,
+      status: 'scheduled',
+      cabins: [
+        { cabin: 'business', capacity: 16, awardLimit: 4 },
+        { cabin: 'premium_economy', capacity: 24, awardLimit: 4 },
+        { cabin: 'economy', capacity: 144, awardLimit: 18 },
+      ],
+    },
+    {
+      key: 'up_sin_bkk_d5',
+      id: sid('f02', 16),
+      flightNumber: 'XX302',
+      routeKey: 'SIN-BKK',
+      tail: 'HS-XN1',
+      dayOffset: 5,
+      depHourUtc: 6,
+      status: 'scheduled',
+      cabins: [
+        { cabin: 'business', capacity: 16, awardLimit: 4 },
+        { cabin: 'premium_economy', capacity: 24, awardLimit: 4 },
+        { cabin: 'economy', capacity: 144, awardLimit: 18 },
+      ],
+    },
+    {
+      key: 'up_bkk_nrt_d5',
+      id: sid('f02', 17),
+      flightNumber: 'XX501',
+      routeKey: 'BKK-NRT',
+      tail: 'HS-XW1',
+      dayOffset: 5,
+      depHourUtc: 1,
+      status: 'scheduled',
+      cabins: [
+        { cabin: 'first', capacity: 8, awardLimit: 2 },
+        { cabin: 'business', capacity: 48, awardLimit: 8 },
+        { cabin: 'premium_economy', capacity: 40, awardLimit: 8 },
+        { cabin: 'economy', capacity: 225, awardLimit: 24 },
+      ],
+    },
+    {
+      key: 'up_nrt_bkk_d8',
+      id: sid('f02', 18),
+      flightNumber: 'XX502',
+      routeKey: 'NRT-BKK',
+      tail: 'HS-XW1',
+      dayOffset: 8,
+      depHourUtc: 5,
+      status: 'scheduled',
+      cabins: [
+        { cabin: 'first', capacity: 8, awardLimit: 2 },
+        { cabin: 'business', capacity: 48, awardLimit: 8 },
+        { cabin: 'premium_economy', capacity: 40, awardLimit: 8 },
+        { cabin: 'economy', capacity: 225, awardLimit: 24 },
+      ],
+    },
+    {
+      key: 'up_bkk_hkg_d6',
+      id: sid('f02', 19),
+      flightNumber: 'XX401',
+      routeKey: 'BKK-HKG',
+      tail: 'HS-XN2',
+      dayOffset: 6,
+      depHourUtc: 3,
+      status: 'scheduled',
+      cabins: [
+        { cabin: 'business', capacity: 16, awardLimit: 4 },
+        { cabin: 'premium_economy', capacity: 24, awardLimit: 4 },
+        { cabin: 'economy', capacity: 144, awardLimit: 15 },
+      ],
+    },
+    {
+      key: 'up_hkg_bkk_d7',
+      id: sid('f02', 20),
+      flightNumber: 'XX402',
+      routeKey: 'HKG-BKK',
+      tail: 'HS-XN2',
+      dayOffset: 7,
+      depHourUtc: 7,
+      status: 'scheduled',
+      cabins: [
+        { cabin: 'business', capacity: 16, awardLimit: 4 },
+        { cabin: 'premium_economy', capacity: 24, awardLimit: 4 },
+        { cabin: 'economy', capacity: 144, awardLimit: 15 },
+      ],
+    },
+    // Far-ahead flights (+10 days) so Q (min_advance_purchase_days = 7) is also quotable/bookable!
+    {
+      key: 'up_bkk_hkt_d10',
+      id: sid('f02', 21),
+      flightNumber: 'XX201',
+      routeKey: 'BKK-HKT',
+      tail: 'HS-XN2',
+      dayOffset: 10,
+      depHourUtc: 6,
+      status: 'scheduled',
+      cabins: [
+        { cabin: 'business', capacity: 16, awardLimit: 4 },
+        { cabin: 'premium_economy', capacity: 24, awardLimit: 4 },
+        { cabin: 'economy', capacity: 144, awardLimit: 15 },
+      ],
+    },
+    {
+      key: 'up_hkt_bkk_d10',
+      id: sid('f02', 22),
+      flightNumber: 'XX202',
+      routeKey: 'HKT-BKK',
+      tail: 'HS-XN2',
+      dayOffset: 10,
+      depHourUtc: 9,
+      status: 'scheduled',
+      cabins: [
+        { cabin: 'business', capacity: 16, awardLimit: 4 },
+        { cabin: 'premium_economy', capacity: 24, awardLimit: 4 },
+        { cabin: 'economy', capacity: 144, awardLimit: 15 },
+      ],
+    },
+  ]
+
+  for (const s of specs) {
+    const route = routeMap.get(s.routeKey)
+    const aircraftId = aircraftByTail.get(s.tail)
+    if (!route || !aircraftId) continue
+
+    const serviceDate = utcDate(s.dayOffset)
+    const schedDep = utcDateTime(s.dayOffset, s.depHourUtc, s.depMinUtc ?? 0)
+    const schedArr = addMinutes(schedDep, route.block_time_min)
+    const depAt = s.delayMin ? addMinutes(schedDep, s.delayMin) : schedDep
+    const arrAt = s.delayMin ? addMinutes(schedArr, s.delayMin) : schedArr
+
+    const existing = await prisma.flight.findFirst({
+      where: {
+        OR: [{ id: s.id }, { flight_number: s.flightNumber, service_date: serviceDate }],
+      },
+    })
+    const row =
+      existing ??
+      (await prisma.flight.create({
+        data: {
+          id: s.id,
+          pattern_id: patternByNumber.get(s.flightNumber) ?? null,
+          flight_number: s.flightNumber,
+          service_date: serviceDate,
+          route_id: route.id,
+          scheduled_dep_at: schedDep,
+          scheduled_arr_at: schedArr,
+          dep_at: depAt,
+          arr_at: arrAt,
+          actual_destination: s.actualDest ?? null,
+          aircraft_id: aircraftId,
+          status: s.status,
+        },
+      }))
+
+    for (const c of s.cabins) {
+      await prisma.seat_inventory.upsert({
+        where: { flight_id_cabin: { flight_id: row.id, cabin: c.cabin } },
+        update: {},
+        create: { flight_id: row.id, cabin: c.cabin, capacity: c.capacity, award_limit: c.awardLimit },
+      })
+    }
+
+    flights.set(s.key, {
+      id: row.id,
+      flightNumber: row.flight_number,
+      routeKey: s.routeKey,
+      routeId: row.route_id,
+      distanceKm: route.distance_km,
+      serviceDate: row.service_date,
+      depAt: row.dep_at,
+      arrAt: row.arr_at,
+      aircraftId: row.aircraft_id,
+      status: row.status,
+    })
+  }
+
+  // Append-only flight_event rows + outbox + receipts (check by deterministic id before insert)
+  const fPast1 = flights.get('past_bkk_cnx_1')!
+  const fPast2 = flights.get('past_cnx_bkk_1')!
+  const fPastDiv = flights.get('past_hkt_bkk_1')!
+  const fPastSin2 = flights.get('past_sin_bkk_1')!
+  const fPastCan = flights.get('past_cancelled_1')!
+  const fTodayDelay = flights.get('today_delayed_bkk_cnx')!
+  const fTodayHold = flights.get('today_holding_cnx_bkk')!
+  const fUpCnx = flights.get('up_bkk_cnx_d2')!
+  const fUpSin = flights.get('up_bkk_sin_d4')!
+
+  const events = [
+    {
+      id: sid('e02', 1),
+      flight_id: fPast1.id,
+      type: 'created',
+      occurred_at: addMinutes(fPast1.depAt, -48 * 60),
+      actor_id: opsStaffId,
+    },
+    {
+      id: sid('e02', 2),
+      flight_id: fPast1.id,
+      type: 'departed',
+      occurred_at: fPast1.depAt,
+      actor_id: null,
+    },
+    {
+      id: sid('e02', 3),
+      flight_id: fPast1.id,
+      type: 'arrived',
+      occurred_at: fPast1.arrAt,
+      actor_id: null,
+    },
+    {
+      id: sid('e02', 4),
+      flight_id: fPast2.id,
+      type: 'delayed',
+      disruption_reason_code: 'WX',
+      delay_minutes: 35,
+      old_dep_at: addMinutes(fPast2.depAt, -35),
+      new_dep_at: fPast2.depAt,
+      old_arr_at: addMinutes(fPast2.arrAt, -35),
+      new_arr_at: fPast2.arrAt,
+      note: 'Monsoon thunderstorm over CNX approach',
+      actor_id: opsStaffId,
+      occurred_at: addMinutes(fPast2.depAt, -90),
+    },
+    {
+      id: sid('e02', 5),
+      flight_id: fPast2.id,
+      type: 'departed',
+      occurred_at: fPast2.depAt,
+      actor_id: null,
+    },
+    {
+      id: sid('e02', 6),
+      flight_id: fPast2.id,
+      type: 'arrived',
+      occurred_at: fPast2.arrAt,
+      actor_id: null,
+    },
+    {
+      id: sid('e02', 7),
+      flight_id: fPastDiv.id,
+      type: 'diverted',
+      disruption_reason_code: 'WX',
+      new_destination: 'DMK',
+      note: 'Heavy crosswinds at BKK; diverted to DMK',
+      actor_id: opsStaffId,
+      occurred_at: addMinutes(fPastDiv.arrAt, -25),
+    },
+    {
+      id: sid('e02', 8),
+      flight_id: fPastSin2.id,
+      type: 'delayed',
+      disruption_reason_code: 'ATC',
+      delay_minutes: 25,
+      old_dep_at: addMinutes(fPastSin2.depAt, -25),
+      new_dep_at: fPastSin2.depAt,
+      old_arr_at: addMinutes(fPastSin2.arrAt, -25),
+      new_arr_at: fPastSin2.arrAt,
+      note: 'Airspace slot restriction departing SIN',
+      actor_id: opsStaffId,
+      occurred_at: addMinutes(fPastSin2.depAt, -60),
+    },
+    {
+      id: sid('e02', 9),
+      flight_id: fPastCan.id,
+      type: 'cancelled',
+      disruption_reason_code: 'TECH',
+      resolution: 'rebook_partner',
+      partner_airline: 'PA',
+      note: 'Hydraulic fault detected on pre-flight inspection; passengers rebooked on Partner Air',
+      actor_id: opsStaffId,
+      occurred_at: addMinutes(fPastCan.depAt, -180),
+    },
+    {
+      id: sid('e02', 10),
+      flight_id: fTodayDelay.id,
+      type: 'delayed',
+      disruption_reason_code: 'WX',
+      delay_minutes: 40,
+      old_dep_at: addMinutes(fTodayDelay.depAt, -40),
+      new_dep_at: fTodayDelay.depAt,
+      old_arr_at: addMinutes(fTodayDelay.arrAt, -40),
+      new_arr_at: fTodayDelay.arrAt,
+      note: 'Inbound weather delay',
+      actor_id: opsStaffId,
+      occurred_at: addMinutes(fTodayDelay.depAt, -75),
+    },
+    {
+      id: sid('e02', 11),
+      flight_id: fTodayHold.id,
+      type: 'holding',
+      disruption_reason_code: 'ATC',
+      hold_minutes: 20,
+      note: 'Holding pattern due to BKK arrival congestion',
+      actor_id: opsStaffId,
+      occurred_at: addMinutes(fTodayHold.depAt, -30),
+    },
+  ]
+
+  for (const ev of events) {
+    if (!(await prisma.flight_event.findUnique({ where: { id: ev.id } }))) {
+      await prisma.flight_event.create({ data: ev })
+      await prisma.flight_event_outbox.create({
+        data: { event_id: ev.id, published_at: ev.occurred_at, attempts: 1 },
+      })
+      if (ev.type === 'created' || ev.type === 'cancelled') {
+        await prisma.flight_event_receipt.create({
+          data: { event_id: ev.id, processed_at: ev.occurred_at },
+        })
+      }
+      if (ev.type === 'cancelled') {
+        await prisma.refund_event_receipt.create({
+          data: { event_id: ev.id, processed_at: ev.occurred_at },
+        })
+      }
+    }
+  }
+
+  // Airport congestion windows
+  const congestions = [
+    {
+      id: sid('c02', 1),
+      airport: 'BKK',
+      starts_at: utcDateTime(1, 2),
+      ends_at: utcDateTime(1, 6),
+      max_movement_per_hour: 12,
+      disruption_reason_code: 'WX',
+      created_by: opsStaffId,
+    },
+    {
+      id: sid('c02', 2),
+      airport: 'CNX',
+      starts_at: utcDateTime(2, 3),
+      ends_at: utcDateTime(2, 5),
+      max_movement_per_hour: 5,
+      disruption_reason_code: 'ATC',
+      created_by: opsStaffId,
+    },
+  ]
+  for (const cg of congestions) {
+    await prisma.airport_congestion.upsert({ where: { id: cg.id }, update: {}, create: cg })
+  }
+
+  // Schedule conflicts (open & resolved)
+  const conflicts = [
+    {
+      id: sid('k02', 1),
+      flight_id: fTodayHold.id,
+      kind: 'turnaround_short',
+      detail: 'Turnaround at CNX reduced to 25 min (minimum 40 min) after XX101 delay.',
+      facts: { available_min: 25, required_min: 40 },
+      status: 'open',
+      detected_at: utcDateTime(0, 0),
+      caused_by_event_id: sid('e02', 10),
+    },
+    {
+      id: sid('k02', 2),
+      flight_id: fUpCnx.id,
+      kind: 'congestion',
+      detail: 'Origin BKK movement cap reached during weather flow window.',
+      facts: { window_cap: 12, scheduled: 13 },
+      status: 'open',
+      detected_at: utcDateTime(0, 1),
+    },
+    {
+      id: sid('k02', 3),
+      flight_id: fPastCan.id,
+      kind: 'aircraft_unavailable',
+      detail: 'HS-XN2 hydraulic fault prior to departure.',
+      facts: { tail: 'HS-XN2' },
+      status: 'resolved',
+      detected_at: addMinutes(fPastCan.depAt, -210),
+      resolution: 'rebook_partner',
+      partner_airline: 'PA',
+      resolution_event_id: sid('e02', 9),
+      resolved_by: opsStaffId,
+      resolved_at: addMinutes(fPastCan.depAt, -180),
+    },
+  ]
+  for (const cf of conflicts) {
+    await prisma.schedule_conflict.upsert({ where: { id: cf.id }, update: {}, create: cf })
+  }
+
+  // Schedule approvals & offers (pending, approved, alternative_offered, rejected, consumed)
+  const routeBkkCnx = routeMap.get('BKK-CNX')!
+  const routeBkkNrt = routeMap.get('BKK-NRT')!
+  const routeBkkSin = routeMap.get('BKK-SIN')!
+  const xa1Id = aircraftByTail.get('HS-XA1')!
+  const xw1Id = aircraftByTail.get('HS-XW1')!
+  const xn1Id = aircraftByTail.get('HS-XN1')!
+
+  const approvals = [
+    {
+      id: sid('p02', 1),
+      purpose: 'new_flight',
+      route_id: routeBkkCnx.id,
+      flight_number: 'XX119',
+      service_date: utcDate(14),
+      aircraft_id: xa1Id,
+      proposed_dep_at: utcDateTime(14, 5),
+      proposed_arr_at: addMinutes(utcDateTime(14, 5), 75),
+      approver_type: 'airport',
+      approver_airport: 'BKK',
+      status: 'pending',
+      revision: 1,
+      requested_by: opsStaffId,
+      requested_at: utcDateTime(0, 1),
+      respond_by: utcDateTime(2, 1),
+    },
+    {
+      id: sid('p02', 2),
+      purpose: 'new_flight',
+      route_id: routeBkkSin.id,
+      flight_number: 'XX315',
+      service_date: utcDate(15),
+      aircraft_id: xn1Id,
+      proposed_dep_at: utcDateTime(15, 4),
+      proposed_arr_at: addMinutes(utcDateTime(15, 4), 140),
+      approver_type: 'airport',
+      approver_airport: 'BKK',
+      status: 'approved',
+      response_note: 'Departure slot confirmed',
+      revision: 1,
+      requested_by: opsStaffId,
+      requested_at: utcDateTime(-1, 3),
+      responded_at: utcDateTime(-1, 3, 15),
+    },
+    {
+      id: sid('p02', 3),
+      purpose: 'reschedule',
+      flight_id: fUpSin.id,
+      route_id: routeBkkSin.id,
+      flight_number: 'XX301',
+      service_date: fUpSin.serviceDate,
+      aircraft_id: xn1Id,
+      proposed_dep_at: addMinutes(fUpSin.depAt, 60),
+      proposed_arr_at: addMinutes(fUpSin.arrAt, 60),
+      approver_type: 'airport',
+      approver_airport: 'BKK',
+      status: 'alternative_offered',
+      response_note: 'Requested hour at capacity; two alternative departure slots available.',
+      revision: 1,
+      requested_by: opsStaffId,
+      requested_at: utcDateTime(-1, 4),
+      responded_at: utcDateTime(-1, 4, 20),
+    },
+    {
+      id: sid('p02', 4),
+      purpose: 'new_flight',
+      route_id: routeBkkNrt.id,
+      flight_number: 'XX509',
+      service_date: utcDate(16),
+      aircraft_id: xw1Id,
+      proposed_dep_at: utcDateTime(16, 18),
+      proposed_arr_at: addMinutes(utcDateTime(16, 18), 390),
+      approver_type: 'airport',
+      approver_airport: 'BKK',
+      status: 'rejected',
+      reject_reason: 'curfew',
+      response_note: 'Proposed departure falls inside BKK local curfew (00:00–05:00).',
+      revision: 1,
+      requested_by: opsStaffId,
+      requested_at: utcDateTime(-2, 5),
+      responded_at: utcDateTime(-2, 5, 10),
+    },
+    {
+      id: sid('p02', 5),
+      purpose: 'new_flight',
+      route_id: routeBkkCnx.id,
+      flight_number: 'XX101',
+      service_date: fUpCnx.serviceDate,
+      aircraft_id: xa1Id,
+      proposed_dep_at: fUpCnx.depAt,
+      proposed_arr_at: fUpCnx.arrAt,
+      approver_type: 'airport',
+      approver_airport: 'BKK',
+      status: 'consumed',
+      response_note: 'Approved and published to timetable',
+      revision: 1,
+      requested_by: opsStaffId,
+      requested_at: utcDateTime(-3, 2),
+      responded_at: utcDateTime(-3, 2, 5),
+      resulting_flight_id: fUpCnx.id,
+    },
+  ]
+  for (const ap of approvals) {
+    await prisma.schedule_approval.upsert({ where: { id: ap.id }, update: {}, create: ap })
+  }
+
+  const offers = [
+    { id: sid('p02', 21), approval_id: sid('p02', 3), kind: 'slot', starts_at: addMinutes(fUpSin.depAt, 90), ends_at: null },
+    { id: sid('p02', 22), approval_id: sid('p02', 3), kind: 'slot', starts_at: addMinutes(fUpSin.depAt, 120), ends_at: null },
+  ]
+  for (const offer of offers) {
+    await prisma.schedule_approval_offer.upsert({ where: { id: offer.id }, update: {}, create: offer })
+  }
+
+  // F9: Aircraft turnarounds + tasks on arrived flights
+  const turnaroundSpecs = [
+    {
+      id: sid('t09', 1),
+      flight: fPast1,
+      airport: 'CNX',
+      tasks: [
+        { task_type: 'refuel', status: 'completed', startOff: 5, endOff: 22 },
+        { task_type: 'cleaning', status: 'completed', startOff: 8, endOff: 28 },
+        { task_type: 'catering', status: 'completed', startOff: 10, endOff: 30 },
+        { task_type: 'inspection', status: 'completed', startOff: 25, endOff: 38 },
+      ],
+    },
+    {
+      id: sid('t09', 2),
+      flight: flights.get('past_bkk_sin_1')!,
+      airport: 'SIN',
+      tasks: [
+        { task_type: 'refuel', status: 'completed', startOff: 5, endOff: 25 },
+        { task_type: 'cleaning', status: 'completed', startOff: 10, endOff: 30 },
+        { task_type: 'catering', status: 'in_progress', startOff: 20, endOff: null },
+        { task_type: 'inspection', status: 'pending', startOff: null, endOff: null },
+      ],
+    },
+    {
+      id: sid('t09', 3),
+      flight: flights.get('past_bkk_hkt_1')!,
+      airport: 'HKT',
+      tasks: [
+        { task_type: 'refuel', status: 'completed', startOff: 5, endOff: 20 },
+        { task_type: 'cleaning', status: 'completed', startOff: 5, endOff: 25 },
+        { task_type: 'catering', status: 'skipped', startOff: null, endOff: null },
+        { task_type: 'inspection', status: 'completed', startOff: 22, endOff: 32 },
+      ],
+    },
+  ]
+  for (const ts of turnaroundSpecs) {
+    const existing = await prisma.aircraft_turnaround.findFirst({
+      where: { OR: [{ id: ts.id }, { flight_id: ts.flight.id, deleted_at: null }] },
+    })
+    const tr =
+      existing ??
+      (await prisma.aircraft_turnaround.create({
+        data: {
+          id: ts.id,
+          aircraft_id: ts.flight.aircraftId,
+          flight_id: ts.flight.id,
+          airport_code: ts.airport,
+          arrived_at: ts.flight.arrAt,
+        },
+      }))
+    for (const task of ts.tasks) {
+      await prisma.aircraft_turnaround_task.upsert({
+        where: { turnaround_id_task_type: { turnaround_id: tr.id, task_type: task.task_type } },
+        update: {},
+        create: {
+          turnaround_id: tr.id,
+          task_type: task.task_type,
+          status: task.status,
+          started_at: task.startOff !== null ? addMinutes(ts.flight.arrAt, task.startOff) : null,
+          completed_at: task.endOff !== null ? addMinutes(ts.flight.arrAt, task.endOff) : null,
+        },
+      })
+    }
+  }
+
+  return flights
+}
+
+// ── F4: Pricing Catalog, Base Fares, Pricing Rules, Quotes & Finance ─────────────────────────────────────────
+
+async function seedPricingSettings() {
+  for (const setting of PRICING_SETTINGS) {
+    await prisma.pricing_setting.upsert({ where: { key: setting.key }, update: {}, create: setting })
   }
 }
 
-// Needs a staff member for `updated_by`, so it runs after the staff are seeded.
-async function seedCurrencyRates() {
-  const staff = await prisma.staff.findFirst({ select: { id: true } })
-  if (!staff) return
+async function seedCurrencyRates(financeStaffId: string) {
   for (const rate of CURRENCY_RATES) {
     await prisma.currency_rate.upsert({
       where: { currency_code: rate.currency_code },
       update: {},
-      create: { ...rate, updated_by: staff.id },
+      create: { ...rate, updated_by: financeStaffId },
     })
   }
 }
 
-// Upserted like the flight network. Gates need the airports above.
+async function seedPricingCatalogAndFinance(
+  routeMap: Map<string, { id: string; distance_km: number; block_time_min: number }>,
+  flights: Map<string, SeededFlightInfo>,
+  financeStaffId: string,
+): Promise<{
+  fareClassByCode: Map<string, string>
+  promoByCode: Map<string, string>
+  quoteByKey: Map<string, { id: string; totalAmount: number }>
+}> {
+  await prisma.fare_class.createMany({ data: FARE_CLASSES, skipDuplicates: true })
+  await prisma.seat_fee.createMany({
+    data: Object.entries(SEAT_FEE_GRID).flatMap(([cabin, fees]) =>
+      Object.entries(fees).map(([seat_type, amount]) => ({ cabin, seat_type, amount })),
+    ),
+    skipDuplicates: true,
+  })
+  await prisma.tax_fee.createMany({ data: TAX_FEES, skipDuplicates: true })
+
+  const fareClasses = await prisma.fare_class.findMany({ where: { code: { in: FARE_CLASSES.map((row) => row.code) }, deleted_at: null } })
+  const fareClassByCode = new Map(fareClasses.map((fc) => [fc.code, fc.id]))
+
+  const { fare_class, origin, destination, ...override } = BAGGAGE_ROUTE_OVERRIDE
+  const overrideRoute = routeMap.get(`${origin}-${destination}`)
+  const overrideClass = fareClasses.find((row) => row.code === fare_class)
+  await prisma.overweight_baggage_rate.createMany({
+    data: [
+      ...fareClasses.map((row) => ({ fare_class_id: row.id, ...BAGGAGE_BY_CABIN[row.cabin as keyof typeof BAGGAGE_BY_CABIN] })),
+      ...(overrideRoute && overrideClass ? [{ ...override, fare_class_id: overrideClass.id, route_id: overrideRoute.id }] : []),
+    ],
+    skipDuplicates: true,
+  })
+
+  // Base fares for every route × fare class so search & quotes work on every route.
+  const baseFareByBand = (distanceKm: number): Record<string, number> => {
+    if (distanceKm < 1000) return { Q: 1200, Y: 2400, W: 3900, J: 7500, F: 12500 }
+    if (distanceKm < 2500) return { Q: 2800, Y: 4800, W: 7800, J: 15500, F: 26000 }
+    return { Q: 6500, Y: 11500, W: 18500, J: 36000, F: 62000 }
+  }
+  for (const route of routeMap.values()) {
+    const prices = baseFareByBand(route.distance_km)
+    for (const [code, amount] of Object.entries(prices)) {
+      const fareClassId = fareClassByCode.get(code)
+      if (!fareClassId) continue
+      const exists = await prisma.base_fare.findFirst({ where: { route_id: route.id, fare_class_id: fareClassId, deleted_at: null } })
+      if (!exists) {
+        await prisma.base_fare.create({ data: { route_id: route.id, fare_class_id: fareClassId, amount } })
+      }
+    }
+  }
+
+  // Dynamic pricing rules across all 4 rule groups
+  const pricingRules = [
+    {
+      id: sid('a04', 1),
+      rule_group: 'urgency',
+      name: 'Last-minute H-3',
+      priority: 1,
+      min_days_out: 0,
+      max_days_out: 3,
+      adjustment_pct: 25,
+    },
+    { id: sid('a04', 2), rule_group: 'urgency', name: 'Close-in H-7', priority: 2, min_days_out: 4, max_days_out: 7, adjustment_pct: 15 },
+    {
+      id: sid('a04', 3),
+      rule_group: 'urgency',
+      name: 'Early bird 30d+',
+      priority: 3,
+      min_days_out: 30,
+      max_days_out: null,
+      adjustment_pct: -10,
+    },
+    {
+      id: sid('a04', 4),
+      rule_group: 'load',
+      name: 'Almost full <=15%',
+      priority: 1,
+      min_seats_left_pct: 0,
+      max_seats_left_pct: 15,
+      adjustment_pct: 20,
+    },
+    {
+      id: sid('a04', 5),
+      rule_group: 'load',
+      name: 'High demand <=35%',
+      priority: 2,
+      min_seats_left_pct: 15.01,
+      max_seats_left_pct: 35,
+      adjustment_pct: 10,
+    },
+    { id: sid('a04', 6), rule_group: 'month', name: 'Peak December', priority: 1, month: 12, adjustment_pct: 15 },
+    { id: sid('a04', 7), rule_group: 'month', name: 'Songkran April', priority: 2, month: 4, adjustment_pct: 12 },
+    {
+      id: sid('a04', 8),
+      rule_group: 'period',
+      name: 'New Year Holiday',
+      priority: 1,
+      start_date: new Date('2026-12-24T00:00:00Z'),
+      end_date: new Date('2027-01-05T00:00:00Z'),
+      adjustment_pct: 18,
+    },
+  ]
+  for (const r of pricingRules) {
+    const existing = await prisma.pricing_rule.findFirst({
+      where: { rule_group: r.rule_group, priority: r.priority, deleted_at: null },
+    })
+    if (!existing) {
+      await prisma.pricing_rule.create({ data: r })
+    }
+  }
+
+  // Promo codes
+  const daysFromNow = (days: number) => new Date(Date.now() + days * DAY_MS)
+  const live = { valid_from: daysFromNow(-30), valid_to: daysFromNow(365) }
+  await prisma.promo_code.createMany({
+    data: [
+      { code: 'SAVE10', kind: 'promo', discount_pct: 10, ...live },
+      { code: 'MINUS20', kind: 'promo', discount_amount: 20, ...live },
+      { code: 'CORP15', kind: 'corporate', discount_pct: 15, ...live },
+      { code: 'SOON20', kind: 'promo', discount_pct: 20, valid_from: daysFromNow(30), valid_to: daysFromNow(120) },
+      { code: 'OLD5', kind: 'promo', discount_pct: 5, valid_from: daysFromNow(-120), valid_to: daysFromNow(-30) },
+      { code: 'SOLDOUT', kind: 'promo', discount_pct: 25, max_uses: 50, used_count: 50, ...live },
+      { code: 'PAUSED', kind: 'promo', discount_pct: 5, is_active: false, ...live },
+    ],
+    skipDuplicates: true,
+  })
+  const promos = await prisma.promo_code.findMany({ where: { deleted_at: null }, select: { id: true, code: true } })
+  const promoByCode = new Map(promos.map((p) => [p.code, p.id]))
+
+  // Sample Fare Quotes & Quote Lines
+  const quoteByKey = new Map<string, { id: string; totalAmount: number }>()
+  const quoteSpecs = [
+    {
+      key: 'q_bkk_cnx_y_promo',
+      id: sid('q04', 1),
+      flight: flights.get('up_bkk_cnx_d2')!,
+      fareCode: 'Y',
+      promoCode: 'SAVE10',
+      seatType: 'normal' as const,
+      base: 2400,
+      promoAmt: -240,
+      taxAmt: 151.2,
+      aptFee: 700,
+      fuel: 250,
+    },
+    {
+      key: 'q_cnx_bkk_y',
+      id: sid('q04', 2),
+      flight: flights.get('up_cnx_bkk_d2')!,
+      fareCode: 'Y',
+      promoCode: null,
+      seatType: 'exit_row' as const,
+      base: 2400,
+      seatFee: 300,
+      promoAmt: 0,
+      taxAmt: 189,
+      aptFee: 700,
+      fuel: 250,
+    },
+    {
+      key: 'q_bkk_sin_j',
+      id: sid('q04', 3),
+      flight: flights.get('up_bkk_sin_d4')!,
+      fareCode: 'J',
+      promoCode: 'CORP15',
+      seatType: 'normal' as const,
+      base: 15500,
+      promoAmt: -2325,
+      taxAmt: 922.25,
+      aptFee: 700,
+      fuel: 250,
+    },
+    {
+      key: 'q_bkk_nrt_w',
+      id: sid('q04', 4),
+      flight: flights.get('up_bkk_nrt_d5')!,
+      fareCode: 'W',
+      promoCode: null,
+      seatType: 'extra_legroom' as const,
+      base: 18500,
+      seatFee: 300,
+      promoAmt: 0,
+      taxAmt: 1316,
+      aptFee: 700,
+      fuel: 250,
+    },
+    {
+      key: 'q_past_bkk_cnx_y',
+      id: sid('q04', 5),
+      flight: flights.get('past_bkk_cnx_1')!,
+      fareCode: 'Y',
+      promoCode: null,
+      seatType: 'normal' as const,
+      base: 2400,
+      promoAmt: 0,
+      taxAmt: 168,
+      aptFee: 700,
+      fuel: 250,
+    },
+    {
+      key: 'q_past_bkk_sin_j',
+      id: sid('q04', 6),
+      flight: flights.get('past_bkk_sin_1')!,
+      fareCode: 'J',
+      promoCode: null,
+      seatType: 'normal' as const,
+      base: 15500,
+      promoAmt: 0,
+      taxAmt: 1085,
+      aptFee: 700,
+      fuel: 250,
+    },
+  ]
+
+  for (const qs of quoteSpecs) {
+    const fareClassId = fareClassByCode.get(qs.fareCode)!
+    const promoId = qs.promoCode ? (promoByCode.get(qs.promoCode) ?? null) : null
+    const seatFee = qs.seatFee ?? 0
+    const total = Number((qs.base + seatFee + qs.promoAmt + qs.taxAmt + qs.aptFee + qs.fuel).toFixed(2))
+    const existing = await prisma.fare_quote.findUnique({ where: { id: qs.id } })
+    if (!existing) {
+      const quotedAt = utcDateTime(-1, 2)
+      await prisma.fare_quote.create({
+        data: {
+          id: qs.id,
+          flight_id: qs.flight.id,
+          fare_class_id: fareClassId,
+          promo_code_id: promoId,
+          seat_type: qs.seatType,
+          currency: 'THB',
+          total_amount: total,
+          seats_left_pct: 78.5,
+          days_to_departure: 5,
+          fare_rule_snapshot: {
+            code: qs.fareCode,
+            refundable: qs.fareCode !== 'Q',
+            changeable: qs.fareCode !== 'Q',
+            cancel_fee_flat: qs.fareCode === 'Y' ? 500 : 0,
+            cancel_fee_pct: qs.fareCode === 'Y' ? 5 : qs.fareCode === 'W' ? 10 : 0,
+            change_fee_flat: qs.fareCode === 'Y' ? 300 : 0,
+            change_fee_pct: 0,
+          },
+          quoted_at: quotedAt,
+          expires_at: addMinutes(quotedAt, 15),
+          fare_quote_line: {
+            create: [
+              { seq: 1, kind: 'base', label: `Base fare (${qs.fareCode})`, amount: qs.base },
+              ...(seatFee > 0 ? [{ seq: 2, kind: 'seat_fee', label: `Seat fee (${qs.seatType})`, amount: seatFee }] : []),
+              ...(promoId
+                ? [
+                    {
+                      seq: 3,
+                      kind: 'promo',
+                      label: `Promo ${qs.promoCode}`,
+                      rate_pct: qs.promoCode === 'SAVE10' ? 10 : 15,
+                      amount: qs.promoAmt,
+                      source_id: promoId,
+                    },
+                  ]
+                : []),
+              { seq: 4, kind: 'tax', label: 'VAT', rate_pct: 7, amount: qs.taxAmt },
+              { seq: 5, kind: 'fee', label: 'Airport fee', amount: qs.aptFee },
+              { seq: 6, kind: 'surcharge', label: 'Fuel surcharge', amount: qs.fuel },
+            ],
+          },
+        },
+      })
+    }
+    quoteByKey.set(qs.key, { id: qs.id, totalAmount: total })
+  }
+
+  // Payment schedules (paid, scheduled upcoming, overdue)
+  const schedules = [
+    {
+      id: sid('s04', 1),
+      category: 'maintenance',
+      payee: 'Thai Aero MRO Services',
+      description: 'A320 HS-XA2 A-check invoice',
+      amount: 420000,
+      due_date: utcDate(-18),
+      status: 'paid',
+      paid_on: utcDate(-19),
+    },
+    {
+      id: sid('s04', 2),
+      category: 'catering',
+      payee: 'Bangkok Catering Co.',
+      description: 'Monthly inflight meal provisioning',
+      amount: 185000,
+      due_date: utcDate(-10),
+      status: 'paid',
+      paid_on: utcDate(-10),
+    },
+    {
+      id: sid('s04', 3),
+      category: 'staff',
+      payee: 'Flython Crew Payroll',
+      description: 'Upcoming flight crew payroll settlement',
+      amount: 640000,
+      due_date: utcDate(7),
+      status: 'scheduled',
+      paid_on: null,
+    },
+    {
+      id: sid('s04', 4),
+      category: 'maintenance',
+      payee: 'ATR Parts Asia',
+      description: 'Hydraulic actuator spare part',
+      amount: 95000,
+      due_date: utcDate(12),
+      status: 'scheduled',
+      paid_on: null,
+    },
+    {
+      id: sid('s04', 5),
+      category: 'other',
+      payee: 'AOT Ground Handling',
+      description: 'BKK apron & parking charges (overdue)',
+      amount: 112000,
+      due_date: utcDate(-3),
+      status: 'scheduled',
+      paid_on: null,
+    },
+  ]
+  for (const ps of schedules) {
+    await prisma.payment_schedule.upsert({
+      where: { id: ps.id },
+      update: {},
+      create: { ...ps, created_by: financeStaffId },
+    })
+  }
+
+  // Expenses (linked to paid schedules + standalone operational costs)
+  const expenses = [
+    {
+      id: sid('x04', 1),
+      category: 'maintenance',
+      description: 'A320 HS-XA2 A-check invoice',
+      amount: 420000,
+      incurred_on: utcDate(-19),
+      payment_schedule_id: sid('s04', 1),
+    },
+    {
+      id: sid('x04', 2),
+      category: 'catering',
+      description: 'Monthly inflight meal provisioning',
+      amount: 185000,
+      incurred_on: utcDate(-10),
+      payment_schedule_id: sid('s04', 2),
+    },
+    {
+      id: sid('x04', 3),
+      category: 'staff',
+      description: 'Ground operations overtime & allowances',
+      amount: 145000,
+      incurred_on: utcDate(-12),
+      payment_schedule_id: null,
+    },
+    {
+      id: sid('x04', 4),
+      category: 'other',
+      description: 'BKK & CNX navigation and slot fees',
+      amount: 98500,
+      incurred_on: utcDate(-8),
+      payment_schedule_id: null,
+    },
+    {
+      id: sid('x04', 5),
+      category: 'maintenance',
+      description: 'ATR72 line check consumables',
+      amount: 34200,
+      incurred_on: utcDate(-4),
+      payment_schedule_id: null,
+    },
+    {
+      id: sid('x04', 6),
+      category: 'catering',
+      description: 'NRT outstation beverage replenishment',
+      amount: 52000,
+      incurred_on: utcDate(-2),
+      payment_schedule_id: null,
+    },
+  ]
+  for (const ex of expenses) {
+    await prisma.expense.upsert({
+      where: { id: ex.id },
+      update: {},
+      create: { ...ex, created_by: financeStaffId },
+    })
+  }
+
+  // Finance monthly summaries (last 4 months, exact CHECK: profit = rev - pass_through - refund - costs)
+  const monthlySummaries = [
+    { m: 3, rev: 4850000, pt: 620000, ref: 115000, maint: 780000, staff: 1320000, cat: 310000, other: 280000 },
+    { m: 2, rev: 5120000, pt: 655000, ref: 98000, maint: 690000, staff: 1350000, cat: 335000, other: 295000 },
+    { m: 1, rev: 5490000, pt: 702000, ref: 142000, maint: 840000, staff: 1380000, cat: 360000, other: 310000 },
+    { m: 0, rev: 3920000, pt: 495000, ref: 86000, maint: 540000, staff: 1150000, cat: 270000, other: 215000 },
+  ]
+  for (const s of monthlySummaries) {
+    const month = monthStart(s.m)
+    const profit = s.rev - s.pt - s.ref - s.maint - s.staff - s.cat - s.other
+    await prisma.finance_monthly_summary.upsert({
+      where: { month },
+      update: {},
+      create: {
+        month,
+        revenue_amount: s.rev,
+        pass_through_amount: s.pt,
+        refund_amount: s.ref,
+        maintenance_cost: s.maint,
+        staff_cost: s.staff,
+        catering_cost: s.cat,
+        other_cost: s.other,
+        profit_amount: profit,
+        computed_at: NOW,
+      },
+    })
+  }
+
+  return { fareClassByCode, promoByCode, quoteByKey }
+}
+
+// ── F6 Reference Setup ───────────────────────────────────────────────────────────────────────────────────────
+
 async function seedCheckIn() {
   for (const gate of GATES) {
     await prisma.gate.upsert({ where: { airport_code_code: gate }, update: {}, create: gate })
@@ -305,15 +2342,17 @@ async function seedCheckIn() {
   })
 }
 
-// Upserted like the flight network. Contacts need the airports above.
-async function seedLostAndFound() {
+// ── F10 Reference Setup ──────────────────────────────────────────────────────────────────────────────────────
+
+async function seedLostAndFoundContacts() {
   for (const contact of STATION_CONTACTS) {
     await prisma.station_contact.upsert({ where: { airport_code: contact.airport_code }, update: {}, create: contact })
   }
 }
 
-// Upserted with no update, so a rerun keeps the multipliers staff changed in the app.
-async function seedLoyalty() {
+// ── F11 Reference Setup ──────────────────────────────────────────────────────────────────────────────────────
+
+async function seedLoyaltyEarnRules() {
   const fareClasses = await prisma.fare_class.findMany({ where: { code: { in: Object.keys(EARN_MULTIPLIERS) }, deleted_at: null } })
   for (const { id, code } of fareClasses) {
     await prisma.loyalty_earn_rule.upsert({
@@ -324,129 +2363,2102 @@ async function seedLoyalty() {
   }
 }
 
-// Upserted with no update, so a rerun keeps the rates staff changed in the app.
-async function seedCrewPay() {
+// ── F5 Reference Setup ───────────────────────────────────────────────────────────────────────────────────────
+
+async function seedCrewPayRates() {
   for (const rate of CREW_PAY_RATES) {
     await prisma.crew_pay_rate.upsert({ where: { crew_role: rate.crew_role }, update: {}, create: rate })
   }
 }
 
-// Same defaults as Feature 4's PRICING_SETTING_DEFAULTS. Upserted with no update, so a changed quote hold window survives a re-seed.
-async function seedPricingSettings() {
-  for (const setting of PRICING_SETTINGS) {
-    await prisma.pricing_setting.upsert({ where: { key: setting.key }, update: {}, create: setting })
+// ── F3: Rich Bookings, Passengers, Segments, Coupons, Seats, Assistance & Changes ────────────────────────────
+
+interface SeededBookingBundle {
+  bookingId: string
+  ref: string
+  customerId: string
+  coupons: Array<{
+    id: string
+    bookingPassengerId: string
+    passengerId: string
+    flightId: string
+    segmentId: string
+    priceTotal: number
+    cabin: string
+    fareClassId: string | null
+  }>
+}
+
+async function seedFeature3Bookings(
+  customers: Map<string, CustomerHandle>,
+  flights: Map<string, SeededFlightInfo>,
+  fareClassByCode: Map<string, string>,
+  promoByCode: Map<string, string>,
+  quoteByKey: Map<string, { id: string; totalAmount: number }>,
+  staffByRole: Map<string, { staffId: string; userId: string }>,
+): Promise<Map<string, SeededBookingBundle>> {
+  const bundles = new Map<string, SeededBookingBundle>()
+  const checkinStaffId = staffByRole.get('check-in')!.staffId
+  const csSupStaffId = staffByRole.get('ops')!.staffId
+
+  // Companion / child / infant passengers (saved travellers in F7 too)
+  const extraPassengerSeeds = [
+    {
+      key: 'arun_spouse',
+      id: sid('p07', 1),
+      first_name: 'Suda',
+      last_name: 'Sawatdee',
+      dob: '1990-02-18',
+      gender: 'F',
+      nationality: 'th',
+      passport: 'AA4019299',
+      ownerKey: 'arun',
+      relationship: 'spouse',
+      isSaved: true,
+    },
+    {
+      key: 'arun_child',
+      id: sid('p07', 2),
+      first_name: 'Kavin',
+      last_name: 'Sawatdee',
+      dob: '2019-06-10',
+      gender: 'M',
+      nationality: 'th',
+      passport: 'AA4019300',
+      ownerKey: 'arun',
+      relationship: 'child',
+      isSaved: true,
+    },
+    {
+      key: 'arun_infant',
+      id: sid('p07', 3),
+      first_name: 'Mina',
+      last_name: 'Sawatdee',
+      dob: '2025-08-05',
+      gender: 'F',
+      nationality: 'th',
+      passport: 'AA4019301',
+      ownerKey: 'arun',
+      relationship: 'child',
+      isSaved: true,
+    },
+    {
+      key: 'nattaya_parent',
+      id: sid('p07', 4),
+      first_name: 'Pranee',
+      last_name: 'Prasert',
+      dob: '1962-11-04',
+      gender: 'F',
+      nationality: 'th',
+      passport: 'AA5129399',
+      ownerKey: 'nattaya',
+      relationship: 'parent',
+      isSaved: true,
+    },
+    {
+      key: 'hiroshi_companion',
+      id: sid('p07', 5),
+      first_name: 'Ken',
+      last_name: 'Watanabe',
+      dob: '1986-04-22',
+      gender: 'M',
+      nationality: 'jp',
+      passport: 'JP8839255',
+      ownerKey: 'hiroshi',
+      relationship: 'companion',
+      isSaved: true,
+    },
+    {
+      key: 'wei_sibling',
+      id: sid('p07', 6),
+      first_name: 'Mei',
+      last_name: 'Lim',
+      dob: '1993-09-14',
+      gender: 'F',
+      nationality: 'sg',
+      passport: 'SG3928199',
+      ownerKey: 'wei',
+      relationship: 'sibling',
+      isSaved: false,
+    },
+  ]
+
+  const extraPassengerIds = new Map<string, string>()
+  for (const ep of extraPassengerSeeds) {
+    const existing = await prisma.passenger.findUnique({ where: { id: ep.id } })
+    if (!existing) {
+      await prisma.passenger.create({
+        data: {
+          id: ep.id,
+          first_name: ep.first_name,
+          last_name: ep.last_name,
+          date_of_birth: new Date(`${ep.dob}T00:00:00Z`),
+          gender: ep.gender,
+          nationality: ep.nationality,
+          passport_number: ep.passport,
+        },
+      })
+    }
+    extraPassengerIds.set(ep.key, ep.id)
+    const owner = customers.get(ep.ownerKey)!
+    await prisma.customer_passenger.upsert({
+      where: { customer_id_passenger_id: { customer_id: owner.customerId, passenger_id: ep.id } },
+      update: {},
+      create: {
+        customer_id: owner.customerId,
+        passenger_id: ep.id,
+        relationship_type: ep.relationship,
+        is_saved: ep.isSaved,
+        last_booked_at: utcDateTime(-3, 4),
+      },
+    })
   }
-}
 
-// The unique indexes only cover live rows, so a Prisma upsert can't use them. skipDuplicates (ON CONFLICT DO NOTHING) gives the
-// same result as the upserts above: running the seed again keeps existing rows, and any edits made in the app.
-async function seedPricingCatalog() {
-  await prisma.fare_class.createMany({ data: FARE_CLASSES, skipDuplicates: true })
-  await prisma.seat_fee.createMany({
-    data: Object.entries(SEAT_FEE_GRID).flatMap(([cabin, fees]) =>
-      Object.entries(fees).map(([seat_type, amount]) => ({ cabin, seat_type, amount })),
-    ),
-    skipDuplicates: true,
-  })
-  await prisma.tax_fee.createMany({ data: TAX_FEES, skipDuplicates: true })
+  const nextTicket = async (): Promise<string> => {
+    const rows = await prisma.$queryRaw<Array<{ value: bigint }>>`SELECT nextval('ticket_number_seq') AS value`
+    return `${BAG_TAG_AIRLINE_NUMBER}${Number(rows[0].value).toString().padStart(10, '0')}`
+  }
 
-  const fareClasses = await prisma.fare_class.findMany({ where: { code: { in: FARE_CLASSES.map((row) => row.code) }, deleted_at: null } })
-  const { fare_class, origin, destination, ...override } = BAGGAGE_ROUTE_OVERRIDE
-  const overrideRoute = await prisma.route.findFirst({ where: { origin, destination } })
-  const overrideClass = fareClasses.find((row) => row.code === fare_class)
-  await prisma.overweight_baggage_rate.createMany({
-    data: [
-      ...fareClasses.map((row) => ({ fare_class_id: row.id, ...BAGGAGE_BY_CABIN[row.cabin as keyof typeof BAGGAGE_BY_CABIN] })),
-      ...(overrideRoute && overrideClass ? [{ ...override, fare_class_id: overrideClass.id, route_id: overrideRoute.id }] : []),
+  const upsertBookingScenario = async (spec: {
+    key: string
+    id: string
+    ref: string
+    customerKey: string
+    tripType: 'one_way' | 'return' | 'multi_city'
+    status: 'held' | 'confirmed' | 'cancelled' | 'expired'
+    paymentType?: 'cash' | 'miles'
+    bookedAt: Date
+    holdExpiresAt: Date
+    confirmedAt?: Date | null
+    cancelledAt?: Date | null
+    cancelReason?: 'customer_request' | 'staff_request' | 'flight_cancelled' | 'rebooked_partner' | 'changed'
+    partnerAirline?: string
+    passengers: Array<{ id: string; passengerId: string; type: 'adult' | 'child' | 'infant'; lapOfId?: string }>
+    segments: Array<{
+      id: string
+      flight: SeededFlightInfo
+      order: number
+      cabin: string
+      fareCode: string | null
+      quoteKey?: string
+      price: number
+      seatCodes?: string[]
+    }>
+  }) => {
+    const cust = customers.get(spec.customerKey)!
+    const existing = await prisma.booking.findUnique({ where: { booking_reference: spec.ref } })
+    const booking =
+      existing ??
+      (await prisma.booking.create({
+        data: {
+          id: spec.id,
+          booking_reference: spec.ref,
+          customer_id: cust.customerId,
+          trip_type: spec.tripType,
+          status: spec.status,
+          payment_type: spec.paymentType ?? 'cash',
+          currency: 'THB',
+          contact_email: cust.email,
+          idempotency_key: `seed-${spec.ref}`,
+          booked_at: spec.bookedAt,
+          hold_expires_at: spec.holdExpiresAt,
+          confirmed_at: spec.confirmedAt ?? null,
+          cancelled_at: spec.cancelledAt ?? null,
+        },
+      }))
+
+    const couponsOut: SeededBookingBundle['coupons'] = []
+    for (const p of spec.passengers) {
+      await prisma.booking_passenger.upsert({
+        where: { booking_id_passenger_id: { booking_id: booking.id, passenger_id: p.passengerId } },
+        update: {},
+        create: {
+          id: p.id,
+          booking_id: booking.id,
+          passenger_id: p.passengerId,
+          passenger_type: p.type,
+          lap_of_id: p.lapOfId ?? null,
+        },
+      })
+    }
+
+    for (const seg of spec.segments) {
+      const fareClassId = seg.fareCode ? (fareClassByCode.get(seg.fareCode) ?? null) : null
+      const segment = await prisma.booking_segment.upsert({
+        where: { booking_id_flight_id: { booking_id: booking.id, flight_id: seg.flight.id } },
+        update: {},
+        create: {
+          id: seg.id,
+          booking_id: booking.id,
+          flight_id: seg.flight.id,
+          segment_order: seg.order,
+          cabin: seg.cabin,
+          fare_class_id: fareClassId,
+        },
+      })
+
+      for (const [pIdx, p] of spec.passengers.entries()) {
+        const bp = await prisma.booking_passenger.findUniqueOrThrow({
+          where: { booking_id_passenger_id: { booking_id: booking.id, passenger_id: p.passengerId } },
+        })
+        const existingCoupon = await prisma.booking_coupon.findUnique({
+          where: { booking_passenger_id_flight_id: { booking_passenger_id: bp.id, flight_id: seg.flight.id } },
+        })
+        const quote = seg.quoteKey ? quoteByKey.get(seg.quoteKey) : undefined
+        const priceTotal = p.type === 'infant' ? 0 : seg.price
+        let couponId = existingCoupon?.id
+        if (!existingCoupon) {
+          const createdCoupon = await prisma.booking_coupon.create({
+            data: {
+              booking_id: booking.id,
+              booking_segment_id: segment.id,
+              booking_passenger_id: bp.id,
+              flight_id: seg.flight.id,
+              passenger_id: p.passengerId,
+              fare_quote_id: p.type === 'infant' ? null : (quote?.id ?? null),
+              price_total: priceTotal,
+              ticket_number: spec.status === 'confirmed' || spec.status === 'cancelled' ? await nextTicket() : null,
+              status: spec.status,
+              cancel_reason: spec.status === 'cancelled' ? (spec.cancelReason ?? 'customer_request') : null,
+              partner_airline: spec.cancelReason === 'rebooked_partner' ? (spec.partnerAirline ?? 'PA') : null,
+              cancelled_at: spec.status === 'cancelled' ? (spec.cancelledAt ?? utcDateTime(-1, 5)) : null,
+            },
+          })
+          couponId = createdCoupon.id
+
+          // Update seat_inventory counts for seat-occupying passengers
+          if (p.type !== 'infant') {
+            if (spec.status === 'confirmed') {
+              await prisma.seat_inventory.update({
+                where: { flight_id_cabin: { flight_id: seg.flight.id, cabin: seg.cabin } },
+                data: {
+                  sold_count: { increment: 1 },
+                  ...(spec.paymentType === 'miles' ? { award_sold_count: { increment: 1 } } : {}),
+                },
+              })
+            } else if (spec.status === 'held') {
+              await prisma.seat_inventory.update({
+                where: { flight_id_cabin: { flight_id: seg.flight.id, cabin: seg.cabin } },
+                data: { held_count: { increment: 1 } },
+              })
+            }
+          }
+
+          // Seat assignment (infants take no seat)
+          const seatCode = seg.seatCodes?.[pIdx]
+          if (seatCode && p.type !== 'infant') {
+            await prisma.seat_assignment.create({
+              data: {
+                booking_coupon_id: createdCoupon.id,
+                flight_id: seg.flight.id,
+                seat_code: seatCode,
+                status: spec.status === 'confirmed' ? 'assigned' : spec.status === 'held' ? 'held' : 'released',
+                hold_expires_at: spec.status === 'held' ? spec.holdExpiresAt : null,
+                assigned_at: spec.status === 'confirmed' ? (spec.confirmedAt ?? spec.bookedAt) : null,
+                released_at: spec.status === 'cancelled' || spec.status === 'expired' ? (spec.cancelledAt ?? spec.holdExpiresAt) : null,
+              },
+            })
+          }
+        }
+
+        couponsOut.push({
+          id: couponId!,
+          bookingPassengerId: bp.id,
+          passengerId: p.passengerId,
+          flightId: seg.flight.id,
+          segmentId: segment.id,
+          priceTotal,
+          cabin: seg.cabin,
+          fareClassId,
+        })
+      }
+    }
+
+    bundles.set(spec.key, {
+      bookingId: booking.id,
+      ref: booking.booking_reference,
+      customerId: cust.customerId,
+      coupons: couponsOut,
+    })
+  }
+
+  const arun = customers.get('arun')!
+  const nattaya = customers.get('nattaya')!
+  const hiroshi = customers.get('hiroshi')!
+  const claire = customers.get('claire')!
+  const wei = customers.get('wei')!
+  const chidi = customers.get('chidi')!
+  const viktor = customers.get('viktor')!
+  const elena = customers.get('elena')!
+
+  // 1. Confirmed family return booking (Arun + spouse + child + lap infant, promo SAVE10)
+  await upsertBookingScenario({
+    key: 'b_arun_return',
+    id: sid('b03', 1),
+    ref: 'AR7K2M',
+    customerKey: 'arun',
+    tripType: 'return',
+    status: 'confirmed',
+    bookedAt: utcDateTime(-3, 2),
+    holdExpiresAt: utcDateTime(-3, 2, 15),
+    confirmedAt: utcDateTime(-3, 2, 5),
+    passengers: [
+      { id: sid('bp3', 1), passengerId: arun.passengerId, type: 'adult' },
+      { id: sid('bp3', 2), passengerId: extraPassengerIds.get('arun_spouse')!, type: 'adult' },
+      { id: sid('bp3', 3), passengerId: extraPassengerIds.get('arun_child')!, type: 'child' },
+      { id: sid('bp3', 4), passengerId: extraPassengerIds.get('arun_infant')!, type: 'infant', lapOfId: sid('bp3', 1) },
     ],
-    skipDuplicates: true,
-  })
-
-  // One code in each state the Promo codes card shows, with dates relative to today so they don't go stale.
-  const daysFromNow = (days: number) => new Date(Date.now() + days * DAY_MS)
-  const live = { valid_from: daysFromNow(-30), valid_to: daysFromNow(365) }
-  await prisma.promo_code.createMany({
-    data: [
-      { code: 'SAVE10', kind: 'promo', discount_pct: 10, ...live },
-      { code: 'MINUS20', kind: 'promo', discount_amount: 20, ...live },
-      { code: 'CORP15', kind: 'corporate', discount_pct: 15, ...live },
-      { code: 'SOON20', kind: 'promo', discount_pct: 20, valid_from: daysFromNow(30), valid_to: daysFromNow(120) },
-      { code: 'OLD5', kind: 'promo', discount_pct: 5, valid_from: daysFromNow(-120), valid_to: daysFromNow(-30) },
-      { code: 'SOLDOUT', kind: 'promo', discount_pct: 25, max_uses: 50, used_count: 50, ...live },
-      { code: 'PAUSED', kind: 'promo', discount_pct: 5, is_active: false, ...live },
+    segments: [
+      {
+        id: sid('bs3', 1),
+        flight: flights.get('up_bkk_cnx_d2')!,
+        order: 1,
+        cabin: 'economy',
+        fareCode: 'Y',
+        quoteKey: 'q_bkk_cnx_y_promo',
+        price: quoteByKey.get('q_bkk_cnx_y_promo')!.totalAmount,
+        seatCodes: ['12A', '12B', '12C'],
+      },
+      {
+        id: sid('bs3', 2),
+        flight: flights.get('up_cnx_bkk_d2')!,
+        order: 2,
+        cabin: 'economy',
+        fareCode: 'Y',
+        quoteKey: 'q_cnx_bkk_y',
+        price: quoteByKey.get('q_cnx_bkk_y')!.totalAmount,
+        seatCodes: ['14A', '14B', '14C'],
+      },
     ],
-    skipDuplicates: true,
   })
+
+  // Record promo redemption for SAVE10 on AR7K2M
+  const save10Id = promoByCode.get('SAVE10')
+  const save10QuoteId = quoteByKey.get('q_bkk_cnx_y_promo')?.id
+  if (save10Id && save10QuoteId) {
+    const existingRed = await prisma.promo_redemption.findUnique({
+      where: { promo_code_id_booking_ref: { promo_code_id: save10Id, booking_ref: 'AR7K2M' } },
+    })
+    if (!existingRed) {
+      await prisma.promo_redemption.create({
+        data: {
+          promo_code_id: save10Id,
+          fare_quote_id: save10QuoteId,
+          booking_ref: 'AR7K2M',
+          status: 'redeemed',
+          redeemed_at: utcDateTime(-3, 2, 5),
+        },
+      })
+      await prisma.promo_code.update({ where: { id: save10Id }, data: { used_count: { increment: 1 } } })
+    }
+  }
+
+  // 2. Confirmed Business return BKK↔SIN (Hiroshi + companion, promo CORP15)
+  await upsertBookingScenario({
+    key: 'b_hiroshi_sin',
+    id: sid('b03', 2),
+    ref: 'HT4N8P',
+    customerKey: 'hiroshi',
+    tripType: 'return',
+    status: 'confirmed',
+    bookedAt: utcDateTime(-2, 4),
+    holdExpiresAt: utcDateTime(-2, 4, 15),
+    confirmedAt: utcDateTime(-2, 4, 6),
+    passengers: [
+      { id: sid('bp3', 5), passengerId: hiroshi.passengerId, type: 'adult' },
+      { id: sid('bp3', 6), passengerId: extraPassengerIds.get('hiroshi_companion')!, type: 'adult' },
+    ],
+    segments: [
+      {
+        id: sid('bs3', 3),
+        flight: flights.get('up_bkk_sin_d4')!,
+        order: 1,
+        cabin: 'business',
+        fareCode: 'J',
+        quoteKey: 'q_bkk_sin_j',
+        price: quoteByKey.get('q_bkk_sin_j')!.totalAmount,
+        seatCodes: ['2A', '2C'],
+      },
+      {
+        id: sid('bs3', 4),
+        flight: flights.get('up_sin_bkk_d5')!,
+        order: 2,
+        cabin: 'business',
+        fareCode: 'J',
+        price: 17535,
+        seatCodes: ['2D', '2F'],
+      },
+    ],
+  })
+
+  // 3. Confirmed Miles Award Booking (Nattaya on BKK→NRT)
+  await upsertBookingScenario({
+    key: 'b_nattaya_award',
+    id: sid('b03', 3),
+    ref: 'NP9M3W',
+    customerKey: 'nattaya',
+    tripType: 'one_way',
+    status: 'confirmed',
+    paymentType: 'miles',
+    bookedAt: utcDateTime(-2, 7),
+    holdExpiresAt: utcDateTime(-2, 7, 15),
+    confirmedAt: utcDateTime(-2, 7, 4),
+    passengers: [{ id: sid('bp3', 7), passengerId: nattaya.passengerId, type: 'adult' }],
+    segments: [
+      {
+        id: sid('bs3', 5),
+        flight: flights.get('up_bkk_nrt_d5')!,
+        order: 1,
+        cabin: 'economy',
+        fareCode: null,
+        price: 0,
+        seatCodes: ['18A'],
+      },
+    ],
+  })
+
+  // 4. Held booking (Wei on BKK→HKT)
+  await upsertBookingScenario({
+    key: 'b_wei_held',
+    id: sid('b03', 4),
+    ref: 'WL6Q5X',
+    customerKey: 'wei',
+    tripType: 'one_way',
+    status: 'held',
+    bookedAt: utcDateTime(0, 0),
+    holdExpiresAt: utcDateTime(1, 0),
+    passengers: [{ id: sid('bp3', 8), passengerId: wei.passengerId, type: 'adult' }],
+    segments: [
+      {
+        id: sid('bs3', 6),
+        flight: flights.get('up_bkk_hkt_d3')!,
+        order: 1,
+        cabin: 'premium_economy',
+        fareCode: 'W',
+        price: 5123,
+        seatCodes: ['6A'],
+      },
+    ],
+  })
+
+  // 5. Cancelled booking by customer request (Claire on BKK→NRT)
+  await upsertBookingScenario({
+    key: 'b_claire_cancelled',
+    id: sid('b03', 5),
+    ref: 'CM3R7V',
+    customerKey: 'claire',
+    tripType: 'one_way',
+    status: 'cancelled',
+    cancelReason: 'customer_request',
+    bookedAt: utcDateTime(-5, 3),
+    holdExpiresAt: utcDateTime(-5, 3, 15),
+    confirmedAt: utcDateTime(-5, 3, 5),
+    cancelledAt: utcDateTime(-2, 6),
+    passengers: [{ id: sid('bp3', 9), passengerId: claire.passengerId, type: 'adult' }],
+    segments: [
+      {
+        id: sid('bs3', 7),
+        flight: flights.get('up_bkk_nrt_d5')!,
+        order: 1,
+        cabin: 'premium_economy',
+        fareCode: 'W',
+        quoteKey: 'q_bkk_nrt_w',
+        price: quoteByKey.get('q_bkk_nrt_w')!.totalAmount,
+        seatCodes: ['12B'],
+      },
+    ],
+  })
+
+  // 6. Cancelled booking rebooked on partner after XX401 cancellation (Elena)
+  await upsertBookingScenario({
+    key: 'b_elena_partner',
+    id: sid('b03', 6),
+    ref: 'EV5T9K',
+    customerKey: 'elena',
+    tripType: 'one_way',
+    status: 'cancelled',
+    cancelReason: 'rebooked_partner',
+    partnerAirline: 'PA',
+    bookedAt: utcDateTime(-6, 4),
+    holdExpiresAt: utcDateTime(-6, 4, 15),
+    confirmedAt: utcDateTime(-6, 4, 5),
+    cancelledAt: utcDateTime(-1, 0),
+    passengers: [{ id: sid('bp3', 10), passengerId: elena.passengerId, type: 'adult' }],
+    segments: [
+      {
+        id: sid('bs3', 8),
+        flight: flights.get('past_cancelled_1')!,
+        order: 1,
+        cabin: 'economy',
+        fareCode: 'Y',
+        price: 6086,
+      },
+    ],
+  })
+
+  // 7. Expired hold booking (Chidi)
+  await upsertBookingScenario({
+    key: 'b_chidi_expired',
+    id: sid('b03', 7),
+    ref: 'CD8W2Z',
+    customerKey: 'chidi',
+    tripType: 'one_way',
+    status: 'expired',
+    bookedAt: utcDateTime(-2, 1),
+    holdExpiresAt: utcDateTime(-2, 1, 15),
+    passengers: [{ id: sid('bp3', 11), passengerId: chidi.passengerId, type: 'adult' }],
+    segments: [
+      {
+        id: sid('bs3', 9),
+        flight: flights.get('up_bkk_hkg_d6')!,
+        order: 1,
+        cabin: 'economy',
+        fareCode: 'Y',
+        price: 6086,
+      },
+    ],
+  })
+
+  // 8–12. Past arrived-flight bookings (feed F6 check-ins/boarding, F10 lost bags, F11 miles earn & lounge, F13 complaints)
+  await upsertBookingScenario({
+    key: 'b_past_arun_cnx',
+    id: sid('b03', 8),
+    ref: 'PA2X4D',
+    customerKey: 'arun',
+    tripType: 'return',
+    status: 'confirmed',
+    bookedAt: utcDateTime(-10, 3),
+    holdExpiresAt: utcDateTime(-10, 3, 15),
+    confirmedAt: utcDateTime(-10, 3, 5),
+    passengers: [{ id: sid('bp3', 12), passengerId: arun.passengerId, type: 'adult' }],
+    segments: [
+      {
+        id: sid('bs3', 10),
+        flight: flights.get('past_bkk_cnx_1')!,
+        order: 1,
+        cabin: 'economy',
+        fareCode: 'Y',
+        quoteKey: 'q_past_bkk_cnx_y',
+        price: quoteByKey.get('q_past_bkk_cnx_y')!.totalAmount,
+        seatCodes: ['10A'],
+      },
+      {
+        id: sid('bs3', 11),
+        flight: flights.get('past_cnx_bkk_1')!,
+        order: 2,
+        cabin: 'economy',
+        fareCode: 'Y',
+        price: 3518,
+        seatCodes: ['10F'],
+      },
+    ],
+  })
+
+  await upsertBookingScenario({
+    key: 'b_past_nattaya_hkt',
+    id: sid('b03', 9),
+    ref: 'PN5Y7F',
+    customerKey: 'nattaya',
+    tripType: 'return',
+    status: 'confirmed',
+    bookedAt: utcDateTime(-9, 2),
+    holdExpiresAt: utcDateTime(-9, 2, 15),
+    confirmedAt: utcDateTime(-9, 2, 5),
+    passengers: [
+      { id: sid('bp3', 13), passengerId: nattaya.passengerId, type: 'adult' },
+      { id: sid('bp3', 14), passengerId: extraPassengerIds.get('nattaya_parent')!, type: 'adult' },
+    ],
+    segments: [
+      {
+        id: sid('bs3', 12),
+        flight: flights.get('past_bkk_hkt_1')!,
+        order: 1,
+        cabin: 'economy',
+        fareCode: 'Y',
+        price: 3518,
+        seatCodes: ['11A', '11B'],
+      },
+      {
+        id: sid('bs3', 13),
+        flight: flights.get('past_hkt_bkk_1')!,
+        order: 2,
+        cabin: 'economy',
+        fareCode: 'Y',
+        price: 3518,
+        seatCodes: ['11C', '11D'],
+      },
+    ],
+  })
+
+  await upsertBookingScenario({
+    key: 'b_past_hiroshi_sin',
+    id: sid('b03', 10),
+    ref: 'PH9J3G',
+    customerKey: 'hiroshi',
+    tripType: 'return',
+    status: 'confirmed',
+    bookedAt: utcDateTime(-8, 5),
+    holdExpiresAt: utcDateTime(-8, 5, 15),
+    confirmedAt: utcDateTime(-8, 5, 5),
+    passengers: [{ id: sid('bp3', 15), passengerId: hiroshi.passengerId, type: 'adult' }],
+    segments: [
+      {
+        id: sid('bs3', 14),
+        flight: flights.get('past_bkk_sin_1')!,
+        order: 1,
+        cabin: 'business',
+        fareCode: 'J',
+        quoteKey: 'q_past_bkk_sin_j',
+        price: quoteByKey.get('q_past_bkk_sin_j')!.totalAmount,
+        seatCodes: ['1A'],
+      },
+      {
+        id: sid('bs3', 15),
+        flight: flights.get('past_sin_bkk_1')!,
+        order: 2,
+        cabin: 'business',
+        fareCode: 'J',
+        price: 17535,
+        seatCodes: ['1F'],
+      },
+    ],
+  })
+
+  await upsertBookingScenario({
+    key: 'b_past_chidi_cnx',
+    id: sid('b03', 11),
+    ref: 'PC4H8B',
+    customerKey: 'chidi',
+    tripType: 'one_way',
+    status: 'confirmed',
+    bookedAt: utcDateTime(-7, 4),
+    holdExpiresAt: utcDateTime(-7, 4, 15),
+    confirmedAt: utcDateTime(-7, 4, 5),
+    passengers: [{ id: sid('bp3', 16), passengerId: chidi.passengerId, type: 'adult' }],
+    segments: [
+      {
+        id: sid('bs3', 16),
+        flight: flights.get('past_bkk_cnx_1')!,
+        order: 1,
+        cabin: 'economy',
+        fareCode: 'Y',
+        price: 3518,
+        seatCodes: ['15C'],
+      },
+    ],
+  })
+
+  // Upcoming booking for Viktor (triggers strong watchlist match in F7 screening queue!)
+  await upsertBookingScenario({
+    key: 'b_viktor_nrt',
+    id: sid('b03', 12),
+    ref: 'VK7P4L',
+    customerKey: 'viktor',
+    tripType: 'one_way',
+    status: 'confirmed',
+    bookedAt: utcDateTime(-1, 6),
+    holdExpiresAt: utcDateTime(-1, 6, 15),
+    confirmedAt: utcDateTime(-1, 6, 4),
+    passengers: [{ id: sid('bp3', 17), passengerId: viktor.passengerId, type: 'adult' }],
+    segments: [
+      {
+        id: sid('bs3', 17),
+        flight: flights.get('up_bkk_nrt_d5')!,
+        order: 1,
+        cabin: 'economy',
+        fareCode: 'Y',
+        price: 13255,
+        seatCodes: ['20D'],
+      },
+    ],
+  })
+
+  // Upcoming booking for Elena (triggers probable watchlist match in F7)
+  await upsertBookingScenario({
+    key: 'b_elena_sin',
+    id: sid('b03', 13),
+    ref: 'EL2M6N',
+    customerKey: 'elena',
+    tripType: 'one_way',
+    status: 'confirmed',
+    bookedAt: utcDateTime(-1, 8),
+    holdExpiresAt: utcDateTime(-1, 8, 15),
+    confirmedAt: utcDateTime(-1, 8, 5),
+    passengers: [{ id: sid('bp3', 18), passengerId: elena.passengerId, type: 'adult' }],
+    segments: [
+      {
+        id: sid('bs3', 18),
+        flight: flights.get('up_bkk_sin_d4')!,
+        order: 1,
+        cabin: 'economy',
+        fareCode: 'Y',
+        price: 6086,
+        seatCodes: ['16B'],
+      },
+    ],
+  })
+
+  // Special assistance requests across all 5 codes & all 4 statuses
+  const bArun = bundles.get('b_arun_return')!
+  const bNattayaPast = bundles.get('b_past_nattaya_hkt')!
+  const bHiroshi = bundles.get('b_hiroshi_sin')!
+  const bElena = bundles.get('b_elena_sin')!
+
+  const ssrSpecs = [
+    {
+      id: sid('r03', 1),
+      booking_id: bArun.bookingId,
+      booking_passenger_id: bArun.coupons[2].bookingPassengerId, // child
+      booking_segment_id: bArun.coupons[2].segmentId,
+      service_code: 'UMNR',
+      status: 'requested',
+      note: 'Guardian: Arun Sawatdee, +66 81 100 0001. Escort needed at CNX gate.',
+      decision_note: null,
+      handled_by_staff_id: null,
+      handled_at: null,
+    },
+    {
+      id: sid('r03', 2),
+      booking_id: bNattayaPast.bookingId,
+      booking_passenger_id: bNattayaPast.coupons[1].bookingPassengerId, // parent
+      booking_segment_id: bNattayaPast.coupons[1].segmentId,
+      service_code: 'WCHR',
+      status: 'completed',
+      note: 'Wheelchair assistance for ramp and gate transfer.',
+      decision_note: null,
+      handled_by_staff_id: checkinStaffId,
+      handled_at: utcDateTime(-3, 5),
+    },
+    {
+      id: sid('r03', 3),
+      booking_id: bHiroshi.bookingId,
+      booking_passenger_id: bHiroshi.coupons[0].bookingPassengerId,
+      booking_segment_id: bHiroshi.coupons[0].segmentId,
+      service_code: 'WCHS',
+      status: 'accepted',
+      note: 'Assistance with cabin stairs requested.',
+      decision_note: null,
+      handled_by_staff_id: csSupStaffId,
+      handled_at: utcDateTime(-1, 3),
+    },
+    {
+      id: sid('r03', 4),
+      booking_id: bElena.bookingId,
+      booking_passenger_id: bElena.coupons[0].bookingPassengerId,
+      booking_segment_id: bElena.coupons[0].segmentId,
+      service_code: 'MEDA',
+      status: 'rejected',
+      note: 'Portable oxygen concentrator approval requested.',
+      decision_note: 'Device model not FAA-approved; please contact medical desk for certified unit.',
+      handled_by_staff_id: csSupStaffId,
+      handled_at: utcDateTime(-1, 9),
+    },
+    {
+      id: sid('r03', 5),
+      booking_id: bArun.bookingId,
+      booking_passenger_id: bArun.coupons[1].bookingPassengerId,
+      booking_segment_id: bArun.coupons[1].segmentId,
+      service_code: 'WCHC',
+      status: 'requested',
+      note: 'Cabin wheelchair to seat requested.',
+      decision_note: null,
+      handled_by_staff_id: null,
+      handled_at: null,
+    },
+  ]
+  for (const ssr of ssrSpecs) {
+    if (!(await prisma.booking_service_request.findUnique({ where: { id: ssr.id } }))) {
+      await prisma.booking_service_request.create({
+        data: { ...ssr, requested_at: utcDateTime(-2, 3) },
+      })
+    }
+  }
+
+  // Booking change record (completed) on b_hiroshi_sin
+  if (!(await prisma.booking_change.findUnique({ where: { id: sid('c03', 1) } }))) {
+    await prisma.booking_change.create({
+      data: {
+        id: sid('c03', 1),
+        booking_id: bHiroshi.bookingId,
+        old_segment_id: bHiroshi.coupons[0].segmentId,
+        new_segment_id: bHiroshi.coupons[2].segmentId,
+        fare_difference: 1200,
+        change_fee: 300,
+        status: 'completed',
+        requested_by_user_id: hiroshi.userId,
+        requested_at: utcDateTime(-2, 6),
+        completed_at: utcDateTime(-2, 6, 10),
+      },
+    })
+  }
+
+  return bundles
 }
 
-async function seedCustomer() {
-  const user = await prisma.user.create({
-    data: {
-      type: 'customer',
-      email: faker.internet.email().toLowerCase(),
-      clerk_user_id: `user_${faker.string.alphanumeric(24)}`,
-    },
-  })
+// ── F7: Watchlist Entries, Screening Checks & Reviews ────────────────────────────────────────────────────────
 
-  // A customer's identity (names, date of birth, gender, nationality) lives on the passenger row.
-  const passenger = await prisma.passenger.create({
-    data: {
-      first_name: faker.person.firstName(),
-      last_name: faker.person.lastName(),
-      date_of_birth: faker.date.birthdate(),
-      gender: faker.helpers.arrayElement(GENDERS),
-      nationality: faker.location.countryCode('alpha-2').toLowerCase(),
+async function seedSecurityScreening(
+  customers: Map<string, CustomerHandle>,
+  flights: Map<string, SeededFlightInfo>,
+  bundles: Map<string, SeededBookingBundle>,
+  securityStaffId: string,
+): Promise<{ viktorRunId: string }> {
+  const entries = [
+    {
+      id: sid('w07', 1),
+      first_name: 'Viktor',
+      last_name: 'Kovalenko',
+      date_of_birth: new Date('1982-08-12T00:00:00Z'),
+      gender: 'M',
+      nationality: 'ua',
+      passport_number: 'UA9045123',
+      list_type: 'no_fly',
+      status: 'active',
+      issuing_authority: 'Interpol Aviation Security',
+      reason: 'Active aviation security restriction',
+      listed_at: utcDateTime(-30, 0),
     },
-  })
-
-  await prisma.customer.create({
-    data: {
-      user_id: user.id,
-      passenger_id: passenger.id,
-      phone: faker.phone.number(),
-      profile_photo_url: faker.image.avatar(),
+    {
+      id: sid('w07', 2),
+      first_name: 'Elena',
+      last_name: 'Vans',
+      date_of_birth: new Date('1991-04-03T00:00:00Z'),
+      gender: 'F',
+      nationality: 'gb',
+      passport_number: 'GB5512999',
+      list_type: 'travel_ban',
+      status: 'active',
+      issuing_authority: 'Immigration Bureau',
+      reason: 'Overstay entry ban',
+      listed_at: utcDateTime(-20, 0),
     },
-  })
+    {
+      id: sid('w07', 3),
+      first_name: 'Marcus',
+      last_name: 'Vane',
+      date_of_birth: new Date('1979-11-19T00:00:00Z'),
+      gender: 'M',
+      nationality: 'us',
+      passport_number: 'US4409182',
+      list_type: 'wanted',
+      status: 'active',
+      issuing_authority: 'Federal Marshals',
+      reason: 'Outstanding arrest warrant',
+      listed_at: utcDateTime(-45, 0),
+    },
+    {
+      id: sid('w07', 4),
+      first_name: 'Chidi',
+      last_name: 'Okafur',
+      date_of_birth: new Date('1987-01-25T00:00:00Z'),
+      gender: 'M',
+      nationality: 'ng',
+      passport_number: 'NG6612000',
+      list_type: 'travel_ban',
+      status: 'active',
+      issuing_authority: 'Border Control',
+      reason: 'Pending identity verification',
+      listed_at: utcDateTime(-15, 0),
+    },
+    {
+      id: sid('w07', 5),
+      first_name: 'Somkid',
+      last_name: 'Boonsri',
+      date_of_birth: new Date('1975-05-01T00:00:00Z'),
+      gender: 'M',
+      nationality: 'th',
+      passport_number: 'AA1000222',
+      list_type: 'travel_ban',
+      status: 'cleared',
+      issuing_authority: 'Immigration Bureau',
+      reason: 'Administrative hold',
+      listed_at: utcDateTime(-90, 0),
+      cleared_at: utcDateTime(-10, 0),
+      cleared_by_staff_id: securityStaffId,
+      clear_reason: 'Court order lifted travel restriction',
+    },
+  ]
 
-  return user
+  for (const w of entries) {
+    await prisma.watchlist_entry.upsert({
+      where: { id: w.id },
+      update: {},
+      create: { ...w, created_by_staff_id: securityStaffId },
+    })
+  }
+
+  const viktor = customers.get('viktor')!
+  const elena = customers.get('elena')!
+  const arun = customers.get('arun')!
+  const chidi = customers.get('chidi')!
+  const hiroshi = customers.get('hiroshi')!
+
+  const fUpNrt = flights.get('up_bkk_nrt_d5')!
+  const fUpSin = flights.get('up_bkk_sin_d4')!
+  const fUpCnx = flights.get('up_bkk_cnx_d2')!
+  const fPastCnx = flights.get('past_bkk_cnx_1')!
+
+  const viktorRunId = sid('r07', 1)
+
+  const checks = [
+    // Strong match held (unreviewed in Screening Queue!)
+    {
+      id: sid('s07', 1),
+      run_id: viktorRunId,
+      passenger_id: viktor.passengerId,
+      flight_id: fUpNrt.id,
+      pnr_id: bundles.get('b_viktor_nrt')!.bookingId,
+      trigger_point: 'booking',
+      watchlist_entry_id: sid('w07', 1),
+      match_level: 'strong',
+      outcome: 'held',
+      name_similarity: 1.0,
+      snap_first_name: 'Viktor',
+      snap_last_name: 'Kovalenko',
+      snap_date_of_birth: new Date('1982-08-12T00:00:00Z'),
+      snap_gender: 'M',
+      snap_nationality: 'ua',
+      snap_passport: 'UA9045123',
+      snap_entry_first_name: 'Viktor',
+      snap_entry_last_name: 'Kovalenko',
+      snap_entry_date_of_birth: new Date('1982-08-12T00:00:00Z'),
+      snap_entry_gender: 'M',
+      snap_entry_nationality: 'ua',
+      snap_entry_passport: 'UA9045123',
+      occurred_at: utcDateTime(-1, 6, 5),
+    },
+    // Probable match flagged (unreviewed in Screening Queue!)
+    {
+      id: sid('s07', 2),
+      run_id: sid('r07', 2),
+      passenger_id: elena.passengerId,
+      flight_id: fUpSin.id,
+      pnr_id: bundles.get('b_elena_sin')!.bookingId,
+      trigger_point: 'booking',
+      watchlist_entry_id: sid('w07', 2),
+      match_level: 'probable',
+      outcome: 'flagged',
+      name_similarity: 0.78,
+      snap_first_name: 'Elena',
+      snap_last_name: 'Vance',
+      snap_date_of_birth: new Date('1991-04-03T00:00:00Z'),
+      snap_gender: 'F',
+      snap_nationality: 'gb',
+      snap_passport: 'GB5512904',
+      snap_entry_first_name: 'Elena',
+      snap_entry_last_name: 'Vans',
+      snap_entry_date_of_birth: new Date('1991-04-03T00:00:00Z'),
+      snap_entry_gender: 'F',
+      snap_entry_nationality: 'gb',
+      snap_entry_passport: 'GB5512999',
+      occurred_at: utcDateTime(-1, 8, 6),
+    },
+    // Probable match flagged and reviewed as false_positive (with revision 1 + 2!)
+    {
+      id: sid('s07', 3),
+      run_id: sid('r07', 3),
+      passenger_id: chidi.passengerId,
+      flight_id: fPastCnx.id,
+      pnr_id: bundles.get('b_past_chidi_cnx')!.bookingId,
+      trigger_point: 'check_in',
+      watchlist_entry_id: sid('w07', 4),
+      match_level: 'probable',
+      outcome: 'flagged',
+      name_similarity: 0.85,
+      snap_first_name: 'Chidi',
+      snap_last_name: 'Okafor',
+      snap_date_of_birth: new Date('1987-01-25T00:00:00Z'),
+      snap_gender: 'M',
+      snap_nationality: 'ng',
+      snap_passport: 'NG6612390',
+      snap_entry_first_name: 'Chidi',
+      snap_entry_last_name: 'Okafur',
+      snap_entry_date_of_birth: new Date('1987-01-25T00:00:00Z'),
+      snap_entry_gender: 'M',
+      snap_entry_nationality: 'ng',
+      snap_entry_passport: 'NG6612000',
+      occurred_at: utcDateTime(-4, 0, 15),
+    },
+    // Clean check (clear, watchlist_entry_id null -> all snap_entry_* & name_similarity must be null)
+    {
+      id: sid('s07', 4),
+      run_id: sid('r07', 4),
+      passenger_id: arun.passengerId,
+      flight_id: fUpCnx.id,
+      pnr_id: bundles.get('b_arun_return')!.bookingId,
+      trigger_point: 'booking',
+      watchlist_entry_id: null,
+      match_level: 'none',
+      outcome: 'clear',
+      name_similarity: null,
+      snap_first_name: 'Arun',
+      snap_last_name: 'Sawatdee',
+      snap_date_of_birth: new Date('1988-05-14T00:00:00Z'),
+      snap_gender: 'M',
+      snap_nationality: 'th',
+      snap_passport: 'AA4019283',
+      occurred_at: utcDateTime(-3, 2, 6),
+    },
+    {
+      id: sid('s07', 5),
+      run_id: sid('r07', 5),
+      passenger_id: hiroshi.passengerId,
+      flight_id: fUpSin.id,
+      pnr_id: bundles.get('b_hiroshi_sin')!.bookingId,
+      trigger_point: 'booking',
+      watchlist_entry_id: null,
+      match_level: 'none',
+      outcome: 'clear',
+      name_similarity: null,
+      snap_first_name: 'Hiroshi',
+      snap_last_name: 'Tanaka',
+      snap_date_of_birth: new Date('1984-03-08T00:00:00Z'),
+      snap_gender: 'M',
+      snap_nationality: 'jp',
+      snap_passport: 'JP8839201',
+      occurred_at: utcDateTime(-2, 4, 7),
+    },
+  ]
+
+  for (const ck of checks) {
+    if (!(await prisma.screening_check.findUnique({ where: { id: ck.id } }))) {
+      await prisma.screening_check.create({ data: ck })
+    }
+  }
+
+  // Reviews for Chidi's flagged check (rev 1 confirmed then rev 2 corrected to false_positive)
+  const reviews = [
+    {
+      id: sid('v07', 1),
+      screening_check_id: sid('s07', 3),
+      revision: 1,
+      decision: 'confirmed',
+      reviewed_by_staff_id: securityStaffId,
+      review_note: 'Initial hold pending secondary passport check.',
+      reviewed_at: utcDateTime(-4, 0, 20),
+      authority_notified_at: utcDateTime(-4, 0, 21),
+    },
+    {
+      id: sid('v07', 2),
+      screening_check_id: sid('s07', 3),
+      revision: 2,
+      decision: 'false_positive',
+      reviewed_by_staff_id: securityStaffId,
+      review_note: 'Verified passport number NG6612390 differs from watchlist entry NG6612000; cleared to travel.',
+      reviewed_at: utcDateTime(-4, 0, 35),
+      authority_notified_at: utcDateTime(-4, 0, 36),
+    },
+  ]
+  for (const rev of reviews) {
+    if (!(await prisma.screening_review.findUnique({ where: { id: rev.id } }))) {
+      await prisma.screening_review.create({ data: rev })
+    }
+  }
+
+  return { viktorRunId }
 }
 
-async function seedStaff(roleIds: string[]) {
-  const user = await prisma.user.create({
-    data: {
-      type: 'staff',
-      email: faker.internet.email().toLowerCase(),
-      clerk_user_id: `user_${faker.string.alphanumeric(24)}`,
+// ── F8: Crew Management, Pairings, Roster Runs, Assignments & Rule Breaks ────────────────────────────────────
+
+async function seedCrewRosteringFull(
+  flights: Map<string, SeededFlightInfo>,
+  opsStaffId: string,
+): Promise<{
+  completedPairingIds: string[]
+  crewByEmp: Map<string, { id: string; role: string }>
+}> {
+  // Base F8 demo dataset (22 crew, 4 aircraft, 6 unpaired flights for 2026-11-02..06)
+  await seedCrewRosteringDemo(prisma)
+
+  // Additional country languages & legality rules
+  for (const row of [
+    { country_code: 'sg', language_code: 'en' },
+    { country_code: 'hk', language_code: 'zh' },
+  ]) {
+    await prisma.country_language.upsert({ where: { country_code_language_code: row }, update: {}, create: row })
+  }
+  for (const row of [
+    { country_code: 'jp', min_rest_hours: 11, max_duty_hours: 12 },
+    { country_code: 'kr', min_rest_hours: 10.5, max_duty_hours: 12.5 },
+  ]) {
+    await prisma.country_legality_rule.upsert({ where: { country_code: row.country_code }, update: {}, create: row })
+  }
+
+  // Add 2 extra crew with expiring/expired licences so Setup Crew shows expiry warnings
+  const warningCrew = [
+    {
+      employee_number: 'WARN001',
+      first_name: 'Kittichai',
+      last_name: 'Somsak',
+      role: 'captain',
+      licence_number: 'LIC-W0001',
+      licence_expires_on: utcDate(15), // expiring soon
+      rating_expires_on: utcDate(180),
+    },
+    {
+      employee_number: 'WARN002',
+      first_name: 'Sarin',
+      last_name: 'Lertchai',
+      role: 'first_officer',
+      licence_number: 'LIC-W0002',
+      licence_expires_on: utcDate(365),
+      rating_expires_on: utcDate(-10), // expired rating
+    },
+  ]
+  for (const wc of warningCrew) {
+    const exists = await prisma.crew.findFirst({ where: { employee_number: wc.employee_number, deleted_at: null } })
+    if (!exists) {
+      await prisma.crew.create({
+        data: {
+          first_name: wc.first_name,
+          last_name: wc.last_name,
+          employee_number: wc.employee_number,
+          role: wc.role,
+          email: `${wc.employee_number.toLowerCase()}@crew.example.com`,
+          base_airport: 'BKK',
+          fleet_aircraft_type: 'A320-200',
+          languages: ['th', 'en'],
+          licence_number: wc.licence_number,
+          licence_expires_on: wc.licence_expires_on,
+          crew_certification: {
+            create: [
+              { name: 'Type rating', aircraft_type: 'A320-200', expires_on: wc.rating_expires_on },
+              { name: 'CRM recurrent', aircraft_type: null, expires_on: utcDate(240) },
+            ],
+          },
+        },
+      })
+    }
+  }
+
+  const crewRows = await prisma.crew.findMany({ where: { deleted_at: null }, select: { id: true, employee_number: true, role: true } })
+  const crewByEmp = new Map(crewRows.map((c) => [c.employee_number, { id: c.id, role: c.role }]))
+
+  const cap1 = crewByEmp.get('DEMO001')!
+  const cap2 = crewByEmp.get('DEMO002')!
+  const fo1 = crewByEmp.get('DEMO004')!
+  const fo2 = crewByEmp.get('DEMO005')!
+  const cc1 = crewByEmp.get('DEMO007')!
+  const cc2 = crewByEmp.get('DEMO008')!
+  const cc3 = crewByEmp.get('DEMO009')!
+  const cc4 = crewByEmp.get('DEMO010')!
+  const pol1 = crewByEmp.get('DEMO019')!
+
+  // Published Roster Run (past completed pairings -> also feeds F5c Crew Pay!)
+  const runPubId = sid('r08', 1)
+  const p1Id = sid('p08', 1)
+  const p2Id = sid('p08', 2)
+  const fPastCnx1 = flights.get('past_bkk_cnx_1')!
+  const fPastCnx2 = flights.get('past_cnx_bkk_1')!
+  const fPastSin1 = flights.get('past_bkk_sin_1')!
+  const fPastSin2 = flights.get('past_sin_bkk_1')!
+
+  await prisma.roster_run.upsert({
+    where: { id: runPubId },
+    update: {},
+    create: {
+      id: runPubId,
+      base_airport: 'BKK',
+      date_from: utcDate(-5),
+      date_to: utcDate(-1),
+      status: 'published',
+      published_at: utcDateTime(-6, 4),
     },
   })
 
-  await prisma.staff.create({
-    data: {
-      user_id: user.id,
-      first_name: faker.person.firstName(),
-      last_name: faker.person.lastName(),
-      role_id: faker.helpers.arrayElement(roleIds),
+  if (!(await prisma.pairing.findUnique({ where: { id: p1Id } }))) {
+    await prisma.pairing.create({ data: { id: p1Id, code: 'P-901', base_airport: 'BKK' } })
+    const leg1 = await prisma.pairing_leg.create({
+      data: { id: sid('l08', 1), pairing_id: p1Id, flight_id: fPastCnx1.id, added_by: 'auto' },
+    })
+    const leg2 = await prisma.pairing_leg.create({
+      data: { id: sid('l08', 2), pairing_id: p1Id, flight_id: fPastCnx2.id, added_by: 'auto' },
+    })
+    await prisma.roster_run_pairing.create({ data: { roster_run_id: runPubId, pairing_id: p1Id } })
+
+    for (const leg of [leg1, leg2]) {
+      for (const member of [cap1, fo1, cc1, cc2]) {
+        await prisma.pairing_leg_assignment.create({
+          data: {
+            pairing_id: p1Id,
+            pairing_leg_id: leg.id,
+            crew_id: member.id,
+            role: member.role,
+            assigned_by: 'auto',
+            assigned_at: utcDateTime(-6, 3),
+          },
+        })
+      }
+    }
+    // Sick call & replacement history on leg 2
+    await prisma.pairing_leg_assignment.create({
+      data: {
+        pairing_id: p1Id,
+        pairing_leg_id: leg2.id,
+        crew_id: cc3.id,
+        role: cc3.role,
+        assigned_by: 'auto',
+        assigned_at: utcDateTime(-6, 3),
+        unassigned_at: utcDateTime(-4, 1),
+        reason: 'sick call',
+      },
+    })
+  }
+
+  if (!(await prisma.pairing.findUnique({ where: { id: p2Id } }))) {
+    await prisma.pairing.create({ data: { id: p2Id, code: 'P-902', base_airport: 'BKK' } })
+    const leg3 = await prisma.pairing_leg.create({
+      data: { id: sid('l08', 3), pairing_id: p2Id, flight_id: fPastSin1.id, added_by: 'auto' },
+    })
+    const leg4 = await prisma.pairing_leg.create({
+      data: { id: sid('l08', 4), pairing_id: p2Id, flight_id: fPastSin2.id, added_by: 'auto' },
+    })
+    await prisma.roster_run_pairing.create({ data: { roster_run_id: runPubId, pairing_id: p2Id } })
+
+    for (const leg of [leg3, leg4]) {
+      for (const member of [cap2, fo2, cc3, cc4, pol1]) {
+        await prisma.pairing_leg_assignment.create({
+          data: {
+            pairing_id: p2Id,
+            pairing_leg_id: leg.id,
+            crew_id: member.id,
+            role: member.role,
+            assigned_by: 'auto',
+            assigned_at: utcDateTime(-6, 3),
+          },
+        })
+      }
+    }
+
+    // Overridden company rule break on published run
+    await prisma.rule_break.create({
+      data: {
+        id: sid('a08', 90),
+        roster_run_id: runPubId,
+        pairing_id: p2Id,
+        pairing_leg_id: leg3.id,
+        rule: 'POLICE_MIN',
+        detail: 'International leg had 1 air marshal assigned (minimum 2).',
+        resolved_at: utcDateTime(-6, 3, 30),
+        resolution: 'overridden',
+        overridden_by: opsStaffId,
+        override_reason: 'Approved single marshal coverage per regional ops waiver',
+      },
+    })
+  }
+
+  // Draft Roster Run on upcoming flights with 1 open rule break
+  const runDraftId = sid('r08', 2)
+  const p3Id = sid('p08', 3)
+  const fUpCnx1 = flights.get('up_bkk_cnx_d2')!
+  const fUpCnx2 = flights.get('up_cnx_bkk_d2')!
+
+  await prisma.roster_run.upsert({
+    where: { id: runDraftId },
+    update: {},
+    create: {
+      id: runDraftId,
+      base_airport: 'BKK',
+      date_from: utcDate(2),
+      date_to: utcDate(6),
+      status: 'draft',
     },
   })
 
-  return user
+  if (!(await prisma.pairing.findUnique({ where: { id: p3Id } }))) {
+    await prisma.pairing.create({ data: { id: p3Id, code: 'P-903', base_airport: 'BKK' } })
+    const leg5 = await prisma.pairing_leg.create({ data: { id: sid('l08', 5), pairing_id: p3Id, flight_id: fUpCnx1.id, added_by: 'auto' } })
+    const leg6 = await prisma.pairing_leg.create({ data: { id: sid('l08', 6), pairing_id: p3Id, flight_id: fUpCnx2.id, added_by: 'auto' } })
+    await prisma.roster_run_pairing.create({ data: { roster_run_id: runDraftId, pairing_id: p3Id } })
+
+    for (const leg of [leg5, leg6]) {
+      for (const member of [cap1, fo1, cc1]) {
+        await prisma.pairing_leg_assignment.create({
+          data: {
+            pairing_id: p3Id,
+            pairing_leg_id: leg.id,
+            crew_id: member.id,
+            role: member.role,
+            assigned_by: 'auto',
+            assigned_at: utcDateTime(0, 1),
+          },
+        })
+      }
+    }
+    await prisma.rule_break.create({
+      data: {
+        id: sid('a08', 91),
+        roster_run_id: runDraftId,
+        pairing_id: p3Id,
+        pairing_leg_id: leg5.id,
+        role: 'cabin_crew',
+        rule: 'NO_LEGAL_CREW',
+        detail: 'Need 3 more cabin crew seats filled before publishing.',
+      },
+    })
+  }
+
+  return { completedPairingIds: [p1Id, p2Id], crewByEmp }
 }
 
-async function seedRefreshTokens(userId: string) {
-  await prisma.refresh_token.createMany({
-    data: Array.from({ length: REFRESH_TOKENS_PER_USER }, () => ({
-      user_id: userId,
-      token_hash: faker.string.alphanumeric(64),
-      expires_at: faker.date.future(),
-    })),
+// ── F6: Operational Check-ins, Travel Docs, Checked Bags, Boarding Passes & Boarding Events ────────────────────
+
+async function seedOperationalCheckIns(
+  flights: Map<string, SeededFlightInfo>,
+  bundles: Map<string, SeededBookingBundle>,
+  staffByRole: Map<string, { staffId: string; userId: string }>,
+  viktorRunId: string,
+): Promise<{
+  checkedBagIds: Map<string, { id: string; tagNumber: string }>
+}> {
+  const checkinStaffId = staffByRole.get('check-in')!.staffId
+  const gateStaffId = staffByRole.get('gate')!.staffId
+
+  const gateA3 = await prisma.gate.findUniqueOrThrow({ where: { airport_code_code: { airport_code: 'BKK', code: 'A3' } } })
+  const gateB1 = await prisma.gate.findUniqueOrThrow({ where: { airport_code_code: { airport_code: 'BKK', code: 'B1' } } })
+  const gateC1 = await prisma.gate.findUniqueOrThrow({ where: { airport_code_code: { airport_code: 'CNX', code: 'C1' } } })
+
+  const fPastCnx = flights.get('past_bkk_cnx_1')!
+  const fPastHkt = flights.get('past_bkk_hkt_1')!
+  const fPastDiv = flights.get('past_hkt_bkk_1')!
+  const fPastSin = flights.get('past_bkk_sin_1')!
+  const fUpCnx = flights.get('up_bkk_cnx_d2')!
+
+  // Flight boarding gate records
+  await prisma.flight_boarding.upsert({
+    where: { flight_id: fPastCnx.id },
+    update: {},
+    create: {
+      flight_id: fPastCnx.id,
+      gate_id: gateA3.id,
+      sensor_count: 2,
+      manual_count: 2,
+      boarded_count: 2,
+      closed_at: addMinutes(fPastCnx.depAt, -15),
+      closed_by: gateStaffId,
+    },
   })
+  await prisma.flight_boarding.upsert({
+    where: { flight_id: fPastSin.id },
+    update: {},
+    create: {
+      flight_id: fPastSin.id,
+      gate_id: gateB1.id,
+      sensor_count: 1,
+      manual_count: 1,
+      boarded_count: 1,
+      closed_at: addMinutes(fPastSin.depAt, -15),
+      closed_by: gateStaffId,
+    },
+  })
+  await prisma.flight_boarding.upsert({
+    where: { flight_id: fUpCnx.id },
+    update: {},
+    create: { flight_id: fUpCnx.id, gate_id: gateA3.id },
+  })
+
+  const bPastArun = bundles.get('b_past_arun_cnx')!
+  const bPastNattaya = bundles.get('b_past_nattaya_hkt')!
+  const bPastHiroshi = bundles.get('b_past_hiroshi_sin')!
+  const bPastChidi = bundles.get('b_past_chidi_cnx')!
+  const bViktor = bundles.get('b_viktor_nrt')!
+
+  const checkedBagIds = new Map<string, { id: string; tagNumber: string }>()
+
+  const upsertCheckIn = async (spec: {
+    id: string
+    coupon: SeededBookingBundle['coupons'][number]
+    status: 'started' | 'on_hold' | 'denied' | 'checked_in' | 'boarded' | 'no_show' | 'cancelled'
+    declaredBags: number
+    checkedInAt: Date | null
+    screeningRunId?: string | null
+    doc?: {
+      last4: string
+      issuingCountry: string
+      nationality: string
+      visaNumber?: string
+      nameMismatch?: boolean
+      profileDiffs?: string[]
+    }
+    pass?: { id: string; ref: string; seat: string; group: number; gateId: string; boardedAt?: Date; noShowAt?: Date }
+    carryOn?: { weight: number; withinSize: boolean; result: 'ok' | 'must_check' }
+    bag?: {
+      key: string
+      id: string
+      tagNumber: string
+      weightKg: number
+      excessKg?: number
+      ratePerKg?: number
+      status: 'weighed' | 'tagged' | 'offloaded'
+    }
+  }) => {
+    const existing = await prisma.check_in.findUnique({ where: { id: spec.id } })
+    const ci =
+      existing ??
+      (await prisma.check_in.create({
+        data: {
+          id: spec.id,
+          booking_passenger_id: spec.coupon.bookingPassengerId,
+          passenger_id: spec.coupon.passengerId,
+          flight_id: spec.coupon.flightId,
+          status: spec.status,
+          declared_bags: spec.declaredBags,
+          screening_run_id: spec.screeningRunId ?? null,
+          checked_in_at: spec.checkedInAt,
+        },
+      }))
+
+    if (spec.doc && !(await prisma.travel_document.findUnique({ where: { check_in_id: ci.id } }))) {
+      await prisma.travel_document.create({
+        data: {
+          check_in_id: ci.id,
+          doc_type: 'P',
+          number_last4: spec.doc.last4,
+          issuing_country: spec.doc.issuingCountry,
+          nationality: spec.doc.nationality,
+          expiry_date: utcDate(900),
+          visa_number: spec.doc.visaNumber ?? null,
+          visa_checked_by: spec.doc.visaNumber ? checkinStaffId : null,
+          visa_checked_at: spec.doc.visaNumber ? (spec.checkedInAt ?? NOW) : null,
+          name_mismatch: spec.doc.nameMismatch ?? false,
+          name_mismatch_cleared_by: spec.doc.nameMismatch ? checkinStaffId : null,
+          name_mismatch_cleared_at: spec.doc.nameMismatch ? (spec.checkedInAt ?? NOW) : null,
+          profile_differences: spec.doc.profileDiffs ?? [],
+        },
+      })
+    }
+
+    if (spec.carryOn && (await prisma.carry_on_check.count({ where: { check_in_id: ci.id } })) === 0) {
+      await prisma.carry_on_check.create({
+        data: {
+          check_in_id: ci.id,
+          weight_kg: spec.carryOn.weight,
+          within_size: spec.carryOn.withinSize,
+          result: spec.carryOn.result,
+          staff_id: checkinStaffId,
+          checked_at: spec.checkedInAt ?? NOW,
+        },
+      })
+    }
+
+    if (spec.bag) {
+      const existingBag = await prisma.checked_bag.findUnique({ where: { id: spec.bag.id } })
+      const excessKg = spec.bag.excessKg ?? 0
+      const ratePerKg = spec.bag.ratePerKg ?? 0
+      const excessFee = Number((excessKg * ratePerKg).toFixed(2))
+      if (!existingBag) {
+        await prisma.checked_bag.create({
+          data: {
+            id: spec.bag.id,
+            check_in_id: ci.id,
+            tag_number: spec.bag.tagNumber,
+            weight_kg: spec.bag.weightKg,
+            excess_kg: excessKg,
+            rate_per_kg: ratePerKg,
+            excess_fee: excessFee,
+            // Excess bags start as 'weighed' until F5 attaches excess_payment_id (constraint: tagged requires excess_payment_id when excess_fee > 0)
+            status: excessFee > 0 ? 'weighed' : spec.bag.status,
+            weighed_by: checkinStaffId,
+            weighed_at: spec.checkedInAt ?? NOW,
+          },
+        })
+      }
+      checkedBagIds.set(spec.bag.key, { id: spec.bag.id, tagNumber: spec.bag.tagNumber })
+    }
+
+    if (spec.pass) {
+      const existingPass = await prisma.boarding_pass.findUnique({ where: { id: spec.pass.id } })
+      const bp =
+        existingPass ??
+        (await prisma.boarding_pass.create({
+          data: {
+            id: spec.pass.id,
+            check_in_id: ci.id,
+            reference: spec.pass.ref,
+            seat_code: spec.pass.seat,
+            boarding_group: spec.pass.group,
+            printed_at: spec.checkedInAt,
+          },
+        }))
+
+      if ((await prisma.boarding_event.count({ where: { boarding_pass_id: bp.id } })) === 0) {
+        if (spec.pass.boardedAt) {
+          await prisma.boarding_event.create({
+            data: {
+              flight_id: spec.coupon.flightId,
+              gate_id: spec.pass.gateId,
+              boarding_pass_id: bp.id,
+              scanned_reference: bp.reference,
+              event: 'boarded',
+              staff_id: gateStaffId,
+              occurred_at: spec.pass.boardedAt,
+            },
+          })
+        } else if (spec.pass.noShowAt) {
+          await prisma.boarding_event.create({
+            data: {
+              flight_id: spec.coupon.flightId,
+              gate_id: spec.pass.gateId,
+              boarding_pass_id: bp.id,
+              scanned_reference: null,
+              event: 'no_show',
+              staff_id: null,
+              occurred_at: spec.pass.noShowAt,
+            },
+          })
+        }
+      }
+    }
+  }
+
+  // Arun on past BKK→CNX (boarded + checked bag)
+  await upsertCheckIn({
+    id: sid('c06', 1),
+    coupon: bPastArun.coupons[0],
+    status: 'boarded',
+    declaredBags: 1,
+    checkedInAt: addMinutes(fPastCnx.depAt, -150),
+    doc: { last4: '9283', issuingCountry: 'th', nationality: 'th' },
+    carryOn: { weight: 6.2, withinSize: true, result: 'ok' },
+    bag: { key: 'bag_arun_1', id: sid('b06', 1), tagNumber: '0999800001', weightKg: 18.5, status: 'tagged' },
+    pass: {
+      id: sid('p06', 1),
+      ref: 'BP-SEED-ARUN-01',
+      seat: '10A',
+      group: 2,
+      gateId: gateA3.id,
+      boardedAt: addMinutes(fPastCnx.depAt, -30),
+    },
+  })
+
+  // Chidi on past BKK→CNX (boarded + visa verified + excess baggage paid in F5!)
+  await upsertCheckIn({
+    id: sid('c06', 2),
+    coupon: bPastChidi.coupons[0],
+    status: 'boarded',
+    declaredBags: 1,
+    checkedInAt: addMinutes(fPastCnx.depAt, -135),
+    doc: { last4: '2390', issuingCountry: 'ng', nationality: 'ng', visaNumber: 'TH-V-884120' },
+    carryOn: { weight: 9.5, withinSize: false, result: 'must_check' },
+    bag: {
+      key: 'bag_chidi_excess',
+      id: sid('b06', 2),
+      tagNumber: '0999800002',
+      weightKg: 28.0,
+      excessKg: 3.0,
+      ratePerKg: 250,
+      status: 'tagged',
+    },
+    pass: {
+      id: sid('p06', 2),
+      ref: 'BP-SEED-CHIDI-01',
+      seat: '15C',
+      group: 3,
+      gateId: gateA3.id,
+      boardedAt: addMinutes(fPastCnx.depAt, -25),
+    },
+  })
+
+  // Hiroshi on past BKK→SIN (boarded Business + checked bag that went missing -> F10!)
+  await upsertCheckIn({
+    id: sid('c06', 3),
+    coupon: bPastHiroshi.coupons[0],
+    status: 'boarded',
+    declaredBags: 1,
+    checkedInAt: addMinutes(fPastSin.depAt, -140),
+    doc: { last4: '9201', issuingCountry: 'jp', nationality: 'jp', nameMismatch: true },
+    carryOn: { weight: 5.4, withinSize: true, result: 'ok' },
+    bag: { key: 'bag_hiroshi_sin', id: sid('b06', 3), tagNumber: '0999800003', weightKg: 22.0, status: 'tagged' },
+    pass: {
+      id: sid('p06', 3),
+      ref: 'BP-SEED-HIRO-01',
+      seat: '1A',
+      group: 1,
+      gateId: gateB1.id,
+      boardedAt: addMinutes(fPastSin.depAt, -35),
+    },
+  })
+
+  // Nattaya on past BKK→HKT (boarded + checked bag) and return HKT→BKK (diverted to DMK!)
+  await upsertCheckIn({
+    id: sid('c06', 4),
+    coupon: bPastNattaya.coupons[0],
+    status: 'boarded',
+    declaredBags: 1,
+    checkedInAt: addMinutes(fPastHkt.depAt, -120),
+    doc: { last4: '9384', issuingCountry: 'th', nationality: 'th' },
+    bag: { key: 'bag_nattaya_hkt', id: sid('b06', 4), tagNumber: '0999800004', weightKg: 16.0, status: 'tagged' },
+    pass: {
+      id: sid('p06', 4),
+      ref: 'BP-SEED-NATT-01',
+      seat: '11A',
+      group: 2,
+      gateId: gateA3.id,
+      boardedAt: addMinutes(fPastHkt.depAt, -28),
+    },
+  })
+  await upsertCheckIn({
+    id: sid('c06', 5),
+    coupon: bPastNattaya.coupons[2], // HKT->BKK diverted leg
+    status: 'boarded',
+    declaredBags: 1,
+    checkedInAt: addMinutes(fPastDiv.depAt, -110),
+    bag: { key: 'bag_nattaya_div', id: sid('b06', 5), tagNumber: '0999800005', weightKg: 17.5, status: 'tagged' },
+    pass: {
+      id: sid('p06', 5),
+      ref: 'BP-SEED-NATT-02',
+      seat: '11C',
+      group: 2,
+      gateId: gateC1.id,
+      boardedAt: addMinutes(fPastDiv.depAt, -25),
+    },
+  })
+
+  // Nattaya's parent on past BKK→HKT (no_show example)
+  await upsertCheckIn({
+    id: sid('c06', 6),
+    coupon: bPastNattaya.coupons[1],
+    status: 'no_show',
+    declaredBags: 0,
+    checkedInAt: addMinutes(fPastHkt.depAt, -120),
+    pass: {
+      id: sid('p06', 6),
+      ref: 'BP-SEED-PRAN-01',
+      seat: '11B',
+      group: 1,
+      gateId: gateA3.id,
+      noShowAt: addMinutes(fPastHkt.depAt, -10),
+    },
+  })
+
+  // Viktor on upcoming BKK→NRT (on_hold due to F7 screening match!)
+  await upsertCheckIn({
+    id: sid('c06', 7),
+    coupon: bViktor.coupons[0],
+    status: 'on_hold',
+    declaredBags: 1,
+    checkedInAt: null,
+    screeningRunId: viktorRunId,
+    doc: { last4: '5123', issuingCountry: 'ua', nationality: 'ua', profileDiffs: ['passport_number'] },
+  })
+
+  return { checkedBagIds }
 }
 
-async function seedCustomerService() {
+// ── F10: Lost & Found Baggage, Matches, Tracking, Deliveries & Costs ─────────────────────────────────────────
+
+async function seedFeature10Baggage(
+  customers: Map<string, CustomerHandle>,
+  flights: Map<string, SeededFlightInfo>,
+  bundles: Map<string, SeededBookingBundle>,
+  checkedBagIds: Map<string, { id: string; tagNumber: string }>,
+  staffByRole: Map<string, { staffId: string; userId: string }>,
+): Promise<{ lostReportIdForF13: string }> {
+  const baggageStaffId = staffByRole.get('baggage')!.staffId
+  const financeStaffId = staffByRole.get('finance')!.staffId
+
+  const bPastArun = bundles.get('b_past_arun_cnx')!
+  const bPastHiroshi = bundles.get('b_past_hiroshi_sin')!
+  const bPastNattaya = bundles.get('b_past_nattaya_hkt')!
+  const bPastChidi = bundles.get('b_past_chidi_cnx')!
+
+  const arun = customers.get('arun')!
+  const hiroshi = customers.get('hiroshi')!
+  const nattaya = customers.get('nattaya')!
+  const chidi = customers.get('chidi')!
+
+  const fPastCnx = flights.get('past_bkk_cnx_1')!
+  const fPastSin = flights.get('past_bkk_sin_1')!
+  const fPastDiv = flights.get('past_hkt_bkk_1')!
+  const fUpSin = flights.get('up_bkk_sin_d4')!
+
+  const bagArun = checkedBagIds.get('bag_arun_1')!
+  const bagHiroshi = checkedBagIds.get('bag_hiroshi_sin')!
+  const bagNattayaDiv = checkedBagIds.get('bag_nattaya_div')!
+
+  // Lost bag reports (open, delivering, closed, lost)
+  const reportSpecs = [
+    {
+      id: sid('r10', 1),
+      case_number: 'LB-2026-000001',
+      coupon: bPastHiroshi.coupons[0],
+      reported_by_customer_id: hiroshi.customerId,
+      reported_by_staff_id: null,
+      tag_number: bagHiroshi.tagNumber,
+      bag_type: 'suitcase',
+      colour: 'black',
+      brand: 'Rimowa',
+      description: 'Black aluminum cabin spinner with silver handle',
+      contact_email: hiroshi.email,
+      status: 'delivering',
+      reported_at: utcDateTime(-2, 7),
+      lost_at: null,
+      closed_at: null,
+    },
+    {
+      id: sid('r10', 2),
+      case_number: 'LB-2026-000002',
+      coupon: bPastArun.coupons[0],
+      reported_by_customer_id: arun.customerId,
+      reported_by_staff_id: null,
+      tag_number: bagArun.tagNumber,
+      bag_type: 'suitcase',
+      colour: 'blue',
+      brand: 'Samsonite',
+      description: 'Navy hard-shell medium suitcase with orange strap',
+      contact_email: arun.email,
+      status: 'closed',
+      reported_at: utcDateTime(-4, 4),
+      lost_at: null,
+      closed_at: utcDateTime(-2, 9),
+    },
+    {
+      id: sid('r10', 3),
+      case_number: 'LB-2026-000003',
+      coupon: bPastNattaya.coupons[2],
+      reported_by_customer_id: null,
+      reported_by_staff_id: baggageStaffId,
+      tag_number: bagNattayaDiv.tagNumber,
+      bag_type: 'backpack',
+      colour: 'red',
+      brand: 'Osprey',
+      description: 'Red 40L travel backpack left on diverted flight',
+      contact_email: nattaya.email,
+      status: 'open',
+      reported_at: utcDateTime(-2, 12),
+      lost_at: null,
+      closed_at: null,
+    },
+    {
+      id: sid('r10', 4),
+      case_number: 'LB-2026-000004',
+      coupon: bPastChidi.coupons[0],
+      reported_by_customer_id: chidi.customerId,
+      reported_by_staff_id: null,
+      tag_number: null,
+      bag_type: 'duffel',
+      colour: 'green',
+      brand: 'North Face',
+      description: 'Dark green canvas duffel bag with leather name tag',
+      contact_email: chidi.email,
+      status: 'lost',
+      reported_at: utcDateTime(-25, 6),
+      lost_at: utcDateTime(-3, 6),
+      closed_at: null,
+    },
+  ]
+
+  for (const r of reportSpecs) {
+    if (!(await prisma.lost_bag_report.findUnique({ where: { case_number: r.case_number } }))) {
+      await prisma.lost_bag_report.create({
+        data: {
+          id: r.id,
+          case_number: r.case_number,
+          booking_passenger_id: r.coupon.bookingPassengerId,
+          passenger_id: r.coupon.passengerId,
+          flight_id: r.coupon.flightId,
+          reported_by_customer_id: r.reported_by_customer_id,
+          reported_by_staff_id: r.reported_by_staff_id,
+          tag_number: r.tag_number,
+          bag_type: r.bag_type,
+          colour: r.colour,
+          brand: r.brand,
+          description: r.description,
+          contact_email: r.contact_email,
+          status: r.status,
+          reported_at: r.reported_at,
+          lost_at: r.lost_at,
+          closed_at: r.closed_at,
+        },
+      })
+    }
+  }
+
+  // Found bags (staff-found tagged, staff-found untagged, diverted-flight system row)
+  const foundSpecs = [
+    {
+      id: sid('f10', 1),
+      checked_bag_id: bagHiroshi.id,
+      tag_number: bagHiroshi.tagNumber,
+      flight_id: fPastSin.id,
+      bag_type: 'suitcase',
+      colour: 'black',
+      brand: 'Rimowa',
+      description: 'Found at BKK transfer belt 4; missed XX301 connection',
+      found_airport: 'BKK',
+      found_at: utcDateTime(-2, 6),
+      source: 'staff',
+      status: 'sent',
+      recorded_by: baggageStaffId,
+    },
+    {
+      id: sid('f10', 2),
+      checked_bag_id: bagArun.id,
+      tag_number: bagArun.tagNumber,
+      flight_id: fPastCnx.id,
+      bag_type: 'suitcase',
+      colour: 'blue',
+      brand: 'Samsonite',
+      description: 'Found unclaimed at CNX carousel 2',
+      found_airport: 'CNX',
+      found_at: utcDateTime(-4, 3, 30),
+      source: 'staff',
+      status: 'delivered',
+      recorded_by: baggageStaffId,
+    },
+    {
+      id: sid('f10', 3),
+      checked_bag_id: bagNattayaDiv.id,
+      tag_number: bagNattayaDiv.tagNumber,
+      flight_id: fPastDiv.id,
+      bag_type: 'backpack',
+      colour: 'red',
+      brand: 'Osprey',
+      description: 'Offloaded at DMK after XX202 diversion',
+      found_airport: 'DMK',
+      found_at: utcDateTime(-3, 10, 30),
+      source: 'diverted_flight',
+      status: 'held',
+      recorded_by: null,
+    },
+    {
+      id: sid('f10', 4),
+      checked_bag_id: null,
+      tag_number: null,
+      flight_id: fPastCnx.id,
+      bag_type: 'duffel',
+      colour: 'green',
+      brand: 'Unknown',
+      description: 'Untagged olive-green duffel found near CNX baggage claim',
+      found_airport: 'CNX',
+      found_at: utcDateTime(-1, 5),
+      source: 'staff',
+      status: 'held',
+      recorded_by: baggageStaffId,
+    },
+  ]
+  for (const fb of foundSpecs) {
+    if (!(await prisma.found_bag.findUnique({ where: { id: fb.id } }))) {
+      await prisma.found_bag.create({ data: fb })
+    }
+  }
+
+  // Bag matches (confirmed, suggested, rejected)
+  const matches = [
+    {
+      id: sid('m10', 1),
+      report_id: sid('r10', 1),
+      found_bag_id: sid('f10', 1),
+      match_level: 'strong',
+      status: 'confirmed',
+      linked_by: null,
+      reviewed_by: baggageStaffId,
+      review_note: 'Tag 0999800003 and Rimowa black suitcase confirmed with passenger.',
+      suggested_at: utcDateTime(-2, 7, 15),
+      reviewed_at: utcDateTime(-2, 7, 45),
+    },
+    {
+      id: sid('m10', 2),
+      report_id: sid('r10', 2),
+      found_bag_id: sid('f10', 2),
+      match_level: 'strong',
+      status: 'confirmed',
+      linked_by: null,
+      reviewed_by: baggageStaffId,
+      review_note: 'Tag 0999800001 verified at CNX desk.',
+      suggested_at: utcDateTime(-4, 4, 10),
+      reviewed_at: utcDateTime(-4, 4, 30),
+    },
+    {
+      id: sid('m10', 3),
+      report_id: sid('r10', 3),
+      found_bag_id: sid('f10', 3),
+      match_level: 'strong',
+      status: 'suggested',
+      linked_by: null,
+      reviewed_by: null,
+      review_note: null,
+      suggested_at: utcDateTime(-2, 12, 10),
+      reviewed_at: null,
+    },
+    {
+      id: sid('m10', 4),
+      report_id: sid('r10', 4),
+      found_bag_id: sid('f10', 4),
+      match_level: 'possible',
+      status: 'under_review',
+      linked_by: null,
+      reviewed_by: null,
+      review_note: null,
+      suggested_at: utcDateTime(-1, 5, 10),
+      reviewed_at: null,
+    },
+  ]
+  for (const m of matches) {
+    if (!(await prisma.bag_match.findUnique({ where: { id: m.id } }))) {
+      await prisma.bag_match.create({ data: m })
+    }
+  }
+
+  // Append-only bag location events
+  if ((await prisma.bag_location_event.count({ where: { found_bag_id: sid('f10', 1) } })) === 0) {
+    await prisma.bag_location_event.createMany({
+      data: [
+        {
+          found_bag_id: sid('f10', 1),
+          airport_code: 'BKK',
+          action: 'found',
+          note: 'Scanned at BKK belt 4',
+          staff_id: baggageStaffId,
+          occurred_at: utcDateTime(-2, 6),
+        },
+        {
+          found_bag_id: sid('f10', 1),
+          airport_code: 'BKK',
+          action: 'sent',
+          to_airport: 'SIN',
+          sent_on_flight_id: fUpSin.id,
+          note: 'Forwarded to SIN on next available flight',
+          staff_id: baggageStaffId,
+          occurred_at: utcDateTime(-1, 8),
+        },
+        {
+          found_bag_id: sid('f10', 1),
+          airport_code: 'SIN',
+          action: 'arrived',
+          note: 'Received by SIN baggage desk',
+          staff_id: baggageStaffId,
+          occurred_at: utcDateTime(-1, 11),
+        },
+        {
+          found_bag_id: sid('f10', 1),
+          airport_code: 'SIN',
+          action: 'out_for_delivery',
+          note: 'Dispatched via courier to Marina Bay Hotel',
+          staff_id: baggageStaffId,
+          occurred_at: utcDateTime(0, 1),
+        },
+      ],
+    })
+  }
+  if ((await prisma.bag_location_event.count({ where: { found_bag_id: sid('f10', 2) } })) === 0) {
+    await prisma.bag_location_event.createMany({
+      data: [
+        {
+          found_bag_id: sid('f10', 2),
+          airport_code: 'CNX',
+          action: 'found',
+          note: 'Held at CNX baggage office',
+          staff_id: baggageStaffId,
+          occurred_at: utcDateTime(-4, 3, 30),
+        },
+        {
+          found_bag_id: sid('f10', 2),
+          airport_code: 'CNX',
+          action: 'delivered',
+          note: 'Collected in person by passenger',
+          staff_id: baggageStaffId,
+          occurred_at: utcDateTime(-2, 9),
+        },
+      ],
+    })
+  }
+  if ((await prisma.bag_location_event.count({ where: { found_bag_id: sid('f10', 3) } })) === 0) {
+    await prisma.bag_location_event.create({
+      data: {
+        found_bag_id: sid('f10', 3),
+        airport_code: 'DMK',
+        action: 'at_diverted_airport',
+        note: 'Auto-logged on XX202 diversion to DMK',
+        staff_id: null,
+        occurred_at: utcDateTime(-3, 10, 30),
+      },
+    })
+  }
+
+  // Bag deliveries (in_transit to hotel, delivered via airport_pickup)
+  await prisma.bag_delivery.upsert({
+    where: { report_id: sid('r10', 1) },
+    update: {},
+    create: {
+      report_id: sid('r10', 1),
+      delivery_type: 'hotel',
+      address: '10 Bayfront Ave, Marina Bay Sands, Singapore 018956',
+      status: 'in_transit',
+    },
+  })
+  await prisma.bag_delivery.upsert({
+    where: { report_id: sid('r10', 2) },
+    update: {},
+    create: {
+      report_id: sid('r10', 2),
+      delivery_type: 'airport_pickup',
+      pickup_airport: 'CNX',
+      status: 'delivered',
+      delivered_at: utcDateTime(-2, 9),
+    },
+  })
+
+  // Bag costs (linked 1:1 to F4 expense rows of category 'other')
+  const bagExpenseId1 = sid('x10', 1)
+  const bagExpenseId2 = sid('x10', 2)
+  await prisma.expense.upsert({
+    where: { id: bagExpenseId1 },
+    update: {},
+    create: {
+      id: bagExpenseId1,
+      category: 'other',
+      description: 'Courier delivery for LB-2026-000001 in Singapore',
+      amount: 1450,
+      incurred_on: utcDate(0),
+      created_by: financeStaffId,
+    },
+  })
+  await prisma.expense.upsert({
+    where: { id: bagExpenseId2 },
+    update: {},
+    create: {
+      id: bagExpenseId2,
+      category: 'other',
+      description: 'Inter-station bag forwarding fee BKK-SIN',
+      amount: 850,
+      incurred_on: utcDate(-1),
+      created_by: financeStaffId,
+    },
+  })
+  await prisma.bag_cost.upsert({
+    where: { expense_id: bagExpenseId1 },
+    update: {},
+    create: { report_id: sid('r10', 1), expense_id: bagExpenseId1, kind: 'delivery' },
+  })
+  await prisma.bag_cost.upsert({
+    where: { expense_id: bagExpenseId2 },
+    update: {},
+    create: { report_id: sid('r10', 1), expense_id: bagExpenseId2, kind: 'forwarding' },
+  })
+
+  return { lostReportIdForF13: sid('r10', 4) }
+}
+
+// ── F13: Customer Service Staff, Bookings, Complaint Cases, Compensations & Notifications ────────────────────
+
+async function seedCustomerService(
+  customers: Map<string, CustomerHandle>,
+  flights: Map<string, SeededFlightInfo>,
+  bundles: Map<string, SeededBookingBundle>,
+  lostReportIdForF13: string,
+): Promise<{
+  somchaiCustomerId: string
+  somchaiBookingId: string
+  caseCompVoucherId: string
+  caseCompRefundId: string
+  caseCompRedeemedId: string
+  caseCompExpiredId: string
+}> {
   console.log('Seeding Feature 13 (Customer Service)...')
   const csSupRole = await prisma.role.findFirst({ where: { code: 'cs-supervisor' } })
   const csAgentRole = await prisma.role.findFirst({ where: { code: 'cs-agent' } })
-  if (!csSupRole || !csAgentRole) return
+  if (!csSupRole || !csAgentRole) throw new Error('CS roles missing')
 
   const staffSeeds = [
     { email: 'tong.c@flython.com', first_name: 'Tong', last_name: 'Charoen', role_id: csSupRole.id },
@@ -457,23 +4469,11 @@ async function seedCustomerService() {
   ]
   const staffByName = new Map<string, string>()
   for (const s of staffSeeds) {
-    let staffRow = await prisma.staff.findFirst({
-      where: { user: { email: s.email } },
-      select: { id: true },
-    })
-    if (!staffRow) {
-      const user = await prisma.user.create({
-        data: { type: 'staff', email: s.email, clerk_user_id: `user_${faker.string.alphanumeric(24)}` },
-      })
-      staffRow = await prisma.staff.create({
-        data: { user_id: user.id, first_name: s.first_name, last_name: s.last_name, role_id: s.role_id },
-        select: { id: true },
-      })
-    }
-    staffByName.set(`${s.first_name} ${s.last_name}`, staffRow.id)
+    const account = await ensureStaffAccount(s)
+    staffByName.set(`${s.first_name} ${s.last_name}`, account.staffId)
   }
 
-  // Extra demo flights
+  // Extra demo flight FY308 (preserved from original seed.ts)
   const flightFY308 = await prisma.flight.findFirst({ where: { flight_number: 'FY308' } })
   let flightFY308Id = flightFY308?.id
   if (!flightFY308Id) {
@@ -496,7 +4496,6 @@ async function seedCustomerService() {
       flightFY308Id = f.id
     }
   }
-  // A booking_segment points at its flight's seat_inventory row (flight_id, cabin), so the economy cabin must exist first.
   if (flightFY308Id) {
     await prisma.seat_inventory.upsert({
       where: { flight_id_cabin: { flight_id: flightFY308Id, cabin: 'economy' } },
@@ -505,7 +4504,7 @@ async function seedCustomerService() {
     })
   }
 
-  // Demo customers and bookings
+  // Preserved demo customers and bookings (including FLY7K2)
   const demoCustomers = [
     { email: 'somchai.w@example.com', first_name: 'Somchai', last_name: 'Wongsakul', booking_ref: 'FLY7K2' },
     { email: 'ananda.s@example.com', first_name: 'Ananda', last_name: 'Silva', booking_ref: 'K8N2P4' },
@@ -515,6 +4514,13 @@ async function seedCustomerService() {
     { email: 'tom.b@example.com', first_name: 'Tom', last_name: 'Baker', booking_ref: 'R4V8Z3' },
     { email: 'david.chen@example.com', first_name: 'David', last_name: 'Chen', booking_ref: 'T6Y2M8' },
   ]
+  let somchaiCustomerId = ''
+  let somchaiBookingId = ''
+  const nextCsTicket = async (): Promise<string> => {
+    const rows = await prisma.$queryRaw<Array<{ value: bigint }>>`SELECT nextval('ticket_number_seq') AS value`
+    return `${BAG_TAG_AIRLINE_NUMBER}${Number(rows[0].value).toString().padStart(10, '0')}`
+  }
+
   for (const c of demoCustomers) {
     let customer = await prisma.customer.findFirst({
       where: { user: { email: c.email } },
@@ -528,40 +4534,53 @@ async function seedCustomerService() {
         include: { passenger: true },
       })
     }
-    const existingBooking = await prisma.booking.findUnique({ where: { booking_reference: c.booking_ref } })
-    if (!existingBooking) {
-      const b = await prisma.booking.create({
+    let b = await prisma.booking.findUnique({ where: { booking_reference: c.booking_ref } })
+    if (!b) {
+      b = await prisma.booking.create({
         data: {
           booking_reference: c.booking_ref,
           customer_id: customer.id,
           trip_type: 'one_way',
           status: 'confirmed',
-          currency: 'USD',
+          currency: 'THB',
           contact_email: c.email,
-          idempotency_key: faker.string.uuid(),
+          idempotency_key: `seed-cs-${c.booking_ref}`,
           booked_at: new Date('2026-10-01T00:00:00Z'),
           hold_expires_at: new Date('2026-10-01T00:15:00Z'),
-          // booking's CHECK requires confirmed_at exactly when status is confirmed or cancelled
           confirmed_at: new Date('2026-10-01T00:05:00Z'),
         },
       })
-      await prisma.booking_passenger.create({
+      const bp = await prisma.booking_passenger.create({
         data: { booking_id: b.id, passenger_id: customer.passenger_id, passenger_type: 'adult' },
       })
       if (flightFY308Id) {
-        await prisma.booking_segment.create({
+        const seg = await prisma.booking_segment.create({
           data: { booking_id: b.id, flight_id: flightFY308Id, segment_order: 1, cabin: 'economy' },
         })
-        // A confirmed booking holds a sold seat.
+        await prisma.booking_coupon.create({
+          data: {
+            booking_id: b.id,
+            booking_segment_id: seg.id,
+            booking_passenger_id: bp.id,
+            flight_id: flightFY308Id,
+            passenger_id: customer.passenger_id,
+            price_total: 3500,
+            ticket_number: await nextCsTicket(),
+            status: 'confirmed',
+          },
+        })
         await prisma.seat_inventory.update({
           where: { flight_id_cabin: { flight_id: flightFY308Id, cabin: 'economy' } },
           data: { sold_count: { increment: 1 } },
         })
       }
     }
+    if (c.booking_ref === 'FLY7K2') {
+      somchaiCustomerId = customer.id
+      somchaiBookingId = b.id
+    }
   }
 
-  // Demo customer bookings
   const guestBookings = [
     { booking_ref: 'P4LM8T', first_name: 'Somchai', last_name: 'Prasert', email: 's.prasert@example.com' },
     { booking_ref: 'H7L3N6', first_name: 'Kanda', last_name: 'Srisuk', email: 'kanda.s@example.com' },
@@ -572,19 +4591,17 @@ async function seedCustomerService() {
       const u = await prisma.user.create({ data: { type: 'customer', email: g.email } })
       const p = await prisma.passenger.create({ data: { first_name: g.first_name, last_name: g.last_name } })
       const c = await prisma.customer.create({ data: { user_id: u.id, passenger_id: p.id } })
-
       const b = await prisma.booking.create({
         data: {
           booking_reference: g.booking_ref,
           customer_id: c.id,
           trip_type: 'one_way',
           status: 'confirmed',
-          currency: 'USD',
+          currency: 'THB',
           contact_email: g.email,
-          idempotency_key: faker.string.uuid(),
+          idempotency_key: `seed-cs-${g.booking_ref}`,
           booked_at: new Date('2026-10-01T00:00:00Z'),
           hold_expires_at: new Date('2026-10-01T00:15:00Z'),
-          // booking's CHECK requires confirmed_at exactly when status is confirmed or cancelled
           confirmed_at: new Date('2026-10-01T00:05:00Z'),
         },
       })
@@ -593,7 +4610,6 @@ async function seedCustomerService() {
         await prisma.booking_segment.create({
           data: { booking_id: b.id, flight_id: flightFY308Id, segment_order: 1, cabin: 'economy' },
         })
-        // A confirmed booking holds a sold seat.
         await prisma.seat_inventory.update({
           where: { flight_id_cabin: { flight_id: flightFY308Id, cabin: 'economy' } },
           data: { sold_count: { increment: 1 } },
@@ -601,40 +4617,2619 @@ async function seedCustomerService() {
       }
     }
   }
+
+  // Complaint cases across all types (flight, food, employee, feature_10 lost_bag) and all statuses
+  const tongId = staffByName.get('Tong Charoen')!
+  const ployId = staffByName.get('Ploy Wong')!
+  const maliId = staffByName.get('Mali Rattana')!
+  const somsakId = staffByName.get('Somsak Jaidee')!
+
+  const arun = customers.get('arun')!
+  const hiroshi = customers.get('hiroshi')!
+  const nattaya = customers.get('nattaya')!
+  const chidi = customers.get('chidi')!
+  const claire = customers.get('claire')!
+
+  const bPastArun = bundles.get('b_past_arun_cnx')!
+  const bPastHiroshi = bundles.get('b_past_hiroshi_sin')!
+  const bPastNattaya = bundles.get('b_past_nattaya_hkt')!
+  const bPastChidi = bundles.get('b_past_chidi_cnx')!
+
+  const fPastCnx2 = flights.get('past_cnx_bkk_1')!
+  const fPastSin1 = flights.get('past_bkk_sin_1')!
+  const fPastHkt1 = flights.get('past_bkk_hkt_1')!
+  const fPastCnx1 = flights.get('past_bkk_cnx_1')!
+
+  const mealP001 = await prisma.product.findFirst({ where: { sku: 'MEAL-BEEF-001', deleted_at: null }, select: { id: true } })
+
+  const caseCompVoucherId = sid('k13', 1)
+  const caseCompRefundId = sid('k13', 2)
+  const caseCompRedeemedId = sid('k13', 3)
+  const caseCompExpiredId = sid('k13', 4)
+
+  // Case 1: Flight delay (with_supervisor — waiting in supervisor queue)
+  const case1 =
+    (await prisma.complaint_case.findFirst({ where: { OR: [{ id: sid('c13', 1) }, { case_number: 'CS-2026-900001' }] } })) ??
+    (await prisma.complaint_case.create({
+      data: {
+        id: sid('c13', 1),
+        case_number: 'CS-2026-900001',
+        type: 'flight',
+        passenger_id: arun.passengerId,
+        customer_id: arun.customerId,
+        booking_passenger_id: bPastArun.coupons[1].bookingPassengerId,
+        contact_email: arun.email,
+        status: 'with_supervisor',
+        opened_at: utcDateTime(-3, 5),
+        flight_complaint: {
+          create: {
+            flight_id: fPastCnx2.id,
+            issue: 'delay',
+            details: 'Flight XX102 departed 35 minutes late causing a missed airport transfer.',
+          },
+        },
+        case_event: {
+          create: [
+            { event_type: 'created', actor_type: 'complainant', occurred_at: utcDateTime(-3, 5) },
+            { event_type: 'routed_to_supervisor', actor_type: 'system', to_value: 'with_supervisor', occurred_at: utcDateTime(-3, 5, 1) },
+          ],
+        },
+      },
+    }))
+
+  // Case 2: Employee service complaint (assigned to Mali Rattana with internal note)
+  if (!(await prisma.complaint_case.findFirst({ where: { OR: [{ id: sid('c13', 2) }, { case_number: 'CS-2026-900002' }] } }))) {
+    await prisma.complaint_case.create({
+      data: {
+        id: sid('c13', 2),
+        case_number: 'CS-2026-900002',
+        type: 'employee',
+        passenger_id: nattaya.passengerId,
+        customer_id: nattaya.customerId,
+        booking_passenger_id: bPastNattaya.coupons[0].bookingPassengerId,
+        contact_email: nattaya.email,
+        status: 'assigned',
+        owner_staff_id: maliId,
+        opened_at: utcDateTime(-2, 4),
+        employee_complaint: {
+          create: {
+            location: 'check_in',
+            staff_name: 'Counter 12 Agent',
+            linked_staff_id: somsakId,
+            description: 'Long wait at priority counter and unhelpful guidance on wheelchair escort.',
+          },
+        },
+        case_event: {
+          create: [
+            { event_type: 'created', actor_type: 'complainant', occurred_at: utcDateTime(-2, 4) },
+            {
+              event_type: 'assigned',
+              actor_type: 'staff',
+              actor_staff_id: tongId,
+              from_value: 'with_supervisor',
+              to_value: 'assigned',
+              occurred_at: utcDateTime(-2, 4, 30),
+            },
+            {
+              event_type: 'note_added',
+              actor_type: 'staff',
+              actor_staff_id: maliId,
+              note: 'Reviewed CCTV and shift roster; awaiting station manager statement.',
+              is_internal: true,
+              occurred_at: utcDateTime(-1, 6),
+            },
+          ],
+        },
+      },
+    })
+  }
+
+  // Case 3: Food complaint (resolved + voucher compensation paid!)
+  const case3 =
+    (await prisma.complaint_case.findFirst({ where: { OR: [{ id: sid('c13', 3) }, { case_number: 'CS-2026-900003' }] } })) ??
+    (await prisma.complaint_case.create({
+      data: {
+        id: sid('c13', 3),
+        case_number: 'CS-2026-900003',
+        type: 'food',
+        passenger_id: hiroshi.passengerId,
+        customer_id: hiroshi.customerId,
+        booking_passenger_id: bPastHiroshi.coupons[0].bookingPassengerId,
+        contact_email: hiroshi.email,
+        status: 'resolved',
+        owner_staff_id: ployId,
+        opened_at: utcDateTime(-2, 8),
+        resolved_at: utcDateTime(-1, 5),
+        food_complaint: {
+          create: {
+            flight_id: fPastSin1.id,
+            product_id: mealP001?.id ?? null,
+            product_category: mealP001 ? 'meal' : null,
+            issue: 'wrong_meal',
+            details: 'Pre-ordered vegetarian meal was substituted with beef stir-fry in Business Class.',
+          },
+        },
+        case_compensation: {
+          create: {
+            id: caseCompVoucherId,
+            decided_by_staff_id: ployId,
+            type: 'voucher',
+            amount: 1500,
+            reason: 'Pre-ordered special meal mismatch in Business Class',
+            status: 'paid',
+            payout_ref: 'VCH-SEED-001',
+            decided_at: utcDateTime(-1, 4),
+            result_at: utcDateTime(-1, 4, 5),
+          },
+        },
+        case_event: {
+          create: [
+            { event_type: 'created', actor_type: 'complainant', occurred_at: utcDateTime(-2, 8) },
+            { event_type: 'assigned', actor_type: 'staff', actor_staff_id: tongId, to_value: 'assigned', occurred_at: utcDateTime(-2, 9) },
+            {
+              event_type: 'compensation_decided',
+              actor_type: 'staff',
+              actor_staff_id: ployId,
+              to_value: 'voucher:1500',
+              occurred_at: utcDateTime(-1, 4),
+            },
+            { event_type: 'compensation_result', actor_type: 'system', to_value: 'paid', occurred_at: utcDateTime(-1, 4, 5) },
+            {
+              event_type: 'status_changed',
+              actor_type: 'staff',
+              actor_staff_id: ployId,
+              from_value: 'assigned',
+              to_value: 'resolved',
+              occurred_at: utcDateTime(-1, 5),
+            },
+          ],
+        },
+      },
+    }))
+
+  // Case 4: Lost bag case opened from Feature 10 (resolved + refund compensation paid!)
+  if (
+    !(await prisma.complaint_case.findFirst({
+      where: { OR: [{ id: sid('c13', 4) }, { case_number: 'CS-2026-900004' }, { lost_bag_report_id: lostReportIdForF13 }] },
+    }))
+  ) {
+    await prisma.complaint_case.create({
+      data: {
+        id: sid('c13', 4),
+        case_number: 'CS-2026-900004',
+        type: 'flight',
+        passenger_id: chidi.passengerId,
+        customer_id: chidi.customerId,
+        booking_passenger_id: bPastChidi.coupons[0].bookingPassengerId,
+        contact_email: chidi.email,
+        status: 'resolved',
+        owner_staff_id: ployId,
+        source: 'feature_10',
+        lost_bag_report_id: lostReportIdForF13,
+        opened_at: utcDateTime(-3, 7),
+        resolved_at: utcDateTime(-1, 10),
+        flight_complaint: {
+          create: {
+            flight_id: fPastCnx1.id,
+            issue: 'lost_bag',
+            details: 'Auto-opened after lost baggage report LB-2026-000004 passed 21-day threshold.',
+          },
+        },
+        case_compensation: {
+          create: {
+            id: caseCompRefundId,
+            decided_by_staff_id: tongId,
+            type: 'refund',
+            amount: 2500,
+            reason: 'Lost baggage compensation for LB-2026-000004',
+            status: 'paid',
+            payout_ref: 'REF-SEED-COMP-01',
+            decided_at: utcDateTime(-1, 9),
+            result_at: utcDateTime(-1, 9, 10),
+          },
+        },
+        case_event: {
+          create: [
+            {
+              event_type: 'created',
+              actor_type: 'system',
+              note: 'Opened from Feature 10 lost baggage report',
+              occurred_at: utcDateTime(-3, 7),
+            },
+            { event_type: 'assigned', actor_type: 'staff', actor_staff_id: tongId, to_value: 'assigned', occurred_at: utcDateTime(-2, 3) },
+            {
+              event_type: 'compensation_decided',
+              actor_type: 'staff',
+              actor_staff_id: tongId,
+              to_value: 'refund:2500',
+              occurred_at: utcDateTime(-1, 9),
+            },
+            { event_type: 'compensation_result', actor_type: 'system', to_value: 'paid', occurred_at: utcDateTime(-1, 9, 10) },
+          ],
+        },
+      },
+    })
+  }
+
+  // Case 5: Closed flight cleanliness complaint (reopenable within 7 days) + redeemed voucher compensation
+  if (!(await prisma.complaint_case.findFirst({ where: { OR: [{ id: sid('c13', 5) }, { case_number: 'CS-2026-900005' }] } }))) {
+    await prisma.complaint_case.create({
+      data: {
+        id: sid('c13', 5),
+        case_number: 'CS-2026-900005',
+        type: 'flight',
+        passenger_id: arun.passengerId,
+        customer_id: arun.customerId,
+        booking_passenger_id: bPastArun.coupons[0].bookingPassengerId,
+        contact_email: arun.email,
+        status: 'closed',
+        owner_staff_id: maliId,
+        opened_at: utcDateTime(-4, 6),
+        resolved_at: utcDateTime(-3, 8),
+        closed_at: utcDateTime(-2, 8),
+        flight_complaint: {
+          create: {
+            flight_id: fPastCnx1.id,
+            issue: 'seat',
+            details: 'Seat 10A tray table latch was loose during flight XX101.',
+          },
+        },
+        case_compensation: {
+          create: {
+            id: caseCompRedeemedId,
+            decided_by_staff_id: maliId,
+            type: 'voucher',
+            amount: 500,
+            reason: 'Goodwill gesture for defective tray table',
+            status: 'paid',
+            payout_ref: 'VCH-SEED-002',
+            decided_at: utcDateTime(-3, 7),
+            result_at: utcDateTime(-3, 7, 5),
+          },
+        },
+        case_event: {
+          create: [
+            { event_type: 'created', actor_type: 'complainant', occurred_at: utcDateTime(-4, 6) },
+            {
+              event_type: 'closed',
+              actor_type: 'staff',
+              actor_staff_id: maliId,
+              from_value: 'resolved',
+              to_value: 'closed',
+              occurred_at: utcDateTime(-2, 8),
+            },
+          ],
+        },
+      },
+    })
+  }
+
+  // Case 6: Older closed food complaint with expired voucher compensation
+  if (!(await prisma.complaint_case.findFirst({ where: { OR: [{ id: sid('c13', 6) }, { case_number: 'CS-2026-900006' }] } }))) {
+    await prisma.complaint_case.create({
+      data: {
+        id: sid('c13', 6),
+        case_number: 'CS-2026-900006',
+        type: 'food',
+        passenger_id: claire.passengerId,
+        customer_id: claire.customerId,
+        contact_email: claire.email,
+        status: 'closed',
+        owner_staff_id: somsakId,
+        opened_at: utcDateTime(-14, 5),
+        resolved_at: utcDateTime(-13, 6),
+        closed_at: utcDateTime(-12, 6),
+        food_complaint: {
+          create: {
+            flight_id: fPastHkt1.id,
+            issue: 'quality',
+            details: 'Hot meal arrived lukewarm.',
+          },
+        },
+        case_compensation: {
+          create: {
+            id: caseCompExpiredId,
+            decided_by_staff_id: somsakId,
+            type: 'voucher',
+            amount: 350,
+            reason: 'Service recovery meal voucher',
+            status: 'paid',
+            payout_ref: 'VCH-SEED-003',
+            decided_at: utcDateTime(-13, 5),
+            result_at: utcDateTime(-13, 5, 5),
+          },
+        },
+        case_event: {
+          create: [
+            { event_type: 'created', actor_type: 'complainant', occurred_at: utcDateTime(-14, 5) },
+            {
+              event_type: 'closed',
+              actor_type: 'staff',
+              actor_staff_id: somsakId,
+              from_value: 'resolved',
+              to_value: 'closed',
+              occurred_at: utcDateTime(-12, 6),
+            },
+          ],
+        },
+      },
+    })
+  }
+
+  // Case 7: Duplicate complaint linked to Case 1
+  if (!(await prisma.complaint_case.findFirst({ where: { OR: [{ id: sid('c13', 7) }, { case_number: 'CS-2026-900007' }] } }))) {
+    await prisma.complaint_case.create({
+      data: {
+        id: sid('c13', 7),
+        case_number: 'CS-2026-900007',
+        type: 'flight',
+        passenger_id: arun.passengerId,
+        customer_id: arun.customerId,
+        booking_passenger_id: bPastArun.coupons[1].bookingPassengerId,
+        contact_email: arun.email,
+        status: 'closed',
+        owner_staff_id: tongId,
+        duplicate_of_case_id: case1.id,
+        opened_at: utcDateTime(-3, 5, 10),
+        resolved_at: utcDateTime(-3, 6),
+        closed_at: utcDateTime(-3, 6),
+        flight_complaint: {
+          create: {
+            flight_id: fPastCnx2.id,
+            issue: 'delay',
+            details: 'Duplicate submission for XX102 delay.',
+          },
+        },
+        case_event: {
+          create: [
+            { event_type: 'created', actor_type: 'complainant', occurred_at: utcDateTime(-3, 5, 10) },
+            {
+              event_type: 'marked_duplicate',
+              actor_type: 'staff',
+              actor_staff_id: tongId,
+              to_value: 'CS-2026-900001',
+              occurred_at: utcDateTime(-3, 6),
+            },
+          ],
+        },
+      },
+    })
+  }
+
+  // Notification preferences (only for notification_types present in the database)
+  const knownNotifTypes = new Set((await prisma.notification_type.findMany({ select: { code: true } })).map((t) => t.code))
+  const prefSpecs = [
+    { customer_id: arun.customerId, type_code: 'flight_delayed', channel: 'sms', is_enabled: true },
+    { customer_id: arun.customerId, type_code: 'check_in_completed', channel: 'push', is_enabled: true },
+    { customer_id: arun.customerId, type_code: 'booking_confirmed', channel: 'push', is_enabled: true },
+    { customer_id: hiroshi.customerId, type_code: 'bag_delivery_updated', channel: 'sms', is_enabled: true },
+    { customer_id: hiroshi.customerId, type_code: 'tier_changed', channel: 'push', is_enabled: true },
+    { customer_id: nattaya.customerId, type_code: 'miles_expiring', channel: 'email', is_enabled: true },
+  ]
+  for (const pref of prefSpecs) {
+    if (!knownNotifTypes.has(pref.type_code)) continue
+    await prisma.notification_preference.upsert({
+      where: { customer_id_type_code_channel: { customer_id: pref.customer_id, type_code: pref.type_code, channel: pref.channel } },
+      update: {},
+      create: pref,
+    })
+  }
+
+  // Inbound events & notifications (sent, queued, failed)
+  const inboundSpecs = [
+    {
+      id: sid('i13', 1),
+      source: '2',
+      source_event_id: `seed-delay-${sid('e02', 4)}`,
+      event_type: 'flight_delayed',
+      payload: { flight_number: 'XX102', delay_minutes: 35 },
+      received_at: utcDateTime(-4, 2),
+      processed_at: utcDateTime(-4, 2, 1),
+      notifications: [
+        {
+          type_code: 'flight_delayed',
+          channel: 'email',
+          recipient: arun.email,
+          customer_id: arun.customerId,
+          subject: 'Flight XX102 is delayed',
+          body: 'Dear Arun Sawatdee, flight XX102 is delayed by 35 minutes.',
+          status: 'sent',
+          attempts: 1,
+          queued_at: utcDateTime(-4, 2, 1),
+          sent_at: utcDateTime(-4, 2, 2),
+        },
+        {
+          type_code: 'flight_delayed',
+          channel: 'sms',
+          recipient: '+66 81 100 0001',
+          customer_id: arun.customerId,
+          subject: null,
+          body: 'Flight XX102 is delayed by 35 minutes.',
+          status: 'sent',
+          attempts: 1,
+          queued_at: utcDateTime(-4, 2, 1),
+          sent_at: utcDateTime(-4, 2, 2),
+        },
+      ],
+    },
+    {
+      id: sid('i13', 2),
+      source: '3',
+      source_event_id: 'seed-booking-AR7K2M',
+      event_type: 'booking_confirmed',
+      payload: { reference: 'AR7K2M', flight_number: 'XX101' },
+      received_at: utcDateTime(-3, 2, 5),
+      processed_at: utcDateTime(-3, 2, 6),
+      notifications: [
+        {
+          type_code: 'booking_confirmed',
+          channel: 'email',
+          recipient: arun.email,
+          customer_id: arun.customerId,
+          subject: 'Booking AR7K2M is confirmed',
+          body: 'Dear Arun Sawatdee, your booking AR7K2M is confirmed. Your trip starts with flight XX101.',
+          status: 'sent',
+          attempts: 1,
+          queued_at: utcDateTime(-3, 2, 6),
+          sent_at: utcDateTime(-3, 2, 6),
+        },
+        {
+          type_code: 'booking_confirmed',
+          channel: 'push',
+          recipient: arun.customerId,
+          customer_id: arun.customerId,
+          subject: 'Booking confirmed',
+          body: 'Booking AR7K2M is confirmed.',
+          status: 'sent',
+          attempts: 1,
+          queued_at: utcDateTime(-3, 2, 6),
+          sent_at: utcDateTime(-3, 2, 6),
+        },
+      ],
+    },
+    {
+      id: sid('i13', 3),
+      source: '13',
+      source_event_id: 'seed-case-CS-2026-900003',
+      event_type: 'complaint_updated',
+      payload: { case_number: 'CS-2026-900003', status: 'resolved' },
+      received_at: utcDateTime(-1, 5),
+      processed_at: utcDateTime(-1, 5, 1),
+      notifications: [
+        {
+          type_code: 'complaint_updated',
+          channel: 'email',
+          recipient: hiroshi.email,
+          customer_id: hiroshi.customerId,
+          case_id: case3.id,
+          subject: 'Update on your complaint CS-2026-900003',
+          body: 'Dear Hiroshi Tanaka, your complaint CS-2026-900003 is now: resolved.',
+          status: 'sent',
+          attempts: 1,
+          queued_at: utcDateTime(-1, 5, 1),
+          sent_at: utcDateTime(-1, 5, 2),
+        },
+      ],
+    },
+    {
+      id: sid('i13', 4),
+      source: '10',
+      source_event_id: 'seed-bag-LB-2026-000001',
+      event_type: 'bag_delivery_updated',
+      payload: { case_number: 'LB-2026-000001', delivery_status: 'in_transit' },
+      received_at: utcDateTime(0, 1),
+      processed_at: utcDateTime(0, 1, 1),
+      notifications: [
+        {
+          type_code: 'bag_delivery_updated',
+          channel: 'sms',
+          recipient: '+81 90 1234 5678',
+          customer_id: hiroshi.customerId,
+          subject: null,
+          body: 'Bag case LB-2026-000001 delivery: in_transit.',
+          status: 'queued',
+          attempts: 0,
+          queued_at: utcDateTime(0, 1, 1),
+          sent_at: null,
+        },
+      ],
+    },
+    {
+      id: sid('i13', 5),
+      source: '11',
+      source_event_id: 'seed-loyalty-tier-arun',
+      event_type: 'tier_changed',
+      payload: { tier_name: 'Platinum' },
+      received_at: utcDateTime(-5, 3),
+      processed_at: utcDateTime(-5, 3, 1),
+      notifications: [
+        {
+          type_code: 'tier_changed',
+          channel: 'sms',
+          recipient: '+66 81 100 0001',
+          customer_id: arun.customerId,
+          subject: null,
+          body: 'Your Flython tier is now Platinum.',
+          status: 'failed',
+          attempts: 3,
+          error: 'SMS carrier transient delivery error',
+          queued_at: utcDateTime(-5, 3, 1),
+          sent_at: null,
+        },
+      ],
+    },
+  ]
+
+  for (const ib of inboundSpecs) {
+    const validNotifs = ib.notifications.filter((n) => knownNotifTypes.has(n.type_code))
+    if (validNotifs.length === 0) continue
+    const existing = await prisma.inbound_event.findUnique({
+      where: { source_source_event_id: { source: ib.source, source_event_id: ib.source_event_id } },
+    })
+    if (!existing) {
+      await prisma.inbound_event.create({
+        data: {
+          id: ib.id,
+          source: ib.source,
+          source_event_id: ib.source_event_id,
+          event_type: ib.event_type,
+          payload: ib.payload,
+          received_at: ib.received_at,
+          processed_at: ib.processed_at,
+          notification: { create: validNotifs },
+        },
+      })
+    }
+  }
+
+  return {
+    somchaiCustomerId,
+    somchaiBookingId,
+    caseCompVoucherId,
+    caseCompRefundId,
+    caseCompRedeemedId,
+    caseCompExpiredId,
+  }
 }
 
-async function main() {
-  console.log(
-    `Seeding ${STAFF_ROLES.length} roles, the Feature 2, 4, 5, 6, 10 and 11 demo data, the Feature 6 demo flights and bookings, ${CUSTOMER_COUNT} customers and ${STAFF_COUNT} staff...`,
-  )
+// ── F17: Cargo & Air Freight (Bookings, Shipment Events, Claims & Notices) ───────────────────────────────────
 
-  const roleIds = await seedRoles()
-  await seedFlightNetwork()
-  await seedFlightSchedulingDemo()
-  // Pricing first: its fare classes feed the loyalty earn rules, and its baggage override needs the routes above.
+async function seedFeature17Cargo(
+  customers: Map<string, CustomerHandle>,
+  flights: Map<string, SeededFlightInfo>,
+  staffByRole: Map<string, { staffId: string; userId: string }>,
+): Promise<Map<string, { id: string; ref: string; customerId: string; quotedCharge: number; awbNumber: string }>> {
+  const cargoStaffId = staffByRole.get('cargo')!.staffId
+  const commodities = await prisma.cargo_commodity_type.findMany({ include: { cargo_rate: { where: { is_active: true } } } })
+  const commByCode = new Map(commodities.map((c) => [c.code, c]))
+
+  const pickRate = (code: string, distanceKm: number) => {
+    const comm = commByCode.get(code)!
+    const rate = comm.cargo_rate.find(
+      (r) => distanceKm >= r.min_distance_km && (r.max_distance_km === null || distanceKm < r.max_distance_km),
+    )
+    if (!rate) throw new Error(`No cargo rate for ${code} at ${distanceKm} km`)
+    return { comm, rate }
+  }
+
+  const arun = customers.get('arun')!
+  const hiroshi = customers.get('hiroshi')!
+  const wei = customers.get('wei')!
+  const nattaya = customers.get('nattaya')!
+  const claire = customers.get('claire')!
+
+  const fPastCnx = flights.get('past_bkk_cnx_1')!
+  const fPastSin = flights.get('past_bkk_sin_1')!
+  const fPastNrt = flights.get('past_bkk_nrt_1')!
+  const fUpSin = flights.get('up_bkk_sin_d4')!
+  const fUpNrt = flights.get('up_bkk_nrt_d5')!
+  const fUpHkg = flights.get('up_bkk_hkg_d6')!
+
+  const specs = [
+    {
+      key: 'cg_delivered_claim_approved',
+      id: sid('g17', 1),
+      ref: 'CG-7K3M9Q',
+      customer: hiroshi,
+      flight: fPastNrt,
+      code: 'ELE',
+      goods: 'Precision optical lenses and studio camera housings',
+      pieces: 4,
+      weightKg: 82.5,
+      volM3: 0.45,
+      shipper: 'Bangkok Optics Export Ltd.',
+      consignee: 'Tokyo Imaging Corp.',
+      consigneeAddr: '2-4-1 Marunouchi, Chiyoda-ku, Tokyo',
+      awb: makeAwb(1000101),
+      finalStage: 'delivered' as const,
+      claim: {
+        ref: 'CL-4F8N2D',
+        type: 'damage' as const,
+        pieces: 1,
+        desc: 'Outer crate corner crushed during offloading',
+        claimed: 4500,
+        decision: 'approved' as const,
+        approved: 3200,
+      },
+    },
+    {
+      key: 'cg_delivered_claim_open',
+      id: sid('g17', 2),
+      ref: 'CG-8P2W4T',
+      customer: wei,
+      flight: fPastSin,
+      code: 'FOD',
+      goods: 'Chilled organic mangoes in insulated cartons',
+      pieces: 12,
+      weightKg: 140.0,
+      volM3: 0.8,
+      shipper: 'Siam Fresh Produce Co.',
+      consignee: 'Changi Gourmet Distributors',
+      consigneeAddr: '88 Jurong Port Rd, Singapore 619101',
+      awb: makeAwb(1000102),
+      finalStage: 'delivered' as const,
+      claim: {
+        ref: 'CL-9H3R6K',
+        type: 'loss' as const,
+        pieces: 2,
+        desc: 'Two cartons missing upon consignee handover',
+        claimed: 2800,
+        decision: null,
+      },
+    },
+    {
+      key: 'cg_arrived',
+      id: sid('g17', 3),
+      ref: 'CG-3N6R8V',
+      customer: arun,
+      flight: fPastCnx,
+      code: 'MED',
+      goods: 'Temperature-controlled diagnostic lab reagents',
+      pieces: 3,
+      weightKg: 35.0,
+      volM3: 0.18,
+      shipper: 'BKK MedSupply Co.',
+      consignee: 'Chiang Mai Central Hospital',
+      consigneeAddr: '110 Intawarorot Rd, Chiang Mai',
+      awb: makeAwb(1000103),
+      finalStage: 'arrived' as const,
+    },
+    {
+      key: 'cg_accepted',
+      id: sid('g17', 4),
+      ref: 'CG-5T9X2B',
+      customer: nattaya,
+      flight: fUpSin,
+      code: 'DGR',
+      unNumber: 'UN3481',
+      goods: 'Lithium-ion batteries packed with industrial sensors',
+      pieces: 2,
+      weightKg: 48.0,
+      volM3: 0.25,
+      shipper: 'Thai Robotics Systems',
+      consignee: 'ASEAN Automation Pte Ltd',
+      consigneeAddr: '15 Tuas Ave 10, Singapore',
+      awb: makeAwb(1000104),
+      finalStage: 'accepted' as const,
+    },
+    {
+      key: 'cg_booked',
+      id: sid('g17', 5),
+      ref: 'CG-6V4D7M',
+      customer: claire,
+      flight: fUpNrt,
+      code: 'GAR',
+      goods: 'Thai silk boutique seasonal collection on hangers',
+      pieces: 6,
+      weightKg: 95.0,
+      volM3: 0.55,
+      shipper: 'Jim Atelier Bangkok',
+      consignee: 'Aoyama Fashion House',
+      consigneeAddr: '5-7-21 Minami-Aoyama, Tokyo',
+      awb: makeAwb(1000105),
+      finalStage: 'booked' as const,
+    },
+    {
+      key: 'cg_held',
+      id: sid('g17', 6),
+      ref: 'CG-2Y8C5L',
+      customer: arun,
+      flight: fUpHkg,
+      code: 'GEN',
+      goods: 'Printed architectural exhibition catalogs',
+      pieces: 5,
+      weightKg: 60.0,
+      volM3: 0.3,
+      shipper: 'Bangkok Design Press',
+      consignee: 'Kowloon Art Space',
+      consigneeAddr: '18 Canton Rd, Tsim Sha Tsui, Hong Kong',
+      awb: makeAwb(1000106),
+      finalStage: 'held' as const,
+    },
+  ]
+
+  const cargoMap = new Map<string, { id: string; ref: string; customerId: string; quotedCharge: number; awbNumber: string }>()
+
+  for (const s of specs) {
+    const { comm, rate } = pickRate(s.code, s.flight.distanceKm)
+    const volWeight = Math.ceil(s.volM3 * 167 * 2) / 2
+    const chargeableKg = Math.max(s.weightKg, volWeight)
+    const rateNum = Number(rate.rate_per_kg)
+    const minChargeNum = Number(rate.min_charge)
+    const quotedCharge = Number(Math.max(chargeableKg * rateNum, minChargeNum).toFixed(2))
+    const bookedAt = addMinutes(s.flight.depAt, -48 * 60)
+
+    const existing = await prisma.cargo_booking.findUnique({ where: { booking_ref: s.ref } })
+    const cb =
+      existing ??
+      (await prisma.cargo_booking.create({
+        data: {
+          id: s.id,
+          booking_ref: s.ref,
+          customer_id: s.customer.customerId,
+          route_id: s.flight.routeId,
+          flight_id: s.flight.id,
+          ship_date: s.flight.serviceDate,
+          commodity_type_id: comm.id,
+          handling_class: comm.handling_class,
+          goods_description: s.goods,
+          un_number: s.unNumber ?? null,
+          pieces: s.pieces,
+          declared_weight_kg: s.weightKg,
+          declared_volume_m3: s.volM3,
+          shipper_name: s.shipper,
+          shipper_phone: '+66 2 555 0100',
+          consignee_name: s.consignee,
+          consignee_address: s.consigneeAddr,
+          consignee_phone: '+66 2 555 0200',
+          distance_km: s.flight.distanceKm,
+          quoted_chargeable_kg: chargeableKg,
+          quoted_rate_id: rate.id,
+          rate_per_kg: rateNum,
+          min_charge: minChargeNum,
+          quoted_charge: quotedCharge,
+          currency: 'THB',
+          booked_at: bookedAt,
+          hold_expires_at: addMinutes(bookedAt, 15),
+        },
+      }))
+
+    cargoMap.set(s.key, { id: cb.id, ref: cb.booking_ref, customerId: s.customer.customerId, quotedCharge, awbNumber: s.awb })
+
+    // Append-only shipment event chain (follows cargo_status_transition!)
+    if ((await prisma.cargo_shipment_event.count({ where: { cargo_booking_id: cb.id } })) === 0) {
+      const originAirport = s.flight.routeKey.split('-')[0]
+      const destAirport = s.flight.routeKey.split('-')[1]
+
+      const eHeld = await prisma.cargo_shipment_event.create({
+        data: {
+          cargo_booking_id: cb.id,
+          previous_event_id: null,
+          status_before: null,
+          event_type: 'held',
+          status_after: 'held',
+          flight_id: s.flight.id,
+          airport_code: originAirport,
+          actor_type: 'customer',
+          occurred_at: bookedAt,
+        },
+      })
+
+      let prevId = eHeld.id
+      let prevStatus = 'held'
+
+      const step = async (input: {
+        eventType: string
+        statusAfter: string
+        actorType: 'customer' | 'staff' | 'system'
+        airport: string
+        occurredAt: Date
+        measured?: boolean
+        note?: string
+      }) => {
+        const ev = await prisma.cargo_shipment_event.create({
+          data: {
+            cargo_booking_id: cb.id,
+            previous_event_id: prevId,
+            status_before: prevStatus,
+            event_type: input.eventType,
+            status_after: input.statusAfter,
+            flight_id: s.flight.id,
+            airport_code: input.airport,
+            actor_type: input.actorType,
+            recorded_by_staff_id: input.actorType === 'staff' ? cargoStaffId : null,
+            measured_weight_kg: input.measured ? s.weightKg : null,
+            measured_volume_m3: input.measured ? s.volM3 : null,
+            measured_chargeable_kg: input.measured ? chargeableKg : null,
+            note: input.note ?? null,
+            occurred_at: input.occurredAt,
+          },
+        })
+        prevId = ev.id
+        prevStatus = input.statusAfter
+        return ev
+      }
+
+      if (s.finalStage !== 'held') {
+        const eConf = await step({
+          eventType: 'confirmed',
+          statusAfter: 'booked',
+          actorType: 'system',
+          airport: originAirport,
+          occurredAt: addMinutes(bookedAt, 5),
+        })
+        await prisma.cargo_notice.create({
+          data: {
+            cargo_booking_id: cb.id,
+            cargo_shipment_event_id: eConf.id,
+            title: 'Cargo booking confirmed',
+            message: `Air Waybill ${s.awb} issued for ${s.ref}.`,
+            notified_at: addMinutes(bookedAt, 6),
+            read_at: addMinutes(bookedAt, 30),
+          },
+        })
+      }
+      if (['accepted', 'arrived', 'delivered'].includes(s.finalStage)) {
+        await step({
+          eventType: 'accepted',
+          statusAfter: 'accepted',
+          actorType: 'staff',
+          airport: originAirport,
+          occurredAt: addMinutes(s.flight.depAt, -6 * 60),
+          measured: true,
+          note: 'Weighed and inspected at origin cargo terminal',
+        })
+      }
+      if (['arrived', 'delivered'].includes(s.finalStage)) {
+        await step({
+          eventType: 'loaded',
+          statusAfter: 'loaded',
+          actorType: 'staff',
+          airport: originAirport,
+          occurredAt: addMinutes(s.flight.depAt, -90),
+        })
+        await step({
+          eventType: 'departed',
+          statusAfter: 'in_transit',
+          actorType: 'system',
+          airport: originAirport,
+          occurredAt: s.flight.depAt,
+        })
+        const eArr = await step({
+          eventType: 'arrived',
+          statusAfter: 'arrived',
+          actorType: 'system',
+          airport: destAirport,
+          occurredAt: s.flight.arrAt,
+        })
+        await prisma.cargo_notice.create({
+          data: {
+            cargo_booking_id: cb.id,
+            cargo_shipment_event_id: eArr.id,
+            title: 'Cargo arrived',
+            message: `Shipment ${s.ref} arrived at ${destAirport}.`,
+            notified_at: addMinutes(s.flight.arrAt, 5),
+            read_at: s.finalStage === 'delivered' ? addMinutes(s.flight.arrAt, 45) : null,
+          },
+        })
+      }
+      if (s.finalStage === 'delivered') {
+        await step({
+          eventType: 'delivered',
+          statusAfter: 'delivered',
+          actorType: 'staff',
+          airport: destAirport,
+          occurredAt: addMinutes(s.flight.arrAt, 180),
+          note: 'Signed by consignee representative',
+        })
+      }
+    }
+
+    // Claims & decisions
+    if (s.claim && !(await prisma.cargo_claim.findUnique({ where: { claim_ref: s.claim.ref } }))) {
+      const filedAt = addMinutes(s.flight.arrAt, 360)
+      const claim = await prisma.cargo_claim.create({
+        data: {
+          claim_ref: s.claim.ref,
+          cargo_booking_id: cb.id,
+          claim_type: s.claim.type,
+          pieces_affected: s.claim.pieces,
+          description: s.claim.desc,
+          claimed_amount: s.claim.claimed,
+          currency: 'THB',
+          filed_at: filedAt,
+        },
+      })
+      if (s.claim.decision) {
+        const decidedAt = addMinutes(filedAt, 1440)
+        await prisma.cargo_claim_decision.create({
+          data: {
+            cargo_claim_id: claim.id,
+            decision: s.claim.decision,
+            approved_amount: s.claim.approved ?? null,
+            note: 'Approved partial reimbursement per photographic inspection report.',
+            decided_by_staff_id: cargoStaffId,
+            decided_at: decidedAt,
+          },
+        })
+        await prisma.cargo_notice.create({
+          data: {
+            cargo_booking_id: cb.id,
+            cargo_claim_id: claim.id,
+            title: 'Cargo claim approved',
+            message: `Claim ${s.claim.ref} was approved for THB ${s.claim.approved}.`,
+            notified_at: addMinutes(decidedAt, 2),
+            read_at: null,
+          },
+        })
+      }
+    }
+  }
+
+  return cargoMap
+}
+
+// ── F5 & F12 Customer Orders: Vouchers, Payments, Refunds, Receipts, Finance Postings & Crew Pay ─────────────
+
+async function seedFeature5PaymentsAndF12Orders(
+  customers: Map<string, CustomerHandle>,
+  bundles: Map<string, SeededBookingBundle>,
+  checkedBagIds: Map<string, { id: string; tagNumber: string }>,
+  cargoMap: Map<string, { id: string; ref: string; customerId: string; quotedCharge: number; awbNumber: string }>,
+  f13Refs: { caseCompVoucherId: string; caseCompRefundId: string; caseCompRedeemedId: string; caseCompExpiredId: string },
+  auditRefs: { payRunAuditId: string; refundAuditId: string },
+  f8Refs: { completedPairingIds: string[]; crewByEmp: Map<string, { id: string; role: string }> },
+  staffByRole: Map<string, { staffId: string; userId: string }>,
+) {
+  const opsStaffId = staffByRole.get('ops')!.staffId
+  const financeStaffId = staffByRole.get('finance')!.staffId
+
+  const arun = customers.get('arun')!
+  const hiroshi = customers.get('hiroshi')!
+  const nattaya = customers.get('nattaya')!
+  const claire = customers.get('claire')!
+  const chidi = customers.get('chidi')!
+  const wei = customers.get('wei')!
+
+  // 1. Compensation Vouchers from F13 cases (active, redeemed, expired)
+  const vActiveId = sid('v05', 1)
+  const vRedeemedId = sid('v05', 2)
+  const vExpiredId = sid('v05', 3)
+
+  await prisma.compensation_voucher.upsert({
+    where: { code: 'VCH8K2M4NP' },
+    update: {},
+    create: {
+      id: vActiveId,
+      code: 'VCH8K2M4NP',
+      customer_id: hiroshi.customerId,
+      amount: 1500,
+      currency: 'THB',
+      status: 'active',
+      case_compensation_id: f13Refs.caseCompVoucherId,
+      issued_at: utcDateTime(-1, 4, 5),
+      expires_at: utcDate(364),
+    },
+  })
+  await prisma.compensation_voucher.upsert({
+    where: { code: 'VCH3R7T9WX' },
+    update: {},
+    create: {
+      id: vRedeemedId,
+      code: 'VCH3R7T9WX',
+      customer_id: arun.customerId,
+      amount: 500,
+      currency: 'THB',
+      status: 'redeemed',
+      case_compensation_id: f13Refs.caseCompRedeemedId,
+      issued_at: utcDateTime(-3, 7, 5),
+      expires_at: utcDate(362),
+      redeemed_at: utcDateTime(-3, 2, 5),
+    },
+  })
+  await prisma.compensation_voucher.upsert({
+    where: { code: 'VCH6P4Q2YZ' },
+    update: {},
+    create: {
+      id: vExpiredId,
+      code: 'VCH6P4Q2YZ',
+      customer_id: claire.customerId,
+      amount: 350,
+      currency: 'THB',
+      status: 'expired',
+      case_compensation_id: f13Refs.caseCompExpiredId,
+      issued_at: utcDateTime(-400, 5),
+      expires_at: utcDateTime(-35, 5),
+    },
+  })
+
+  // 2. Payments across features 3, 6, 12, 17 (captured, mixed voucher+card, zero-cash award, capture-stalled, failed, voided, reversed)
+  const bArun = bundles.get('b_arun_return')!
+  const bHiroshi = bundles.get('b_hiroshi_sin')!
+  const bNattayaAward = bundles.get('b_nattaya_award')!
+  const bClaireCan = bundles.get('b_claire_cancelled')!
+  const bPastChidi = bundles.get('b_past_chidi_cnx')!
+  const bWeiHeld = bundles.get('b_wei_held')!
+
+  // Payment 1: Arun's family booking AR7K2M — captured with mixed voucher (500) + card!
+  const pArunId = sid('p05', 1)
+  if (!(await prisma.payment.findUnique({ where: { id: pArunId } }))) {
+    const arunFareTotal = bArun.coupons.reduce((sum, c) => sum + c.priceTotal, 0)
+    const cardAmt = Number((arunFareTotal - 500).toFixed(2))
+    await prisma.payment.create({
+      data: {
+        id: pArunId,
+        source_feature: 3,
+        purchase_ref: `booking:${bArun.bookingId}`,
+        payer_customer_id: arun.customerId,
+        booking_id: bArun.bookingId,
+        voucher_id: vRedeemedId,
+        idempotency_key: `seed-pay-${bArun.ref}`,
+        status: 'captured',
+        provider: 'stripe',
+        currency: 'THB',
+        amount_total: arunFareTotal,
+        voucher_amount: 500,
+        card_amount: cardAmt,
+        provider_fee: Number((cardAmt * 0.029).toFixed(2)),
+        capture_attempts: 1,
+        started_at: utcDateTime(-3, 2, 1),
+        expires_at: utcDateTime(-3, 2, 15),
+        authorised_at: utcDateTime(-3, 2, 4),
+        captured_at: utcDateTime(-3, 2, 5),
+        payment_attempt: {
+          create: {
+            provider_session_id: 'cs_seed_arun_ar7k2m',
+            provider_intent_id: 'pi_seed_arun_ar7k2m',
+            status: 'authorised',
+            card_brand: 'Visa',
+            card_last4: '4242',
+          },
+        },
+      },
+    })
+    await prisma.payment_line.createMany({
+      data: bArun.coupons
+        .filter((c) => c.priceTotal > 0)
+        .map((c, idx) => ({
+          payment_id: pArunId,
+          booking_id: bArun.bookingId,
+          booking_coupon_id: c.id,
+          line_type: 'fare',
+          description: `Fare · coupon #${idx + 1} (${bArun.ref})`,
+          amount: c.priceTotal,
+        })),
+    })
+    await prisma.receipt.create({
+      data: {
+        payment_id: pArunId,
+        document_type: 'receipt',
+        document_number: 'RCPT-2026-000101',
+        amount: arunFareTotal,
+        billing_name: 'Arun Sawatdee',
+        issued_at: utcDateTime(-3, 2, 5),
+      },
+    })
+  }
+
+  // Payment 2: Hiroshi Business booking HT4N8P — captured
+  const pHiroshiId = sid('p05', 2)
+  if (!(await prisma.payment.findUnique({ where: { id: pHiroshiId } }))) {
+    const total = bHiroshi.coupons.reduce((sum, c) => sum + c.priceTotal, 0)
+    await prisma.payment.create({
+      data: {
+        id: pHiroshiId,
+        source_feature: 3,
+        purchase_ref: `booking:${bHiroshi.bookingId}`,
+        payer_customer_id: hiroshi.customerId,
+        booking_id: bHiroshi.bookingId,
+        idempotency_key: `seed-pay-${bHiroshi.ref}`,
+        status: 'captured',
+        provider: 'stripe',
+        currency: 'THB',
+        amount_total: total,
+        voucher_amount: 0,
+        card_amount: total,
+        provider_fee: Number((total * 0.029).toFixed(2)),
+        capture_attempts: 1,
+        started_at: utcDateTime(-2, 4, 1),
+        expires_at: utcDateTime(-2, 4, 15),
+        authorised_at: utcDateTime(-2, 4, 5),
+        captured_at: utcDateTime(-2, 4, 6),
+        payment_attempt: {
+          create: {
+            provider_session_id: 'cs_seed_hiroshi_ht4n8p',
+            provider_intent_id: 'pi_seed_hiroshi_ht4n8p',
+            status: 'authorised',
+            card_brand: 'Mastercard',
+            card_last4: '5555',
+          },
+        },
+      },
+    })
+    await prisma.payment_line.createMany({
+      data: bHiroshi.coupons.map((c, idx) => ({
+        payment_id: pHiroshiId,
+        booking_id: bHiroshi.bookingId,
+        booking_coupon_id: c.id,
+        line_type: 'fare',
+        description: `Business fare · leg #${idx + 1} (${bHiroshi.ref})`,
+        amount: c.priceTotal,
+      })),
+    })
+    await prisma.receipt.create({
+      data: {
+        payment_id: pHiroshiId,
+        document_type: 'receipt',
+        document_number: 'RCPT-2026-000102',
+        amount: total,
+        billing_name: 'Hiroshi Tanaka',
+        issued_at: utcDateTime(-2, 4, 6),
+      },
+    })
+  }
+
+  // Payment 3: Nattaya Award booking NP9M3W — zero-cash provider='none' captured!
+  const pAwardId = sid('p05', 3)
+  if (!(await prisma.payment.findUnique({ where: { id: pAwardId } }))) {
+    await prisma.payment.create({
+      data: {
+        id: pAwardId,
+        source_feature: 3,
+        purchase_ref: `booking:${bNattayaAward.bookingId}`,
+        payer_customer_id: nattaya.customerId,
+        booking_id: bNattayaAward.bookingId,
+        idempotency_key: `seed-pay-${bNattayaAward.ref}`,
+        status: 'captured',
+        provider: 'none',
+        currency: 'THB',
+        amount_total: 0,
+        voucher_amount: 0,
+        card_amount: 0,
+        started_at: utcDateTime(-2, 7, 1),
+        expires_at: utcDateTime(-2, 7, 15),
+        authorised_at: utcDateTime(-2, 7, 4),
+        captured_at: utcDateTime(-2, 7, 4),
+      },
+    })
+    await prisma.payment_line.create({
+      data: {
+        payment_id: pAwardId,
+        booking_id: bNattayaAward.bookingId,
+        booking_coupon_id: bNattayaAward.coupons[0].id,
+        line_type: 'award_fee',
+        description: 'Award ticket redeemed with 20,000 miles',
+        amount: 0,
+      },
+    })
+    await prisma.receipt.create({
+      data: {
+        payment_id: pAwardId,
+        document_type: 'receipt',
+        document_number: 'RCPT-2026-000103',
+        amount: 0,
+        billing_name: 'Nattaya Prasert',
+        issued_at: utcDateTime(-2, 7, 4),
+      },
+    })
+  }
+
+  // Payment 4: Claire's cancelled booking CM3R7V — captured then refunded (succeeded original card + credit note!)
+  const pClaireId = sid('p05', 4)
+  if (!(await prisma.payment.findUnique({ where: { id: pClaireId } }))) {
+    const cCoupon = bClaireCan.coupons[0]
+    const payLineId = sid('pl5', 4)
+    await prisma.payment.create({
+      data: {
+        id: pClaireId,
+        source_feature: 3,
+        purchase_ref: `booking:${bClaireCan.bookingId}`,
+        payer_customer_id: claire.customerId,
+        booking_id: bClaireCan.bookingId,
+        idempotency_key: `seed-pay-${bClaireCan.ref}`,
+        status: 'captured',
+        provider: 'stripe',
+        currency: 'THB',
+        amount_total: cCoupon.priceTotal,
+        voucher_amount: 0,
+        card_amount: cCoupon.priceTotal,
+        capture_attempts: 1,
+        started_at: utcDateTime(-5, 3, 1),
+        expires_at: utcDateTime(-5, 3, 15),
+        authorised_at: utcDateTime(-5, 3, 4),
+        captured_at: utcDateTime(-5, 3, 5),
+        payment_attempt: {
+          create: {
+            provider_session_id: 'cs_seed_claire_cm3r7v',
+            provider_intent_id: 'pi_seed_claire_cm3r7v',
+            status: 'authorised',
+            card_brand: 'Visa',
+            card_last4: '1111',
+          },
+        },
+      },
+    })
+    await prisma.payment_line.create({
+      data: {
+        id: payLineId,
+        payment_id: pClaireId,
+        booking_id: bClaireCan.bookingId,
+        booking_coupon_id: cCoupon.id,
+        line_type: 'fare',
+        description: `Premium Economy fare (${bClaireCan.ref})`,
+        amount: cCoupon.priceTotal,
+        refunded_amount: Number((cCoupon.priceTotal * 0.9).toFixed(2)),
+      },
+    })
+    await prisma.receipt.create({
+      data: {
+        payment_id: pClaireId,
+        document_type: 'receipt',
+        document_number: 'RCPT-2026-000104',
+        amount: cCoupon.priceTotal,
+        billing_name: 'Claire Martin',
+        issued_at: utcDateTime(-5, 3, 5),
+      },
+    })
+    const refundAmt = Number((cCoupon.priceTotal * 0.9).toFixed(2))
+    const feeWithheld = Number((cCoupon.priceTotal - refundAmt).toFixed(2))
+    const rClaireId = sid('a05', 52)
+    await prisma.refund.create({
+      data: {
+        id: rClaireId,
+        payment_id: pClaireId,
+        source_key: `customer_cancel:${bClaireCan.bookingId}`,
+        reason: 'customer_cancel',
+        method: 'original',
+        status: 'succeeded',
+        amount: refundAmt,
+        voucher_amount: 0,
+        fee_withheld: feeWithheld,
+        provider_refund_id: 're_seed_claire_001',
+        requested_by_user_id: claire.userId,
+        audit_log_id: auditRefs.refundAuditId,
+        decision_note: 'Refunded 90% per Premium Economy 10% cancellation fee rule.',
+        requested_at: utcDateTime(-2, 6),
+        completed_at: utcDateTime(-2, 6, 30),
+        refund_line: { create: [{ payment_line_id: payLineId, amount: refundAmt }] },
+      },
+    })
+    await prisma.receipt.create({
+      data: {
+        payment_id: pClaireId,
+        refund_id: rClaireId,
+        document_type: 'credit_note',
+        document_number: 'CN-2026-000101',
+        amount: refundAmt,
+        billing_name: 'Claire Martin',
+        issued_at: utcDateTime(-2, 6, 30),
+      },
+    })
+  }
+
+  // Payment 5: Chidi's past booking + F6 excess baggage payment (source 6) + F13 compensation refund!
+  const pChidiBagId = sid('p05', 5)
+  const chidiBag = checkedBagIds.get('bag_chidi_excess')!
+  if (!(await prisma.payment.findUnique({ where: { id: pChidiBagId } }))) {
+    const chidiLineId = sid('pl5', 5)
+    await prisma.payment.create({
+      data: {
+        id: pChidiBagId,
+        source_feature: 6,
+        purchase_ref: `checked_bag:${chidiBag.id}`,
+        payer_customer_id: chidi.customerId,
+        booking_id: bPastChidi.bookingId,
+        idempotency_key: `seed-pay-bag-${chidiBag.tagNumber}`,
+        status: 'captured',
+        provider: 'stripe',
+        currency: 'THB',
+        amount_total: 750,
+        voucher_amount: 0,
+        card_amount: 750,
+        capture_attempts: 1,
+        started_at: utcDateTime(-4, 0, 10),
+        expires_at: utcDateTime(-4, 0, 25),
+        authorised_at: utcDateTime(-4, 0, 11),
+        captured_at: utcDateTime(-4, 0, 12),
+      },
+    })
+    await prisma.payment_line.create({
+      data: {
+        id: chidiLineId,
+        payment_id: pChidiBagId,
+        booking_id: bPastChidi.bookingId,
+        booking_coupon_id: bPastChidi.coupons[0].id,
+        line_type: 'baggage',
+        source_ref: `checked_bag:${chidiBag.id}`,
+        description: 'Excess baggage · 3.0 kg @ 250 THB/kg',
+        amount: 750,
+      },
+    })
+    await prisma.checked_bag.update({
+      where: { id: chidiBag.id },
+      data: { excess_payment_id: pChidiBagId, status: 'tagged' },
+    })
+    await prisma.receipt.create({
+      data: {
+        payment_id: pChidiBagId,
+        document_type: 'receipt',
+        document_number: 'RCPT-2026-000105',
+        amount: 750,
+        billing_name: 'Chidi Okafor',
+        issued_at: utcDateTime(-4, 0, 12),
+      },
+    })
+  }
+
+  // Payment 5b: Chidi's flight booking payment + F13 lost bag compensation refund
+  const pChidiFlightId = sid('p05', 6)
+  if (!(await prisma.payment.findUnique({ where: { id: pChidiFlightId } }))) {
+    const cLineId = sid('pl5', 6)
+    await prisma.payment.create({
+      data: {
+        id: pChidiFlightId,
+        source_feature: 3,
+        purchase_ref: `booking:${bPastChidi.bookingId}`,
+        payer_customer_id: chidi.customerId,
+        booking_id: bPastChidi.bookingId,
+        idempotency_key: `seed-pay-${bPastChidi.ref}`,
+        status: 'captured',
+        provider: 'stripe',
+        currency: 'THB',
+        amount_total: 3518,
+        voucher_amount: 0,
+        card_amount: 3518,
+        capture_attempts: 1,
+        started_at: utcDateTime(-7, 4, 1),
+        expires_at: utcDateTime(-7, 4, 15),
+        authorised_at: utcDateTime(-7, 4, 4),
+        captured_at: utcDateTime(-7, 4, 5),
+      },
+    })
+    await prisma.payment_line.create({
+      data: {
+        id: cLineId,
+        payment_id: pChidiFlightId,
+        booking_id: bPastChidi.bookingId,
+        booking_coupon_id: bPastChidi.coupons[0].id,
+        line_type: 'fare',
+        description: `Economy Flex fare (${bPastChidi.ref})`,
+        amount: 3518,
+        refunded_amount: 2500,
+      },
+    })
+    await prisma.refund.create({
+      data: {
+        id: sid('a05', 53),
+        payment_id: pChidiFlightId,
+        source_key: `compensation:${f13Refs.caseCompRefundId}`,
+        reason: 'compensation',
+        method: 'original',
+        status: 'succeeded',
+        amount: 2500,
+        voucher_amount: 0,
+        fee_withheld: 0,
+        provider_refund_id: 're_seed_chidi_comp',
+        case_compensation_id: f13Refs.caseCompRefundId,
+        requested_at: utcDateTime(-1, 9),
+        completed_at: utcDateTime(-1, 9, 10),
+        refund_line: { create: [{ payment_line_id: cLineId, amount: 2500 }] },
+      },
+    })
+  }
+
+  // Additional Refund Queue items (1 pending_approval, 1 requested, 1 rejected, 1 voucher refund with voucher!)
+  if (!(await prisma.refund.findUnique({ where: { id: sid('a05', 54) } }))) {
+    const hLine = await prisma.payment_line.findFirst({ where: { payment_id: pHiroshiId } })
+    if (hLine) {
+      await prisma.refund.create({
+        data: {
+          id: sid('a05', 54),
+          payment_id: pHiroshiId,
+          source_key: 'seed-refund-pending-hiroshi',
+          reason: 'customer_request',
+          method: 'original',
+          status: 'pending_approval',
+          amount: 1500,
+          voucher_amount: 0,
+          fee_withheld: 0,
+          requested_by_user_id: hiroshi.userId,
+          requested_at: utcDateTime(0, 1),
+          refund_line: { create: [{ payment_line_id: hLine.id, amount: 1500 }] },
+        },
+      })
+    }
+  }
+  if (!(await prisma.refund.findUnique({ where: { id: sid('a05', 55) } }))) {
+    const aLine = await prisma.payment_line.findFirst({ where: { payment_id: pArunId } })
+    if (aLine) {
+      const rVchId = sid('a05', 55)
+      await prisma.refund.create({
+        data: {
+          id: rVchId,
+          payment_id: pArunId,
+          source_key: 'seed-refund-voucher-arun',
+          reason: 'staff_adjustment',
+          method: 'voucher',
+          status: 'succeeded',
+          amount: 600,
+          voucher_amount: 600,
+          fee_withheld: 0,
+          requested_by_user_id: arun.userId,
+          decision_note: 'Issued seat downgrade difference as travel voucher.',
+          requested_at: utcDateTime(-1, 3),
+          completed_at: utcDateTime(-1, 3, 15),
+          refund_line: { create: [{ payment_line_id: aLine.id, amount: 600 }] },
+        },
+      })
+      await prisma.compensation_voucher.upsert({
+        where: { code: 'VCH9M5D2FK' },
+        update: {},
+        create: {
+          id: sid('v05', 4),
+          code: 'VCH9M5D2FK',
+          customer_id: arun.customerId,
+          amount: 600,
+          currency: 'THB',
+          status: 'active',
+          refund_id: rVchId,
+          issued_at: utcDateTime(-1, 3, 15),
+          expires_at: utcDate(364),
+        },
+      })
+    }
+  }
+  if (!(await prisma.refund.findUnique({ where: { id: sid('a05', 56) } }))) {
+    await prisma.refund.create({
+      data: {
+        id: sid('a05', 56),
+        payment_id: pChidiBagId,
+        source_key: 'seed-refund-rejected-chidi',
+        reason: 'customer_request',
+        method: 'original',
+        status: 'rejected',
+        amount: 750,
+        voucher_amount: 0,
+        fee_withheld: 0,
+        requested_by_user_id: chidi.userId,
+        decision_note: 'Excess baggage fee is non-refundable once bag is carried.',
+        requested_at: utcDateTime(-2, 4),
+      },
+    })
+  }
+
+  // Payment 7: Capture-stalled payment exception (for F5 Payment Exceptions screen!)
+  const pStalledId = sid('p05', 7)
+  if (!(await prisma.payment.findUnique({ where: { id: pStalledId } }))) {
+    await prisma.payment.create({
+      data: {
+        id: pStalledId,
+        source_feature: 3,
+        purchase_ref: `booking:${bWeiHeld.bookingId}`,
+        payer_customer_id: wei.customerId,
+        booking_id: bWeiHeld.bookingId,
+        idempotency_key: `seed-pay-stalled-${bWeiHeld.ref}`,
+        status: 'authorised',
+        provider: 'stripe',
+        currency: 'THB',
+        amount_total: 5123,
+        voucher_amount: 0,
+        card_amount: 5123,
+        capture_attempts: 5,
+        last_error: 'stripe_capture_timeout: upstream acquirer did not respond',
+        started_at: utcDateTime(0, 0, 5),
+        expires_at: utcDateTime(1, 0),
+        authorised_at: utcDateTime(0, 0, 7),
+        capture_stalled_at: utcDateTime(0, 0, 20),
+        payment_attempt: {
+          create: {
+            provider_session_id: 'cs_seed_wei_stalled',
+            provider_intent_id: 'pi_seed_wei_stalled',
+            status: 'authorised',
+            card_brand: 'Visa',
+            card_last4: '0002',
+          },
+        },
+      },
+    })
+    await prisma.payment_line.create({
+      data: {
+        payment_id: pStalledId,
+        booking_id: bWeiHeld.bookingId,
+        booking_coupon_id: bWeiHeld.coupons[0].id,
+        line_type: 'fare',
+        description: `Premium Economy fare (${bWeiHeld.ref})`,
+        amount: 5123,
+      },
+    })
+  }
+
+  // Payment 8: Failed card attempt (declined)
+  const pFailedId = sid('p05', 8)
+  if (!(await prisma.payment.findUnique({ where: { id: pFailedId } }))) {
+    await prisma.payment.create({
+      data: {
+        id: pFailedId,
+        source_feature: 12,
+        purchase_ref: 'seed-declined-onboard-01',
+        payer_customer_id: claire.customerId,
+        idempotency_key: 'seed-pay-failed-01',
+        status: 'failed',
+        provider: 'stripe',
+        currency: 'THB',
+        amount_total: 980,
+        voucher_amount: 0,
+        card_amount: 980,
+        last_error: 'insufficient_funds',
+        started_at: utcDateTime(-1, 6),
+        expires_at: utcDateTime(-1, 6, 30),
+        payment_attempt: {
+          create: {
+            provider_session_id: 'cs_seed_claire_declined',
+            status: 'failed',
+            failure_code: 'insufficient_funds',
+            card_brand: 'Mastercard',
+            card_last4: '0341',
+          },
+        },
+      },
+    })
+    await prisma.payment_line.create({
+      data: {
+        payment_id: pFailedId,
+        line_type: 'onboard_order',
+        description: 'Duty free perfume pre-order',
+        amount: 980,
+      },
+    })
+  }
+
+  // 3. Cargo Payments (source_feature = 17) + Issue AWBs + Invoices
+  let cargoPayIdx = 10
+  for (const [key, cg] of cargoMap.entries()) {
+    if (key === 'cg_held') continue
+    const payId = sid('p05', cargoPayIdx++)
+    if (!(await prisma.payment.findUnique({ where: { id: payId } }))) {
+      const paidAt = utcDateTime(-3, 5)
+      await prisma.payment.create({
+        data: {
+          id: payId,
+          source_feature: 17,
+          purchase_ref: `cargo_booking:${cg.id}`,
+          payer_customer_id: cg.customerId,
+          cargo_booking_id: cg.id,
+          idempotency_key: `seed-pay-cargo-${cg.ref}`,
+          status: 'captured',
+          provider: 'stripe',
+          currency: 'THB',
+          amount_total: cg.quotedCharge,
+          voucher_amount: 0,
+          card_amount: cg.quotedCharge,
+          capture_attempts: 1,
+          started_at: addMinutes(paidAt, -5),
+          expires_at: addMinutes(paidAt, 15),
+          authorised_at: addMinutes(paidAt, -1),
+          captured_at: paidAt,
+        },
+      })
+      await prisma.payment_line.create({
+        data: {
+          payment_id: payId,
+          line_type: 'cargo_freight',
+          description: `Air freight ${cg.ref} (AWB ${cg.awbNumber})`,
+          amount: cg.quotedCharge,
+        },
+      })
+      await prisma.cargo_booking.update({
+        where: { id: cg.id },
+        data: { payment_id: payId, awb_number: cg.awbNumber, awb_issued_at: paidAt },
+      })
+      await prisma.receipt.create({
+        data: {
+          payment_id: payId,
+          document_type: 'invoice',
+          document_number: `INV-2026-000${cargoPayIdx}`,
+          amount: cg.quotedCharge,
+          billing_name: `Cargo Shipper (${cg.ref})`,
+          issued_at: paidAt,
+        },
+      })
+    }
+  }
+
+  // 4. F12 Customer Product Orders + Product Dietary attributes
+  const p001 = await prisma.product.findFirst({ where: { sku: 'MEAL-BEEF-001', deleted_at: null } })
+  const p003 = await prisma.product.findFirst({ where: { sku: 'MEAL-VEG-001', deleted_at: null } })
+  const p004 = await prisma.product.findFirst({ where: { sku: 'MEAL-MOML-001', deleted_at: null } })
+  const p005 = await prisma.product.findFirst({ where: { sku: 'MEAL-KSML-001', deleted_at: null } })
+  const p009 = await prisma.product.findFirst({ where: { sku: 'SNK-NUTS-001', deleted_at: null } })
+  const p011 = await prisma.product.findFirst({ where: { sku: 'SNK-CHOC-001', deleted_at: null } })
+  const whBkk = await prisma.warehouse.findFirst({ where: { airport_code: 'BKK', deleted_at: null } })
+
+  const dietaryPairs: Array<{ product: { id: string } | null; attrs: string[] }> = [
+    { product: p003, attrs: ['vegetarian', 'vegan'] },
+    { product: p004, attrs: ['halal'] },
+    { product: p005, attrs: ['kosher'] },
+    { product: p009, attrs: ['vegan', 'gluten_free'] },
+    { product: p011, attrs: ['vegetarian', 'gluten_free'] },
+  ]
+  for (const dp of dietaryPairs) {
+    if (!dp.product) continue
+    for (const attribute of dp.attrs) {
+      await prisma.product_dietary.upsert({
+        where: { product_id_attribute: { product_id: dp.product.id, attribute } },
+        update: {},
+        create: { product_id: dp.product.id, attribute },
+      })
+    }
+  }
+
+  // Paid Economy pre-order for Arun on AR7K2M (meal + snack) & complimentary Business pre-order for Hiroshi on HT4N8P
+  if (p001 && p009 && whBkk) {
+    const poArunId = sid('o12', 1)
+    const poArunPayId = sid('p05', 30)
+    if (!(await prisma.product_order.findUnique({ where: { id: poArunId } }))) {
+      const mealAmt = Number(p001.price_amount)
+      const snackAmt = Number(p009.price_amount)
+      const total = Number((mealAmt + snackAmt).toFixed(2))
+      await prisma.payment.create({
+        data: {
+          id: poArunPayId,
+          source_feature: 12,
+          purchase_ref: `product_order:${poArunId}`,
+          payer_customer_id: arun.customerId,
+          booking_id: bArun.bookingId,
+          idempotency_key: `seed-po-${poArunId}`,
+          status: 'captured',
+          provider: 'stripe',
+          currency: 'THB',
+          amount_total: total,
+          voucher_amount: 0,
+          card_amount: total,
+          started_at: utcDateTime(-2, 3),
+          expires_at: utcDateTime(-2, 3, 30),
+          authorised_at: utcDateTime(-2, 3, 2),
+          captured_at: utcDateTime(-2, 3, 3),
+        },
+      })
+      await prisma.payment_line.create({
+        data: {
+          payment_id: poArunPayId,
+          booking_id: bArun.bookingId,
+          line_type: 'onboard_order',
+          source_ref: `product_order:${poArunId}`,
+          description: 'Pre-ordered meal & snack',
+          amount: total,
+        },
+      })
+      await prisma.product_order.create({
+        data: {
+          id: poArunId,
+          customer_id: arun.customerId,
+          booking_id: bArun.bookingId,
+          flight_id: bArun.coupons[0].flightId,
+          cabin: 'economy',
+          status: 'confirmed',
+          total_amount: total,
+          currency: 'THB',
+          payment_id: poArunPayId,
+          paid_at: utcDateTime(-2, 3, 3),
+          expires_at: utcDateTime(1, 0),
+          product_order_line: {
+            create: [
+              {
+                product_id: p001.id,
+                category: 'meal',
+                booking_passenger_id: bArun.coupons[0].bookingPassengerId,
+                quantity: 1,
+                unit_price_amount: mealAmt,
+                price_basis: 'standard',
+              },
+              { product_id: p009.id, category: 'snack', quantity: 1, unit_price_amount: snackAmt, price_basis: 'standard' },
+            ],
+          },
+        },
+      })
+      // The order reserves its stock at the BKK warehouse, and the provider's webhooks for the payment are recorded as processed.
+      await prisma.stock_movement.createMany({
+        data: [
+          { product_id: p001.id, type: 'reserve', quantity: 1 },
+          { product_id: p009.id, type: 'reserve', quantity: 1 },
+        ].map((m) => ({
+          ...m,
+          warehouse_id: whBkk.id,
+          product_order_id: poArunId,
+          flight_id: bArun.coupons[0].flightId,
+          occurred_at: utcDateTime(-2, 3, 3),
+        })),
+        skipDuplicates: true,
+      })
+      await prisma.payment_event_receipt.createMany({
+        data: [
+          { provider_event_id: `evt_seed_${poArunPayId.slice(0, 8)}_auth`, event_type: 'payment_intent.amount_capturable_updated' },
+          { provider_event_id: `evt_seed_${poArunPayId.slice(0, 8)}_capt`, event_type: 'payment_intent.succeeded' },
+        ].map((e) => ({ ...e, payment_id: poArunPayId, received_at: utcDateTime(-2, 3, 3), processed_at: utcDateTime(-2, 3, 3) })),
+        skipDuplicates: true,
+      })
+    }
+  }
+
+  if (p003) {
+    const poHiroshiId = sid('o12', 2)
+    if (!(await prisma.product_order.findUnique({ where: { id: poHiroshiId } }))) {
+      await prisma.product_order.create({
+        data: {
+          id: poHiroshiId,
+          customer_id: hiroshi.customerId,
+          booking_id: bHiroshi.bookingId,
+          flight_id: bHiroshi.coupons[0].flightId,
+          cabin: 'business',
+          status: 'confirmed',
+          total_amount: 0,
+          currency: 'THB',
+          paid_at: utcDateTime(-1, 4),
+          expires_at: utcDateTime(2, 0),
+          product_order_line: {
+            create: [
+              {
+                product_id: p003.id,
+                category: 'meal',
+                booking_passenger_id: bHiroshi.coupons[0].bookingPassengerId,
+                quantity: 1,
+                unit_price_amount: 0,
+                price_basis: 'included',
+              },
+            ],
+          },
+        },
+      })
+    }
+  }
+
+  // 5. F5c Crew Pay: Paid Pay Run + Draft Pay Run + Payroll Lines + Payouts
+  const [p1Id, p2Id] = f8Refs.completedPairingIds
+  const cap1 = f8Refs.crewByEmp.get('DEMO001')!
+  const fo1 = f8Refs.crewByEmp.get('DEMO004')!
+  const cc1 = f8Refs.crewByEmp.get('DEMO007')!
+  const cap2 = f8Refs.crewByEmp.get('DEMO002')!
+  const fo2 = f8Refs.crewByEmp.get('DEMO005')!
+
+  const paidRunId = sid('a05', 1)
+  if (!(await prisma.pay_run.findUnique({ where: { id: paidRunId } }))) {
+    await prisma.pay_run.create({
+      data: {
+        id: paidRunId,
+        period_start: utcDate(-14),
+        period_end: utcDate(-3),
+        status: 'paid',
+        created_by_staff_id: opsStaffId,
+        approved_by_staff_id: financeStaffId,
+        audit_log_id: auditRefs.payRunAuditId,
+        paid_at: utcDateTime(-3, 10),
+      },
+    })
+    await prisma.payroll_line.createMany({
+      data: [
+        {
+          crew_id: cap1.id,
+          pairing_id: p1Id,
+          line_type: 'base',
+          quantity: 4.5,
+          rate: 85,
+          multiplier: 1.0,
+          amount: 382.5,
+          description: 'P-901 base flight hours',
+          earned_on: utcDate(-4),
+          status: 'paid',
+          pay_run_id: paidRunId,
+        },
+        {
+          crew_id: fo1.id,
+          pairing_id: p1Id,
+          line_type: 'base',
+          quantity: 4.5,
+          rate: 60,
+          multiplier: 1.0,
+          amount: 270.0,
+          description: 'P-901 base flight hours',
+          earned_on: utcDate(-4),
+          status: 'paid',
+          pay_run_id: paidRunId,
+        },
+        {
+          crew_id: cc1.id,
+          pairing_id: p1Id,
+          line_type: 'base',
+          quantity: 4.5,
+          rate: 25,
+          multiplier: 1.0,
+          amount: 112.5,
+          description: 'P-901 base flight hours',
+          earned_on: utcDate(-4),
+          status: 'paid',
+          pay_run_id: paidRunId,
+        },
+      ],
+      skipDuplicates: true,
+    })
+  }
+  await prisma.payout.createMany({
+    data: [
+      {
+        pay_run_id: paidRunId,
+        crew_id: cap1.id,
+        amount: 382.5,
+        provider: 'fake',
+        status: 'paid',
+        reference: 'PO-SEED-001',
+        paid_at: utcDateTime(-3, 10),
+      },
+      {
+        pay_run_id: paidRunId,
+        crew_id: fo1.id,
+        amount: 270.0,
+        provider: 'fake',
+        status: 'paid',
+        reference: 'PO-SEED-002',
+        paid_at: utcDateTime(-3, 10),
+      },
+      {
+        pay_run_id: paidRunId,
+        crew_id: cc1.id,
+        amount: 112.5,
+        provider: 'fake',
+        status: 'paid',
+        reference: 'PO-SEED-003',
+        paid_at: utcDateTime(-3, 10),
+      },
+    ],
+    skipDuplicates: true,
+  })
+
+  const draftRunId = sid('a05', 2)
+  if (!(await prisma.pay_run.findUnique({ where: { id: draftRunId } }))) {
+    await prisma.pay_run.create({
+      data: {
+        id: draftRunId,
+        period_start: utcDate(-2),
+        period_end: utcDate(0),
+        status: 'draft',
+        created_by_staff_id: opsStaffId,
+      },
+    })
+    await prisma.payroll_line.createMany({
+      data: [
+        {
+          crew_id: cap2.id,
+          pairing_id: p2Id,
+          line_type: 'base',
+          quantity: 6.0,
+          rate: 85,
+          multiplier: 1.0,
+          amount: 510.0,
+          description: 'P-902 BKK-SIN-BKK flight hours',
+          earned_on: utcDate(-2),
+          status: 'in_run',
+          pay_run_id: draftRunId,
+        },
+        {
+          crew_id: cap2.id,
+          pairing_id: p2Id,
+          line_type: 'per_diem',
+          quantity: 1.0,
+          rate: 40,
+          multiplier: 1.0,
+          amount: 40.0,
+          description: 'P-902 SIN overnight per diem',
+          earned_on: utcDate(-2),
+          status: 'in_run',
+          pay_run_id: draftRunId,
+        },
+        {
+          crew_id: cap2.id,
+          pairing_id: null,
+          line_type: 'adjustment',
+          quantity: null,
+          rate: null,
+          multiplier: null,
+          amount: 120.0,
+          description: 'Check-airman line training bonus',
+          earned_on: utcDate(-1),
+          status: 'in_run',
+          pay_run_id: draftRunId,
+        },
+        {
+          crew_id: fo2.id,
+          pairing_id: p2Id,
+          line_type: 'base',
+          quantity: 6.0,
+          rate: 60,
+          multiplier: 1.0,
+          amount: 360.0,
+          description: 'P-902 BKK-SIN-BKK flight hours',
+          earned_on: utcDate(-2),
+          status: 'accrued',
+          pay_run_id: null,
+        },
+      ],
+      skipDuplicates: true,
+    })
+  }
+
+  // 6. Append-only Finance Postings (5c journal)
+  const postings = [
+    {
+      posting_key: `payment_captured:${pArunId}`,
+      posting_type: 'payment_captured',
+      source_type: 'payment',
+      source_id: pArunId,
+      currency: 'THB',
+      payload: { booking_ref: 'AR7K2M', voucher_used: 500 },
+      occurred_at: utcDateTime(-3, 2, 5),
+    },
+    {
+      posting_key: `voucher_redeemed:${vRedeemedId}`,
+      posting_type: 'voucher_redeemed',
+      source_type: 'compensation_voucher',
+      source_id: vRedeemedId,
+      currency: 'THB',
+      payload: { code: 'VCH3R7T9WX', amount: '500.00' },
+      occurred_at: utcDateTime(-3, 2, 5),
+    },
+    {
+      posting_key: `payment_captured:${pHiroshiId}`,
+      posting_type: 'payment_captured',
+      source_type: 'payment',
+      source_id: pHiroshiId,
+      currency: 'THB',
+      payload: { booking_ref: 'HT4N8P' },
+      occurred_at: utcDateTime(-2, 4, 6),
+    },
+    {
+      posting_key: `refund_succeeded:${sid('a05', 52)}`,
+      posting_type: 'refund_succeeded',
+      source_type: 'refund',
+      source_id: sid('a05', 52),
+      currency: 'THB',
+      payload: { booking_ref: 'CM3R7V', method: 'original' },
+      occurred_at: utcDateTime(-2, 6, 30),
+    },
+    {
+      posting_key: `voucher_issued:${vActiveId}`,
+      posting_type: 'voucher_issued',
+      source_type: 'compensation_voucher',
+      source_id: vActiveId,
+      currency: 'THB',
+      payload: { code: 'VCH8K2M4NP', amount: '1500.00' },
+      occurred_at: utcDateTime(-1, 4, 5),
+    },
+    {
+      posting_key: `crew_pay_paid:${paidRunId}`,
+      posting_type: 'crew_pay_paid',
+      source_type: 'pay_run',
+      source_id: paidRunId,
+      currency: 'THB',
+      payload: { total_paid: '765.00', crew_count: 3 },
+      occurred_at: utcDateTime(-3, 10),
+    },
+  ]
+  for (const fp of postings) {
+    if (!(await prisma.finance_posting.findUnique({ where: { posting_key: fp.posting_key } }))) {
+      await prisma.finance_posting.create({ data: fp })
+    }
+  }
+}
+
+// ── F11: Loyalty Members, Award Releases, Ledger Transactions, Benefits & Travel Insurance ───────────────────
+
+async function seedFeature11Loyalty(
+  customers: Map<string, CustomerHandle>,
+  flights: Map<string, SeededFlightInfo>,
+  bundles: Map<string, SeededBookingBundle>,
+  fareClassByCode: Map<string, string>,
+  somchaiCustomerId: string,
+  somchaiBookingId: string,
+  loyaltyAdjustAuditId: string,
+  staffByRole: Map<string, { staffId: string; userId: string }>,
+) {
+  const loyaltyStaffId = staffByRole.get('loyalty-admin')!.staffId
+  const arun = customers.get('arun')!
+  const hiroshi = customers.get('hiroshi')!
+  const nattaya = customers.get('nattaya')!
+  const claire = customers.get('claire')!
+  const wei = customers.get('wei')!
+
+  // Award seat releases on upcoming flights
+  const awardReleases = [
+    { flight: flights.get('up_bkk_cnx_d2')!, cabin: 'economy', miles_cost: 8000 },
+    { flight: flights.get('up_bkk_hkt_d3')!, cabin: 'economy', miles_cost: 9000 },
+    { flight: flights.get('up_bkk_sin_d4')!, cabin: 'economy', miles_cost: 15000 },
+    { flight: flights.get('up_bkk_sin_d4')!, cabin: 'business', miles_cost: 35000 },
+    { flight: flights.get('up_bkk_nrt_d5')!, cabin: 'economy', miles_cost: 20000 },
+    { flight: flights.get('up_bkk_nrt_d5')!, cabin: 'business', miles_cost: 55000 },
+  ]
+  for (const ar of awardReleases) {
+    await prisma.loyalty_award_release.upsert({
+      where: { flight_id_cabin: { flight_id: ar.flight.id, cabin: ar.cabin } },
+      update: {},
+      create: { flight_id: ar.flight.id, cabin: ar.cabin, miles_cost: ar.miles_cost, released_by_staff_id: loyaltyStaffId },
+    })
+  }
+
+  // Loyalty members (MUST start with miles_balance = 0; ledger trigger updates miles_balance!)
+  const memberSpecs = [
+    { key: 'arun', customerId: arun.customerId, memberNumber: 'FL10000101', tier: 'platinum', joinedDaysAgo: 540 },
+    { key: 'hiroshi', customerId: hiroshi.customerId, memberNumber: 'FL10000102', tier: 'gold', joinedDaysAgo: 400 },
+    { key: 'nattaya', customerId: nattaya.customerId, memberNumber: 'FL10000103', tier: 'gold', joinedDaysAgo: 320 },
+    { key: 'claire', customerId: claire.customerId, memberNumber: 'FL10000104', tier: 'silver', joinedDaysAgo: 210 },
+    { key: 'wei', customerId: wei.customerId, memberNumber: 'FL10000105', tier: null, joinedDaysAgo: 60 },
+    ...(somchaiCustomerId
+      ? [{ key: 'somchai', customerId: somchaiCustomerId, memberNumber: 'FL10000142', tier: 'platinum', joinedDaysAgo: 600 }]
+      : []),
+  ]
+  const memberByKey = new Map<string, string>()
+  for (const ms of memberSpecs) {
+    const existing = await prisma.loyalty_member.findUnique({ where: { customer_id: ms.customerId } })
+    const row =
+      existing ??
+      (await prisma.loyalty_member.create({
+        data: {
+          customer_id: ms.customerId,
+          member_number: ms.memberNumber,
+          miles_balance: 0,
+          tier_code: ms.tier,
+          tier_qualified_at: ms.tier ? utcDateTime(-90, 0) : null,
+          tier_expires_at: ms.tier ? utcDateTime(275, 0) : null,
+          joined_at: utcDateTime(-ms.joinedDaysAgo, 0),
+        },
+      }))
+    memberByKey.set(ms.key, row.id)
+  }
+
+  const yId = fareClassByCode.get('Y')!
+  const jId = fareClassByCode.get('J')!
+
+  const bPastArun = bundles.get('b_past_arun_cnx')!
+  const bPastHiroshi = bundles.get('b_past_hiroshi_sin')!
+  const bPastNattaya = bundles.get('b_past_nattaya_hkt')!
+  const bNattayaAward = bundles.get('b_nattaya_award')!
+  const bArunUpcoming = bundles.get('b_arun_return')!
+  const bClaireCan = bundles.get('b_claire_cancelled')!
+
+  // Append-only loyalty_transaction ledger (check existing count per member for idempotency)
+  const arunMemberId = memberByKey.get('arun')!
+  if ((await prisma.loyalty_transaction.count({ where: { member_id: arunMemberId } })) === 0) {
+    const adjTx = await prisma.loyalty_transaction.create({
+      data: {
+        id: sid('b11', 1),
+        member_id: arunMemberId,
+        type: 'adjust',
+        miles: 85000,
+        expires_at: utcDate(720),
+        reason: 'Tier migration welcome credit',
+        audit_log_id: loyaltyAdjustAuditId,
+        created_by_staff_id: loyaltyStaffId,
+        occurred_at: utcDateTime(-10, 3),
+      },
+    })
+    await prisma.loyalty_transaction.create({
+      data: {
+        member_id: arunMemberId,
+        type: 'earn',
+        miles: 596,
+        booking_coupon_id: bPastArun.coupons[0].id,
+        distance_km: 596,
+        fare_class_id: yId,
+        multiplier: 1.0,
+        expires_at: utcDate(1090),
+        occurred_at: utcDateTime(-4, 3),
+      },
+    })
+    await prisma.loyalty_transaction.create({
+      data: {
+        member_id: arunMemberId,
+        type: 'earn',
+        miles: 596,
+        booking_coupon_id: bPastArun.coupons[1].id,
+        distance_km: 596,
+        fare_class_id: yId,
+        multiplier: 1.0,
+        expires_at: utcDate(1090),
+        occurred_at: utcDateTime(-4, 6),
+      },
+    })
+    // Small expiry example referencing an older balance portion
+    await prisma.loyalty_transaction.create({
+      data: {
+        member_id: arunMemberId,
+        type: 'expire',
+        miles: -1200,
+        expired_transaction_id: adjTx.id,
+        occurred_at: utcDateTime(-1, 0),
+      },
+    })
+  }
+
+  const hiroshiMemberId = memberByKey.get('hiroshi')!
+  if ((await prisma.loyalty_transaction.count({ where: { member_id: hiroshiMemberId } })) === 0) {
+    await prisma.loyalty_transaction.create({
+      data: {
+        member_id: hiroshiMemberId,
+        type: 'adjust',
+        miles: 42000,
+        expires_at: utcDate(700),
+        reason: 'Opening balance for Gold member',
+        audit_log_id: loyaltyAdjustAuditId,
+        created_by_staff_id: loyaltyStaffId,
+        occurred_at: utcDateTime(-15, 2),
+      },
+    })
+    await prisma.loyalty_transaction.create({
+      data: {
+        member_id: hiroshiMemberId,
+        type: 'earn',
+        miles: 2127, // round(1418 * 1.5)
+        booking_coupon_id: bPastHiroshi.coupons[0].id,
+        distance_km: 1418,
+        fare_class_id: jId,
+        multiplier: 1.5,
+        expires_at: utcDate(1090),
+        occurred_at: utcDateTime(-2, 5),
+      },
+    })
+  }
+
+  const nattayaMemberId = memberByKey.get('nattaya')!
+  if ((await prisma.loyalty_transaction.count({ where: { member_id: nattayaMemberId } })) === 0) {
+    await prisma.loyalty_transaction.create({
+      data: {
+        member_id: nattayaMemberId,
+        type: 'adjust',
+        miles: 55000,
+        expires_at: utcDate(500),
+        reason: 'Opening balance for Gold member',
+        audit_log_id: loyaltyAdjustAuditId,
+        created_by_staff_id: loyaltyStaffId,
+        occurred_at: utcDateTime(-20, 2),
+      },
+    })
+    await prisma.loyalty_transaction.create({
+      data: {
+        member_id: nattayaMemberId,
+        type: 'earn',
+        miles: 675,
+        booking_coupon_id: bPastNattaya.coupons[0].id,
+        distance_km: 675,
+        fare_class_id: yId,
+        multiplier: 1.0,
+        expires_at: utcDate(1090),
+        occurred_at: utcDateTime(-3, 8),
+      },
+    })
+    await prisma.loyalty_transaction.create({
+      data: {
+        member_id: nattayaMemberId,
+        type: 'redeem',
+        miles: -20000,
+        booking_coupon_id: bNattayaAward.coupons[0].id,
+        occurred_at: utcDateTime(-2, 7, 4),
+      },
+    })
+  }
+
+  const claireMemberId = memberByKey.get('claire')!
+  if ((await prisma.loyalty_transaction.count({ where: { member_id: claireMemberId } })) === 0) {
+    await prisma.loyalty_transaction.create({
+      data: {
+        member_id: claireMemberId,
+        type: 'adjust',
+        miles: 18500,
+        expires_at: utcDate(25), // expiring soon (< 30 days reminder!)
+        reason: 'Silver tier carryover miles',
+        audit_log_id: loyaltyAdjustAuditId,
+        created_by_staff_id: loyaltyStaffId,
+        occurred_at: utcDateTime(-30, 2),
+      },
+    })
+  }
+
+  const somchaiMemberId = memberByKey.get('somchai')
+  if (somchaiMemberId && (await prisma.loyalty_transaction.count({ where: { member_id: somchaiMemberId } })) === 0) {
+    await prisma.loyalty_transaction.create({
+      data: {
+        member_id: somchaiMemberId,
+        type: 'adjust',
+        miles: 92000,
+        expires_at: utcDate(800),
+        reason: 'Platinum demo member opening miles',
+        audit_log_id: loyaltyAdjustAuditId,
+        created_by_staff_id: loyaltyStaffId,
+        occurred_at: utcDateTime(-10, 1),
+      },
+    })
+  }
+
+  // Loyalty benefit uses (lounge visits + cabin upgrade)
+  if ((await prisma.loyalty_benefit_use.count({ where: { member_id: arunMemberId } })) === 0) {
+    await prisma.loyalty_benefit_use.create({
+      data: {
+        member_id: arunMemberId,
+        benefit_type: 'lounge_visit',
+        booking_coupon_id: bPastArun.coupons[0].id,
+        flight_id: bPastArun.coupons[0].flightId,
+        guests: 1,
+        staff_id: loyaltyStaffId,
+        used_at: utcDateTime(-4, 0, 15),
+      },
+    })
+  }
+  if ((await prisma.loyalty_benefit_use.count({ where: { member_id: hiroshiMemberId } })) === 0) {
+    await prisma.loyalty_benefit_use.create({
+      data: {
+        member_id: hiroshiMemberId,
+        benefit_type: 'lounge_visit',
+        booking_coupon_id: bPastHiroshi.coupons[0].id,
+        flight_id: bPastHiroshi.coupons[0].flightId,
+        guests: 1,
+        staff_id: loyaltyStaffId,
+        used_at: utcDateTime(-2, 0, 45),
+      },
+    })
+  }
+  if ((await prisma.loyalty_benefit_use.count({ where: { member_id: nattayaMemberId } })) === 0) {
+    await prisma.loyalty_benefit_use.create({
+      data: {
+        member_id: nattayaMemberId,
+        benefit_type: 'upgrade',
+        booking_coupon_id: bPastNattaya.coupons[0].id,
+        flight_id: bPastNattaya.coupons[0].flightId,
+        from_cabin: 'economy',
+        to_cabin: 'business',
+        guests: 0,
+        staff_id: null,
+        used_at: utcDateTime(-4, 6),
+      },
+    })
+  }
+
+  // Travel insurance policies (included free for Platinum, paid for Silver, cancelled)
+  if (!(await prisma.loyalty_insurance_policy.findFirst({ where: { booking_id: bArunUpcoming.bookingId } }))) {
+    await prisma.loyalty_insurance_policy.create({
+      data: {
+        member_id: arunMemberId,
+        customer_id: arun.customerId,
+        booking_id: bArunUpcoming.bookingId,
+        policy_number: 'FLI10000101',
+        cover_type: 'basic',
+        price: 0,
+        currency: 'THB',
+        status: 'active',
+        issued_at: utcDateTime(-3, 2, 5),
+      },
+    })
+  }
+  if (!(await prisma.loyalty_insurance_policy.findFirst({ where: { booking_id: bClaireCan.bookingId } }))) {
+    await prisma.loyalty_insurance_policy.create({
+      data: {
+        member_id: claireMemberId,
+        customer_id: claire.customerId,
+        booking_id: bClaireCan.bookingId,
+        policy_number: 'FLI10000102',
+        cover_type: 'basic',
+        price: 15,
+        currency: 'THB',
+        status: 'cancelled',
+        issued_at: utcDateTime(-5, 3, 5),
+        cancelled_at: utcDateTime(-2, 6),
+      },
+    })
+  }
+  if (
+    somchaiMemberId &&
+    somchaiBookingId &&
+    !(await prisma.loyalty_insurance_policy.findFirst({ where: { booking_id: somchaiBookingId } }))
+  ) {
+    await prisma.loyalty_insurance_policy.create({
+      data: {
+        member_id: somchaiMemberId,
+        customer_id: somchaiCustomerId,
+        booking_id: somchaiBookingId,
+        policy_number: 'FLI10000103',
+        cover_type: 'basic',
+        price: 0,
+        currency: 'THB',
+        status: 'active',
+        issued_at: new Date('2026-10-01T00:05:00Z'),
+      },
+    })
+  }
+}
+
+// ── F14: Business Intelligence Dashboards (Reporting Copy & Roll-ups) ────────────────────────────────────────
+
+async function seedFeature14BI(
+  routeMap: Map<string, { id: string; distance_km: number; block_time_min: number }>,
+  flights: Map<string, SeededFlightInfo>,
+  adminStaffId: string,
+) {
+  // ETL runs (1 scheduled, 1 manual)
+  await prisma.bi_etl_run.upsert({
+    where: { id: sid('b14', 1) },
+    update: {},
+    create: {
+      id: sid('b14', 1),
+      trigger: 'scheduled',
+      status: 'success',
+      data_as_of: utcDateTime(-1, 23),
+      started_at: utcDateTime(-1, 23, 0),
+      finished_at: utcDateTime(-1, 23, 2),
+      row_count: 42,
+    },
+  })
+  await prisma.bi_etl_run.upsert({
+    where: { id: sid('b14', 2) },
+    update: {},
+    create: {
+      id: sid('b14', 2),
+      trigger: 'manual',
+      requested_by_staff_id: adminStaffId,
+      status: 'success',
+      data_as_of: utcDateTime(0, 1),
+      started_at: utcDateTime(0, 1, 0),
+      finished_at: utcDateTime(0, 1, 1),
+      row_count: 58,
+    },
+  })
+
+  // Copy routes
+  for (const [key, r] of routeMap.entries()) {
+    const [origin, destination] = key.split('-')
+    await prisma.bi_route.upsert({
+      where: { route_id: r.id },
+      update: {},
+      create: { route_id: r.id, origin, destination, distance_km: r.distance_km },
+    })
+  }
+
+  // Copy flights + cabins
+  const biFlightSpecs = [
+    { key: 'past_bkk_cnx_1', delayMin: 0, rev: 342000, ref: 0, seatAvail: 180, seatSold: 152 },
+    { key: 'past_cnx_bkk_1', delayMin: 35, rev: 318000, ref: 12000, seatAvail: 180, seatSold: 141 },
+    { key: 'past_bkk_hkt_1', delayMin: 8, rev: 389000, ref: 0, seatAvail: 180, seatSold: 164 },
+    { key: 'past_bkk_sin_1', delayMin: 5, rev: 890000, ref: 0, seatAvail: 184, seatSold: 158 },
+    { key: 'past_sin_bkk_1', delayMin: 25, rev: 845000, ref: 18500, seatAvail: 184, seatSold: 149 },
+    { key: 'past_bkk_nrt_1', delayMin: 0, rev: 2150000, ref: 0, seatAvail: 321, seatSold: 278 },
+    { key: 'past_cancelled_1', delayMin: null, rev: 0, ref: 0, seatAvail: 184, seatSold: 0 },
+  ]
+  for (const bfs of biFlightSpecs) {
+    const fl = flights.get(bfs.key)
+    if (!fl) continue
+    const departed = fl.status === 'arrived' || fl.status === 'departed'
+    await prisma.bi_flight.upsert({
+      where: { flight_id: fl.id },
+      update: {},
+      create: {
+        flight_id: fl.id,
+        route_id: fl.routeId,
+        flight_number: fl.flightNumber,
+        flight_date: fl.serviceDate,
+        status: fl.status,
+        scheduled_departure_at: fl.depAt,
+        actual_departure_at: departed ? addMinutes(fl.depAt, bfs.delayMin ?? 0) : null,
+        delay_minutes: departed ? (bfs.delayMin ?? 0) : null,
+        revenue_amount: bfs.rev,
+        refund_amount: bfs.ref,
+      },
+    })
+    await prisma.bi_flight_cabin.upsert({
+      where: { flight_id_cabin: { flight_id: fl.id, cabin: 'economy' } },
+      update: {},
+      create: { flight_id: fl.id, cabin: 'economy', seat_available: bfs.seatAvail, seat_sold: bfs.seatSold },
+    })
+  }
+
+  // Delay causes
+  const delayRows = [
+    { event_id: sid('e02', 4), flight_id: flights.get('past_cnx_bkk_1')!.id, reason_code: 'WX', category: 'weather', delay_minutes: 35 },
+    {
+      event_id: sid('e02', 8),
+      flight_id: flights.get('past_sin_bkk_1')!.id,
+      reason_code: 'ATC',
+      category: 'air_traffic_control',
+      delay_minutes: 25,
+    },
+  ]
+  for (const d of delayRows) {
+    await prisma.bi_flight_delay.upsert({ where: { event_id: d.event_id }, update: {}, create: d })
+  }
+
+  // Daily booking & flight metric roll-ups over the past 6 days across key routes
+  const metricRoutes = ['BKK-CNX', 'CNX-BKK', 'BKK-HKT', 'BKK-SIN', 'BKK-NRT']
+  for (const [rIdx, routeKey] of metricRoutes.entries()) {
+    const route = routeMap.get(routeKey)
+    if (!route) continue
+    for (let d = 6; d >= 1; d--) {
+      const day = utcDate(-d)
+      const bookings = 45 + ((rIdx * 13 + d * 7) % 65)
+      const cancels = 2 + ((rIdx + d) % 5)
+      await prisma.bi_booking_day.upsert({
+        where: { route_id_booking_date: { route_id: route.id, booking_date: day } },
+        update: {},
+        create: { route_id: route.id, booking_date: day, booking_count: bookings, cancellation_count: cancels },
+      })
+
+      const flightCount = 2 + (rIdx % 2)
+      const cancelledCount = d === 1 && rIdx === 3 ? 1 : 0
+      const departedCount = flightCount - cancelledCount
+      const onTimeCount = Math.max(0, departedCount - (d % 3 === 0 ? 1 : 0))
+      const delayMinutes = onTimeCount < departedCount ? 25 + rIdx * 5 : 4
+      const seatAvailable = departedCount * (routeKey === 'BKK-NRT' ? 321 : 180)
+      const seatSold = Math.round(seatAvailable * (0.76 + ((rIdx + d) % 15) / 100))
+      const revAmount = seatSold * (routeKey === 'BKK-NRT' ? 11200 : routeKey === 'BKK-SIN' ? 5400 : 2350)
+      const refAmount = Math.round(revAmount * 0.025)
+
+      await prisma.bi_metric_day.upsert({
+        where: { route_id_flight_date: { route_id: route.id, flight_date: day } },
+        update: {},
+        create: {
+          route_id: route.id,
+          flight_date: day,
+          flight_count: flightCount,
+          cancelled_count: cancelledCount,
+          departed_count: departedCount,
+          on_time_count: onTimeCount,
+          delay_minutes: delayMinutes,
+          seat_available: seatAvailable,
+          seat_sold: seatSold,
+          revenue_amount: revAmount,
+          refund_amount: refAmount,
+        },
+      })
+    }
+  }
+}
+
+// ── F16: IoT Robot Interaction Sessions ──────────────────────────────────────────────────────────────────────
+
+async function seedFeature16Sessions() {
+  const sessions = [
+    {
+      id: sid('i16', 1),
+      started_at: utcDateTime(-2, 3, 0),
+      ended_at: utcDateTime(-2, 3, 4),
+      details: [
+        {
+          seq: 1,
+          question: 'Where is Gate A1?',
+          answer: 'Take the escalators ahead and follow signs for Concourse A; Gate A1 is 150 metres on your left.',
+        },
+        {
+          seq: 2,
+          question: 'When does boarding start for XX101?',
+          answer: 'Boarding for flight XX101 begins 40 minutes before scheduled departure.',
+        },
+      ],
+    },
+    {
+      id: sid('i16', 2),
+      started_at: utcDateTime(-1, 5, 10),
+      ended_at: utcDateTime(-1, 5, 14),
+      details: [
+        {
+          seq: 1,
+          question: 'What is the carry-on baggage weight limit?',
+          answer: 'All cabins allow one carry-on bag up to 7 kg within 56 x 36 x 23 cm.',
+        },
+        { seq: 2, question: 'Where is the Flython Lounge?', answer: 'The Flython Lounge is located on Level 3 near Gate B1.' },
+      ],
+    },
+    {
+      id: sid('i16', 3),
+      started_at: utcDateTime(0, 0, 30),
+      ended_at: null,
+      details: [
+        { seq: 1, question: 'Is flight XX101 delayed today?', answer: 'Yes, XX101 is currently delayed by 40 minutes due to weather.' },
+        { seq: 2, question: 'Can I rebook onto an earlier flight?', answer: null },
+      ],
+    },
+  ]
+
+  for (const s of sessions) {
+    await prisma.interaction_session.upsert({
+      where: { id: s.id },
+      update: {},
+      create: { id: s.id, started_at: s.started_at, ended_at: s.ended_at },
+    })
+    for (const d of s.details) {
+      await prisma.session_detail.upsert({
+        where: { session_id_seq: { session_id: s.id, seq: d.seq } },
+        update: {},
+        create: { session_id: s.id, seq: d.seq, question: d.question, answer: d.answer },
+      })
+    }
+  }
+}
+
+// ── Main Orchestrator ────────────────────────────────────────────────────────────────────────────────────────
+
+async function main() {
+  console.log('Seeding comprehensive mock data across all features (F1–F17)...')
+
+  // F1: Roles, Core Staff & Customers
+  const roleByCode = await seedRoles()
+  const staffByRole = await seedCoreStaff(roleByCode)
+  const customers = await seedDemoCustomers()
+  const adminStaffId = staffByRole.get('admin')!.staffId
+  const opsStaffId = staffByRole.get('ops')!.staffId
+  const financeStaffId = staffByRole.get('finance')!.staffId
+  const securityStaffId = staffByRole.get('security')!.staffId
+
+  // F15: Screens, Role Permissions & Audit Log
+  const auditRefs = await seedAdminConsole(roleByCode, staffByRole)
+
+  // F2 & F9: Flight Network, Airport Fees, Fleet, Maintenance & Patterns
+  const routeMap = await seedFlightNetwork()
+  const { aircraftByTail, patternByNumber } = await seedFleetAndPatterns(routeMap, opsStaffId)
+  const flights = await seedOperationalFlights(routeMap, aircraftByTail, patternByNumber, opsStaffId)
+
+  // F4: Pricing Settings, Catalog, Currency Rates, Base Fares, Pricing Rules, Quotes & Finance
   await seedPricingSettings()
-  await seedPricingCatalog()
+  await seedCurrencyRates(financeStaffId)
+  const { fareClassByCode, promoByCode, quoteByKey } = await seedPricingCatalogAndFinance(routeMap, flights, financeStaffId)
+
+  // F6 Reference & Demo Flights/Bookings + F10/F11/F5 Reference Defaults
   await seedCheckIn()
   await seedFeature6(prisma)
-  await seedLostAndFound()
-  await seedLoyalty()
-  await seedCrewPay()
+  await seedLostAndFoundContacts()
+  await seedLoyaltyEarnRules()
+  await seedCrewPayRates()
 
-  for (let i = 0; i < CUSTOMER_COUNT; i++) {
-    const user = await seedCustomer()
-    await seedRefreshTokens(user.id)
-  }
-
-  for (let i = 0; i < STAFF_COUNT; i++) {
-    const user = await seedStaff(roleIds)
-    await seedRefreshTokens(user.id)
-  }
-
-  await seedCustomerService()
-  await seedCurrencyRates()
+  // F12: Onboard Products, Warehouses, Suppliers, Stock, Catering Orders & Sales
   await seedF12(prisma)
 
-  console.log('Seeding complete.')
+  // F3: Searchable Flights' Bookings, Multi-passenger, Seats, Assistance & Changes
+  const bundles = await seedFeature3Bookings(customers, flights, fareClassByCode, promoByCode, quoteByKey, staffByRole)
+
+  // F7: Saved Travellers (seeded with F3), Watchlist & Security Screening
+  const { viktorRunId } = await seedSecurityScreening(customers, flights, bundles, securityStaffId)
+
+  // F8: Crew Management, Pairings, Roster Runs, Assignments & Rule Breaks
+  const f8Refs = await seedCrewRosteringFull(flights, opsStaffId)
+
+  // F6: Operational Check-ins, Travel Docs, Checked Bags, Carry-on & Boarding Events
+  const { checkedBagIds } = await seedOperationalCheckIns(flights, bundles, staffByRole, viktorRunId)
+
+  // F10: Lost & Found Baggage, Matches, Location Tracking, Deliveries & Costs
+  const { lostReportIdForF13 } = await seedFeature10Baggage(customers, flights, bundles, checkedBagIds, staffByRole)
+
+  // F13: Customer Service Staff, Bookings, Complaint Cases, Compensations & Notifications
+  const f13Refs = await seedCustomerService(customers, flights, bundles, lostReportIdForF13)
+
+  // F17: Cargo Bookings, Shipment Event Chains, Claims & Notices
+  const cargoMap = await seedFeature17Cargo(customers, flights, staffByRole)
+
+  // F5 & F12 Orders: Vouchers, Payments, Refunds, Receipts, Finance Postings, Crew Pay & F12 Customer Orders
+  await seedFeature5PaymentsAndF12Orders(customers, bundles, checkedBagIds, cargoMap, f13Refs, auditRefs, f8Refs, staffByRole)
+
+  // F11: Loyalty Members, Award Releases, Transactions, Benefit Uses & Travel Insurance
+  await seedFeature11Loyalty(
+    customers,
+    flights,
+    bundles,
+    fareClassByCode,
+    f13Refs.somchaiCustomerId,
+    f13Refs.somchaiBookingId,
+    auditRefs.loyaltyAdjustAuditId,
+    staffByRole,
+  )
+
+  // F14: BI Dashboards Reporting Copy & Metric Roll-ups
+  await seedFeature14BI(routeMap, flights, adminStaffId)
+
+  // F16: IoT Robot Interaction Sessions
+  await seedFeature16Sessions()
+
+  console.log('Seeding complete (F1–F17).')
 }
 
 main()
