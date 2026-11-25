@@ -26,8 +26,10 @@ const tabsListVariants = cva(
   {
     variants: {
       variant: {
-        default: 'flex w-full items-end gap-7 overflow-x-auto border-b',
-        line: 'flex w-full items-end gap-7 overflow-x-auto border-b',
+        // overflow-y-hidden: overflow-x-auto alone makes the row scroll vertically too, and the 1 px of underline below
+        // the row (after:-bottom-px) then draws a scrollbar on Windows and Linux.
+        default: 'flex w-full items-end gap-7 overflow-x-auto overflow-y-hidden border-b',
+        line: 'flex w-full items-end gap-7 overflow-x-auto overflow-y-hidden border-b',
         pill: 'inline-flex w-fit items-center justify-center rounded-lg bg-muted p-[3px] group-data-[orientation=horizontal]/tabs:h-9',
       },
     },
