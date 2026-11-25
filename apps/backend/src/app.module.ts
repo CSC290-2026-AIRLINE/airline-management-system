@@ -32,6 +32,7 @@ import { PaymentsRefundsModule } from './modules/payments-refunds/payments-refun
 import { PaymentsBookingModule } from './modules/payments-booking/payments-booking.module'
 import { PaymentsCrewPayModule } from './modules/payments-crew-pay/payments-crew-pay.module'
 // TODO(F5-dev): delete this import and `PaymentsDevToolsModule` below before the PR merges.
+import { DevSeedModule } from './modules/dev-seed/dev-seed.module'
 import { PaymentsDevToolsModule } from './modules/payments-dev-tools/payments-dev-tools.module'
 
 @Module({
@@ -63,6 +64,7 @@ import { PaymentsDevToolsModule } from './modules/payments-dev-tools/payments-de
     PaymentsRefundsModule,
     PaymentsBookingModule,
     PaymentsCrewPayModule,
+    DevSeedModule,
     PaymentsDevToolsModule, // TODO(F5-dev): delete with the dev tools before the PR merges
     CargoModule,
     LoyaltyModule,
