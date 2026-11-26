@@ -1174,6 +1174,21 @@ async function seedGeneratedFlights(
   const fleet = AIRCRAFT.map((a) => ({ type: a.type, id: aircraftByTail.get(a.tail_number) })).filter(
     (a): a is { type: string; id: string } => a.id !== undefined,
   )
+  // Maintenance windows the database refuses flights in (see assert_aircraft_available_for_sale_or_schedule): a period
+  // blocks from its start date to its end date, or with no end while its maintenance is still planned or in progress.
+  const maintenance = await prisma.aircraft_status_period.findMany({
+    where: { status: 'in_maintenance', deleted_at: null },
+    select: { aircraft_id: true, start_date: true, end_date: true, aircraft_maintenance: { select: { status: true, deleted_at: true } } },
+  })
+  const blocked = new Map<string, Array<[number, number]>>()
+  for (const p of maintenance) {
+    const open = p.aircraft_maintenance?.deleted_at === null && ['planned', 'in_progress'].includes(p.aircraft_maintenance.status)
+    const end = p.end_date === null || open ? Infinity : p.end_date.getTime()
+    const list = blocked.get(p.aircraft_id) ?? []
+    list.push([p.start_date.getTime(), end])
+    blocked.set(p.aircraft_id, list)
+  }
+  const utcDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
   const tzByAirport = new Map(AIRPORTS.map((a) => [a.iata_code, a.timezone]))
   const buffer = GENERATED_TURNAROUND_MIN * 60_000
 
@@ -1203,7 +1218,8 @@ async function seedGeneratedFlights(
     const dateKey = utcDate(f.day).toISOString().slice(0, 10)
     if (taken.has(`${f.number}|${dateKey}`)) continue
     const free = (id: string) =>
-      (busy.get(id) ?? []).every(([from, to]) => f.arrAt.getTime() + buffer <= from || to + buffer <= f.depAt.getTime())
+      (busy.get(id) ?? []).every(([from, to]) => f.arrAt.getTime() + buffer <= from || to + buffer <= f.depAt.getTime()) &&
+      (blocked.get(id) ?? []).every(([from, to]) => utcDay(f.arrAt) < from || to < utcDay(f.depAt))
     let picked: { type: string; id: string } | undefined
     for (const type of aircraftTypesFor(f.route.distance_km)) {
       picked = fleet.find((a) => a.type === type && free(a.id))
