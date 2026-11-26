@@ -77,9 +77,11 @@ export class BiDashboardsController {
 
   /**
    * Rebuilds the reporting copy now. Blocks until the run finishes. If the nightly run is in progress, waits for it
-   * first; 409 only if a run is still going after a minute.
+   * first; 409 only if a run is still going after a minute. Either BI screen may refresh: the finance views show the
+   * same Refresh button.
    */
   @Post('refresh')
+  @BiScreens(BI_OPERATIONS_SCREEN, BI_FINANCE_SCREEN)
   @HttpCode(200)
   async refresh(@CurrentUser() user: AuthenticatedUser): Promise<BiRunSummary> {
     const staffId = await this.etl.staffIdForUser(user.id)

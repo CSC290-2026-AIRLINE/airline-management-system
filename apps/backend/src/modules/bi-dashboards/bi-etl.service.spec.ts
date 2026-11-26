@@ -129,6 +129,13 @@ describe('BiEtlService', () => {
       expect(flight).not.toContain('GREATEST(0, COALESCE(')
     })
 
+    it('gives no departure to a scheduled, delayed or cancelled flight, even one with a departed event', async () => {
+      const statements = await rebuildStatements(new Date('2026-11-07T00:00:00Z'))
+
+      const flight = statements[indexOf(statements, 'INSERT INTO bi_flight (')].sql
+      expect(flight).toContain("SELECT CASE WHEN f.status IN ('scheduled', 'delayed', 'cancelled') THEN NULL ELSE COALESCE(")
+    })
+
     it('cuts downtime off at the run date as UTC, the same "today" as feature 9', async () => {
       // 23:30 UTC is already the next day in Bangkok; feature 9 still counts it as the UTC date.
       const statements = await rebuildStatements(new Date('2026-11-07T23:30:00Z'))
@@ -137,6 +144,20 @@ describe('BiEtlService', () => {
       expect(downtime.sql).toContain("CASE WHEN m.status IN ('planned', 'in_progress')")
       expect(downtime.values).toEqual(['2026-11-07', '2026-11-07', '2026-11-07', '2026-11-07'])
     })
+  })
+
+  it('drops run history older than 90 days after a successful run, and a failed prune does not fail the run', async () => {
+    const db = makeDb()
+    db.$queryRaw
+      .mockResolvedValueOnce([{ id: RUN_ID }])
+      .mockResolvedValueOnce([{ id: RUN_ID, trigger: 'manual', status: 'success', row_count: 3 }])
+    db.$executeRaw.mockRejectedValueOnce(new Error('prune boom'))
+    const service = new BiEtlService(db as never, clock as never)
+
+    await expect(service.refresh('manual', 'staff-1')).resolves.toEqual(expect.objectContaining({ status: 'success' }))
+    const [strings, ...values] = db.$executeRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]]
+    expect(strings.join('?')).toContain('DELETE FROM bi_etl_run')
+    expect(values).toEqual([90])
   })
 
   it('rebuilds an empty source as an empty copy and succeeds', async () => {

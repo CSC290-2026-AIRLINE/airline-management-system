@@ -26,11 +26,14 @@ export function previousFilters(filters: BiFilters): BiFilters | null {
   }
 }
 
-export function defaultFilters(): BiFilters {
-  const today = new Date()
+/**
+ * Last calendar month before `today`, as UTC dates like the backend's "today". Views start with the browser's clock
+ * and move to the simulation clock once `/bi/status` has returned it (useSimulationDefaults).
+ */
+export function defaultFilters(today: Date = new Date()): BiFilters {
   return {
-    from: new Date(Date.UTC(today.getFullYear(), today.getMonth() - 1, 1)).toISOString().slice(0, 10),
-    to: new Date(Date.UTC(today.getFullYear(), today.getMonth(), 0)).toISOString().slice(0, 10),
+    from: new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1)).toISOString().slice(0, 10),
+    to: new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 0)).toISOString().slice(0, 10),
     routeId: '',
     group: 'week',
     revenueMode: 'after_refunds',

@@ -10,6 +10,8 @@ const REBUILD_TIMEOUT_MS = 120_000
 const REFRESH_WAIT_MS = 60_000
 const REFRESH_RETRY_MS = 250
 const MAX_ERROR_LENGTH = 500
+/** How many days of `bi_etl_run` history a successful run keeps. */
+const RUN_HISTORY_DAYS = 90
 
 /**
  * Rebuilds the `bi_*` reporting copy from features 2, 3, 5, 6 and 9 (see the F14 migrations for the rules behind each
@@ -178,11 +180,13 @@ export class BiEtlService implements OnModuleInit {
       -- Feature 2's simulation-clock job that writes the departed and arrived events does not exist yet, so a flight can
       -- be 'departed' or 'arrived' with no event (seeds and dev tools set the status directly). Those fall back to the
       -- timetable dep_at and arr_at, the times the job will write; otherwise the departed CHECK on bi_flight fails the run.
+      -- The reverse also happens: a dev tool can set a flight back to scheduled after its departed event. bi_flight requires
+      -- no departure for scheduled, delayed and cancelled flights, so their events are ignored rather than failing the run.
       LEFT JOIN LATERAL (
-        SELECT COALESCE(
+        SELECT CASE WHEN f.status IN ('scheduled', 'delayed', 'cancelled') THEN NULL ELSE COALESCE(
           (SELECT e.occurred_at FROM flight_event e WHERE e.flight_id = f.id AND e.type = 'departed' ORDER BY e.seq LIMIT 1),
           CASE WHEN f.status IN ('departed', 'arrived') THEN f.dep_at END
-        ) AS occurred_at
+        ) END AS occurred_at
       ) departed ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(
@@ -336,7 +340,20 @@ export class BiEtlService implements OnModuleInit {
       WHERE id = ${runId}::uuid
       RETURNING id, trigger, status, to_char(data_as_of AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS data_as_of, to_char(started_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS started_at, to_char(finished_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS finished_at, row_count, error_message`
     this.logger.log(`BI refresh ${runId} succeeded with ${rowCount} flights`)
+    await this.pruneRuns()
     return rows[0]
+  }
+
+  /** Run history older than `RUN_HISTORY_DAYS` is dropped. Only the latest runs are ever read, so this never changes a page. */
+  private async pruneRuns(): Promise<void> {
+    try {
+      await this.db.$executeRaw`
+        DELETE FROM bi_etl_run
+        WHERE status <> 'running' AND started_at < now() - make_interval(days => ${RUN_HISTORY_DAYS})`
+    } catch (error) {
+      // The refresh itself succeeded; old history rows can wait for the next run.
+      this.logger.warn(`BI run history prune failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
   private async failRun(runId: string, error: unknown): Promise<void> {

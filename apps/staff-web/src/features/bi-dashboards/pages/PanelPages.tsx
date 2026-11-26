@@ -14,6 +14,7 @@ import { RankBars } from '../components/RankBars'
 import { MarkForMaintenance } from '../components/MarkForMaintenance'
 import { useBiLoad } from '../hooks/useBiLoad'
 import { useBiRefresh } from '../hooks/useBiRefresh'
+import { useSimulationDefaults } from '../hooks/useSimulationDefaults'
 import { defaultFilters } from '../lib-comparison'
 import { dataAsOf, formatCompact, formatCount, formatDateRange, formatPercent, formatThb, periodLabel } from '../lib-format'
 import { maintenanceReason } from '../lib-maintenance'
@@ -50,8 +51,12 @@ function PanelFrame({
   const api = useBiApi()
   // The filter bar edits a draft; the page loads the applied filters, which change only when Apply is clicked.
   const [draft, setDraft] = useState<FilterState>(filters)
-  const { latest, refresh } = useBiRefresh(onReload)
+  const { latest, refresh, simulationNow } = useBiRefresh(onReload)
   const [exportError, setExportError] = useState<string | null>(null)
+  useSimulationDefaults(simulationNow, filters, (next) => {
+    setDraft(next)
+    onFiltersChange(next)
+  })
 
   async function exportCsv() {
     setExportError(null)
@@ -110,7 +115,10 @@ function BiFiltersRouted({
   fleetWide: boolean
 }) {
   const api = useBiApi()
-  const routes = useBiLoad(`routes|${filters.from}|${filters.to}`, () => api.getRoutes(filters))
+  // Fleet-wide views hide the route list, so they skip the request (it is an operations route a finance user cannot read).
+  const routes = useBiLoad(fleetWide ? 'routes|none' : `routes|${filters.from}|${filters.to}`, () =>
+    fleetWide ? Promise.resolve([]) : api.getRoutes(filters),
+  )
   return (
     <BiFilters
       filters={filters}
@@ -254,6 +262,8 @@ export function ExtraRevenueView() {
   const biggest = EXTRA_TYPES.reduce((best, t) => (typeGross(t.key) > typeGross(best.key) ? t : best), EXTRA_TYPES[0])
   const labels = periods.map((p) => periodLabel(p.period, filters.group))
   const range = formatDateRange(filters.from, filters.to)
+  // Periods that all hold ฿0 have nothing to rank or chart, so they show the empty state.
+  const hasRevenue = gross > 0 || refunds > 0
 
   return (
     <PanelFrame
@@ -263,7 +273,7 @@ export function ExtraRevenueView() {
       onFiltersChange={setFilters}
       onReload={data.retry}
       csv="extra-revenue"
-      hasData={periods.length > 0}
+      hasData={hasRevenue}
       fleetWide
     >
       <BiSectionState
@@ -271,10 +281,10 @@ export function ExtraRevenueView() {
         loading={data.loading && !data.previousData}
         error={data.error}
         onRetry={data.retry}
-        empty={!data.loading && !data.error && periods.length === 0}
+        empty={!data.loading && !data.error && !hasRevenue}
         emptyTitle="No extra-revenue payments in these dates yet."
       />
-      {periods.length > 0 && (
+      {hasRevenue && (
         <>
           <section className={KPI_GRID}>
             <KpiCard label="Extra revenue" value={formatThb(net, true)} hint="After refunds" />

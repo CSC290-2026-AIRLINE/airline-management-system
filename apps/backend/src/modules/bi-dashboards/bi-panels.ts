@@ -40,7 +40,8 @@ export function flyableDays(
 ): { available: number; out_of_service: number } {
   const days = daysBetween(from, to)
   const inDowntime = (day: string) => downtime.some((d) => d.start_date <= day && day <= d.end_date)
-  const inService = (day: string) => aircraft.in_service_from <= day && (!aircraft.retired_on || day < aircraft.retired_on)
+  // retired_on is the aircraft's last day in the fleet (feature 9's rule), so that day still counts.
+  const inService = (day: string) => aircraft.in_service_from <= day && (!aircraft.retired_on || day <= aircraft.retired_on)
   let available = 0
   let outOfService = 0
   for (const day of days) {

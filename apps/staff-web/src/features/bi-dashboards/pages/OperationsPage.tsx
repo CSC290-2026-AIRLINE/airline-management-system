@@ -16,6 +16,7 @@ import { CabinChart, ChartHeading, OnTimeChart, PeriodBarChart } from '../compon
 import { BiErrorBoundary } from '../components/BiErrorBoundary'
 import { useBiDashboard } from '../hooks/useBiDashboard'
 import { useBiLoad } from '../hooks/useBiLoad'
+import { useSimulationDefaults } from '../hooks/useSimulationDefaults'
 import { periodEnd } from '../lib-period'
 import { comparison, defaultFilters, previousFilters, relativeChange } from '../lib-comparison'
 import { dataAsOf, formatCompact, formatCount, formatPercent, formatThb } from '../lib-format'
@@ -35,6 +36,10 @@ export function OperationsView() {
   const status = data?.status ?? previousData?.status
   const latest = status?.latest_success ?? null
   const lastRun = status?.last_run ?? null
+  useSimulationDefaults(status?.simulation_now, filters, (next) => {
+    setDraft(next)
+    setFilters(next)
+  })
   const kpis = data?.kpis.kpis ?? null
   const isRefreshing = refreshing || status?.refreshing === true
   const runKey = latest?.id ?? 'none'

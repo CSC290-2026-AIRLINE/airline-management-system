@@ -35,7 +35,13 @@ describe('BI panels helpers', () => {
 
     it('does not count days before entry into service or after retirement', () => {
       const aircraft = { in_service_from: '2026-10-05', retired_on: '2026-10-08' }
-      expect(flyableDays('2026-10-01', '2026-10-10', aircraft, [])).toEqual({ available: 3, out_of_service: 0 })
+      expect(flyableDays('2026-10-01', '2026-10-10', aircraft, [])).toEqual({ available: 4, out_of_service: 0 })
+    })
+
+    it('counts the retirement day itself, the last day in the fleet', () => {
+      const aircraft = { in_service_from: '2026-10-01', retired_on: '2026-10-08' }
+      expect(flyableDays('2026-10-08', '2026-10-08', aircraft, [])).toEqual({ available: 1, out_of_service: 0 })
+      expect(flyableDays('2026-10-09', '2026-10-09', aircraft, [])).toEqual({ available: 0, out_of_service: 0 })
     })
 
     it('clips downtime to the range and ignores downtime that is not in service anyway', () => {

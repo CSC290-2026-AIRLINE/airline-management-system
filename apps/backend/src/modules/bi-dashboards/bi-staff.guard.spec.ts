@@ -51,7 +51,6 @@ describe('BI staff access', () => {
   it.each<[Route, string]>([
     ['kpis', BI_OPERATIONS_SCREEN],
     ['flights', BI_OPERATIONS_SCREEN],
-    ['refresh', BI_OPERATIONS_SCREEN],
     ['exportFlights', BI_OPERATIONS_SCREEN],
     ['exportMetrics', BI_OPERATIONS_SCREEN],
     ['finance', BI_FINANCE_SCREEN],
@@ -70,8 +69,13 @@ describe('BI staff access', () => {
     expect(allowed.getMyScreens).toHaveBeenCalledWith('user')
   })
 
-  it.each([BI_OPERATIONS_SCREEN, BI_FINANCE_SCREEN])('opens the shared status with only %s', async (screen) => {
-    const { guard, context, getMyScreens } = setup(STAFF, 'status')
+  it.each([
+    ['status', BI_OPERATIONS_SCREEN],
+    ['status', BI_FINANCE_SCREEN],
+    ['refresh', BI_OPERATIONS_SCREEN],
+    ['refresh', BI_FINANCE_SCREEN],
+  ])('opens the shared %s with only %s', async (route, screen) => {
+    const { guard, context, getMyScreens } = setup(STAFF, route)
     getMyScreens.mockResolvedValue({ screen_codes: [screen], provisioned: true, role: null })
     await expect(guard.canActivate(context)).resolves.toBe(true)
   })

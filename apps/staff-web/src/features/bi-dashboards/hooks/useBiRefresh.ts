@@ -9,7 +9,7 @@ import { useBiLoad } from './useBiLoad'
  * call, and `onDone` to reload the view's own data afterwards. The Financial report has no Refresh: Feature 4 computes
  * its figures, and BI only reads them.
  */
-export function useBiRefresh(onDone: () => void): { latest: BiRun | null; refresh: BiRefreshControl } {
+export function useBiRefresh(onDone: () => void): { latest: BiRun | null; refresh: BiRefreshControl; simulationNow?: string } {
   const api = useBiApi()
   const status = useBiLoad('bi-status', () => api.getStatus())
   const [refreshing, setRefreshing] = useState(false)
@@ -34,5 +34,6 @@ export function useBiRefresh(onDone: () => void): { latest: BiRun | null; refres
   return {
     latest,
     refresh: { onRefresh: () => void refresh(), refreshing, error, lastRunFailed: lastRun?.status === 'failed' },
+    simulationNow: status.data?.simulation_now ?? status.previousData?.simulation_now,
   }
 }
