@@ -132,19 +132,20 @@ export class BiEtlService implements OnModuleInit {
       JOIN aircraft_type t ON t.id = a.aircraft_type_id
       WHERE a.deleted_at IS NULL OR EXISTS (SELECT 1 FROM flight f WHERE f.aircraft_id = a.id)`
 
-    // Grounded and maintenance periods that have started, with an open or future end cut off at "data as of".
+    // Grounded and maintenance periods. One that has started has an open or future end cut off at "data as of"; one that
+    // starts later (approved maintenance booked ahead) keeps its planned dates, so the aircraft page shows it at once.
     await tx.$executeRaw`
       INSERT INTO bi_aircraft_downtime (period_id, aircraft_id, status, reason, start_date, end_date)
       SELECT p.id, p.aircraft_id, p.status, COALESCE(m.maintenance_type, p.reason), p.start_date,
-             CASE WHEN m.status IN ('planned', 'in_progress') THEN ${dataAsOfDate}::date
+             CASE WHEN p.start_date > ${dataAsOfDate}::date THEN COALESCE(p.end_date, p.start_date)
+                  WHEN m.status IN ('planned', 'in_progress') THEN ${dataAsOfDate}::date
                   ELSE LEAST(COALESCE(p.end_date, ${dataAsOfDate}::date), ${dataAsOfDate}::date)
              END
       FROM aircraft_status_period p
       JOIN bi_aircraft b ON b.aircraft_id = p.aircraft_id
       LEFT JOIN aircraft_maintenance m ON m.status_period_id = p.id AND m.deleted_at IS NULL
       WHERE p.deleted_at IS NULL
-        AND p.status IN ('grounded', 'in_maintenance')
-        AND p.start_date <= ${dataAsOfDate}::date`
+        AND p.status IN ('grounded', 'in_maintenance')`
 
     // Revenue is the captured fare, award fee and seat fee money of the flight's coupons (taxes and surcharges are
     // feature 4's pass-through). Refunds are the succeeded refund lines against those same coupon lines.

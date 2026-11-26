@@ -141,8 +141,16 @@ describe('BiEtlService', () => {
       const statements = await rebuildStatements(new Date('2026-11-07T23:30:00Z'))
 
       const downtime = statements[indexOf(statements, 'INSERT INTO bi_aircraft_downtime')]
-      expect(downtime.sql).toContain("CASE WHEN m.status IN ('planned', 'in_progress')")
+      expect(downtime.sql).toContain("WHEN m.status IN ('planned', 'in_progress')")
       expect(downtime.values).toEqual(['2026-11-07', '2026-11-07', '2026-11-07', '2026-11-07'])
+    })
+
+    it('copies maintenance booked ahead with its planned dates, so it shows before it starts', async () => {
+      const statements = await rebuildStatements(new Date('2026-11-07T00:00:00Z'))
+
+      const downtime = statements[indexOf(statements, 'INSERT INTO bi_aircraft_downtime')].sql
+      expect(downtime).toContain('CASE WHEN p.start_date > ?::date THEN COALESCE(p.end_date, p.start_date)')
+      expect(downtime).not.toContain('AND p.start_date <=')
     })
   })
 

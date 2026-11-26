@@ -4,6 +4,7 @@ import { groupLabel } from '../lib-chart'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
 import { AlertCircle } from 'lucide-react'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
+import { Button } from '@staff-web/components/ui/button'
 import { filterQuery, useBiApi, type BiFilters as FilterState } from '../api/bi'
 import { BiFilters } from '../components/BiFilters'
 import { BiPageFrame } from '../components/BiPageFrame'
@@ -374,6 +375,8 @@ export function ExtraRevenueView() {
 /* ------------------------------------------------------------- Aircraft use */
 
 const IDLE_HOURS_PER_DAY = 6
+/** The ranked hours list, which the low-use card links to. */
+const RANKED_ID = 'bi-aircraft-ranked'
 
 /** Whole days a downtime period covers inside `[from, to]`, both ends inclusive. */
 function daysInRange(start: string, end: string, from: string, to: string): number {
@@ -397,14 +400,6 @@ export function AircraftUseView() {
   const weeks = body?.weeks ?? []
   const tailOf = (id: string) => aircraft.find((a) => a.aircraft_id === id)
   const range = formatDateRange(filters.from, filters.to)
-  // The low-use card names a few tails; the ranked list below shows all of them.
-  const lowUseNames =
-    lowUse.length > 3
-      ? `${lowUse
-          .slice(0, 3)
-          .map((a) => a.tail_number)
-          .join(', ')} and ${formatCount(lowUse.length - 3)} more`
-      : lowUse.map((a) => a.tail_number).join(', ')
 
   return (
     <PanelFrame
@@ -442,33 +437,46 @@ export function AircraftUseView() {
             <KpiCard
               label="Low-use aircraft"
               value={formatCount(lowUse.length)}
-              hint={
-                lowUse.length > 0 ? `${lowUseNames} under ${IDLE_HOURS_PER_DAY} h per day` : `None under ${IDLE_HOURS_PER_DAY} h per day`
-              }
+              hint={`Under ${IDLE_HOURS_PER_DAY} h per day`}
               comparison={lowUse.length > 0 ? 'Could take more flights' : 'No aircraft to rebalance'}
+              action={
+                // The card gives the count; the ranked list below names every aircraft, lowest first.
+                lowUse.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto justify-start p-0 text-xs"
+                    onClick={() => document.getElementById(RANKED_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  >
+                    See the aircraft
+                  </Button>
+                )
+              }
             />
           </section>
           <MarkForMaintenance aircraft={aircraft} />
-          <RankBars
-            title="Hours flown per available day"
-            subtitle="Ranked, lowest first. Click an aircraft for details."
-            legend={[
-              { label: 'Hours per day', color: '#102544' },
-              { label: `Below ${IDLE_HOURS_PER_DAY} h: sits idle`, color: '#d92d20' },
-            ]}
-            format={(v) => `${v.toFixed(1)} h/day`}
-            rows={ranked.map((a) => ({
-              key: a.aircraft_id,
-              label: (
-                <>
-                  {a.tail_number} <small className="ml-1 text-xs text-muted-foreground">{a.type_code}</small>
-                </>
-              ),
-              value: a.hours_per_day,
-              detail: `${formatCount(a.out_of_service_days)} days out`,
-              alert: a.hours_per_day !== null && a.hours_per_day < IDLE_HOURS_PER_DAY,
-            }))}
-          />
+          <div id={RANKED_ID} className="scroll-mt-4">
+            <RankBars
+              title="Hours flown per available day"
+              subtitle="Ranked, lowest first. Click an aircraft for details."
+              legend={[
+                { label: 'Hours per day', color: '#102544' },
+                { label: `Below ${IDLE_HOURS_PER_DAY} h: sits idle`, color: '#d92d20' },
+              ]}
+              format={(v) => `${v.toFixed(1)} h/day`}
+              rows={ranked.map((a) => ({
+                key: a.aircraft_id,
+                label: (
+                  <>
+                    {a.tail_number} <small className="ml-1 text-xs text-muted-foreground">{a.type_code}</small>
+                  </>
+                ),
+                value: a.hours_per_day,
+                detail: `${formatCount(a.out_of_service_days)} days out`,
+                alert: a.hours_per_day !== null && a.hours_per_day < IDLE_HOURS_PER_DAY,
+              }))}
+            />
+          </div>
           <section className={TABLE_GRID}>
             <BarPanelChart
               title={`Fleet hours by ${filters.group}`}
