@@ -12,7 +12,8 @@ const TEST_AIRCRAFT_TYPE = {
   code: 'T320',
   manufacturer: 'TEST Airbus',
   model: 'A320-TEST',
-  layout: { cabins: [{ cabin: 'economy', rows: 30, seats_per_row: 6, total: 180 }] },
+  // Feature 9's cabin format, so the aircraft screens can count its 180 seats.
+  layout: { cabins: [{ cabin_class: 'economy', first_row: 1, last_row: 30, columns: ['A', 'B', 'C', 'D', 'E', 'F'], aisle_after: ['C'] }] },
   hold_weight_limit_kg: 4000,
   max_takeoff_weight_kg: 78000,
   max_range_km: 6100,
