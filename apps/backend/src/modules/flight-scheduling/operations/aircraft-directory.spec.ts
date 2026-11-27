@@ -64,6 +64,7 @@ describe('DbAircraftDirectory', () => {
             deleted_at: null,
             status: { not: 'in_service' },
             start_date: { lte: day('2026-11-02') },
+            // Only the dates count: maintenance that is not yet completed does not block past its end date.
             OR: [{ end_date: null }, { end_date: { gte: day('2026-11-02') } }],
           },
         }),

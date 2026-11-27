@@ -6,6 +6,7 @@ import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
 import { OnboardProductsModule } from './modules/onboard-products/onboard-products.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
+import { BiDashboardsModule } from './modules/bi-dashboards/bi-dashboards.module'
 import { CargoModule } from './modules/cargo/cargo.module'
 import { BaggageModule } from './modules/baggage/baggage.module'
 import { BaggageLifecycleModule } from './modules/baggage/baggage-lifecycle.module'
@@ -60,6 +61,7 @@ import { PaymentsDevToolsModule } from './modules/payments-dev-tools/payments-de
     WatchlistModule,
     AircraftManagementModule,
     FlightSchedulingModule,
+    BiDashboardsModule,
     PaymentsCheckoutModule,
     PaymentsRefundsModule,
     PaymentsBookingModule,

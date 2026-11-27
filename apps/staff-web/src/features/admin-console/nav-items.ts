@@ -57,6 +57,8 @@ export type NavRoute =
   | '/payments/exceptions'
   | '/payments/pay-runs'
   | '/payments/my-pay'
+  // Feature 14 (Business intelligence).
+  | '/bi'
 
 /** Sidebar contents, shared by the live sidebar and the Role access "Preview as user". `code` is the registered screen code. */
 export interface NavItem {
@@ -66,6 +68,9 @@ export interface NavItem {
   /** Path prefix that keeps the item highlighted on the feature's other pages. */
   activePrefix?: string
 }
+
+/** Feature 14: the Business intelligence page (`/bi`), with its own tabs for each report. */
+export const BI_ITEM: NavItem = { label: 'Business intelligence', icon: ChartColumn, to: '/bi', activePrefix: '/bi' }
 
 export const GROUPS: { label: string; items: NavItem[] }[] = [
   // Only screens with a page behind them are listed. A team adds its group here when its routes exist.

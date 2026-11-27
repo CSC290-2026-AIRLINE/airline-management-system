@@ -3,6 +3,7 @@ import {
   createAircraft,
   createAircraftStatus,
   createMaintenance,
+  decideMaintenance,
   getOperatingDays,
   listAircraft,
   listMaintenance,
@@ -379,6 +380,21 @@ export function AircraftManagementPage() {
     }
   }
 
+  const handleMaintenanceDecision = async (windowId: string, decision: 'confirm' | 'reject') => {
+    if (!selectedAircraft) return
+    setActionError(null)
+    setIsSubmitting(true)
+    try {
+      await decideMaintenance(fetcher.current, selectedAircraft.id, windowId, decision)
+      reloadFleet()
+      reloadDetail()
+    } catch (err) {
+      setActionError(errorMessage(err, 'Failed to decide the maintenance request'))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleCancelWindow = async (windowId: string) => {
     if (!selectedAircraft) {
       return
@@ -685,6 +701,27 @@ export function AircraftManagementPage() {
                               {formatDate(window.planned_start_date)} to {formatDate(window.planned_end_date)}
                               {window.actual_end_date ? ` · finished ${formatDate(window.actual_end_date)}` : ''}
                             </span>
+                            {window.status === 'pending_approval' && (
+                              <span className="flex flex-wrap gap-1">
+                                <Button
+                                  type="button"
+                                  size="xs"
+                                  disabled={isSubmitting}
+                                  onClick={() => void handleMaintenanceDecision(window.id, 'confirm')}
+                                >
+                                  Confirm request
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="xs"
+                                  disabled={isSubmitting}
+                                  onClick={() => void handleMaintenanceDecision(window.id, 'reject')}
+                                >
+                                  Reject request
+                                </Button>
+                              </span>
+                            )}
                             {(window.status === 'planned' || window.status === 'in_progress') && (
                               <span className="flex flex-wrap gap-1">
                                 <Button type="button" variant="link" size="xs" onClick={() => openWindowAction('reschedule', window)}>

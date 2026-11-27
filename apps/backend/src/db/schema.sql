@@ -15,6 +15,8 @@
 -- prisma/migrations/*_feature5_payments_finance is Part 15 plus its foreign keys in Part 18;
 -- prisma/migrations/*_feature14_bi_dashboards is Part 16;
 -- prisma/migrations/*_feature16_interaction_sessions is Part 17;
+-- prisma/migrations/*_feature14_bi_extra_data adds to Part 16 (bi_aircraft, bi_aircraft_downtime, bi_extra_revenue_day and
+-- the new bi_flight and bi_metric_day columns).
 -- prisma/migrations/*_feature13_booking_notifications adds feature 3b's message types and templates to Part 11.
 -- Keep the files in step. schema.prisma is generated from the migrated database with `prisma db pull`.
 -- Reference rows the migrations insert (settings, message types and templates, tier rules and so on) are here too.
@@ -541,13 +543,15 @@ CREATE TABLE aircraft_maintenance (
   planned_start_date DATE NOT NULL,
   planned_end_date   DATE NOT NULL,                       -- last day the aircraft is unavailable
   actual_end_date    DATE,
-  status             TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned', 'in_progress', 'completed', 'cancelled')),
-  status_period_id   UUID NOT NULL UNIQUE REFERENCES aircraft_status_period (id),
+  status             TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('pending_approval', 'rejected', 'planned', 'in_progress', 'completed', 'cancelled')),
+  status_period_id   UUID UNIQUE REFERENCES aircraft_status_period (id),
   created_by         UUID NOT NULL REFERENCES staff (id),
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at         TIMESTAMPTZ,
   CHECK (planned_end_date >= planned_start_date),
+  CONSTRAINT aircraft_maintenance_status_period_check
+    CHECK ((status_period_id IS NULL) = (status IN ('pending_approval', 'rejected'))),
   -- A completed window must have its actual end: completing it shortens or extends the status period to that date.
   CHECK (status <> 'completed' OR actual_end_date IS NOT NULL)
 );
@@ -4146,11 +4150,51 @@ CREATE TABLE bi_route (
   UNIQUE (origin, destination)
 );
 
+-- One row per aircraft in feature 9, for the Aircraft use tab. A soft-deleted aircraft is copied only if a flight still
+-- points to it. No date CHECK here: feature 9 does not enforce retired_on >= entry_into_service_date, and a copy must
+-- never reject what its source accepts (one bad row would fail every refresh).
+CREATE TABLE bi_aircraft (
+  aircraft_id     UUID PRIMARY KEY,                             -- feature 9's aircraft.id
+  tail_number     TEXT NOT NULL,
+  type_code       TEXT NOT NULL,                                -- feature 9's aircraft_type.code
+  in_service_from DATE NOT NULL,                                -- aircraft.entry_into_service_date
+  retired_on      DATE                                          -- last day in the fleet; NULL = still flying
+);
+
+-- Days an aircraft could not fly: feature 9's live 'grounded' and 'in_maintenance' periods ('in_service' is left out).
+-- Only periods that started by "data as of". An open-ended or future end is cut off at the "data as of" date,
+-- so a day is never counted as "out" before it has happened.
+CREATE TABLE bi_aircraft_downtime (
+  period_id   UUID PRIMARY KEY,                                 -- feature 9's aircraft_status_period.id
+  aircraft_id UUID NOT NULL REFERENCES bi_aircraft (aircraft_id),
+  status      TEXT NOT NULL CHECK (status IN ('grounded', 'in_maintenance')),
+  reason      TEXT,                                             -- maintenance_type (a_check, ...) or the period's reason
+  start_date  DATE NOT NULL,
+  end_date    DATE NOT NULL,                                    -- inclusive, same as feature 9
+  CHECK (end_date >= start_date)                                -- the refresh makes end_date, so this cannot fail on source data
+);
+
+CREATE INDEX bi_aircraft_downtime_aircraft_idx ON bi_aircraft_downtime (aircraft_id, start_date);
+
 -- One row per feature 2 flight, cancelled ones included. actual_departure_at is the occurred_at of the flight's departed
 -- event (feature 2 has no actual-departure column); delay_minutes is how late that was against scheduled_dep_at, 0 when
 -- early. Revenue is the captured ticket money of the flight's coupons (feature 5's fare, award_fee and seat_fee lines)
 -- without the taxes and surcharges (feature 4's pass-through), so it means what feature 4's revenue means; refund_amount
 -- is the part of it refunded. Seats are in bi_flight_cabin, delays by cause in bi_flight_delay.
+-- aircraft_id is the aircraft that flies it now. block_minutes is gate to gate: from the flight's 'departed' event to its
+-- 'arrived' event (feature 2's simulation-clock job writes these at dep_at and arr_at, the timetable gate times); NULL
+-- until it has arrived.
+-- No-shows are counted only once the gate has closed (feature 6 flight_boarding.closed_at is set). All four counts are
+-- NULL before that, and for a cancelled flight, so the flight is left out of the no-show rate instead of counting as 0%.
+-- A flight that leaves without a gate close stays NULL.
+-- The counts are a snapshot of the coupons live when the gate closed, so a later cancel or refund does not change them:
+--   booked_count  = feature 3 booking_coupon rows on the flight that are 'confirmed', or 'cancelled' after closed_at
+--   boarded_count = those coupons whose feature 6 check_in is 'boarded'
+--   denied_count  = those coupons whose feature 6 check_in is 'denied' (refused by feature 7 screening)
+--   no_show_count = booked - boarded - denied (set by the refresh; boarded and denied are subsets of booked, so it
+--                   cannot go below 0)
+-- The block_minutes and no-show CHECKs compare only columns the refresh fills from the same feature 2 flight row, so
+-- they cannot reject source data.
 CREATE TABLE bi_flight (
   flight_id              UUID PRIMARY KEY,                     -- feature 2's flight.id
   route_id               UUID NOT NULL REFERENCES bi_route (route_id),
@@ -4163,15 +4207,28 @@ CREATE TABLE bi_flight (
   delay_minutes          INTEGER CHECK (delay_minutes >= 0),
   revenue_amount         NUMERIC(12, 2) NOT NULL CHECK (revenue_amount >= 0),
   refund_amount          NUMERIC(12, 2) NOT NULL CHECK (refund_amount >= 0),
+  aircraft_id            UUID NOT NULL REFERENCES bi_aircraft (aircraft_id),
+  block_minutes          INTEGER CHECK (block_minutes > 0),
+  booked_count           INTEGER CHECK (booked_count >= 0),
+  boarded_count          INTEGER CHECK (boarded_count >= 0),
+  denied_count           INTEGER CHECK (denied_count >= 0),
+  no_show_count          INTEGER CHECK (no_show_count >= 0),
   UNIQUE (flight_number, flight_date),
   CHECK ((actual_departure_at IS NULL) = (delay_minutes IS NULL)),
   CHECK (status NOT IN ('departed', 'arrived') OR actual_departure_at IS NOT NULL),
   CHECK (status NOT IN ('scheduled', 'delayed', 'cancelled') OR actual_departure_at IS NULL),
-  CHECK (refund_amount <= revenue_amount)
+  CHECK (refund_amount <= revenue_amount),
+  CONSTRAINT bi_flight_block_after_departure_ck CHECK (block_minutes IS NULL OR actual_departure_at IS NOT NULL),
+  CONSTRAINT bi_flight_boarding_counts_ck CHECK (
+    (booked_count IS NULL) = (boarded_count IS NULL)
+    AND (boarded_count IS NULL) = (denied_count IS NULL)
+    AND (denied_count IS NULL) = (no_show_count IS NULL)),
+  CONSTRAINT bi_flight_boarding_not_cancelled_ck CHECK (status <> 'cancelled' OR booked_count IS NULL)
 );
 
 CREATE INDEX bi_flight_route_date_idx ON bi_flight (route_id, flight_date);
 CREATE INDEX bi_flight_date_idx ON bi_flight (flight_date);
+CREATE INDEX bi_flight_aircraft_date_idx ON bi_flight (aircraft_id, flight_date);
 
 -- Seats per cabin, from feature 3's seat_inventory (capacity and sold_count, award seats included), so feature 9 is not
 -- read. Load factor per cabin sums these; the flight's total is their sum.
@@ -4208,6 +4265,22 @@ CREATE TABLE bi_booking_day (
   PRIMARY KEY (route_id, booking_date)
 );
 
+-- Extra revenue: baggage, upgrade, onboard food and insurance on paid payments ('captured' or 'reversed', the same rule
+-- as the revenue on bi_flight). fare, award_fee and seat_fee stay in bi_flight's revenue, and cargo is left out, so
+-- nothing is counted twice. Refunds are the 'succeeded' refund_line amounts on those lines, the same rule as bi_flight.
+-- Grouped by the payment's captured date in Asia/Bangkok (the airline's home time zone); a refund stays on the date of
+-- the sale it refunds. No route: bags and insurance are not tied to one flight.
+CREATE TABLE bi_extra_revenue_day (
+  revenue_date  DATE NOT NULL,
+  line_type     TEXT NOT NULL CHECK (line_type IN ('baggage', 'upgrade', 'onboard_order', 'insurance')),
+  line_count    INTEGER NOT NULL CHECK (line_count > 0),          -- how many were sold
+  amount        NUMERIC(14, 2) NOT NULL CHECK (amount >= 0),
+  refund_amount NUMERIC(14, 2) NOT NULL CHECK (refund_amount >= 0),
+  PRIMARY KEY (revenue_date, line_type)
+  -- No refund_amount <= amount CHECK: feature 5 does not tie refund_line sums to the line's amount, and the copy must
+  -- not reject what its source accepts.
+);
+
 -- Roll-up ---------------------------------------------------------------------------------------------------
 
 -- The flight metrics per route and flight date, summed from bi_flight, bi_flight_cabin and bi_flight_delay in the same
@@ -4217,6 +4290,8 @@ CREATE TABLE bi_booking_day (
 --   load factor      seat_sold / seat_available
 --   revenue per seat (revenue_amount - refund_amount) / seat_available, or before refunds without refund_amount
 -- Seats, revenue and on-time count only flights that departed, so today's and future flights do not drag the rates down.
+-- The four no-show counts are sums of the bi_flight counts over flights whose gate has closed (NULL counts add 0):
+--   no-show rate     no_show_count / booked_count
 CREATE TABLE bi_metric_day (
   route_id        UUID NOT NULL REFERENCES bi_route (route_id),
   flight_date     DATE NOT NULL,
@@ -4229,6 +4304,10 @@ CREATE TABLE bi_metric_day (
   seat_sold       INTEGER NOT NULL CHECK (seat_sold >= 0),
   revenue_amount  NUMERIC(14, 2) NOT NULL CHECK (revenue_amount >= 0),
   refund_amount   NUMERIC(14, 2) NOT NULL CHECK (refund_amount >= 0),
+  booked_count    INTEGER NOT NULL CHECK (booked_count >= 0),
+  boarded_count   INTEGER NOT NULL CHECK (boarded_count >= 0),
+  denied_count    INTEGER NOT NULL CHECK (denied_count >= 0),
+  no_show_count   INTEGER NOT NULL CHECK (no_show_count >= 0),
   PRIMARY KEY (route_id, flight_date),
   CHECK (cancelled_count + departed_count <= flight_count),
   CHECK (on_time_count <= departed_count),
@@ -4268,7 +4347,8 @@ CREATE INDEX bi_etl_run_success_idx ON bi_etl_run (started_at DESC) WHERE status
 -- Read-only login for Power BI (only if the group picks it). Not part of the migration: a role is cluster-wide and needs
 -- a password, so the infra lead runs this once per database:
 --   CREATE ROLE bi_reader LOGIN PASSWORD '<from the team vault>';
---   GRANT SELECT ON bi_route, bi_flight, bi_flight_cabin, bi_flight_delay, bi_booking_day, bi_metric_day, bi_etl_run,
+--   GRANT SELECT ON bi_route, bi_aircraft, bi_aircraft_downtime, bi_flight, bi_flight_cabin, bi_flight_delay,
+--                   bi_booking_day, bi_extra_revenue_day, bi_metric_day, bi_etl_run,
 --                   finance_monthly_summary, payment_schedule TO bi_reader;
 
 
@@ -4428,3 +4508,84 @@ ALTER TABLE refund               ADD CONSTRAINT refund_audit_log_fk             
 ALTER TABLE compensation_voucher ADD CONSTRAINT compensation_voucher_case_compensation_fk FOREIGN KEY (case_compensation_id)          REFERENCES case_compensation (id);
 ALTER TABLE refund_event_receipt ADD CONSTRAINT refund_event_receipt_event_fk             FOREIGN KEY (event_id)                      REFERENCES flight_event (id);
 ALTER TABLE pay_run              ADD CONSTRAINT pay_run_audit_log_fk                      FOREIGN KEY (audit_log_id)                  REFERENCES audit_log (id);
+-- Serialize maintenance changes with new flight assignments and ticket sales.
+CREATE FUNCTION lock_aircraft_for_maintenance() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.status = 'in_maintenance' THEN
+    PERFORM 1 FROM aircraft WHERE id = NEW.aircraft_id FOR NO KEY UPDATE;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER aircraft_maintenance_availability_lock
+BEFORE INSERT OR UPDATE ON aircraft_status_period
+FOR EACH ROW EXECUTE FUNCTION lock_aircraft_for_maintenance();
+
+CREATE FUNCTION assert_aircraft_available_for_sale_or_schedule(
+  aircraft_uuid uuid, flight_start timestamptz, flight_end timestamptz
+) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM 1 FROM aircraft WHERE id = aircraft_uuid FOR SHARE;
+  IF EXISTS (
+    SELECT 1
+    FROM aircraft_status_period p
+    WHERE p.aircraft_id = aircraft_uuid
+      AND p.status = 'in_maintenance' AND p.deleted_at IS NULL
+      AND p.start_date <= (flight_end AT TIME ZONE 'UTC')::date
+      AND (p.end_date IS NULL OR p.end_date >= (flight_start AT TIME ZONE 'UTC')::date)
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'aircraft_maintenance_unavailable',
+      MESSAGE = 'The aircraft is unavailable because of maintenance';
+  END IF;
+END;
+$$;
+
+CREATE FUNCTION check_flight_maintenance_availability() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.status IN ('scheduled', 'delayed', 'holding', 'diverted') AND
+     (TG_OP = 'INSERT' OR OLD.status = 'cancelled' OR
+      (OLD.aircraft_id, OLD.scheduled_dep_at, OLD.scheduled_arr_at) IS DISTINCT FROM
+      (NEW.aircraft_id, NEW.scheduled_dep_at, NEW.scheduled_arr_at)) THEN
+    PERFORM assert_aircraft_available_for_sale_or_schedule(
+      NEW.aircraft_id, LEAST(NEW.scheduled_dep_at, NEW.dep_at), GREATEST(NEW.scheduled_arr_at, NEW.arr_at)
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER flight_maintenance_availability
+BEFORE INSERT OR UPDATE OF aircraft_id, scheduled_dep_at, scheduled_arr_at, status ON flight
+FOR EACH ROW EXECUTE FUNCTION check_flight_maintenance_availability();
+
+CREATE FUNCTION check_booking_maintenance_availability() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  leg flight%ROWTYPE;
+BEGIN
+  SELECT * INTO leg FROM flight WHERE id = NEW.flight_id FOR SHARE;
+  IF FOUND THEN
+    PERFORM assert_aircraft_available_for_sale_or_schedule(
+      leg.aircraft_id, LEAST(leg.scheduled_dep_at, leg.dep_at), GREATEST(leg.scheduled_arr_at, leg.arr_at)
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER booking_segment_maintenance_availability
+BEFORE INSERT OR UPDATE OF flight_id ON booking_segment
+FOR EACH ROW EXECUTE FUNCTION check_booking_maintenance_availability();
+
+CREATE TRIGGER booking_coupon_maintenance_on_insert
+BEFORE INSERT ON booking_coupon
+FOR EACH ROW WHEN (NEW.status IN ('held', 'confirmed'))
+EXECUTE FUNCTION check_booking_maintenance_availability();
+
+CREATE TRIGGER booking_coupon_maintenance_on_update
+BEFORE UPDATE OF status, flight_id ON booking_coupon
+FOR EACH ROW WHEN (
+  NEW.status IN ('held', 'confirmed') AND
+  (OLD.status, OLD.flight_id) IS DISTINCT FROM (NEW.status, NEW.flight_id)
+)
+EXECUTE FUNCTION check_booking_maintenance_availability();

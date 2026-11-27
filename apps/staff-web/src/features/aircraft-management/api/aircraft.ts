@@ -63,6 +63,12 @@ export const listMaintenance = (fetcher: Fetcher, id: string): Promise<Maintenan
 export const createMaintenance = (fetcher: Fetcher, id: string, payload: CreateMaintenancePayload): Promise<MaintenanceWindow> =>
   requestJson<MaintenanceWindow>(fetcher, `/api/aircraft/${id}/maintenance`, { method: 'POST', body: JSON.stringify(payload) })
 
+export const decideMaintenance = (fetcher: Fetcher, id: string, maintenanceId: string, decision: 'confirm' | 'reject') =>
+  requestJson<MaintenanceWindow>(fetcher, `/api/aircraft/${id}/maintenance/${maintenanceId}/decision`, {
+    method: 'POST',
+    body: JSON.stringify({ decision }),
+  })
+
 export const updateMaintenance = (
   fetcher: Fetcher,
   id: string,

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Inject, Injectable } from '@nestjs/common'
 import { DbService } from '@backend/db/db.service'
 import type { booking } from '@backend/db/generated/prisma/client'
-import { BookingError } from '../common/booking-error'
+import { BookingError, isAircraftMaintenanceConflict } from '../common/booking-error'
 import { insertWithBookingReference, isUniqueConstraintError } from '../common/booking-reference'
 import {
   BOOKING_CLOCK,
@@ -72,6 +72,9 @@ export class HoldService {
         (error) => isUniqueConstraintError(error) && JSON.stringify((error as { meta?: unknown }).meta ?? {}).includes('booking_reference'),
       )
     } catch (error) {
+      if (isAircraftMaintenanceConflict(error)) {
+        throw new BookingError('FLIGHT_NOT_FOR_SALE', 'A selected flight is unavailable because of aircraft maintenance.')
+      }
       if (isUniqueConstraintError(error) && JSON.stringify((error as { meta?: unknown }).meta ?? {}).includes('booking_coupon_person_uq'))
         throw new BookingError('INVALID_BOOKING_STATE', 'A passenger already has an active booking on a selected flight')
       if (isUniqueConstraintError(error)) throw new BookingError('SEAT_UNAVAILABLE', 'A selected seat is no longer available')

@@ -431,6 +431,9 @@ export const legOf = (flight: LockedFlight) => ({ ...legOfFlight(flight), distan
 /** Maps errors raised inside a write transaction to the API's errors; anything else is passed through. */
 export function mapWriteError(e: unknown): Error {
   if (e instanceof InvalidFlightEventError) return new BadRequestException(e.message)
+  if (e instanceof Error && e.message.includes('The aircraft is unavailable because of maintenance')) {
+    return new ConflictException('The aircraft is unavailable because of maintenance')
+  }
   // The exclusion constraint surfaces as a raw database error, so match it by name.
   if (String((e as { message?: string } | null)?.message ?? '').includes('flight_timetable_no_aircraft_overlap')) {
     return new ConflictException('The timetable already has this aircraft on another flight at that time')

@@ -62,7 +62,7 @@ export type MaintenanceSummary = {
   planned_end_date: string
   actual_end_date: string | null
   status: string
-  status_period_id: string
+  status_period_id: string | null
 }
 
 export type AvailabilityFailure = { check: string; reason: string }
@@ -572,7 +572,12 @@ export class AircraftService {
     return windows.map((window) => toMaintenanceSummary(window, today))
   }
 
-  async createMaintenance(aircraftId: string, dto: CreateAircraftMaintenanceDto, staffId: string): Promise<MaintenanceSummary> {
+  async createMaintenance(
+    aircraftId: string,
+    dto: CreateAircraftMaintenanceDto,
+    staffId: string,
+    status: 'planned' | 'pending_approval' = 'planned',
+  ): Promise<MaintenanceSummary> {
     const aircraft = await this.db.aircraft.findFirst({ where: { id: aircraftId, deleted_at: null }, select: { id: true } })
     if (!aircraft) {
       throw new NotFoundException(`Aircraft with ID ${aircraftId} not found`)
@@ -585,19 +590,10 @@ export class AircraftService {
     }
 
     const created = await this.db.$transaction(async (tx) => {
-      await this.resolveOverlaps(tx, aircraftId, plannedStart, plannedEnd)
-
-      const statusPeriod = await tx.aircraft_status_period.create({
-        data: {
-          aircraft_id: aircraftId,
-          status: 'in_maintenance',
-          origin: 'maintenance',
-          reason: `Scheduled ${dto.maintenance_type}`,
-          start_date: new Date(plannedStart),
-          end_date: new Date(plannedEnd),
-          created_by: staffId,
-        },
-      })
+      const statusPeriod =
+        status === 'planned'
+          ? await this.createMaintenancePeriod(tx, aircraftId, dto.maintenance_type, plannedStart, plannedEnd, staffId)
+          : null
 
       const window = await tx.aircraft_maintenance.create({
         data: {
@@ -605,8 +601,8 @@ export class AircraftService {
           maintenance_type: dto.maintenance_type,
           planned_start_date: new Date(plannedStart),
           planned_end_date: new Date(plannedEnd),
-          status: 'planned',
-          status_period_id: statusPeriod.id,
+          status,
+          status_period_id: statusPeriod?.id ?? null,
           created_by: staffId,
         },
       })
@@ -614,12 +610,74 @@ export class AircraftService {
         action: 'create',
         entityType: 'aircraft_maintenance',
         entityId: window.id,
-        summary: `Scheduled ${dto.maintenance_type} from ${plannedStart} to ${plannedEnd}`,
+        summary: `${status === 'planned' ? 'Scheduled' : 'Requested'} ${dto.maintenance_type} from ${plannedStart} to ${plannedEnd}`,
         after: toMaintenanceSummary(window, this.today()),
       })
       return window
     })
     return toMaintenanceSummary(created, this.today())
+  }
+
+  private async createMaintenancePeriod(
+    tx: Prisma.TransactionClient,
+    aircraftId: string,
+    maintenanceType: string,
+    start: string,
+    end: string,
+    staffId: string,
+  ) {
+    await this.resolveOverlaps(tx, aircraftId, start, end)
+    return tx.aircraft_status_period.create({
+      data: {
+        aircraft_id: aircraftId,
+        status: 'in_maintenance',
+        origin: 'maintenance',
+        reason: `Scheduled ${maintenanceType}`,
+        start_date: new Date(start),
+        end_date: new Date(end),
+        created_by: staffId,
+      },
+    })
+  }
+
+  async decideMaintenance(aircraftId: string, maintenanceId: string, decision: 'confirm' | 'reject', staffId: string) {
+    const updated = await this.db.$transaction(async (tx) => {
+      // Serialize decisions before creating a period or recording the outcome.
+      const locked = await tx.$queryRaw<{ id: string }[]>`
+        SELECT m.id FROM aircraft_maintenance m JOIN aircraft a ON a.id = m.aircraft_id
+        WHERE m.id = ${maintenanceId}::uuid AND a.id = ${aircraftId}::uuid
+          AND m.deleted_at IS NULL AND a.deleted_at IS NULL
+        FOR NO KEY UPDATE OF a, m`
+      if (locked.length === 0) throw new NotFoundException('Maintenance request not found')
+      const request = await tx.aircraft_maintenance.findUniqueOrThrow({ where: { id: maintenanceId } })
+      if (request.status !== 'pending_approval') throw new ConflictException('This maintenance request has already been decided')
+
+      const period =
+        decision === 'confirm'
+          ? await this.createMaintenancePeriod(
+              tx,
+              aircraftId,
+              request.maintenance_type,
+              toIsoDate(request.planned_start_date),
+              toIsoDate(request.planned_end_date),
+              staffId,
+            )
+          : null
+      const result = await tx.aircraft_maintenance.update({
+        where: { id: maintenanceId },
+        data: { status: period ? 'planned' : 'rejected', status_period_id: period?.id ?? null, updated_at: new Date() },
+      })
+      await this.audit.record(tx, staffId, {
+        action: 'status_change',
+        entityType: 'aircraft_maintenance',
+        entityId: maintenanceId,
+        summary: `${period ? 'Confirmed' : 'Rejected'} ${request.maintenance_type} maintenance request`,
+        before: toMaintenanceSummary(request, this.today()),
+        after: toMaintenanceSummary(result, this.today()),
+      })
+      return result
+    })
+    return toMaintenanceSummary(updated, this.today())
   }
 
   async updateMaintenance(
@@ -639,6 +697,10 @@ export class AircraftService {
     }
     if (maintenance.status === 'completed') {
       throw new ConflictException('A completed maintenance window cannot be changed')
+    }
+    const statusPeriodId = maintenance.status_period_id
+    if (!statusPeriodId) {
+      throw new ConflictException('Only scheduled maintenance windows can be changed here')
     }
 
     const actualEnd = dto.actual_end_date === undefined ? undefined : dto.actual_end_date === null ? null : toIsoDate(dto.actual_end_date)
@@ -663,7 +725,7 @@ export class AircraftService {
 
     const updated = await this.db.$transaction(async (tx) => {
       if (datesChange && dto.status !== 'cancelled') {
-        await this.resolveOverlaps(tx, aircraftId, plannedStart, finalActualEnd ?? plannedEnd, maintenance.status_period_id)
+        await this.resolveOverlaps(tx, aircraftId, plannedStart, finalActualEnd ?? plannedEnd, statusPeriodId)
       }
 
       const updateData: {
@@ -693,7 +755,7 @@ export class AircraftService {
         periodUpdate.end_date = new Date(toIsoDate(dto.planned_end_date))
       }
 
-      const period = await tx.aircraft_status_period.update({ where: { id: maintenance.status_period_id }, data: periodUpdate })
+      const period = await tx.aircraft_status_period.update({ where: { id: statusPeriodId }, data: periodUpdate })
       if (dto.status === 'cancelled') {
         // Scheduling the window cut short a grounding that had no end; cancelling it must give that grounding back.
         await this.restorePredecessor(tx, aircraftId, period)
@@ -846,8 +908,8 @@ export class AircraftService {
     for (const period of aircraft.aircraft_status_period) {
       if (period.status === 'in_service') continue
       const periodStart = toIsoDate(period.start_date)
-      const periodEnd = period.end_date ? toIsoDate(period.end_date) : '9999-12-31'
-      if (periodStart <= to && periodEnd >= from) {
+      const periodEnd = period.end_date
+      if (periodStart <= to && (periodEnd === null || toIsoDate(periodEnd) >= from)) {
         failing.push({
           check: 'status',
           reason: `${period.status} from ${periodStart}${period.reason ? ` (${period.reason})` : ''}`,

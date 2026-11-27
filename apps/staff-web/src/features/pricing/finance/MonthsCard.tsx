@@ -1,4 +1,5 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@staff-web/components/ui/table'
+import { cn } from '@staff-web/lib/utils'
 import type { FinanceSummary } from './finance-api'
 import { AMOUNT, monthLabel } from './finance-format'
 import { cellClass as baseCell, headClass as baseHead, headRowClass, phoneListClass, rowClass, tableWrapClass } from './finance-styles'
@@ -54,7 +55,8 @@ export function MonthsCard({ months, current, rows, error, status, footnote, uni
   ) : (
     <>
       {/* Desktop: one table */}
-      <div className={tableWrapClass}>
+      {/* The columns are fixed widths, so a narrow laptop scrolls the table instead of cutting off Profit. */}
+      <div className={cn(tableWrapClass, 'overflow-x-auto')}>
         <Table className="table-fixed text-[13px] text-(--pr-primary)">
           <TableHeader className="[&_tr]:border-0">
             <TableRow className={headRowClass}>

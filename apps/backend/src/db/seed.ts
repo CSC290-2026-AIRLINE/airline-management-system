@@ -1174,6 +1174,20 @@ async function seedGeneratedFlights(
   const fleet = AIRCRAFT.map((a) => ({ type: a.type, id: aircraftByTail.get(a.tail_number) })).filter(
     (a): a is { type: string; id: string } => a.id !== undefined,
   )
+  // Maintenance windows the database refuses flights in (see assert_aircraft_available_for_sale_or_schedule): a period
+  // blocks from its start date to its end date.
+  const maintenance = await prisma.aircraft_status_period.findMany({
+    where: { status: 'in_maintenance', deleted_at: null },
+    select: { aircraft_id: true, start_date: true, end_date: true },
+  })
+  const blocked = new Map<string, Array<[number, number]>>()
+  for (const p of maintenance) {
+    const end = p.end_date === null ? Infinity : p.end_date.getTime()
+    const list = blocked.get(p.aircraft_id) ?? []
+    list.push([p.start_date.getTime(), end])
+    blocked.set(p.aircraft_id, list)
+  }
+  const utcDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
   const tzByAirport = new Map(AIRPORTS.map((a) => [a.iata_code, a.timezone]))
   const buffer = GENERATED_TURNAROUND_MIN * 60_000
 
@@ -1203,7 +1217,8 @@ async function seedGeneratedFlights(
     const dateKey = utcDate(f.day).toISOString().slice(0, 10)
     if (taken.has(`${f.number}|${dateKey}`)) continue
     const free = (id: string) =>
-      (busy.get(id) ?? []).every(([from, to]) => f.arrAt.getTime() + buffer <= from || to + buffer <= f.depAt.getTime())
+      (busy.get(id) ?? []).every(([from, to]) => f.arrAt.getTime() + buffer <= from || to + buffer <= f.depAt.getTime()) &&
+      (blocked.get(id) ?? []).every(([from, to]) => utcDay(f.arrAt) < from || to < utcDay(f.depAt))
     let picked: { type: string; id: string } | undefined
     for (const type of aircraftTypesFor(f.route.distance_km)) {
       picked = fleet.find((a) => a.type === type && free(a.id))
@@ -7153,6 +7168,23 @@ async function seedFeature14BI(
     })
   }
 
+  // Copy the aircraft those flights use (bi_flight.aircraft_id points here), as the refresh copies them from feature 9.
+  const biAircraftIds = [...new Set([...flights.values()].map((fl) => fl.aircraftId))]
+  const biAircraft = await prisma.aircraft.findMany({ where: { id: { in: biAircraftIds } }, include: { aircraft_type: true } })
+  for (const a of biAircraft) {
+    await prisma.bi_aircraft.upsert({
+      where: { aircraft_id: a.id },
+      update: {},
+      create: {
+        aircraft_id: a.id,
+        tail_number: a.tail_number,
+        type_code: a.aircraft_type.code,
+        in_service_from: a.entry_into_service_date,
+        retired_on: a.retired_on,
+      },
+    })
+  }
+
   // Copy flights + cabins
   const biFlightSpecs = [
     { key: 'past_bkk_cnx_1', delayMin: 0, rev: 342000, ref: 0, seatAvail: 180, seatSold: 152 },
@@ -7167,6 +7199,11 @@ async function seedFeature14BI(
     const fl = flights.get(bfs.key)
     if (!fl) continue
     const departed = fl.status === 'arrived' || fl.status === 'departed'
+    // Boarding results once the gate has closed (booked = boarded + denied + no-shows); none for a cancelled flight.
+    const noShows = departed ? Math.round(bfs.seatSold * 0.04) : 0
+    const boarding = departed
+      ? { booked_count: bfs.seatSold, boarded_count: bfs.seatSold - noShows, denied_count: 0, no_show_count: noShows }
+      : { booked_count: null, boarded_count: null, denied_count: null, no_show_count: null }
     await prisma.bi_flight.upsert({
       where: { flight_id: fl.id },
       update: {},
@@ -7181,6 +7218,8 @@ async function seedFeature14BI(
         delay_minutes: departed ? (bfs.delayMin ?? 0) : null,
         revenue_amount: bfs.rev,
         refund_amount: bfs.ref,
+        aircraft_id: fl.aircraftId,
+        ...boarding,
       },
     })
     await prisma.bi_flight_cabin.upsert({
@@ -7229,6 +7268,9 @@ async function seedFeature14BI(
       const seatSold = Math.round(seatAvailable * (0.76 + ((rIdx + d) % 15) / 100))
       const revAmount = seatSold * (routeKey === 'BKK-NRT' ? 11200 : routeKey === 'BKK-SIN' ? 5400 : 2350)
       const refAmount = Math.round(revAmount * 0.025)
+      // Boarding results for the route's day: booked = boarded + denied + no-shows.
+      const noShowCount = Math.round(seatSold * 0.04)
+      const deniedCount = (rIdx + d) % 4 === 0 ? 1 : 0
 
       await prisma.bi_metric_day.upsert({
         where: { route_id_flight_date: { route_id: route.id, flight_date: day } },
@@ -7245,6 +7287,10 @@ async function seedFeature14BI(
           seat_sold: seatSold,
           revenue_amount: revAmount,
           refund_amount: refAmount,
+          booked_count: seatSold,
+          boarded_count: seatSold - noShowCount - deniedCount,
+          denied_count: deniedCount,
+          no_show_count: noShowCount,
         },
       })
     }
