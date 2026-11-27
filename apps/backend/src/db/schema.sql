@@ -4530,12 +4530,10 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM aircraft_status_period p
-    LEFT JOIN aircraft_maintenance m ON m.status_period_id = p.id AND m.deleted_at IS NULL
     WHERE p.aircraft_id = aircraft_uuid
       AND p.status = 'in_maintenance' AND p.deleted_at IS NULL
       AND p.start_date <= (flight_end AT TIME ZONE 'UTC')::date
-      AND (p.end_date IS NULL OR p.end_date >= (flight_start AT TIME ZONE 'UTC')::date
-           OR m.status IN ('planned', 'in_progress'))
+      AND (p.end_date IS NULL OR p.end_date >= (flight_start AT TIME ZONE 'UTC')::date)
   ) THEN
     RAISE EXCEPTION USING ERRCODE = '23514', CONSTRAINT = 'aircraft_maintenance_unavailable',
       MESSAGE = 'The aircraft is unavailable because of maintenance';

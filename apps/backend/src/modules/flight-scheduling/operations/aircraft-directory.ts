@@ -89,34 +89,20 @@ export class DbAircraftDirectory implements AircraftDirectory {
       }
     }
 
-    // An approved maintenance window stays unavailable until it is completed or cancelled.
-    const unfinishedMaintenance = { deleted_at: null, status: { in: ['planned', 'in_progress'] } }
+    // A grounding or maintenance window blocks the aircraft from its start date to its end date.
     const period = await this.db.aircraft_status_period.findFirst({
       where: {
         aircraft_id: aircraftId,
         deleted_at: null,
         status: { not: 'in_service' },
         start_date: { lte: new Date(last) },
-        OR: [
-          { end_date: null },
-          { end_date: { gte: new Date(first) } },
-          { status: 'in_maintenance', aircraft_maintenance: { is: unfinishedMaintenance } },
-        ],
+        OR: [{ end_date: null }, { end_date: { gte: new Date(first) } }],
       },
       orderBy: { start_date: 'asc' },
-      select: {
-        status: true,
-        reason: true,
-        start_date: true,
-        end_date: true,
-        aircraft_maintenance: { select: { status: true, deleted_at: true } },
-      },
+      select: { status: true, reason: true, start_date: true, end_date: true },
     })
     if (period) {
-      const maintenance = period.aircraft_maintenance
-      const awaitingCompletion =
-        maintenance?.deleted_at === null && (maintenance.status === 'planned' || maintenance.status === 'in_progress')
-      const until = awaitingCompletion ? 'completion' : period.end_date ? dayOf(period.end_date) : 'further notice'
+      const until = period.end_date ? dayOf(period.end_date) : 'further notice'
       const why = period.reason ? `: ${period.reason}` : ''
       return {
         kind: 'unavailable',

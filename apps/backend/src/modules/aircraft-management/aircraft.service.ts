@@ -65,21 +65,6 @@ export type MaintenanceSummary = {
   status_period_id: string | null
 }
 
-const maintenanceStatus = { aircraft_maintenance: { select: { status: true, deleted_at: true } } } as const
-
-type AvailabilityPeriod = aircraft_status_period & {
-  aircraft_maintenance?: { status: string; deleted_at: Date | null } | null
-}
-
-function awaitsMaintenanceCompletion(period: AvailabilityPeriod): boolean {
-  const maintenance = period.aircraft_maintenance
-  return (
-    period.status === 'in_maintenance' &&
-    maintenance?.deleted_at === null &&
-    (maintenance.status === 'planned' || maintenance.status === 'in_progress')
-  )
-}
-
 export type AvailabilityFailure = { check: string; reason: string }
 
 export type AvailabilityResult = {
@@ -162,7 +147,6 @@ export class AircraftService {
         aircraft_type: { select: { id: true, code: true, model: true } },
         aircraft_status_period: {
           where: { deleted_at: null },
-          include: maintenanceStatus,
           orderBy: { start_date: 'desc' },
         },
       },
@@ -188,7 +172,7 @@ export class AircraftService {
       where: { id, deleted_at: null },
       include: {
         aircraft_type: true,
-        aircraft_status_period: { where: { deleted_at: null }, include: maintenanceStatus, orderBy: { start_date: 'desc' } },
+        aircraft_status_period: { where: { deleted_at: null }, orderBy: { start_date: 'desc' } },
       },
     })
     if (!aircraft) {
@@ -346,7 +330,6 @@ export class AircraftService {
     const periods = await this.db.aircraft_status_period.findMany({
       where: { aircraft_id: aircraftId, deleted_at: null },
       orderBy: { start_date: 'desc' },
-      include: maintenanceStatus,
     })
     return this.currentStatus(periods)
   }
@@ -511,7 +494,7 @@ export class AircraftService {
       where: { id: aircraftId, deleted_at: null },
       include: {
         aircraft_type: true,
-        aircraft_status_period: { where: { deleted_at: null }, include: maintenanceStatus },
+        aircraft_status_period: { where: { deleted_at: null } },
         aircraft_operating_day: true,
       },
     })
@@ -534,7 +517,7 @@ export class AircraftService {
       },
       include: {
         aircraft_type: { select: { id: true, code: true, model: true, max_range_km: true } },
-        aircraft_status_period: { where: { deleted_at: null }, include: maintenanceStatus },
+        aircraft_status_period: { where: { deleted_at: null } },
         aircraft_operating_day: true,
       },
     })
@@ -884,11 +867,11 @@ export class AircraftService {
     }
   }
 
-  private currentStatus(periods: AvailabilityPeriod[]): AircraftStatusSummary {
+  private currentStatus(periods: aircraft_status_period[]): AircraftStatusSummary {
     const today = this.today()
-    const current =
-      periods.find((period) => awaitsMaintenanceCompletion(period) && toIsoDate(period.start_date) <= today) ??
-      periods.find((period) => toIsoDate(period.start_date) <= today && (period.end_date === null || toIsoDate(period.end_date) >= today))
+    const current = periods.find(
+      (period) => toIsoDate(period.start_date) <= today && (period.end_date === null || toIsoDate(period.end_date) >= today),
+    )
 
     if (!current) {
       return { status: 'in_service', origin: null, reason: null, start_date: null, end_date: null }
@@ -909,7 +892,7 @@ export class AircraftService {
       entry_into_service_date: Date
       retired_on: Date | null
       aircraft_type: { max_range_km: number }
-      aircraft_status_period: AvailabilityPeriod[]
+      aircraft_status_period: aircraft_status_period[]
       aircraft_operating_day: { day_of_week: number }[]
     },
     query: AvailabilityQueryDto,
@@ -925,7 +908,7 @@ export class AircraftService {
     for (const period of aircraft.aircraft_status_period) {
       if (period.status === 'in_service') continue
       const periodStart = toIsoDate(period.start_date)
-      const periodEnd = awaitsMaintenanceCompletion(period) ? null : period.end_date
+      const periodEnd = period.end_date
       if (periodStart <= to && (periodEnd === null || toIsoDate(periodEnd) >= from)) {
         failing.push({
           check: 'status',

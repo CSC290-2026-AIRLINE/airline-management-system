@@ -196,6 +196,37 @@ describe('AircraftService', () => {
       expect(result.available).toBe(false)
       expect(result.failing.map((check) => check.check)).toContain('range')
     })
+
+    describe('a maintenance window that is not yet completed', () => {
+      beforeEach(() => {
+        const aCheck = {
+          id: 'p1',
+          status: 'in_maintenance',
+          origin: 'maintenance',
+          reason: 'Scheduled a_check',
+          start_date: new Date('2026-12-10T00:00:00Z'),
+          end_date: new Date('2026-12-12T00:00:00Z'),
+          deleted_at: null,
+        }
+        db.aircraft.findFirst.mockResolvedValue({
+          ...aircraftRow([aCheck]),
+          aircraft_type: { id: 't1', code: 'A320', model: 'A320', max_range_km: 6100 },
+          aircraft_operating_day: [],
+        })
+      })
+
+      it('blocks the aircraft inside its dates', async () => {
+        const result = await service.getAvailability('a1', { from: '2026-12-11', to: '2026-12-11' })
+
+        expect(result.failing.map((check) => check.check)).toContain('status')
+      })
+
+      it('does not block the aircraft after its end date', async () => {
+        const result = await service.getAvailability('a1', { from: '2027-01-20', to: '2027-01-20' })
+
+        expect(result.available).toBe(true)
+      })
+    })
   })
 
   describe('setOperatingDays', () => {
