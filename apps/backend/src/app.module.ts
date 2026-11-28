@@ -6,6 +6,7 @@ import { AppService } from './app.service'
 import { AuthModule } from './auth/auth.module'
 import { OnboardProductsModule } from './modules/onboard-products/onboard-products.module'
 import { AdminConsoleModule } from './modules/admin-console/admin-console.module'
+import { BiDashboardsModule } from './modules/bi-dashboards/bi-dashboards.module'
 import { CargoModule } from './modules/cargo/cargo.module'
 import { BaggageModule } from './modules/baggage/baggage.module'
 import { BaggageLifecycleModule } from './modules/baggage/baggage-lifecycle.module'
@@ -32,6 +33,7 @@ import { PaymentsRefundsModule } from './modules/payments-refunds/payments-refun
 import { PaymentsBookingModule } from './modules/payments-booking/payments-booking.module'
 import { PaymentsCrewPayModule } from './modules/payments-crew-pay/payments-crew-pay.module'
 // TODO(F5-dev): delete this import and `PaymentsDevToolsModule` below before the PR merges.
+import { DevSeedModule } from './modules/dev-seed/dev-seed.module'
 import { PaymentsDevToolsModule } from './modules/payments-dev-tools/payments-dev-tools.module'
 
 @Module({
@@ -59,10 +61,12 @@ import { PaymentsDevToolsModule } from './modules/payments-dev-tools/payments-de
     WatchlistModule,
     AircraftManagementModule,
     FlightSchedulingModule,
+    BiDashboardsModule,
     PaymentsCheckoutModule,
     PaymentsRefundsModule,
     PaymentsBookingModule,
     PaymentsCrewPayModule,
+    DevSeedModule,
     PaymentsDevToolsModule, // TODO(F5-dev): delete with the dev tools before the PR merges
     CargoModule,
     LoyaltyModule,

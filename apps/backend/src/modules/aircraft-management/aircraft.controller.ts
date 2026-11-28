@@ -25,6 +25,7 @@ import {
   CreateAircraftDto,
   CreateAircraftMaintenanceDto,
   CreateAircraftStatusDto,
+  DecideAircraftMaintenanceDto,
   SetOperatingDaysDto,
   StatusChangesQueryDto,
   UpdateAircraftDto,
@@ -145,6 +146,19 @@ export class AircraftController {
   ) {
     const staffId = await this.currentStaff.resolveStaffId(user.id)
     return this.aircraftService.createMaintenance(id, dto, staffId)
+  }
+
+  @UseGuards(StaffGuard)
+  @Post(':id/maintenance/:maintenanceId/decision')
+  @HttpCode(200)
+  async decideMaintenance(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('maintenanceId', ParseUUIDPipe) maintenanceId: string,
+    @Body() dto: DecideAircraftMaintenanceDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const staffId = await this.currentStaff.resolveStaffId(user.id)
+    return this.aircraftService.decideMaintenance(id, maintenanceId, dto.decision, staffId)
   }
 
   @UseGuards(StaffGuard)

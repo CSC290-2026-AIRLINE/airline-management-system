@@ -33,6 +33,7 @@ import {
   LOYALTY_ITEMS,
   BAGGAGE_ITEMS,
   PRICING_ITEMS,
+  BI_ITEM,
   type NavItem,
 } from '../nav-items'
 
@@ -329,6 +330,9 @@ export function AppSidebar({ roleName, onSignOut, expandedGroup }: { roleName: s
               ))}
             </NavGroup>
           ))}
+          <NavGroup label="Reports" defaultOpen={groupIsOpen('Reports')}>
+            <LinkedItem item={BI_ITEM} pathname={pathname} indent />
+          </NavGroup>
         </ScrollArea>
       </SidebarContent>
 

@@ -14,7 +14,7 @@ import { SEAT_FEE_TYPE } from '@backend/modules/checkin-boarding/providers/provi
 import { DEMO_FLIGHTS, DEMO_LAYOUT, DEMO_PASSENGERS, demoDepartures } from '@backend/modules/checkin-boarding/providers/demo-data'
 import type { DemoFlight } from '@backend/modules/checkin-boarding/providers/demo-data'
 import type { Cabin, SeatType } from '@backend/modules/checkin-boarding/api-types'
-import { PrismaClient } from './generated/prisma/client'
+import { PrismaClient, type Prisma } from './generated/prisma/client'
 
 try {
   process.loadEnvFile(path.join(__dirname, '..', '..', '.env'))
@@ -401,6 +401,17 @@ const PATTERNS = [
   { flight_number: 'XX302', origin: 'SIN', destination: 'BKK', dep_time_local: '13:00', days_of_week: ALL_DAYS },
   { flight_number: 'XX401', origin: 'BKK', destination: 'HKG', dep_time_local: '10:00', days_of_week: [1, 2, 4, 6, 7] },
   { flight_number: 'XX402', origin: 'HKG', destination: 'BKK', dep_time_local: '14:30', days_of_week: [1, 2, 4, 6, 7] },
+  // Second and third daily frequencies plus the long-haul routes, so every route has flights to book most days.
+  { flight_number: 'XX103', origin: 'BKK', destination: 'CNX', dep_time_local: '17:30', days_of_week: ALL_DAYS },
+  { flight_number: 'XX104', origin: 'CNX', destination: 'BKK', dep_time_local: '20:00', days_of_week: ALL_DAYS },
+  { flight_number: 'XX203', origin: 'BKK', destination: 'HKT', dep_time_local: '07:00', days_of_week: [2, 4, 6, 7] },
+  { flight_number: 'XX204', origin: 'HKT', destination: 'BKK', dep_time_local: '09:30', days_of_week: [2, 4, 6, 7] },
+  { flight_number: 'XX303', origin: 'BKK', destination: 'SIN', dep_time_local: '18:00', days_of_week: ALL_DAYS },
+  { flight_number: 'XX304', origin: 'SIN', destination: 'BKK', dep_time_local: '21:30', days_of_week: ALL_DAYS },
+  { flight_number: 'XX501', origin: 'BKK', destination: 'NRT', dep_time_local: '08:00', days_of_week: [1, 3, 5, 7] },
+  { flight_number: 'XX502', origin: 'NRT', destination: 'BKK', dep_time_local: '12:30', days_of_week: [1, 3, 5, 7] },
+  { flight_number: 'XX601', origin: 'BKK', destination: 'ICN', dep_time_local: '23:00', days_of_week: [2, 4, 6] },
+  { flight_number: 'XX602', origin: 'ICN', destination: 'BKK', dep_time_local: '09:00', days_of_week: [3, 5, 7] },
 ]
 const PATTERN_DAYS = 75
 
@@ -1098,6 +1109,147 @@ interface SeededFlightInfo {
   arrAt: Date
   aircraftId: string
   status: string
+}
+
+const GENERATED_CABINS: Record<string, Array<{ cabin: string; capacity: number; awardLimit: number }>> = {
+  A320: [{ cabin: 'economy', capacity: 180, awardLimit: 12 }],
+  ATR72: [{ cabin: 'economy', capacity: 72, awardLimit: 6 }],
+  A321NEO: [
+    { cabin: 'business', capacity: 16, awardLimit: 4 },
+    { cabin: 'premium_economy', capacity: 24, awardLimit: 4 },
+    { cabin: 'economy', capacity: 144, awardLimit: 15 },
+  ],
+  B777: [
+    { cabin: 'first', capacity: 8, awardLimit: 2 },
+    { cabin: 'business', capacity: 48, awardLimit: 6 },
+    { cabin: 'premium_economy', capacity: 40, awardLimit: 6 },
+    { cabin: 'economy', capacity: 225, awardLimit: 20 },
+  ],
+}
+/** Aircraft types to try, in order, for a route: the ATR only flies the short domestic hops, the 777 takes the long haul. */
+const aircraftTypesFor = (distanceKm: number): string[] =>
+  distanceKm > 3000 ? ['B777', 'A321NEO'] : distanceKm > 1000 ? ['A320', 'A321NEO'] : ['A320', 'A321NEO', 'ATR72']
+const GENERATED_TURNAROUND_MIN = 90
+
+/** UTC instant of a wall-clock time in an IANA zone on a calendar date (the offset is read from Intl, so DST-safe). */
+function zonedToUtc(date: Date, hhmm: string, timeZone: string): Date {
+  const [h, m] = hhmm.split(':').map(Number)
+  const guess = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), h, m)
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+  }).formatToParts(new Date(guess))
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value)
+  const asLocal = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'))
+  return new Date(guess - (asLocal - guess))
+}
+
+/**
+ * Expands every flight pattern into dated flights across its validity window, so search always has upcoming flights
+ * to show. Aircraft are assigned greedily and never double-booked; reruns skip flights that already exist.
+ */
+async function seedGeneratedFlights(
+  routeMap: Map<string, { id: string; distance_km: number; block_time_min: number }>,
+  aircraftByTail: Map<string, string>,
+  patternByNumber: Map<string, string>,
+): Promise<number> {
+  const horizon = utcDate(PATTERN_DAYS)
+  const existing = await prisma.flight.findMany({
+    where: { service_date: { gte: utcDate(0), lte: horizon } },
+    select: { flight_number: true, service_date: true, aircraft_id: true, scheduled_dep_at: true, scheduled_arr_at: true, status: true },
+  })
+  const taken = new Set(existing.map((f) => `${f.flight_number}|${f.service_date.toISOString().slice(0, 10)}`))
+  const busy = new Map<string, Array<[number, number]>>()
+  for (const f of existing) {
+    if (f.status === 'cancelled') continue
+    const list = busy.get(f.aircraft_id) ?? []
+    list.push([f.scheduled_dep_at.getTime(), f.scheduled_arr_at.getTime()])
+    busy.set(f.aircraft_id, list)
+  }
+  const fleet = AIRCRAFT.map((a) => ({ type: a.type, id: aircraftByTail.get(a.tail_number) })).filter(
+    (a): a is { type: string; id: string } => a.id !== undefined,
+  )
+  // Maintenance windows the database refuses flights in (see assert_aircraft_available_for_sale_or_schedule): a period
+  // blocks from its start date to its end date.
+  const maintenance = await prisma.aircraft_status_period.findMany({
+    where: { status: 'in_maintenance', deleted_at: null },
+    select: { aircraft_id: true, start_date: true, end_date: true },
+  })
+  const blocked = new Map<string, Array<[number, number]>>()
+  for (const p of maintenance) {
+    const end = p.end_date === null ? Infinity : p.end_date.getTime()
+    const list = blocked.get(p.aircraft_id) ?? []
+    list.push([p.start_date.getTime(), end])
+    blocked.set(p.aircraft_id, list)
+  }
+  const utcDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+  const tzByAirport = new Map(AIRPORTS.map((a) => [a.iata_code, a.timezone]))
+  const buffer = GENERATED_TURNAROUND_MIN * 60_000
+
+  const planned: Array<{
+    number: string
+    day: number
+    depAt: Date
+    arrAt: Date
+    route: { id: string; distance_km: number; block_time_min: number }
+  }> = []
+  for (let day = 1; day < PATTERN_DAYS; day++) {
+    const serviceDate = utcDate(day)
+    const isoDow = serviceDate.getUTCDay() === 0 ? 7 : serviceDate.getUTCDay()
+    for (const p of PATTERNS) {
+      if (!p.days_of_week.includes(isoDow) || !patternByNumber.has(p.flight_number)) continue
+      const route = routeMap.get(`${p.origin}-${p.destination}`)
+      if (!route) continue
+      const depAt = zonedToUtc(serviceDate, p.dep_time_local, tzByAirport.get(p.origin) ?? 'UTC')
+      planned.push({ number: p.flight_number, day, depAt, arrAt: addMinutes(depAt, route.block_time_min), route })
+    }
+  }
+  planned.sort((a, b) => a.depAt.getTime() - b.depAt.getTime())
+
+  const flightRows: Prisma.flightCreateManyInput[] = []
+  const inventoryRows: Prisma.seat_inventoryCreateManyInput[] = []
+  for (const f of planned) {
+    const dateKey = utcDate(f.day).toISOString().slice(0, 10)
+    if (taken.has(`${f.number}|${dateKey}`)) continue
+    const free = (id: string) =>
+      (busy.get(id) ?? []).every(([from, to]) => f.arrAt.getTime() + buffer <= from || to + buffer <= f.depAt.getTime()) &&
+      (blocked.get(id) ?? []).every(([from, to]) => utcDay(f.arrAt) < from || to < utcDay(f.depAt))
+    let picked: { type: string; id: string } | undefined
+    for (const type of aircraftTypesFor(f.route.distance_km)) {
+      picked = fleet.find((a) => a.type === type && free(a.id))
+      if (picked) break
+    }
+    if (!picked) continue
+    const list = busy.get(picked.id) ?? []
+    list.push([f.depAt.getTime(), f.arrAt.getTime()])
+    busy.set(picked.id, list)
+
+    const id = sid(`f02g:${f.number}:${dateKey}`, 0)
+    flightRows.push({
+      id,
+      pattern_id: patternByNumber.get(f.number) ?? null,
+      flight_number: f.number,
+      service_date: utcDate(f.day),
+      route_id: f.route.id,
+      scheduled_dep_at: f.depAt,
+      scheduled_arr_at: f.arrAt,
+      dep_at: f.depAt,
+      arr_at: f.arrAt,
+      aircraft_id: picked.id,
+      status: 'scheduled',
+    })
+    for (const c of GENERATED_CABINS[picked.type] ?? []) {
+      inventoryRows.push({ flight_id: id, cabin: c.cabin, capacity: c.capacity, award_limit: c.awardLimit })
+    }
+  }
+  await prisma.flight.createMany({ data: flightRows, skipDuplicates: true })
+  await prisma.seat_inventory.createMany({ data: inventoryRows, skipDuplicates: true })
+  return flightRows.length
 }
 
 async function seedOperationalFlights(
@@ -7016,6 +7168,23 @@ async function seedFeature14BI(
     })
   }
 
+  // Copy the aircraft those flights use (bi_flight.aircraft_id points here), as the refresh copies them from feature 9.
+  const biAircraftIds = [...new Set([...flights.values()].map((fl) => fl.aircraftId))]
+  const biAircraft = await prisma.aircraft.findMany({ where: { id: { in: biAircraftIds } }, include: { aircraft_type: true } })
+  for (const a of biAircraft) {
+    await prisma.bi_aircraft.upsert({
+      where: { aircraft_id: a.id },
+      update: {},
+      create: {
+        aircraft_id: a.id,
+        tail_number: a.tail_number,
+        type_code: a.aircraft_type.code,
+        in_service_from: a.entry_into_service_date,
+        retired_on: a.retired_on,
+      },
+    })
+  }
+
   // Copy flights + cabins
   const biFlightSpecs = [
     { key: 'past_bkk_cnx_1', delayMin: 0, rev: 342000, ref: 0, seatAvail: 180, seatSold: 152 },
@@ -7030,6 +7199,11 @@ async function seedFeature14BI(
     const fl = flights.get(bfs.key)
     if (!fl) continue
     const departed = fl.status === 'arrived' || fl.status === 'departed'
+    // Boarding results once the gate has closed (booked = boarded + denied + no-shows); none for a cancelled flight.
+    const noShows = departed ? Math.round(bfs.seatSold * 0.04) : 0
+    const boarding = departed
+      ? { booked_count: bfs.seatSold, boarded_count: bfs.seatSold - noShows, denied_count: 0, no_show_count: noShows }
+      : { booked_count: null, boarded_count: null, denied_count: null, no_show_count: null }
     await prisma.bi_flight.upsert({
       where: { flight_id: fl.id },
       update: {},
@@ -7044,6 +7218,8 @@ async function seedFeature14BI(
         delay_minutes: departed ? (bfs.delayMin ?? 0) : null,
         revenue_amount: bfs.rev,
         refund_amount: bfs.ref,
+        aircraft_id: fl.aircraftId,
+        ...boarding,
       },
     })
     await prisma.bi_flight_cabin.upsert({
@@ -7092,6 +7268,9 @@ async function seedFeature14BI(
       const seatSold = Math.round(seatAvailable * (0.76 + ((rIdx + d) % 15) / 100))
       const revAmount = seatSold * (routeKey === 'BKK-NRT' ? 11200 : routeKey === 'BKK-SIN' ? 5400 : 2350)
       const refAmount = Math.round(revAmount * 0.025)
+      // Boarding results for the route's day: booked = boarded + denied + no-shows.
+      const noShowCount = Math.round(seatSold * 0.04)
+      const deniedCount = (rIdx + d) % 4 === 0 ? 1 : 0
 
       await prisma.bi_metric_day.upsert({
         where: { route_id_flight_date: { route_id: route.id, flight_date: day } },
@@ -7108,6 +7287,10 @@ async function seedFeature14BI(
           seat_sold: seatSold,
           revenue_amount: revAmount,
           refund_amount: refAmount,
+          booked_count: seatSold,
+          boarded_count: seatSold - noShowCount - deniedCount,
+          denied_count: deniedCount,
+          no_show_count: noShowCount,
         },
       })
     }
@@ -9028,6 +9211,8 @@ async function main() {
   const routeMap = await seedFlightNetwork()
   const { aircraftByTail, patternByNumber } = await seedFleetAndPatterns(routeMap, opsStaffId)
   const flights = await seedOperationalFlights(routeMap, aircraftByTail, patternByNumber, opsStaffId)
+  const generatedFlights = await seedGeneratedFlights(routeMap, aircraftByTail, patternByNumber)
+  console.log(`Generated ${generatedFlights} upcoming pattern flights`)
 
   // F4: Pricing Settings, Catalog, Currency Rates, Base Fares, Pricing Rules, Quotes & Finance
   await seedPricingSettings()

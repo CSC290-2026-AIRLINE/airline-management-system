@@ -303,9 +303,13 @@ export class PrismaPaymentRepository implements PaymentRepository {
   async recordProviderEvent(eventId: string, eventType: string, paymentId: string | null): Promise<boolean> {
     const existing = await this.db.payment_event_receipt.findUnique({ where: { provider_event_id: eventId } })
     if (existing) return existing.processed_at === null
+    // An event can name a payment this database never had (a stale event after a reset, a `stripe trigger` test event).
+    // The receipt must still be recorded, so the link is kept only when the payment exists.
+    const linked =
+      paymentId && UUID.test(paymentId) ? await this.db.payment.findUnique({ where: { id: paymentId }, select: { id: true } }) : null
     try {
       await this.db.payment_event_receipt.create({
-        data: { provider_event_id: eventId, event_type: eventType, payment_id: paymentId && UUID.test(paymentId) ? paymentId : null },
+        data: { provider_event_id: eventId, event_type: eventType, payment_id: linked?.id ?? null },
       })
       return true
     } catch (error) {

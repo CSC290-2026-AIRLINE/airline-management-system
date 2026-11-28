@@ -29,3 +29,7 @@ export class BookingError extends Error {
     this.details = details
   }
 }
+
+export function isAircraftMaintenanceConflict(error: unknown): boolean {
+  return error instanceof Error && /aircraft_maintenance_unavailable|The aircraft is unavailable because of maintenance/.test(error.message)
+}

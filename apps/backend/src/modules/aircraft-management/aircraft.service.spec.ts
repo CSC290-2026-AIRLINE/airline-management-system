@@ -27,8 +27,9 @@ describe('AircraftService', () => {
   let tx: {
     aircraft: { create: jest.Mock; update: jest.Mock }
     aircraft_status_period: { create: jest.Mock; update: jest.Mock; findMany: jest.Mock }
-    aircraft_maintenance: { create: jest.Mock; update: jest.Mock }
+    aircraft_maintenance: { create: jest.Mock; update: jest.Mock; findUniqueOrThrow: jest.Mock }
     aircraft_operating_day: { deleteMany: jest.Mock; createMany: jest.Mock; findMany: jest.Mock }
+    $queryRaw: jest.Mock
   }
   let service: AircraftService
 
@@ -47,8 +48,9 @@ describe('AircraftService', () => {
     tx = {
       aircraft: { create: jest.fn(), update: jest.fn() },
       aircraft_status_period: { create: jest.fn(), update: jest.fn(), findMany: jest.fn() },
-      aircraft_maintenance: { create: jest.fn(), update: jest.fn() },
+      aircraft_maintenance: { create: jest.fn(), update: jest.fn(), findUniqueOrThrow: jest.fn() },
       aircraft_operating_day: { deleteMany: jest.fn(), createMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn(),
     }
     db = {
       aircraft: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
@@ -193,6 +195,37 @@ describe('AircraftService', () => {
 
       expect(result.available).toBe(false)
       expect(result.failing.map((check) => check.check)).toContain('range')
+    })
+
+    describe('a maintenance window that is not yet completed', () => {
+      beforeEach(() => {
+        const aCheck = {
+          id: 'p1',
+          status: 'in_maintenance',
+          origin: 'maintenance',
+          reason: 'Scheduled a_check',
+          start_date: new Date('2026-12-10T00:00:00Z'),
+          end_date: new Date('2026-12-12T00:00:00Z'),
+          deleted_at: null,
+        }
+        db.aircraft.findFirst.mockResolvedValue({
+          ...aircraftRow([aCheck]),
+          aircraft_type: { id: 't1', code: 'A320', model: 'A320', max_range_km: 6100 },
+          aircraft_operating_day: [],
+        })
+      })
+
+      it('blocks the aircraft inside its dates', async () => {
+        const result = await service.getAvailability('a1', { from: '2026-12-11', to: '2026-12-11' })
+
+        expect(result.failing.map((check) => check.check)).toContain('status')
+      })
+
+      it('does not block the aircraft after its end date', async () => {
+        const result = await service.getAvailability('a1', { from: '2027-01-20', to: '2027-01-20' })
+
+        expect(result.available).toBe(true)
+      })
     })
   })
 
@@ -447,6 +480,64 @@ describe('AircraftService', () => {
         ),
       ).rejects.toBeInstanceOf(ConflictException)
       expect(tx.aircraft_maintenance.create).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('maintenance approval', () => {
+    const request = {
+      id: 'm1',
+      aircraft_id: 'a1',
+      maintenance_type: 'c_check' as const,
+      status: 'pending_approval',
+      status_period_id: null,
+      planned_start_date: dateOnly(1),
+      planned_end_date: dateOnly(2),
+    }
+
+    it('stores a pending request without blocking the aircraft', async () => {
+      db.aircraft.findFirst.mockResolvedValue({ id: 'a1' })
+      tx.aircraft_maintenance.create.mockResolvedValue(request)
+      const result = await service.createMaintenance(
+        'a1',
+        {
+          maintenance_type: request.maintenance_type,
+          planned_start_date: request.planned_start_date.toISOString(),
+          planned_end_date: request.planned_end_date.toISOString(),
+        },
+        'requester',
+        'pending_approval',
+      )
+      expect(result.status).toBe('pending_approval')
+      expect(result.status_period_id).toBeNull()
+      expect(tx.aircraft_status_period.create).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['confirm', 'planned', 'p1'],
+      ['reject', 'rejected', null],
+    ] as const)('handles a %s decision and records it', async (decision, status, periodId) => {
+      tx.$queryRaw.mockResolvedValue([{ id: request.id }])
+      tx.aircraft_maintenance.findUniqueOrThrow.mockResolvedValue(request)
+      tx.aircraft_status_period.findMany.mockResolvedValue([])
+      tx.aircraft_status_period.create.mockResolvedValue({ id: 'p1' })
+      tx.aircraft_maintenance.update.mockResolvedValue({ ...request, status, status_period_id: periodId })
+
+      await expect(service.decideMaintenance('a1', 'm1', decision, 'reviewer')).resolves.toMatchObject({
+        status,
+        status_period_id: periodId,
+      })
+      expect(tx.aircraft_status_period.create).toHaveBeenCalledTimes(decision === 'confirm' ? 1 : 0)
+      expect(tx.aircraft_maintenance.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status, status_period_id: periodId }) }),
+      )
+      expect(auditRecord).toHaveBeenCalledWith(tx, 'reviewer', expect.objectContaining({ action: 'status_change', entityId: 'm1' }))
+    })
+
+    it('rejects a second decision on the same request', async () => {
+      tx.$queryRaw.mockResolvedValue([{ id: request.id }])
+      tx.aircraft_maintenance.findUniqueOrThrow.mockResolvedValue({ ...request, status: 'rejected' })
+      await expect(service.decideMaintenance('a1', 'm1', 'confirm', 'reviewer')).rejects.toBeInstanceOf(ConflictException)
+      expect(tx.aircraft_status_period.create).not.toHaveBeenCalled()
     })
   })
 

@@ -19,6 +19,10 @@ export interface EnvConfig {
    * TODO(F5-dev): delete this setting with the dev tools before the PR merges.
    */
   PAYMENT_DEV_TOOLS: boolean
+  /** Lets a browser GET run `src/db/seed.ts` through `GET /api/dev/seed` (`modules/dev-seed`). Off by default. */
+  DEV_SEED_ENABLED: boolean
+  /** Optional secret `?token=` for the seed route. When set, requests without it get 404. */
+  DEV_SEED_TOKEN: string
   S3_ENDPOINT?: string
   S3_ACCESS_KEY?: string
   S3_SECRET_KEY?: string
@@ -72,6 +76,9 @@ export function validateEnv(rawConfig: Record<string, string | undefined>): EnvC
     throw new Error('PAYMENT_DEV_TOOLS must not be on when NODE_ENV is production')
   }
 
+  const devSeed = String(rawConfig.DEV_SEED_ENABLED ?? '').toLowerCase() === 'true'
+  const devSeedToken = String(rawConfig.DEV_SEED_TOKEN ?? '')
+
   const storageValues = [rawConfig.S3_ENDPOINT, rawConfig.S3_ACCESS_KEY, rawConfig.S3_SECRET_KEY]
   const hasPartialStorageConfig = storageValues.some(Boolean) && !storageValues.every(Boolean)
   if (hasPartialStorageConfig) {
@@ -102,6 +109,8 @@ export function validateEnv(rawConfig: Record<string, string | undefined>): EnvC
     STRIPE_SECRET_KEY: rawConfig.STRIPE_SECRET_KEY ?? '',
     STRIPE_WEBHOOK_SECRET: rawConfig.STRIPE_WEBHOOK_SECRET ?? '',
     PAYMENT_DEV_TOOLS: devTools,
+    DEV_SEED_ENABLED: devSeed,
+    DEV_SEED_TOKEN: devSeedToken,
     ...(rawConfig.S3_ENDPOINT
       ? {
           S3_ENDPOINT: rawConfig.S3_ENDPOINT,

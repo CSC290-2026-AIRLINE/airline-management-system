@@ -89,7 +89,7 @@ export class DbAircraftDirectory implements AircraftDirectory {
       }
     }
 
-    // No period for a day means in service. end_date is the inclusive last day; null is open-ended.
+    // A grounding or maintenance window blocks the aircraft from its start date to its end date.
     const period = await this.db.aircraft_status_period.findFirst({
       where: {
         aircraft_id: aircraftId,
