@@ -123,9 +123,14 @@ function AddonTableList({
             <span className="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
               <span className="text-sm font-medium">{p.name}</span>
               {p.description ? <span className="text-sm text-muted-foreground">{p.description}</span> : null}
+              {p.unavailableReason && (
+                <Badge variant="outline" className="self-start">
+                  {p.unavailableReason}
+                </Badge>
+              )}
             </span>
             <span className="shrink-0 text-sm font-medium tabular-nums">
-              {p.unitPrice === 0 ? 'Free' : formatMoney(p.unitPrice, currency)}
+              {p.priceLabel ?? (p.unitPrice === 0 ? 'Free' : formatMoney(p.unitPrice, currency))}
             </span>
             <span className="flex w-28 shrink-0 justify-end">
               {qty > 0 ? (
@@ -150,7 +155,7 @@ function AddonTableList({
                     className="rounded-full"
                     aria-label={`Add one more ${p.name}`}
                     onClick={() => onAdd(p.id)}
-                    disabled={disabled}
+                    disabled={disabled || !!p.unavailableReason}
                   >
                     <Plus />
                   </Button>
@@ -162,7 +167,7 @@ function AddonTableList({
                   className="rounded-full px-4"
                   aria-label={`Add ${p.name}`}
                   onClick={() => onAdd(p.id)}
-                  disabled={disabled}
+                  disabled={disabled || !!p.unavailableReason}
                 >
                   Add
                 </Button>

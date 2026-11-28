@@ -37,7 +37,6 @@ export function menuCabinFor(cabin: F12Cabin): F12Cabin {
 export function offeringsInScope(rows: OfferingRow[], scope: MenuScope): OfferingRow[] {
   const cabin = menuCabinFor(scope.cabin)
   return rows.filter((row) => {
-    if (!row.isActive) return false
     if (row.cabin !== cabin) return false
     if (row.scope === 'network') return row.routeId === null && row.flightId === null
     if (row.scope === 'route') return row.routeId === scope.routeId && row.flightId === null
@@ -49,11 +48,8 @@ export function offeringsInScope(rows: OfferingRow[], scope: MenuScope): Offerin
 // replaces the others as a whole.
 export function resolveOfferings(rows: OfferingRow[], scope: MenuScope): OfferingRow[] {
   const scoped = offeringsInScope(rows, scope)
-  const flightRows = scoped.filter((r) => r.scope === 'flight')
-  if (flightRows.length > 0) return flightRows
-  const routeRows = scoped.filter((r) => r.scope === 'route')
-  if (routeRows.length > 0) return routeRows
-  return scoped.filter((r) => r.scope === 'network')
+  const level = ['flight', 'route', 'network'].find((scope) => scoped.some((row) => row.scope === scope))
+  return scoped.filter((row) => row.scope === level && row.isActive)
 }
 
 // The default meal for a cabin: the one offering flagged as default at

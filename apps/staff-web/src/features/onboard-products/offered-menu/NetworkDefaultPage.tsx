@@ -4,18 +4,19 @@
 /* eslint-disable react-hooks/set-state-in-effect -- sync setState mirrors an external source */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@staff-web/components/ui/alert'
 import { Button } from '@staff-web/components/ui/button'
 import { Skeleton } from '@staff-web/components/ui/skeleton'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@staff-web/components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@staff-web/components/ui/card'
 import { PageHeader } from '@staff-web/features/onboard-products/ui'
 import { useOnboardApi } from '@staff-web/features/onboard-products/api'
 import type { Cabin, CabinSetting, Product, ProductOffering, SettingPatch } from '@staff-web/features/onboard-products/api/types'
 import { resolveCabinSettings, resolveMenu } from '@staff-web/features/onboard-products/offered-menu/resolve'
 import { CabinTile, MenuPanel, RulesForm } from './parts'
+import { useMenuDraft } from './useMenuDraft'
 
 const CABINS: Cabin[] = ['economy', 'premium_economy', 'business']
 
@@ -26,7 +27,7 @@ interface Draft {
   preorderEnabled: boolean
   orderWindowHours: number
   premiumMealsAllowed: boolean
-  snacksEnabled: boolean
+  snacksService: 'complimentary' | 'paid' | 'none'
   dutyFreeEnabled: boolean
   onboardBufferPercent: number
 }
@@ -45,7 +46,7 @@ function settingToDraft(s: CabinSetting | null): Draft {
     preorderEnabled: s?.preorderEnabled ?? true,
     orderWindowHours: s?.orderWindowHours ?? 48,
     premiumMealsAllowed: s?.premiumMealsAllowed ?? true,
-    snacksEnabled: s?.snacksEnabled ?? true,
+    snacksService: s?.snacksEnabled === false ? 'none' : s?.snacksComplimentary ? 'complimentary' : 'paid',
     dutyFreeEnabled: s?.dutyFreeEnabled ?? true,
     onboardBufferPercent: s?.onboardBufferPercent ?? 10,
   }
@@ -54,7 +55,11 @@ function settingToDraft(s: CabinSetting | null): Draft {
 function draftToPatch(d: Draft, original: Draft): SettingPatch {
   const patch: SettingPatch = {}
   for (const k of Object.keys(d) as (keyof Draft)[]) {
-    if (d[k] !== original[k]) {
+    if (d[k] === original[k]) continue
+    if (k === 'snacksService') {
+      patch.snacksEnabled = d.snacksService !== 'none'
+      patch.snacksComplimentary = d.snacksService === 'complimentary'
+    } else {
       ;(patch as Record<string, unknown>)[k] = d[k]
     }
   }
@@ -80,9 +85,11 @@ function cabinSummary(s: CabinSetting | null): { headline: string; subline: stri
 
 export function NetworkDefaultPage() {
   const api = useOnboardApi()
+  const navigate = useNavigate()
   const [settings, setSettings] = useState<CabinSetting[] | null>(null)
   const [offerings, setOfferings] = useState<ProductOffering[] | null>(null)
-  const [mealProducts, setMealProducts] = useState<Product[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const mealProducts = products.filter((product) => product.category === 'meal')
   const [loading, setLoading] = useState(true)
   const [cabin, setCabin] = useState<Cabin>('economy')
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -104,7 +111,7 @@ export function NetworkDefaultPage() {
         if (cancelled) return
         setSettings(d.cabinSettings)
         setOfferings(d.offerings)
-        setMealProducts(products.filter((p) => p.category === 'meal'))
+        setProducts(products.filter((product) => product.isActive))
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -121,6 +128,8 @@ export function NetworkDefaultPage() {
 
   const activeRow = settings?.find((s) => s.scope === 'network' && s.cabin === cabin) ?? null
   const effectiveMenu = useMemo(() => resolveMenu(offerings ?? [], cabin, null, null), [offerings, cabin])
+  const menuCabin = cabin === 'premium_economy' ? 'economy' : cabin
+  const menuDraft = useMenuDraft(menuCabin, effectiveMenu.menu, mealProducts)
 
   useEffect(() => {
     if (!settings) return
@@ -167,7 +176,7 @@ export function NetworkDefaultPage() {
   }
 
   // The menu also holds snacks, drinks and duty-free; the tiles and the menu panel count meals only.
-  const mealsIn = (menu: { productId: string }[]) => menu.filter((o) => mealProducts.some((p) => p.id === o.productId)).length
+  const mealsIn = (menu: ProductOffering[]) => menu.filter((o) => o.isActive && mealProducts.some((p) => p.id === o.productId)).length
 
   function cabinTileSubline(c: Cabin): string {
     const m = resolveMenu(offerings ?? [], c, null, null)
@@ -178,23 +187,37 @@ export function NetworkDefaultPage() {
   }
 
   async function handleSave() {
-    if (!draft || !original) return
+    if (!draft || !original || saving) return
     setErrors({})
     const patch = draftToPatch(draft, original)
-    if (Object.keys(patch).length === 0) {
+    const hasSettings = Object.keys(patch).length > 0
+    if (!hasSettings && menuDraft.changes.length === 0) {
       showToast('info', 'No changes to save.')
       return
     }
     setSaving(true)
     try {
-      const result = await api.offerings.putCabinSettings('network', null, null, cabin, patch)
+      let affectedOpenOrders = 0
+      if (hasSettings) {
+        const result = await api.offerings.putCabinSettings('network', null, null, cabin, patch)
+        affectedOpenOrders = result.affectedOpenOrders
+      }
+      for (const change of menuDraft.changes) {
+        await api.offerings.createProductOffering({
+          productId: change.productId,
+          scope: 'network',
+          routeId: null,
+          flightId: null,
+          cabin: menuCabin,
+          isActive: change.isActive,
+          isDefault: change.isDefault,
+        })
+      }
       showToast(
         'success',
-        `Saved ${cabinLabel(cabin)} settings.${result.affectedOpenOrders > 0 ? ` ${result.affectedOpenOrders} open orders updated.` : ''}`,
+        `Saved ${cabinLabel(cabin)} changes.${affectedOpenOrders > 0 ? ` ${affectedOpenOrders} open orders updated.` : ''}`,
       )
-      const fresh = await api.offerings.getNetworkDefault()
-      setSettings(fresh.cabinSettings)
-      setOfferings(fresh.offerings)
+      void navigate({ to: '/catering/offered-menu' })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not save.'
       const code = (err as { code?: string }).code
@@ -209,80 +232,6 @@ export function NetworkDefaultPage() {
     } finally {
       setSaving(false)
     }
-  }
-
-  // Optimistic toggle: update offerings immediately; revert on failure.
-  function handleToggleOffering(productId: string, isActive: boolean) {
-    const current = offerings ?? []
-    setOfferings((o) => {
-      if (!o) return o
-      const existing = o.find((x) => x.productId === productId && x.cabin === cabin && x.scope === 'network')
-      if (existing) {
-        return o.map((x) => (x.id === existing.id ? { ...x, isActive } : x))
-      }
-      const input = {
-        productId,
-        scope: 'network' as const,
-        routeId: null,
-        flightId: null,
-        cabin,
-        isDefault: o.find((x) => x.cabin === cabin && x.isActive) == null,
-        isActive,
-      }
-      return [...o, { id: `optimistic-${Date.now()}`, ...input }]
-    })
-
-    const existing = current.find((x) => x.productId === productId && x.cabin === cabin && x.scope === 'network')
-    const work = existing
-      ? api.offerings.updateProductOffering(existing.id, { isActive })
-      : api.offerings.createProductOffering({
-          productId,
-          scope: 'network',
-          routeId: null,
-          flightId: null,
-          cabin,
-          isDefault: current.find((x) => x.cabin === cabin && x.isActive) == null,
-          isActive,
-        })
-
-    work
-      .then(() => api.offerings.getNetworkDefault())
-      .then((fresh) => {
-        setSettings(fresh.cabinSettings)
-        setOfferings(fresh.offerings)
-      })
-      .catch((err: unknown) => {
-        setOfferings((o) => {
-          if (!o) return o
-          return o.map((x) => (x.productId === productId && x.cabin === cabin ? { ...x, isActive: !isActive } : x))
-        })
-        showToast('error', err instanceof Error ? err.message : 'Could not update menu.')
-      })
-  }
-
-  function handleSetDefault(productId: string) {
-    setOfferings((o) => {
-      if (!o) return o
-      return o.map((x) => {
-        if (x.cabin !== cabin) return x
-        if (x.scope !== 'network') return x
-        if (x.productId === productId) return { ...x, isDefault: true, isActive: true }
-        return { ...x, isDefault: false }
-      })
-    })
-
-    const existing = effectiveMenu.menu.find((o) => o.productId === productId)
-    if (!existing) return
-    api.offerings
-      .updateProductOffering(existing.id, { isDefault: true, isActive: true })
-      .then(() => api.offerings.getNetworkDefault())
-      .then((fresh) => {
-        setSettings(fresh.cabinSettings)
-        setOfferings(fresh.offerings)
-      })
-      .catch((err: unknown) => {
-        showToast('error', err instanceof Error ? err.message : 'Could not change the default meal.')
-      })
   }
 
   return (
@@ -322,24 +271,33 @@ export function NetworkDefaultPage() {
         <Card className="gap-5">
           <CardHeader>
             <CardTitle>{cabinLabel(cabin)} · rules and menu</CardTitle>
+            <CardDescription>
+              Item changes apply to {cabinLabel(menuCabin)}
+              {menuCabin === 'economy' ? ' and Premium economy' : ''}.
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <RulesForm draft={draft} errors={errors} setField={setField} />
             <MenuPanel
-              mealProducts={mealProducts}
-              menu={effectiveMenu.menu}
-              offeredCount={mealsIn(effectiveMenu.menu)}
-              defaultOfferingId={effectiveMenu.defaultOfferingId}
+              products={products}
+              menu={menuDraft.menu}
+              defaultOfferingId={menuDraft.defaultOfferingId}
               warning={warning}
-              onToggle={handleToggleOffering}
+              disabled={saving}
+              onToggle={menuDraft.stage}
               onSetDefault={(offeringId) => {
-                const off = effectiveMenu.menu.find((o) => o.id === offeringId)
+                const off = menuDraft.menu.find((o) => o.id === offeringId)
                 const productId = off ? mealProducts.find((p) => p.id === off.productId)?.id : undefined
-                if (productId) handleSetDefault(productId)
+                if (productId) menuDraft.stage(productId, true, true)
               }}
             />
           </CardContent>
           <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+            {menuDraft.changes.length > 0 && (
+              <span role="status" className="text-sm text-muted-foreground">
+                Unsaved menu changes
+              </span>
+            )}
             <span className="text-sm text-muted-foreground">
               {resolved && <span>Network default — applies to every route until overridden.</span>}
             </span>

@@ -301,6 +301,7 @@ model cabin_setting {
   order_window_hours     Int?
   premium_meals_allowed  Boolean?
   snacks_enabled         Boolean?
+  snacks_complimentary   Boolean?
   duty_free_enabled      Boolean?
   onboard_buffer_percent Int?
   updated_by_staff_id    String?  @db.Uuid
@@ -319,6 +320,7 @@ model catering_order {
   warehouse_id          String                @db.Uuid
   status                String                @default("generated")
   cutoff_at             DateTime              @db.Timestamptz(6)
+  simulated_cutoff_at   DateTime?             @db.Timestamptz(6)
   generated_at          DateTime              @db.Timestamptz(6)
   generated_by_staff_id String?               @db.Uuid
   loaded_at             DateTime?             @db.Timestamptz(6)

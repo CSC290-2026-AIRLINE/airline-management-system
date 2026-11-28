@@ -59,6 +59,7 @@ export interface ResolvedCabinSetting {
   orderWindowHours: number
   premiumMealsAllowed: boolean
   snacksEnabled: boolean
+  snacksComplimentary: boolean
   dutyFreeEnabled: boolean
   onboardBufferPercent: number
 }
@@ -75,6 +76,7 @@ export interface CabinSettingRow {
   orderWindowHours: number | null
   premiumMealsAllowed: boolean | null
   snacksEnabled: boolean | null
+  snacksComplimentary?: boolean | null
   dutyFreeEnabled: boolean | null
   onboardBufferPercent: number | null
 }
@@ -96,6 +98,7 @@ const NETWORK_DEFAULTS: ResolvedCabinSetting = {
   orderWindowHours: 48,
   premiumMealsAllowed: false,
   snacksEnabled: true,
+  snacksComplimentary: false,
   dutyFreeEnabled: false,
   onboardBufferPercent: 10,
 }
@@ -127,6 +130,7 @@ function pickFirst(rows: Array<CabinSettingRow | null | undefined>): ResolvedCab
     'orderWindowHours',
     'premiumMealsAllowed',
     'snacksEnabled',
+    'snacksComplimentary',
     'dutyFreeEnabled',
     'onboardBufferPercent',
   ]
@@ -135,7 +139,7 @@ function pickFirst(rows: Array<CabinSettingRow | null | undefined>): ResolvedCab
     if (!row) continue
     for (const f of fields) {
       if (set.has(f)) continue
-      const v = row[f] as unknown
+      const v = f === 'snacksComplimentary' ? (row.snacksComplimentary ?? (row.snacksEnabled == null ? null : false)) : row[f]
       if (v != null) {
         ;(out as unknown as Record<string, unknown>)[f] = v
         set.add(f)
@@ -157,6 +161,7 @@ export function resolveCabinSettingWithSources(rows: CabinSettingRow[]): Resolve
     'orderWindowHours',
     'premiumMealsAllowed',
     'snacksEnabled',
+    'snacksComplimentary',
     'dutyFreeEnabled',
     'onboardBufferPercent',
   ]
@@ -168,7 +173,7 @@ export function resolveCabinSettingWithSources(rows: CabinSettingRow[]): Resolve
     if (!row) continue
     for (const field of fields) {
       if (set.has(field)) continue
-      const value = row[field]
+      const value = field === 'snacksComplimentary' ? (row.snacksComplimentary ?? (row.snacksEnabled == null ? null : false)) : row[field]
       if (value != null) {
         ;(values as unknown as Record<string, unknown>)[field] = value
         sources[field] = row.scope

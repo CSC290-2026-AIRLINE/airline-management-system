@@ -399,6 +399,8 @@ export function toOfferingInput(input: {
   cabin: ProductOffering['cabin']
   isDefault: boolean
   isActive: boolean
+  copyInheritedMenu?: boolean
+  allRouteCabins?: boolean
 }): Record<string, unknown> {
   return {
     productId: input.productId,
@@ -408,6 +410,8 @@ export function toOfferingInput(input: {
     cabin: input.cabin,
     isDefault: input.isDefault,
     isActive: input.isActive,
+    copyInheritedMenu: input.copyInheritedMenu,
+    allRouteCabins: input.allRouteCabins,
   }
 }
 
@@ -426,6 +430,7 @@ interface WireCabinSetting {
   orderWindowHours: number | null
   premiumMealsAllowed: boolean | null
   snacksEnabled: boolean | null
+  snacksComplimentary?: boolean | null
   dutyFreeEnabled: boolean | null
   onboardBufferPercent: number | null
 }
@@ -444,6 +449,7 @@ export function mapCabinSetting(wire: WireCabinSetting): CabinSetting {
     orderWindowHours: wire.orderWindowHours == null ? null : Number(wire.orderWindowHours),
     premiumMealsAllowed: wire.premiumMealsAllowed,
     snacksEnabled: wire.snacksEnabled,
+    snacksComplimentary: wire.snacksComplimentary ?? (wire.snacksEnabled == null ? null : false),
     dutyFreeEnabled: wire.dutyFreeEnabled,
     onboardBufferPercent: wire.onboardBufferPercent == null ? null : Number(wire.onboardBufferPercent),
   } as CabinSetting
@@ -632,6 +638,8 @@ interface WireCateringOrder {
   aircraftId: string
   cabin?: string
   lines: WireCateringOrderLine[]
+  confirmedPreorders?: CateringOrder['confirmedPreorders']
+  orderingOpen?: boolean
 }
 
 export function mapCateringOrderLine(wire: WireCateringOrderLine): CateringOrderLine {
@@ -664,6 +672,8 @@ export function mapCateringOrder(wire: WireCateringOrder): CateringOrder {
     warehouseId: wire.warehouseId ?? '',
     aircraftId: required('GET /api/staff/flights/:flightId/catering-order', 'aircraftId', wire.aircraftId),
     lines: wire.lines.map(mapCateringOrderLine),
+    confirmedPreorders: wire.confirmedPreorders ?? [],
+    orderingOpen: wire.orderingOpen,
   }
 }
 

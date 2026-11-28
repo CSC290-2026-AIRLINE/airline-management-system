@@ -20,6 +20,7 @@ import {
   toCabinSettingInput,
   toOfferingInput,
   type ReportableFlight,
+  type RouteFlight,
 } from './mappers'
 import { MissingIdError, requireId } from './guards'
 import type { Cabin, CabinSetting, FlightException, ProductOffering, RouteDetail, RouteFilter, RouteSummary, SettingPatch } from './types'
@@ -51,6 +52,7 @@ export interface OfferingsApi {
   getOfferedMenu: () => Promise<OfferedMenu>
   listRoutes: (filter: RouteFilter) => Promise<{ total: number; totalCustomized: number; routes: RouteSummary[] }>
   listFlightExceptions: (filter: { search: string }) => Promise<{ total: number; exceptions: FlightException[] }>
+  listNetworkFlights: () => Promise<RouteFlight[]>
   getRouteDetail: (routeId: string) => Promise<RouteDetail>
   getNetworkDefault: () => Promise<NetworkDefaults>
   listProductOfferings: (filters?: { routeId?: string; cabin?: Cabin }) => Promise<ProductOffering[]>
@@ -73,6 +75,8 @@ export interface OfferingsApi {
     cabin: Cabin
     isDefault: boolean
     isActive: boolean
+    copyInheritedMenu?: boolean
+    allRouteCabins?: boolean
   }) => Promise<ProductOffering>
   updateProductOffering: (id: string, patch: { isActive?: boolean; isDefault?: boolean }) => Promise<ProductOffering>
   deleteProductOffering: (id: string) => Promise<void>
@@ -115,6 +119,8 @@ function summarizeException(settings: CabinSetting[], flightId: string, cabin: C
   if (row.mealSelection != null) bits.push('meal selection')
   if (row.orderWindowHours != null) bits.push('order window')
   if (row.includedPerPassenger != null) bits.push('included')
+  if (row.snacksEnabled != null || row.snacksComplimentary != null) bits.push('snacks and drinks')
+  if (row.dutyFreeEnabled != null) bits.push('duty-free')
   return bits.join(', ')
 }
 
@@ -128,7 +134,7 @@ function changedFields(row: CabinSetting): string[] {
   if (row.includedPerPassenger != null) bits.push('included')
   if (row.preorderEnabled != null) bits.push('pre-order')
   if (row.premiumMealsAllowed != null) bits.push('premium meals')
-  if (row.snacksEnabled != null) bits.push('snacks')
+  if (row.snacksEnabled != null || row.snacksComplimentary != null) bits.push('snacks and drinks')
   if (row.dutyFreeEnabled != null) bits.push('duty free')
   if (row.onboardBufferPercent != null) bits.push('onboard buffer')
   return bits
@@ -180,12 +186,10 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
     return loadCabinSettings('route', routeId)
   }
 
-  async function loadRouteFlights(
-    routeId: string,
-  ): Promise<RouteSummary['cabinStatuses'] extends never ? never : import('./mappers').RouteFlight[]> {
-    requireId('GET /api/staff/routes/:routeId/flights', 'routeId', routeId)
-    const wire = await client.get<unknown[]>(`/api/staff/routes/${routeId}/flights`)
-    return (wire ?? []).map((f) => mapRouteFlight(f as never))
+  async function loadFlights(routeId?: string): Promise<RouteFlight[]> {
+    const path = routeId ? `/api/staff/routes/${routeId}/flights` : '/api/staff/routes/flights'
+    const wire = await client.get<unknown[]>(path)
+    return (wire ?? []).map((flight) => mapRouteFlight(flight as never))
   }
 
   // The single-flight exceptions: the flights that override their
@@ -193,43 +197,49 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
   // backend has no list route for them, so they are read from the
   // scope endpoints and the route's flights.
   async function loadFlightExceptions(): Promise<FlightException[]> {
-    const [routes, flightSettings, offerings] = await Promise.all([loadRoutes(), loadAllFlightCabinSettings(), loadOfferings()])
+    const [routes, flightSettings, offerings, flights] = await Promise.all([
+      loadRoutes(),
+      loadAllFlightCabinSettings(),
+      loadOfferings(),
+      loadFlights(),
+    ])
+    const routesById = new Map(routes.map((route) => [route.id, route]))
     const rows: FlightException[] = []
-    for (const route of routes) {
-      const flights = await loadRouteFlights(route.id)
-      for (const flight of flights) {
-        const settings = flightSettings.filter((s) => s.flightId === flight.id)
-        const flightOfferings = offerings.filter((o) => o.scope === 'flight' && o.flightId === flight.id)
-        const routeLabel = `${route.originAirport} → ${route.destinationAirport}`
-        for (const setting of settings) {
-          rows.push({
-            id: flight.id,
-            routeId: route.id,
-            flightNumber: flight.flightNumber,
-            scheduledDeparture: flight.scheduledDeparture,
-            cabin: setting.cabin,
-            changedSettings: changedFields(setting),
-            route: routeLabel,
-          })
-        }
-        // A flight can also override the menu only.
-        if (settings.length === 0 && flightOfferings.length > 0) {
-          rows.push({
-            id: flight.id,
-            routeId: route.id,
-            flightNumber: flight.flightNumber,
-            scheduledDeparture: flight.scheduledDeparture,
-            cabin: flightOfferings[0].cabin,
-            changedSettings: ['menu'],
-            route: routeLabel,
-          })
-        }
+    for (const flight of flights) {
+      const route = routesById.get(flight.routeId)
+      if (!route) continue
+      const settings = flightSettings.filter((s) => s.flightId === flight.id)
+      const flightOfferings = offerings.filter((o) => o.scope === 'flight' && o.flightId === flight.id)
+      const routeLabel = `${route.originAirport} → ${route.destinationAirport}`
+      for (const setting of settings) {
+        rows.push({
+          id: flight.id,
+          routeId: route.id,
+          flightNumber: flight.flightNumber,
+          scheduledDeparture: flight.scheduledDeparture,
+          cabin: setting.cabin,
+          changedSettings: changedFields(setting),
+          route: routeLabel,
+        })
+      }
+      // A flight can also override the menu only.
+      if (settings.length === 0 && flightOfferings.length > 0) {
+        rows.push({
+          id: flight.id,
+          routeId: route.id,
+          flightNumber: flight.flightNumber,
+          scheduledDeparture: flight.scheduledDeparture,
+          cabin: flightOfferings[0].cabin,
+          changedSettings: ['menu'],
+          route: routeLabel,
+        })
       }
     }
     return rows
   }
 
   return {
+    listNetworkFlights: () => loadFlights(),
     async getOfferedMenu() {
       try {
         const [netSettings, networkOfferings, allRoutes, offerings, exceptions] = await Promise.all([
@@ -324,7 +334,7 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
           loadRouteOverrides(routeId),
           loadCabinSettings('network', null),
           loadOfferings(),
-          loadRouteFlights(routeId).catch((err: unknown) => {
+          loadFlights(routeId).catch((err: unknown) => {
             if (err instanceof MissingIdError) return []
             throw err
           }),
@@ -418,6 +428,7 @@ export function createOfferingsApi(client: ApiClient): OfferingsApi {
         orderWindowHours: null,
         premiumMealsAllowed: null,
         snacksEnabled: null,
+        snacksComplimentary: null,
         dutyFreeEnabled: null,
         onboardBufferPercent: null,
       }

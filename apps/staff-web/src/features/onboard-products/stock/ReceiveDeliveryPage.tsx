@@ -86,6 +86,8 @@ export function ReceiveDeliveryPage() {
   const [managingSuppliers, setManagingSuppliers] = useState(false)
   const [supplierManageBusy, setSupplierManageBusy] = useState(false)
 
+  const stockSearch = { airport: warehouses.find((warehouse) => warehouse.id === warehouseId)?.code ?? search.airport }
+
   function showToast(kind: 'success' | 'error', message: string) {
     if (kind === 'success') toast.success(message)
     else toast.error(message)
@@ -349,7 +351,7 @@ export function ReceiveDeliveryPage() {
   return (
     <div className="flex flex-col gap-6">
       <Button asChild variant="ghost" size="sm" className="-ml-2 self-start text-muted-foreground">
-        <Link to="/catering/stock">
+        <Link to="/catering/stock" search={stockSearch}>
           <ArrowLeft aria-hidden="true" />
           Back to Stock
         </Link>
@@ -517,7 +519,12 @@ export function ReceiveDeliveryPage() {
             <span className="font-semibold text-foreground">{formatMoney(totals.total)}</span>
           </span>
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => void navigate({ to: '/catering/stock' })} disabled={submitting}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void navigate({ to: '/catering/stock', search: stockSearch })}
+              disabled={submitting}
+            >
               Cancel
             </Button>
             <Button type="button" onClick={() => void onSubmit()} disabled={submitting || validation.length > 0 || loading}>

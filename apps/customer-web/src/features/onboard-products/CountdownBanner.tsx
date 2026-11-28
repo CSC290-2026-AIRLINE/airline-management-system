@@ -9,13 +9,15 @@ import { formatCountdown, formatDateTime } from './format'
 interface Props {
   cutoffAt: string | null
   isOpen: boolean
+  clockOffsetMs?: number
+  preorderEnabled?: boolean
   // The cabin's order window in hours, from its resolved cabin setting.
   windowHours: number | null
   // The departure airport's time zone, so the close time matches the flight times.
   timeZone?: string | null
 }
 
-export function CountdownBanner({ cutoffAt, isOpen, windowHours, timeZone }: Props) {
+export function CountdownBanner({ cutoffAt, isOpen, windowHours, timeZone, clockOffsetMs = 0, preorderEnabled }: Props) {
   // Captured once on mount; refreshed by the interval below. Capturing
   // via useState initializer avoids the "synchronous setState in effect"
   // rule — the value is stable for the first render, then the interval
@@ -30,12 +32,18 @@ export function CountdownBanner({ cutoffAt, isOpen, windowHours, timeZone }: Pro
   if (!isOpen) {
     return (
       <Alert role="status" className="text-muted-foreground">
-        <AlertDescription className="col-start-2 text-muted-foreground">Ordering closed for this flight.</AlertDescription>
+        <AlertDescription className="col-start-2 text-muted-foreground">
+          {preorderEnabled === false
+            ? 'Preordering is unavailable in this cabin.'
+            : cutoffAt
+              ? `Preordering closed at ${formatDateTime(cutoffAt, timeZone)}.`
+              : 'Preordering is closed for this flight.'}
+        </AlertDescription>
       </Alert>
     )
   }
 
-  const msRemaining = cutoffAt ? new Date(cutoffAt).getTime() - now : 0
+  const msRemaining = cutoffAt ? new Date(cutoffAt).getTime() - (now + clockOffsetMs) : 0
   const countdown = msRemaining > 0 ? formatCountdown(msRemaining) : '0 m'
 
   return (

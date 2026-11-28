@@ -60,11 +60,9 @@ export class PaymentEventsService {
     }
 
     const now = this.clock.now()
-    const decision = decidePaymentEvent(
-      { id: order.id, status: order.status, expiresAt: order.expires_at, paidAt: order.paid_at },
-      event,
-      now,
-    )
+    const cutoff = order.flight?.catering_order?.simulated_cutoff_at
+    const expiresAt = cutoff && cutoff < order.expires_at ? cutoff : order.expires_at
+    const decision = decidePaymentEvent({ id: order.id, status: order.status, expiresAt, paidAt: order.paid_at }, event, now)
 
     if (decision.action === 'ignore') {
       return {
@@ -198,13 +196,13 @@ export class PaymentEventsService {
   private async findOrder(event: PaymentEventInput) {
     const byReference = await this.db.product_order.findUnique({
       where: { id: event.reference },
-      include: { product_order_line: true },
+      include: { product_order_line: true, flight: { select: { catering_order: { select: { simulated_cutoff_at: true } } } } },
     })
     if (byReference) return byReference
     if (!event.paymentId) return null
     return this.db.product_order.findFirst({
       where: { payment_id: event.paymentId },
-      include: { product_order_line: true },
+      include: { product_order_line: true, flight: { select: { catering_order: { select: { simulated_cutoff_at: true } } } } },
     })
   }
 

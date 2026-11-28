@@ -38,6 +38,9 @@ import {
   type ProductOrderStatus,
 } from './dto/product-order.dto'
 
+// F12 customer catalog prices are entered in USD by catering staff.
+const CUSTOMER_ORDER_CURRENCY = 'USD'
+
 interface ProductRow {
   id: string
   sku: string
@@ -91,13 +94,13 @@ export class ProductOrdersService {
     const cabin = this.resolveCabin(query.cabin)
     const settings = await this.settings.resolveForFlight(flightId, cabin)
     const now = this.clock.now()
-    const cutoff = cutoffAt(flight.scheduledDeparture, settings.orderWindowHours)
+    const cutoff = await this.orderCutoff(flightId, flight.scheduledDeparture, settings.orderWindowHours)
 
     const menu = await this.menuFor(flightId, flight.routeId, cabin)
     const productIds = menu.map((m) => m.productId)
     const products = productIds.length
       ? await this.db.product.findMany({
-          where: { id: { in: productIds }, deleted_at: null },
+          where: { id: { in: productIds }, deleted_at: null, is_active: true },
           include: { product_dietary: true },
         })
       : []
@@ -121,7 +124,12 @@ export class ProductOrdersService {
         hasTier = false
       }
     }
-    const pricing = { mealService: settings.mealService, includedPerPassenger: settings.includedPerPassenger, hasTier }
+    const pricing = {
+      mealService: settings.mealService,
+      includedPerPassenger: settings.includedPerPassenger,
+      snacksComplimentary: settings.snacksComplimentary,
+      hasTier,
+    }
     const customerPrice = (p: { id: string; category: string; price_amount: unknown; is_premium: boolean }) => {
       const basis = priceBasisFor(
         {
@@ -159,10 +167,10 @@ export class ProductOrdersService {
       bookingId: query.bookingId ?? null,
       cabin,
       settings,
+      catalogTime: now.toISOString(),
       cutoffAt: cutoff.toISOString(),
       orderWindowOpen: isOrderWindowOpen(now, cutoff),
-      // Prices are in F4's base currency (the doc: no currency column on product); the shop shows this code.
-      currency: await this.cateringSettings.baseCurrency(),
+      currency: CUSTOMER_ORDER_CURRENCY,
       products: products.map((p) => {
         const available = availableByProduct.get(p.id) ?? 0
         return {
@@ -209,7 +217,7 @@ export class ProductOrdersService {
     const flight = await this.flightContext.getFlight(input.flightId)
     const settings = await this.settings.resolveForFlight(input.flightId, input.cabin)
     const now = this.clock.now()
-    const cutoff = cutoffAt(flight.scheduledDeparture, settings.orderWindowHours)
+    const cutoff = await this.orderCutoff(input.flightId, flight.scheduledDeparture, settings.orderWindowHours)
     if (!settings.preorderEnabled) {
       throw new ApiErrorException('ORDER_WINDOW_CLOSED', 'Pre-ordering is not available in this cabin.', 409)
     }
@@ -237,12 +245,13 @@ export class ProductOrdersService {
     const priced = priceOrder(pricingLines, {
       mealService: settings.mealService,
       includedPerPassenger: settings.includedPerPassenger,
+      snacksComplimentary: settings.snacksComplimentary,
       hasTier: tier !== 'none',
     })
 
     const warehouse = await this.flightContext.warehouseForFlight(input.flightId)
     const holdMinutes = await this.cateringSettings.paymentHoldMinutes()
-    const currency = await this.cateringSettings.baseCurrency()
+    const currency = CUSTOMER_ORDER_CURRENCY
     const expiresAt = orderExpiresAt(now, holdMinutes, cutoff)
 
     // One reservation per product, for the whole order.
@@ -376,7 +385,7 @@ export class ProductOrdersService {
 
     const flight = await this.flightContext.getFlight(order.flight_id)
     const settings = await this.settings.resolveForFlight(order.flight_id, order.cabin as F12Cabin)
-    const cutoff = cutoffAt(flight.scheduledDeparture, settings.orderWindowHours)
+    const cutoff = await this.orderCutoff(order.flight_id, flight.scheduledDeparture, settings.orderWindowHours)
     if (!isOrderWindowOpen(this.clock.now(), cutoff)) {
       throw new ApiErrorException('ORDER_WINDOW_CLOSED', 'The order window for this flight has closed.', 409, {
         cutoffAt: cutoff.toISOString(),
@@ -427,7 +436,10 @@ export class ProductOrdersService {
   // is left alone.
   async expireUnpaidOrders(now: Date): Promise<number> {
     const due = await this.db.product_order.findMany({
-      where: { status: 'pending_payment', expires_at: { lte: now } },
+      where: {
+        status: 'pending_payment',
+        OR: [{ expires_at: { lte: now } }, { flight: { catering_order: { simulated_cutoff_at: { lte: now } } } }],
+      },
       include: { product_order_line: { where: { deleted_at: null } } },
     })
     let expired = 0
@@ -566,7 +578,7 @@ export class ProductOrdersService {
   // The menu for a flight and cabin, resolved from the offering rows.
   async menuFor(flightId: string, routeId: string, cabin: F12Cabin): Promise<OfferingRow[]> {
     const rows = await this.db.product_offering.findMany({
-      where: { deleted_at: null, is_active: true },
+      where: { deleted_at: null },
     })
     const mapped: OfferingRow[] = (rows as unknown as OfferingDbRow[]).map((r) => ({
       id: r.id,
@@ -615,8 +627,8 @@ export class ProductOrdersService {
           product: line.productId,
         })
       }
-      if (product.category === 'snack' && !settings.snacksEnabled) {
-        throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Snacks are not offered in this cabin.', 409)
+      if ((product.category === 'snack' || product.category === 'beverage') && !settings.snacksEnabled) {
+        throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Snacks and drinks are not offered in this cabin.', 409)
       }
       if (product.category === 'duty_free' && !settings.dutyFreeEnabled) {
         throw new ApiErrorException('PRODUCT_NOT_OFFERED', 'Duty-free is not offered in this cabin.', 409)
@@ -688,11 +700,20 @@ export class ProductOrdersService {
     return 'economy'
   }
 
+  private async orderCutoff(flightId: string, departure: Date, hours: number): Promise<Date> {
+    const order = await this.db.catering_order.findUnique({
+      where: { flight_id: flightId },
+      select: { simulated_cutoff_at: true },
+    })
+    const standard = cutoffAt(departure, hours)
+    return order?.simulated_cutoff_at && order.simulated_cutoff_at < standard ? order.simulated_cutoff_at : standard
+  }
+
   private async toDtoWithCutoff(row: Parameters<ProductOrdersService['toDto']>[0]): Promise<ProductOrderDto> {
     const dto = this.toDto(row)
     const flight = await this.flightContext.getFlight(row.flight_id)
     const settings = await this.settings.resolveForFlight(row.flight_id, row.cabin as F12Cabin)
-    dto.cutoffAt = cutoffAt(flight.scheduledDeparture, settings.orderWindowHours).toISOString()
+    dto.cutoffAt = (await this.orderCutoff(row.flight_id, flight.scheduledDeparture, settings.orderWindowHours)).toISOString()
     return dto
   }
 

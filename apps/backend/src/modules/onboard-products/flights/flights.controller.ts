@@ -109,6 +109,11 @@ export class FlightsController {
     return this.cateringOrders.refresh(flightId, staff.id)
   }
 
+  @Post('catering-order/simulate-close')
+  async simulateOrderingClose(@Param('flightId') flightId: string, @CurrentStaff() staff: StaffContext) {
+    return this.cateringOrders.simulateClose(flightId, staff.id)
+  }
+
   // Mark the order loaded, after the stock transfer.
   @Put('catering-order/loaded')
   async markCateringOrderLoaded(@Param('flightId') flightId: string, @CurrentStaff() staff: StaffContext) {
@@ -120,6 +125,7 @@ export class FlightsController {
   // subtracted first.
   @Post('stock-transfers')
   async transferStock(@Param('flightId') flightId: string, @CurrentStaff() staff: StaffContext) {
+    await this.cateringOrders.assertTransferReady(flightId)
     return this.transfers.transferCateringOrder(flightId, staff.id)
   }
 

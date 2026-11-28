@@ -17,8 +17,7 @@ import { PhotoPlaceholder } from './PhotoPlaceholder'
 
 const CATEGORY_OPTIONS: { value: ProductCategory; label: string }[] = [
   { value: 'meal', label: 'Meal' },
-  { value: 'snack', label: 'Snack and drink' },
-  { value: 'beverage', label: 'Snack and drink' },
+  { value: 'snack', label: 'Snacks & drinks' },
   { value: 'duty_free', label: 'Duty-free' },
 ]
 
@@ -73,12 +72,12 @@ function formFromProduct(p: Product): FormState {
     name: p.name,
     sku: p.sku,
     category: p.category,
-    typeCode: p.typeCode,
-    dietaryAttributes: [...p.dietaryAttributes],
+    typeCode: p.category === 'meal' ? p.typeCode : 'STD',
+    dietaryAttributes: p.category === 'duty_free' ? [] : [...p.dietaryAttributes],
     priceAmount: p.priceAmount.toFixed(2),
     purchaseCostAmount: p.purchaseCostAmount == null ? '' : p.purchaseCostAmount.toFixed(2),
     shelfLifeDays: p.shelfLifeDays == null ? '' : String(p.shelfLifeDays),
-    isPremium: p.isPremium,
+    isPremium: p.category === 'meal' && p.isPremium,
     isActive: p.isActive,
     photo: null, // photo upload is a placeholder until the real image endpoint ships
   }
@@ -135,12 +134,12 @@ function toInput(form: FormState): ProductInput {
     name: form.name.trim(),
     sku: form.sku.trim(),
     category: form.category,
-    typeCode: form.typeCode,
-    dietaryAttributes: form.dietaryAttributes,
+    typeCode: form.category === 'meal' ? form.typeCode : 'STD',
+    dietaryAttributes: form.category === 'duty_free' ? [] : form.dietaryAttributes,
     priceAmount: price,
     purchaseCostAmount: costRaw === '' ? null : Number(costRaw),
     shelfLifeDays: form.category === 'duty_free' || daysRaw === '' ? null : Number(daysRaw),
-    isPremium: form.isPremium,
+    isPremium: form.category === 'meal' && form.isPremium,
     isActive: form.isActive,
     photo: form.photo,
   }
@@ -160,19 +159,14 @@ export function ProductDialog({ product, onClose, onSaved, onError }: Props) {
   }
 
   function setCategory(category: ProductCategory) {
-    // Changing category clears fields that only make sense for other categories,
-    // so the constraints (type code only for meals, shelf life not for duty-free)
-    // are kept on the form rather than recomputed later.
-    setForm((prev) => {
-      const next: FormState = { ...prev, category }
-      if (category !== 'meal' && prev.typeCode !== 'STD') {
-        next.typeCode = 'STD'
-      }
-      if (category === 'duty_free' && prev.shelfLifeDays !== '') {
-        next.shelfLifeDays = ''
-      }
-      return next
-    })
+    setForm((prev) => ({
+      ...prev,
+      category,
+      typeCode: category === 'meal' ? prev.typeCode : 'STD',
+      isPremium: category === 'meal' && prev.isPremium,
+      dietaryAttributes: category === 'duty_free' ? [] : prev.dietaryAttributes,
+      shelfLifeDays: category === 'duty_free' ? '' : prev.shelfLifeDays,
+    }))
   }
 
   function onFileChange(e: ChangeEvent<HTMLInputElement>) {
@@ -233,7 +227,6 @@ export function ProductDialog({ product, onClose, onSaved, onError }: Props) {
     }
   }
 
-  const typeCodeDisabled = form.category !== 'meal'
   const shelfLifeDisabled = form.category === 'duty_free'
   const photoSrc = form.photo?.dataUrl ?? null
 
@@ -319,7 +312,7 @@ export function ProductDialog({ product, onClose, onSaved, onError }: Props) {
               <NativeSelect
                 id="pd-category"
                 className="w-full"
-                value={form.category}
+                value={form.category === 'beverage' ? 'snack' : form.category}
                 onChange={(e) => setCategory(e.target.value as ProductCategory)}
               >
                 {CATEGORY_OPTIONS.map((opt) => (
@@ -343,42 +336,45 @@ export function ProductDialog({ product, onClose, onSaved, onError }: Props) {
             </Field>
           </div>
 
-          <Field id="pd-typecode" label={`Special meal code${typeCodeDisabled ? ' (only for meals)' : ''}`} error={errors.typeCode}>
-            <NativeSelect
-              id="pd-typecode"
-              className="w-full"
-              value={form.typeCode}
-              onChange={(e) => setField('typeCode', e.target.value as SpecialMealCode)}
-              disabled={typeCodeDisabled}
-            >
-              {TYPE_CODES.map((c) => (
-                <NativeSelectOption key={c} value={c}>
-                  {c}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </Field>
+          {form.category === 'meal' && (
+            <Field id="pd-typecode" label="Special meal code" error={errors.typeCode}>
+              <NativeSelect
+                id="pd-typecode"
+                className="w-full"
+                value={form.typeCode}
+                onChange={(e) => setField('typeCode', e.target.value as SpecialMealCode)}
+              >
+                {TYPE_CODES.map((c) => (
+                  <NativeSelectOption key={c} value={c}>
+                    {c}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </Field>
+          )}
 
-          <div className="flex flex-col gap-2">
-            <Label>Dietary attributes</Label>
-            <div className="flex flex-wrap gap-2">
-              {DIETARY_OPTIONS.map((attr) => {
-                const active = form.dietaryAttributes.includes(attr)
-                return (
-                  <Toggle
-                    key={attr}
-                    variant="outline"
-                    size="sm"
-                    pressed={active}
-                    onPressedChange={() => toggleDietary(attr)}
-                    className="capitalize"
-                  >
-                    {attr.replace('_', ' ')}
-                  </Toggle>
-                )
-              })}
+          {form.category !== 'duty_free' && (
+            <div className="flex flex-col gap-2">
+              <Label>Dietary attributes</Label>
+              <div className="flex flex-wrap gap-2">
+                {DIETARY_OPTIONS.map((attr) => {
+                  const active = form.dietaryAttributes.includes(attr)
+                  return (
+                    <Toggle
+                      key={attr}
+                      variant="outline"
+                      size="sm"
+                      pressed={active}
+                      onPressedChange={() => toggleDietary(attr)}
+                      className="capitalize"
+                    >
+                      {attr.replace('_', ' ')}
+                    </Toggle>
+                  )
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="grid gap-5 sm:grid-cols-2">
             <Field id="pd-cost" label="Purchase cost (USD)" error={errors.purchaseCostAmount}>
@@ -412,10 +408,12 @@ export function ProductDialog({ product, onClose, onSaved, onError }: Props) {
             </Field>
           </div>
 
-          <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
-            <Label htmlFor="pd-premium">Premium meal</Label>
-            <Switch id="pd-premium" checked={form.isPremium} onCheckedChange={(checked) => setField('isPremium', checked)} />
-          </div>
+          {form.category === 'meal' && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+              <Label htmlFor="pd-premium">Premium meal</Label>
+              <Switch id="pd-premium" checked={form.isPremium} onCheckedChange={(checked) => setField('isPremium', checked)} />
+            </div>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>

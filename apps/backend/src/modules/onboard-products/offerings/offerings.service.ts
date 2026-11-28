@@ -6,8 +6,11 @@
 // cabin) means at most one default offering per scope/cabin.
 
 import { Injectable } from '@nestjs/common'
+import type { Prisma } from '../../../db/generated/prisma/client'
 import { DbService } from '../../../db/db.service'
 import { ApiErrorException } from '../common/api-error'
+import { resolveOfferings } from '../common/menu'
+import type { F12Cabin } from '../common/mapping'
 
 export interface OfferingDto {
   id: string
@@ -28,6 +31,8 @@ export interface OfferingInput {
   cabin: string
   isDefault: boolean
   isActive: boolean
+  copyInheritedMenu?: boolean
+  allRouteCabins?: boolean
 }
 
 @Injectable()
@@ -57,38 +62,77 @@ export class OfferingsService {
     if (input.scope === 'flight' && !input.flightId) {
       throw new ApiErrorException('LINE_INVALID', 'flightId is required for flight-scope offerings.', 400)
     }
-    // The unique key in the DB is (route_id, flight_id, cabin) with the
-    // partial index on is_default+deleted_at, plus (product_id, route_id,
-    // flight_id, cabin) with deleted_at IS NULL. We look up by the
-    // latter and update / create accordingly.
-    const existing = await this.db.product_offering.findFirst({
-      where: {
-        product_id: input.productId,
-        route_id: input.scope === 'route' ? (input.routeId ?? null) : null,
-        flight_id: input.scope === 'flight' ? (input.flightId ?? null) : null,
-        cabin: input.cabin,
-        deleted_at: null,
-      },
-    })
-    if (existing) {
-      const updated = await this.db.product_offering.update({
-        where: { id: existing.id },
-        data: { is_default: input.isDefault, is_active: input.isActive },
-      })
-      return this.toDto(updated)
+    if (input.allRouteCabins && (input.scope !== 'route' || input.isDefault)) {
+      throw new ApiErrorException('LINE_INVALID', 'Only route availability can be saved across cabins.', 400)
     }
-    const created = await this.db.product_offering.create({
-      data: {
-        product_id: input.productId,
-        scope: input.scope,
-        route_id: input.scope === 'route' ? (input.routeId ?? null) : null,
-        flight_id: input.scope === 'flight' ? (input.flightId ?? null) : null,
-        cabin: input.cabin,
-        is_default: input.isDefault,
-        is_active: input.isActive,
-      },
+
+    return this.db.$transaction(async (tx) => {
+      if (!input.allRouteCabins) return this.saveOffering(tx, input)
+
+      const isMeal = product.category === 'meal'
+      const economy = await this.saveOffering(tx, { ...input, cabin: 'economy', copyInheritedMenu: true }, isMeal)
+      const business = await this.saveOffering(tx, { ...input, cabin: 'business', copyInheritedMenu: true }, isMeal)
+      return input.cabin === 'business' ? business : economy
     })
-    return this.toDto(created)
+  }
+
+  private async saveOffering(tx: Prisma.TransactionClient, input: OfferingInput, keepCabinDefault = false): Promise<OfferingDto> {
+    const scope = {
+      scope: input.scope,
+      route_id: input.scope === 'route' ? (input.routeId ?? null) : null,
+      flight_id: input.scope === 'flight' ? (input.flightId ?? null) : null,
+      cabin: input.cabin,
+    }
+    const where = { ...scope, deleted_at: null }
+    const rows = await tx.product_offering.findMany({ where })
+    let isDefault = input.isDefault
+    if (keepCabinDefault && input.isActive && rows.length > 0) {
+      const currentDefault = rows.find((row) => row.is_default && row.is_active)
+      isDefault = !currentDefault || currentDefault.product_id === input.productId
+    }
+    if (input.copyInheritedMenu && rows.length === 0 && input.scope !== 'network') {
+      const flight = scope.flight_id
+        ? await tx.flight.findUniqueOrThrow({ where: { id: scope.flight_id }, select: { route_id: true } })
+        : null
+      const routeId = scope.route_id ?? flight?.route_id ?? ''
+      const candidates = await tx.product_offering.findMany({
+        where: {
+          cabin: scope.cabin,
+          deleted_at: null,
+          OR: [{ scope: 'network' }, { scope: 'route', route_id: routeId }],
+        },
+      })
+      const menu = resolveOfferings(candidates.map(this.toDto) as Parameters<typeof resolveOfferings>[0], {
+        flightId: scope.flight_id ?? '',
+        routeId,
+        cabin: scope.cabin as F12Cabin,
+      })
+      if (keepCabinDefault && input.isActive) {
+        const currentDefault = menu.find((row) => row.isDefault)
+        isDefault = !currentDefault || currentDefault.productId === input.productId
+      }
+      if (menu.length > 0) {
+        await tx.product_offering.createMany({
+          data: menu
+            .filter((row) => row.productId !== input.productId)
+            .map((row) => ({
+              ...scope,
+              product_id: row.productId,
+              is_active: true,
+              is_default: row.isDefault && !isDefault,
+            })),
+        })
+      }
+    }
+    const existing = rows.find((row) => row.product_id === input.productId)
+    if (isDefault) {
+      await tx.product_offering.updateMany({ where: { ...where, is_default: true }, data: { is_default: false } })
+    }
+    const flags = { is_default: isDefault, is_active: input.isActive }
+    const saved = existing
+      ? await tx.product_offering.update({ where: { id: existing.id }, data: flags })
+      : await tx.product_offering.create({ data: { ...scope, ...flags, product_id: input.productId } })
+    return this.toDto(saved)
   }
 
   async remove(id: string): Promise<void> {

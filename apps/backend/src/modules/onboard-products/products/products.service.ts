@@ -33,6 +33,15 @@ export interface ProductCreateResult {
   product: ProductDto
 }
 
+function validateCategoryFields(category: string, fields: Partial<ProductDraft>) {
+  if (category !== 'meal' && (fields.isPremium || (fields.typeCode !== undefined && fields.typeCode !== 'STD'))) {
+    throw new ApiErrorException('LINE_INVALID', 'Premium status and special meal codes are only available for meals.', 400)
+  }
+  if (category === 'duty_free' && fields.dietaryAttributes?.length) {
+    throw new ApiErrorException('LINE_INVALID', 'Dietary attributes are unavailable for duty-free products.', 400)
+  }
+}
+
 @Injectable()
 export class ProductsService {
   constructor(private readonly db: DbService) {}
@@ -64,6 +73,7 @@ export class ProductsService {
   }
 
   async create(draft: ProductDraft, storage: { storeImage: (name: string, buf: Buffer) => Promise<string> }): Promise<ProductCreateResult> {
+    validateCategoryFields(draft.category, draft)
     const skuTaken = await this.db.product.findFirst({ where: { sku: draft.sku, deleted_at: null } })
     if (skuTaken) throw new ApiErrorException('DUPLICATE_PRODUCT', `SKU ${draft.sku} already exists.`, 409)
     let imageKey: string | null = null
@@ -108,6 +118,7 @@ export class ProductsService {
   ): Promise<ProductCreateResult> {
     const existing = await this.db.product.findFirst({ where: { id, deleted_at: null } })
     if (!existing) throw new ApiErrorException('NOT_FOUND', 'Product not found.', 404)
+    validateCategoryFields(patch.category ?? existing.category, patch)
     if (patch.sku && patch.sku !== existing.sku) {
       const skuTaken = await this.db.product.findFirst({ where: { sku: patch.sku, deleted_at: null, NOT: { id } } })
       if (skuTaken) throw new ApiErrorException('DUPLICATE_PRODUCT', `SKU ${patch.sku} already exists.`, 409)
@@ -118,32 +129,43 @@ export class ProductsService {
       if (!match) throw new ApiErrorException('IMAGE_INVALID', 'photo.dataUrl is malformed.', 400)
       imageKey = await storage.storeImage(patch.photo.fileName, Buffer.from(match[1], 'base64'))
     }
-    await this.db.$transaction(async (tx) => {
-      await tx.product.update({
-        where: { id },
-        data: {
-          ...(patch.name !== undefined ? { name: patch.name } : {}),
-          ...(patch.sku !== undefined ? { sku: patch.sku } : {}),
-          ...(patch.category !== undefined ? { category: patch.category } : {}),
-          ...(patch.typeCode !== undefined ? { type_code: patch.typeCode } : {}),
-          ...(patch.priceAmount !== undefined ? { price_amount: patch.priceAmount } : {}),
-          ...(patch.purchaseCostAmount !== undefined ? { purchase_cost_amount: patch.purchaseCostAmount } : {}),
-          ...(patch.shelfLifeDays !== undefined ? { shelf_life_days: patch.shelfLifeDays } : {}),
-          ...(patch.isPremium !== undefined ? { is_premium: patch.isPremium } : {}),
-          ...(patch.isActive !== undefined ? { is_active: patch.isActive } : {}),
-          ...(imageKey !== undefined ? { image_key: imageKey, image_updated_at: imageKey ? new Date() : null } : {}),
-        },
-      })
-      if (patch.dietaryAttributes !== undefined) {
-        await tx.product_dietary.deleteMany({ where: { product_id: id } })
-        if (patch.dietaryAttributes.length > 0) {
-          await tx.product_dietary.createMany({
-            data: patch.dietaryAttributes.map((attribute) => ({ product_id: id, attribute })),
-          })
+    const updated = await this.db.$transaction(
+      async (tx) => {
+        const current = await tx.product.findFirst({ where: { id, deleted_at: null }, select: { category: true } })
+        if (!current) throw new ApiErrorException('NOT_FOUND', 'Product not found.', 404)
+        const category = patch.category ?? current.category
+        validateCategoryFields(category, patch)
+        const typeCode = category === 'meal' ? patch.typeCode : 'STD'
+        const isPremium = category === 'meal' ? patch.isPremium : false
+        const dietary = category === 'duty_free' ? [] : patch.dietaryAttributes
+        const shelfLifeDays = category === 'duty_free' ? null : patch.shelfLifeDays
+        await tx.product.update({
+          where: { id },
+          data: {
+            ...(patch.name !== undefined ? { name: patch.name } : {}),
+            ...(patch.sku !== undefined ? { sku: patch.sku } : {}),
+            ...(patch.category !== undefined ? { category: patch.category } : {}),
+            ...(typeCode !== undefined ? { type_code: typeCode } : {}),
+            ...(patch.priceAmount !== undefined ? { price_amount: patch.priceAmount } : {}),
+            ...(patch.purchaseCostAmount !== undefined ? { purchase_cost_amount: patch.purchaseCostAmount } : {}),
+            ...(shelfLifeDays !== undefined ? { shelf_life_days: shelfLifeDays } : {}),
+            ...(isPremium !== undefined ? { is_premium: isPremium } : {}),
+            ...(patch.isActive !== undefined ? { is_active: patch.isActive } : {}),
+            ...(imageKey !== undefined ? { image_key: imageKey, image_updated_at: imageKey ? new Date() : null } : {}),
+          },
+        })
+        if (dietary !== undefined) {
+          await tx.product_dietary.deleteMany({ where: { product_id: id } })
+          if (dietary.length > 0) {
+            await tx.product_dietary.createMany({
+              data: dietary.map((attribute) => ({ product_id: id, attribute })),
+            })
+          }
         }
-      }
-    })
-    const updated = await this.db.product.findUniqueOrThrow({ where: { id }, include: { product_dietary: true } })
+        return tx.product.findUniqueOrThrow({ where: { id }, include: { product_dietary: true } })
+      },
+      { isolationLevel: 'Serializable' },
+    )
     return { product: await this.toDto(updated) }
   }
 
